@@ -53,9 +53,9 @@ $Tuveuxquellepizza?
 @Html.select[]("$Choisistapizza"::options)(
   listDict.get user userdata
   |> Maybe.orElseReplace (freeze (Just 0))
-  |> Maybe.getUnless ((==) 0)
+  |> Maybe.getUnless ((==) 0))
 <br><br>
-@Html.select[](List.map Tuple.first dictionnaire)(indexLangue)<br><br>
+@(Html.select [] (List.map Tuple.first dictionnaire) indexLangue)<br><br>
  Final choices<br>
 @(List.map (\(name, id) ->
   <span>@name $achoisiunepizza @(List.findByAReturnB Tuple.first Tuple.second (id - 1) (List.zipWithIndex options) |> Maybe.withDefaultReplace (freeze "qui n'existe pas")).<br></span>

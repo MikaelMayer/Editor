@@ -1,5 +1,5 @@
 listedpages = ["index.elm", "pizzas.elm"]
-indexPage = 0
+indexPage = 1
 
 mbPage  = vars |> case of {page} -> Just page; _ -> Nothing
 
