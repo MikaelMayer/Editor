@@ -1,5 +1,7 @@
 # Editor
 
+Editor is a bidirectional webserver that uses [Sketch-n-sketch](https://github.com/ravichugh/sketch-n-sketch) as the back-end for executing web pages and propagating back modifications to the source files.
+
 To start the Editor web server, enter the following on a command line (you need node.js):
 
     npm install sketch-n-sketch
@@ -7,10 +9,10 @@ To start the Editor web server, enter the following on a command line (you need 
 
 then point your browser to http://127.0.0.1:3000
 
-# Editor Example
+# Example
 
 Point your browser to http://127.0.0.1:3000/pizzas.elm?user=Anonymous&hl=fr&edit=true
-Here you can witness the possibilities of a 30-line-of-code. You can...
+Here you can witness the possibilities of a 60-line-of-code webpage in Editor. You can...
 * Include and interpret data tiles (`nodejs.fileread "data/pizzas.txt"`).
 * Modify the current username directly from the webpage (see how it's updated in the URL)
 * Select a pizza choice and so that it is stored and added it to the corresponding summary below.
@@ -65,13 +67,21 @@ A work in progress will overcome this issue.
 
 ## Need for templates
 
-We did not push templates yet but we will soon. Among the templates, we want
+We did not push templates yet but we will soon, by importing them from [Sketch-n-sketch](https://github.com/ravichugh/sketch-n-sketch). Among the templates, we want
 * Slides
 * Bidirectional converters (e.g. Markdown, LaTeX)
 * Self-modifying webpages.
+* Recipe editor
+* Worksheets
+* Forms
 
 ## Need for a toolbar
 
 We need a general-purpose HTML edition toolbar to edit all the web pages without relying only on the devtools.
+Furthermore, we need the toolbar to expose udpate ambiguities and let the user choose from them.
 
+# License
 
+This technology is offered without any warranty (for the moment).
+Please refer [Sketch-n-sketch](https://github.com/ravichugh/sketch-n-sketch)'s license to use this technology commercially.
+For academic projects this should be fine.

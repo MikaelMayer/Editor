@@ -1,5 +1,5 @@
-listedpages = ["index.elm", "pizzas.elm"]
-indexPage = 1
+listedpages = ["index.elm", "pizzas.elm", "README.md"]
+indexPage = 2
 
 mbPage  = vars |> case of {page} -> Just page; _ -> Nothing
 
