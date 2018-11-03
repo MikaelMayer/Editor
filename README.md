@@ -11,7 +11,7 @@ then point your browser to http://127.0.0.1:3000
 
 # Example
 
-Point your browser to http://127.0.0.1:3000/pizzas.elm?user=Anonymous&hl=fr&edit=true
+Point your browser to http://127.0.0.1:3000/pizzas.elm?user=Anonymous&hl=fr&edit=true  
 Here you can witness the possibilities of a 60-line-of-code webpage in Editor. You can...
 * Include and interpret data tiles (`nodejs.fileread "data/pizzas.txt"`).
 * Modify the current username directly from the webpage (see how it's updated in the URL)
