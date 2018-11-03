@@ -5,7 +5,7 @@ mbPage  = vars |> case of {page} -> Just page; _ -> Nothing
 
 page = mbPage |> Maybe.withDefault (nth listedpages indexPage)
 
-editedFile = nodejs.fileread ("src/" + page)
+editedFile = nodejs.fileread page
         |> Maybe.withDefaultReplace (Update.freeze """-- @page
 <span>Modify me to create @page</span>""")
 
@@ -25,7 +25,7 @@ pageAdder = Update.lens2 {
   v=pageAdder
   placeholder="Create a new page"
   title="Enter the name of a new page here and press ENTER"
-  onchange="this.setAttribute('v',this.value)">@(if "src/" + page == sourcefile then <span></span> else <span>Navigate to <a href=("/"+page) contenteditable="false">@page</a></span>)<br>
+  onchange="this.setAttribute('v',this.value)">@(if page == sourcefile then <span></span> else <span>Navigate to <a href=("/"+page) contenteditable="false">@page</a></span>)<br>
  <textarea v=editedFile onchange="this.setAttribute('v', this.value)" style="margin:0px;width:734px;height:387px">@editedFile</textarea>
 @clientscript
 </body></html>
