@@ -19,7 +19,7 @@ options = nodejs.fileread "data/pizzas.txt"
 dictionnaire = [
   ("English", [ ("abbreviation", "en")
               , ("Salut", "Hey")
-              , ("Tuveuxquellepizza", "Which pizza do ya want")
+              , ("Tuveuxquellepizza", "Which pizza do you want")
               , ("achoisiunepizza", "wants a pizza")
               , ("Choisistapizza", "Choose your pizza")
               , ("Margharita", "Margharita")
@@ -47,7 +47,7 @@ indexLangue =
   |> Maybe.withDefaultReplace (freeze 0)
 
 main = Html.translate dictionnaire indexLangue <|
-<html><body @(if edit == "true" then [["contenteditable", "true"]] else [])>
+<html><head></head><body @(if edit == "true" then [["contenteditable", "true"]] else [])>
   <span>$Salut @user! <br>
 $Tuveuxquellepizza?
 @Html.select[]("$Choisistapizza"::options)(

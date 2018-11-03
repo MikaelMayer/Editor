@@ -5,11 +5,11 @@ To start the Editor web server, enter the following on a command line (you need 
     npm install sketch-n-sketch
     node server.js
 
-then point your browser to http://127.0.0.1
+then point your browser to http://127.0.0.1:3000
 
 # Editor Example
 
-Point your browser to http://127.0.0.1/pizzas.elm?user=Anonymous&hl=fr&edit=true
+Point your browser to http://127.0.0.1:3000/pizzas.elm?user=Anonymous&hl=fr&edit=true
 Here you can witness the possibilities of a 30-line-of-code. You can...
 * Include and interpret data tiles (`nodejs.fileread "data/pizzas.txt"`).
 * Modify the current username directly from the webpage (see how it's updated in the URL)
@@ -18,6 +18,8 @@ Here you can witness the possibilities of a 30-line-of-code. You can...
 * Change the translation language
 * Edit the current translated sentences
 * Add a new translation language (go to the DOM inspector, and duplicate <option>English</option>, and then rename it to German)
+* Add a new pizza (same but duplicate a pizza option)
+* Rename a pizza wherever it appears
 * Add new translated sentences from the webpage (wrap "Final choices" so that it becomes "{:Final choices:}". After a roundtrip update, switch to French and translate it ("Choix finaux").
 * Remove one's pizza choice by selecting the first "Choose your pizza" option.
 
