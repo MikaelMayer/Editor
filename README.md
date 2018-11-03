@@ -25,7 +25,7 @@ Here you can witness the possibilities of a 60-line-of-code webpage in Editor. Y
 * Add new translated sentences from the webpage (wrap "Final choices" so that it becomes "{:Final choices:}". After a roundtrip update, switch to French and translate it ("Choix finaux").
 * Remove one's pizza choice by selecting the first "Choose your pizza" option.
 
-# Workflow and API.
+# Workflow and API
 
 Editor is an experimental web server.
 If someone points the browser to a file `127.0.0.1/A.elm`, Editor executes `A.elm` and interpret sthe resulting object as an HTML webpage, and sends it back to the client.
