@@ -47,7 +47,8 @@ indexLangue =
   |> Maybe.withDefaultReplace (freeze 0)
 
 main = Html.translate dictionnaire indexLangue <|
-<html><head></head><body @(if edit == "true" then [["contenteditable", "true"]] else [])>
+<html><head></head>
+  <body>
   <span>$Salut @user! <br>
 $Tuveuxquellepizza?
 @Html.select[]("$Choisistapizza"::options)(
@@ -60,5 +61,4 @@ $Tuveuxquellepizza?
 @(List.map (\(name, id) ->
   <span>@name $achoisiunepizza @(List.findByAReturnB Tuple.first Tuple.second (id - 1) (List.zipWithIndex options) |> Maybe.withDefaultReplace (freeze "qui n'existe pas")).<br></span>
 ) userdata)
-</span>
-@clientscript</body></html>
+</span></body></html>

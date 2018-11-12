@@ -80,6 +80,10 @@ We did not push templates yet but we will soon, by importing them from [Sketch-n
 We need a general-purpose HTML edition toolbar to edit all the web pages without relying only on the devtools.
 Furthermore, we need the toolbar to expose udpate ambiguities and let the user choose from them.
 
+## Need for a better WYSIWYG webpage editor.
+
+Why not try [Slate?](https://www.slatejs.org) if it works for the entire HTML.
+
 # License
 
 This technology is offered without any warranty (for the moment).
