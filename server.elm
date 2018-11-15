@@ -88,7 +88,7 @@ editionscript = """function initSigninV2() {
       (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true");
   }
   function hasGhostAncestor(htmlElem) {
-    if(htmlElem == null) return true;
+    if(htmlElem == null) return false;
     if(isGhostNode(htmlElem)) return true;
     return hasGhostAncestor(htmlElem.parentNode);
   }
@@ -153,8 +153,10 @@ editionscript = """function initSigninV2() {
           onlyGhosts = false;
         }
       }
-      if(onlyGhosts) return;
-      // Send in post the new HTML along with the URL
+      if(onlyGhosts) {
+        console.log("mutations are only ghosts, skipping", mutations);
+        return;
+      } // Send in post the new HTML along with the URL
       console.log("mutations", mutations);
       if(typeof t !== "undefined") {
         clearTimeout(t);
