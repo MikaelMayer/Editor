@@ -4,8 +4,8 @@ Editor is a bidirectional webserver that uses [Sketch-n-sketch](https://github.c
 
 To start the Editor web server, enter the following on a command line (you need node.js):
 
-    npm install sketch-n-sketch
-    node server.js
+    npm install
+    node bin/server.js
 
 then point your browser to http://127.0.0.1:3000
 
@@ -19,7 +19,7 @@ Here you can witness the possibilities of a 60-line-of-code webpage in Editor. Y
 * Change the summary style (text, color, font...) directly using the DOM explorer.
 * Change the translation language
 * Edit the current translated sentences
-* Add a new translation language (go to the DOM inspector, and duplicate <option>English</option>, and then rename it to German)
+* Add a new translation language (go to the DOM inspector, and duplicate `<option>English</option>`, and then rename it to German)
 * Add a new pizza (same but duplicate a pizza option)
 * Rename a pizza wherever it appears
 * Add new translated sentences from the webpage (wrap "Final choices" so that it becomes "{:Final choices:}". After a roundtrip update, switch to French and translate it ("Choix finaux").
@@ -32,6 +32,18 @@ If someone points the browser to a file `127.0.0.1/A.elm`, Editor executes `A.el
 If the page includes `@clientscript` somewhere in the body, all modifications to this webpage are observed (via a MutationObserver) and the changes are back-propagated to the file `A.elm`.
 
 # Limitations, future work and caution
+
+## HTML formatting caution
+
+- No text node should be child of &lt;html&gt; node. Make sure &lt;head&gt; and &lt;body&gt; exist.
+  Thus, the basic skeleton of your webpage should look like
+  ```
+  <html><head>
+  </head><body>
+  </body></html>
+  ```
+
+- Make sure your source files have unix-style end of lines (\n and not \r\n). Else this will cause a lot of trouble.
 
 ## Need for authentication
 
@@ -82,7 +94,9 @@ Furthermore, we need the toolbar to expose udpate ambiguities and let the user c
 
 ## Need for a better WYSIWYG webpage editor.
 
-Why not try [Slate?](https://www.slatejs.org) if it works for the entire HTML.
+Why not try [Slate?](https://www.slatejs.org) if it works for the entire HTML. Apparently it does.
+https://github.com/ianstormtaylor/slate/blob/master/docs/reference/slate-html-serializer/index.md
+
 
 # License
 
