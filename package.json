@@ -1,0 +1,25 @@
+{
+  "name": "Editor",
+  "version": "1.0.0",
+  "description": "Bidirectional web server (like php but can write on the files by modifying them in the browser)",
+  "main": "bin/server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "bidirectional",
+    "web",
+    "server"
+  ],
+  "homepage": "https://github.com/MikaelMayer/Editor",
+  "bugs": "https://github.com/MikaelMayer/Editor/issues",
+  "author": "Mikael Mayer <mikael.mayer@polytechnique.org>",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MikaelMayer/Editor.git"
+  },
+  "dependencies": {
+    "sketch-n-sketch": "^1.0.13"
+  }
+}
