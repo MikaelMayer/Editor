@@ -31,7 +31,7 @@ main = (if canEvaluate == "true" then
       if Regex.matchIn """\.html$""" pagename then
         case Regex.extract """^(?:(?!<html).)*([\s\S]*</html>)\s*$""" sourcecontent of
           Just [interpretableHtml] ->
-            __evaluate__ [] (Update.debug "interpretableHtml" interpretableHtml)
+            __evaluate__ [] interpretableHtml
           _ ->  Err """@pagename is not a valid html file."""
       else if Regex.matchIn """\.elm$""" pagename then
         __evaluate__ (("vars", vars)::("pagename", pagename)::preludeEnv) sourcecontent 

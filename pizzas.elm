@@ -1,5 +1,5 @@
 edit  = vars |> case of {edit} -> edit; _ -> "false"
-user  = vars |> case of {user} -> user; _ -> "Laurent"
+user  = vars |> case of {user} -> user; _ -> "Anonymous"
 hl    = vars |> case of {hl} -> hl; _ -> "en"
 
 userdata = [

@@ -9,8 +9,8 @@ const url = require('url');
 const hostname = '127.0.0.1';
 const port = 3000;
 
-const serverFile = __dirname + "/bin/server.elm"
-const htaccessFile = __dirname + "/bin/htaccess.elm"
+const serverFile = "./bin/server.elm"
+const htaccessFile = "./bin/htaccess.elm"
 
 const sns = require("sketch-n-sketch");
 sns.params = sns.params || {};
@@ -161,7 +161,7 @@ const server = http.createServer((request, response) => {
           response.end(htmlContent._0);
         }
       } else {
-        var content = fs.readFileSync(__dirname + "/" + pathname);
+        var content = fs.readFileSync("./" + pathname);
         response.statusCode = 200;
         response.end(content);
       }
