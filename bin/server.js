@@ -9,8 +9,27 @@ const url = require('url');
 const hostname = '127.0.0.1';
 const port = 3000;
 
-const serverFile = "./bin/server.elm"
-const htaccessFile = "./bin/htaccess.elm"
+const serverFile = "./server.elm"
+const htaccessFile = "./htaccess.elm"
+
+// Don't meodify, this will be bundled with the file server.elm
+const defaultServerContent = "<html><head></head><body>Server not available.</body></html>";
+
+const defaultHtAccessFileContent = `if Regex.matchIn """\\.\\.(?:/|\\\\)|(?:/|\\\\)\\.\\.|^\\.\\.$""" path then False else True`
+
+function readServerFile() {
+  if(fs.existsSync(serverFile)) {
+    return fs.readFileSync(serverFile, "utf8");
+  } else
+    return defaultServerContent;
+}
+
+function readHtAccessFile() {
+  if(fs.existsSync(htaccessFile)) {
+    return fs.readFileSync(htaccessFile, "utf8");
+  } else
+    return defaultHtAccessFileContent;
+}
 
 const sns = require("sketch-n-sketch");
 sns.params = sns.params || {};
@@ -66,7 +85,7 @@ function getOneSolution(name, source, allSolutions) {
   if(newSource != source) { // server file itself modified from the update method
     sns.fileOperations = sns.fileOperations || [];
     sns.fileOperations.push([ 'write',
-      { _1: 'bin/server.elm',
+      { _1: serverFile,
         _2: newSource}]);
   }
   var fo = sns.fileOperations;
@@ -96,7 +115,7 @@ function loadpage(name, overrides, newvalue) {
   // __dirname = path.resolve(); // If in the REPL
   var source = "";
   if(typeof overrides != "object") overrides = {};
-  try { source =  fs.readFileSync(serverFile, "utf8"); }
+  try { source =  readServerFile(); }
     catch (err) { return [{ ctor: "Err", _0: `File bin/server.elm does not exist.`}, overrides]; }
   var env = { vars: overrides, pagename: name };
   
@@ -141,8 +160,8 @@ function loadpage(name, overrides, newvalue) {
 const server = http.createServer((request, response) => {
   var urlParts = url.parse(request.url, parseQueryString=true);
   var pathname = urlParts.pathname.substring(1); // Without the slash.
-  if(pathname == "") pathname = "index.elm";
-  var accessResult = sns.objEnv.string.evaluate({pagename:pathname,method:request.method})(fs.readFileSync(htaccessFile, "utf8"));
+  var accessResult = sns.objEnv.string.evaluate({path:pathname,method:request.method})(readHtAccessFile());
+  console.log(accessResult);
   var access = sns.process(accessResult)(sns.valToNative);
   response.setHeader('Content-Type', 'text/html; charset=utf-8');
   if(access.ctor == "Err") {
