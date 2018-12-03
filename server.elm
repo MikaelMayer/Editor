@@ -96,6 +96,16 @@ menu.edittoolbar {
 menuitem.disabled {
   color: #BBB;
 }
+menuitem > .solution {
+  
+}
+menuitem > .solution.selected {
+  outline: white 2px solid;
+}
+menuitem > .solution:not(.selected):hover {
+  outline: #CCC 2px solid;
+  cursor: pointer;
+}
 #editor_codepreview {
   display: none;
 }
@@ -215,6 +225,68 @@ editionscript = """function initSigninV2() {
     
     var t = undefined;
     
+    handleServerPOSTResponse = xmlhttp => function () {
+        if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+          //console.log("Received new content. Replacing the page.");
+          var saved = saveGhostAttributes();
+          replaceContent(xmlhttp.responseText);
+          applyGhostAttributes(saved);
+          
+          var newQueryStr = xmlhttp.getResponseHeader("New-Query");
+          var ambiguityKey = xmlhttp.getResponseHeader("Ambiguity-Key");
+          var ambiguityNumber = xmlhttp.getResponseHeader("Ambiguity-Number");
+          var ambiguitySelected = xmlhttp.getResponseHeader("Ambiguity-Selected");
+          if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
+             ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
+             ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
+            var n = JSON.parse(ambiguityNumber);
+            var selected = JSON.parse(ambiguitySelected);
+            var newMenu = document.createElement("menuitem");
+            var disambiguationMenu = `<span style="color:red" id="ambiguity-id" v="${ambiguityKey}">Ambiguity.</span> Solutions `;
+            for(var i = 1; i <= n; i++) {
+              if(i == selected) {
+                disambiguationMenu += ` <span class="solution selected">#${i}</span>`
+              } else {
+                disambiguationMenu += ` <a class="solution" onclick="selectAmbiguity('${ambiguityKey}', ${i})">#${i}</a>`
+              }
+            }
+            disambiguationMenu += ` <button onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Accept current</button>`;
+            newMenu.innerHTML = disambiguationMenu;
+            newMenu.setAttribute("isghost", "true")
+            document.getElementById("themenu").append(newMenu);
+          }
+          if(newQueryStr !== null) {
+            var newQuery = JSON.parse(newQueryStr);
+            var newQueryKeys = Object.keys(newQuery);
+            var strQuery = "";
+            for(var i = 0; i < newQueryKeys.length; i++) {
+              var key = newQueryKeys[i];
+              strQuery = strQuery + (i == 0 ? "?" : "&") + key + "=" + newQuery[key];
+            }
+            window.history.replaceState({}, "Current page", strQuery);
+          }
+        }
+    }
+    
+    function selectAmbiguity(key, num) {
+      var xmlhttp = new XMLHttpRequest();
+      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+      xmlhttp.open("POST", location.pathname + location.search);
+      xmlhttp.setRequestHeader("ambiguity-key", key);
+      xmlhttp.setRequestHeader("select-ambiguity", JSON.stringify(num));
+      xmlhttp.setRequestHeader("Content-Type", "application/json");
+      xmlhttp.send("{\"a\":1}");
+    }
+    
+    function acceptAmbiguity(key, num) {
+      var xmlhttp = new XMLHttpRequest();
+      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+      xmlhttp.open("POST", location.pathname + location.search);
+      xmlhttp.setRequestHeader("ambiguity-key", key);
+      xmlhttp.setRequestHeader("accept-ambiguity", JSON.stringify(num));
+      xmlhttp.setRequestHeader("Content-Type", "application/json");
+      xmlhttp.send("{\"a\":1}");
+    }
     
     function handleMutations(mutations) {
       var onlyGhosts = true;
@@ -252,33 +324,7 @@ editionscript = """function initSigninV2() {
         t = undefined;
         console.log("sending post request");
         var xmlhttp = new XMLHttpRequest();
-        xmlhttp.onreadystatechange = function () {
-            if (xmlhttp.readyState == XMLHttpRequest.DONE) {
-              //console.log("Received new content. Replacing the page.");
-              var saved = saveGhostAttributes()
-              replaceContent(xmlhttp.responseText);
-              applyGhostAttributes(saved);
-              
-              var newQueryStr = xmlhttp.getResponseHeader("New-Query");
-              var ambiguityKey = xmlhttp.getResponseHeader("Other-Solutions");
-              if(ambiguityKey !== null && typeof ambiguityKey != "undefined") {
-                var newMenu = document.createElement("menuitem");
-                newMenu.innerHTML = `<span style="color:red" id="ambiguity-id" v="${ambiguityKey}">Ambiguity detected.</span> No file written.`;
-                newMenu.setAttribute("isghost", "true")
-                document.getElementById("themenu").append(newMenu);
-              }
-              if(newQueryStr !== null) {
-                var newQuery = JSON.parse(newQueryStr);
-                var newQueryKeys = Object.keys(newQuery);
-                var strQuery = "";
-                for(var i = 0; i < newQueryKeys.length; i++) {
-                  var key = newQueryKeys[i];
-                  strQuery = strQuery + (i == 0 ? "?" : "&") + key + "=" + newQuery[key];
-                }
-                window.history.replaceState({}, "Current page", strQuery);
-              }
-            }
-        };
+        xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
         console.log("sending modifications");
         xmlhttp.open("POST", location.pathname + location.search);
         xmlhttp.setRequestHeader("Content-Type", "application/json");

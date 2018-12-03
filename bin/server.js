@@ -36,7 +36,7 @@ sns.params = sns.params || {};
 sns.params.delayedWrite = true;
 sns.fileOperations = sns.fileOperations || [];
 
-function evaluateToHtml(name, env, source) {
+function evaluateToHtml(path, env, source) {
   var result = sns.objEnv.string.evaluate(env)(source);
   if(result.ctor == "Ok") {
     var out = sns.valToHTMLSource(result._0)
@@ -46,7 +46,7 @@ function evaluateToHtml(name, env, source) {
       return { ctor: "Err", _0: "Error while converting the result to HTML source file: " + out._0}
     }
   } else {
-    return { ctor: "Err", _0: `Error while interpreting ${name}: ` + result._0}
+    return { ctor: "Err", _0: `Error while interpreting ${path}: ` + result._0}
   }
 }
 
@@ -62,24 +62,49 @@ function lazyListToList(ll) {
 cachedSolutions = {
   key: {
      timestamp: 0,
-     computed: ["html page", "environment overrides", "fileOperations"],
-     remaining: "lazyList of solutions. Call getOneSolution(this.name, this.source) on it to get one more solution",
-     name: "The name that is being computed",
-     source: "The source file of the server"
+     computed: [["html page", "environment overrides", "fileOperations"],
+                ["html page 2", "environment overrides 2", "fileOperations 2..."]],
+     remaining: "false, or a LazyList whose head element is last computed solution. Call getOneSolution(this.path, this.source, sns.lazyList.tail(remaining)) on it to get one more solution if it exists",
+     path: "The path that is being computed",
+     source: "The original source file of the server. Maybe be overwritten in fileOperations"
+  }
+}
+
+// Retrieves the given solution by 1-based index from the set of solutions
+// If the solution is the last computed, computes remaining solutions
+function getSolutionByNum(solutionSet, num) {
+  if(solutionSet.computed.length >= num && num >= 1) {
+    if(solutionSet.computed.length == num) { // If we select the last computed solution, we checked if we can compute more solutions.
+      if(solutionSet.remaining !== false) {
+        sns.fileOperations = [];
+        var lt = sns.lazyList.tail(solutionSet.remaining);
+        var newSolution = getOneSolution(solutionSet.path, solutionSet.source, lt);
+        if(newSolution === false) {
+          solutionSet.remaining = false;
+        } else {
+          solutionSet.remaining = lt;
+          solutionSet.computed.push(newSolution);
+        }
+      }
+    }
+    return solutionSet.computed[num - 1];
+  } else {
+    console.log(`Requested invalid solution number ${num}. Returning the first`)
+    return solutionSet.computed[0];
   }
 }
 
 function uniqueKey() {
-  var potentialkey = 1000;
-  while(typeof cachedSolutions[potentialkey] != "undefined") {
+  var potentialkey = +(new Date());
+  while(typeof cachedSolutions["" + potentialkey] != "undefined") {
     potentialkey++;
   }
-  return potentialkey;
+  return "" + potentialkey;
 }
 
 function envToOverrides(env) { return env.vars; }
 
-function getOneSolution(name, source, allSolutions) {
+function getOneSolution(path, source, allSolutions) {
   if(sns.lazyList.isEmpty(allSolutions)) return false;
   var {_0: newEnv, _1: newSource} = sns.lazyList.head(allSolutions);
   if(newSource != source) { // server file itself modified from the update method
@@ -89,9 +114,9 @@ function getOneSolution(name, source, allSolutions) {
         _2: newSource}]);
   }
   var fo = sns.fileOperations;
-  var evaluated = evaluateToHtml(name, newEnv, newSource);
+  var evaluated = evaluateToHtml(path, newEnv, newSource);
   sns.fileOperations = [];
-  return [[evaluated, envToOverrides(newEnv), fo], sns.lazyList.tail(allSolutions)]; 
+  return [evaluated, envToOverrides(newEnv), fo]; 
   // Evaluates everything given the temporary context of writing the files.
 }
 
@@ -100,50 +125,50 @@ function applyOperations(operations) {
   for(var i = 0; i < operations.length; i++) {
     var [kind, action] = operations[i];
     if(kind == "write") {
-      var {_1: name, _2: content} = action;
-      fs.writeFileSync(name, content, "utf8");
+      var {_1: path, _2: content} = action;
+      fs.writeFileSync(path, content, "utf8");
     } else if (kind == "delete") {
-      var name = action;
-      fs.unlinkSync(name);
+      var path = action;
+      fs.unlinkSync(path);
     }
   }
 }
 
 // Returns a [Result of string containing the requested page, new overrides]
 // If newvalue is defined, performs an update before returning the page.
-function loadpage(name, overrides, newvalue) {
+function loadpage(path, overrides, newvalue) {
   // __dirname = path.resolve(); // If in the REPL
   if(typeof overrides != "object") overrides = {};
   var source =  readServerFile();
-  var env = { vars: overrides, path: name };
+  var env = { vars: overrides, path: path };
   
   if(typeof newvalue == "undefined") {
-    return [evaluateToHtml(name, env, source), overrides];
+    return [evaluateToHtml(path, env, source), overrides];
   } else { // We update the page and re-render it.
     var newVal = sns.nativeToVal(newvalue);
-    sns.fileOperations = sns.fileOperations || [];
+    sns.fileOperations = [];
     var result = sns.objEnv.string.update(env)(source)(newVal);
     if(result.ctor == "Ok") {
       console.log("update succeeded");
       var allSolutions = result._0;
       // Instead of iterating through all the solutions, just detect if there is an ambiguity.
-      var mbSolution = getOneSolution(name, source, allSolutions);
-      if(mbSolution === false) {
+      var solution = getOneSolution(path, source, allSolutions);
+      if(solution === false) {
         return [{ctor: "Err", _0: "Empty list of solutions"}];
       } else {
-        [solution, tailSolutions] = mbSolution;
-        var mbSolution2 = getOneSolution(name, source, tailSolutions);
-        if(mbSolution2 === false) { // No ambiguity, we can immediately process the change.
+        sns.fileOperations = []; // Always do this before taking the tail of a stream of update solutions.
+        var allSolutionsTail = sns.lazyList.tail(allSolutions);
+        var solution2 = getOneSolution(path, source, allSolutionsTail);
+        if(solution2 === false) { // No ambiguity, we can immediately process the change.
           return solution;
         } else {
           console.log("ambiguity detected");
           var solutionKey = uniqueKey();
-          [solution2, tailSolutions2] = mbSolution2;
           var cachedSolution = {
               timestamp: (+ new Date()),
               computed: [solution, solution2],
-              remaining: tailSolutions2,
-              name: name,
+              remaining: allSolutionsTail,
+              path: path,
               source: source
           }
           cachedSolutions[solutionKey] = cachedSolution;
@@ -156,8 +181,8 @@ function loadpage(name, overrides, newvalue) {
 
 const server = http.createServer((request, response) => {
   var urlParts = url.parse(request.url, parseQueryString=true);
-  var pathname = urlParts.pathname.substring(1); // Without the slash.
-  var accessResult = sns.objEnv.string.evaluate({path:pathname,method:request.method})(readHtAccessFile());
+  var path = urlParts.pathname.substring(1); // Without the slash.
+  var accessResult = sns.objEnv.string.evaluate({path:path,method:request.method})(readHtAccessFile());
   var access = sns.process(accessResult)(sns.valToNative);
   var header = 'text/html; charset=utf-8';
   if(access.ctor == "Err") {
@@ -168,12 +193,12 @@ const server = http.createServer((request, response) => {
   } else if(access._0) {
     if(request.method == "GET") {
       var q = urlParts.query;
-      var header = pathname.endsWith(".ico") ? "image/ico" : header;
-      var header = pathname.endsWith(".jpg") ? "image/jpg" : header;
-      var header = pathname.endsWith(".gif") ? "image/gif" : header;
-      var header = pathname.endsWith(".png") ? "image/png" : header;
+      var header = path.endsWith(".ico") ? "image/ico" : header;
+      var header = path.endsWith(".jpg") ? "image/jpg" : header;
+      var header = path.endsWith(".gif") ? "image/gif" : header;
+      var header = path.endsWith(".png") ? "image/png" : header;
       if(!header.startsWith("image/")) {
-        var [htmlContent] = loadpage(pathname, urlParts.query);
+        var [htmlContent] = loadpage(path, urlParts.query);
         response.setHeader('Content-Type', header);
         response.statusCode = 200;
         if(htmlContent.ctor == "Err") {
@@ -183,7 +208,7 @@ const server = http.createServer((request, response) => {
         }
       } else {
         response.setHeader('Content-Type', header);
-        var content = fs.readFileSync("./" + pathname);
+        var content = fs.readFileSync("./" + path);
         response.statusCode = 200;
         response.end(content);
       }
@@ -193,16 +218,48 @@ const server = http.createServer((request, response) => {
         body += data;
     });
     request.on('end', function () {
-        var pushedValue = JSON.parse(body);
+        var ambiguityKey = request.headers["ambiguity-key"];
+        var numberOfSolutionsSoFar = 2; // Only if Ambiguity-Key is set.
+        var numSolutionSelected = 1;
+        var htmlContent = {ctor:"Err", _0: "Not yet defined"};
+        var newQuery = "{}";
+        var fileOperations = [];
+        if(ambiguityKey !== null && typeof ambiguityKey !== "undefined") {
+          var selectAmbiguityStr = request.headers["select-ambiguity"];
+          if(selectAmbiguityStr !== null && typeof selectAmbiguityStr !== "undefined") {
+            numSolutionSelected = JSON.parse(selectAmbiguityStr);
+            var solutionSet = cachedSolutions[ambiguityKey];
+            if(typeof solutionSet != "undefined") {
+              [htmlContent, newQuery, fileOperations] = getSolutionByNum(solutionSet, numSolutionSelected);
+              numberOfSolutionsSoFar = solutionSet.computed.length;
+            } else {
+              htmlContent = {ctor:"Err", _0: "Solution set not found"};
+            }
+          } else {
+            var acceptAmbiguityStr = request.headers["accept-ambiguity"];
+            if(acceptAmbiguityStr !== null && typeof acceptAmbiguityStr !== "undefined") {
+              var acceptAmbiguity = JSON.parse(acceptAmbiguityStr);
+              var solutionSet = cachedSolutions[ambiguityKey];
+              [htmlContent, newQuery, fileOperations] = getSolutionByNum(solutionSet, acceptAmbiguity);
+              ambiguityKey = undefined;
+            } else {
+              htmlContent = {ctor:"Err", _0: "Solution set not found."};
+            }
+          }
+        } else {
+          var pushedValue = JSON.parse(body);
+          var [htmlContent, newQuery, fileOperations, ambiguityKey] = loadpage(path, urlParts.query, pushedValue);
+        }
         response.statusCode = 201;
-        var [htmlContent, newQuery, fileOperations, otherSolutionsKey] = loadpage(pathname, urlParts.query, pushedValue);
         response.setHeader('Content-Type', 'text/html; charset=utf-8');
         if(htmlContent.ctor == "Err") {
           response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
         } else {
           response.setHeader('New-Query', JSON.stringify(newQuery));
-          if(typeof otherSolutionsKey != "undefined" && !pathname.endsWith(".html") && !pathname.endsWith(".md")) {
-            response.setHeader('Other-Solutions', JSON.stringify(otherSolutionsKey));
+          if(ambiguityKey != null && typeof ambiguityKey != "undefined" && !path.endsWith(".html") && !path.endsWith(".md")) {
+            response.setHeader('Ambiguity-Key', ambiguityKey);
+            response.setHeader('Ambiguity-Number', JSON.stringify(numberOfSolutionsSoFar));
+            response.setHeader('Ambiguity-Selected', JSON.stringify(numSolutionSelected));
           } else {
             applyOperations(fileOperations);
           }
@@ -216,7 +273,7 @@ const server = http.createServer((request, response) => {
     }
   } else {
     response.statusCode = 401;
-    response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Unauthorized access to ${pathname}</h1></div></body></html>`);
+    response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Unauthorized access to ${path}</h1></div></body></html>`);
   }
 });
 
