@@ -113,11 +113,9 @@ function applyOperations(operations) {
 // If newvalue is defined, performs an update before returning the page.
 function loadpage(name, overrides, newvalue) {
   // __dirname = path.resolve(); // If in the REPL
-  var source = "";
   if(typeof overrides != "object") overrides = {};
-  try { source =  readServerFile(); }
-    catch (err) { return [{ ctor: "Err", _0: `File bin/server.elm does not exist.`}, overrides]; }
-  var env = { vars: overrides, pagename: name };
+  var source =  readServerFile();
+  var env = { vars: overrides, path: name };
   
   if(typeof newvalue == "undefined") {
     return [evaluateToHtml(name, env, source), overrides];
@@ -125,7 +123,6 @@ function loadpage(name, overrides, newvalue) {
     var newVal = sns.nativeToVal(newvalue);
     sns.fileOperations = sns.fileOperations || [];
     var result = sns.objEnv.string.update(env)(source)(newVal);
-    console.log("update finished");
     if(result.ctor == "Ok") {
       console.log("update succeeded");
       var allSolutions = result._0;
@@ -161,18 +158,23 @@ const server = http.createServer((request, response) => {
   var urlParts = url.parse(request.url, parseQueryString=true);
   var pathname = urlParts.pathname.substring(1); // Without the slash.
   var accessResult = sns.objEnv.string.evaluate({path:pathname,method:request.method})(readHtAccessFile());
-  console.log(accessResult);
   var access = sns.process(accessResult)(sns.valToNative);
-  response.setHeader('Content-Type', 'text/html; charset=utf-8');
+  var header = 'text/html; charset=utf-8';
   if(access.ctor == "Err") {
     console.log("Error in htaccess", access._0);
+    response.setHeader('Content-Type', header);
     response.statusCode = 500;
     response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>htaccess.elm internal Error report</h1><pre style="white-space:pre-wrap">${access._0}</pre></div></body></html>`);
   } else if(access._0) {
     if(request.method == "GET") {
       var q = urlParts.query;
-      if(pathname.endsWith(".elm") || pathname.endsWith(".html")) {
+      var header = pathname.endsWith(".ico") ? "image/ico" : header;
+      var header = pathname.endsWith(".jpg") ? "image/jpg" : header;
+      var header = pathname.endsWith(".gif") ? "image/gif" : header;
+      var header = pathname.endsWith(".png") ? "image/png" : header;
+      if(!header.startsWith("image/")) {
         var [htmlContent] = loadpage(pathname, urlParts.query);
+        response.setHeader('Content-Type', header);
         response.statusCode = 200;
         if(htmlContent.ctor == "Err") {
           response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
@@ -180,6 +182,7 @@ const server = http.createServer((request, response) => {
           response.end(htmlContent._0);
         }
       } else {
+        response.setHeader('Content-Type', header);
         var content = fs.readFileSync("./" + pathname);
         response.statusCode = 200;
         response.end(content);
@@ -198,7 +201,7 @@ const server = http.createServer((request, response) => {
           response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
         } else {
           response.setHeader('New-Query', JSON.stringify(newQuery));
-          if(typeof otherSolutionsKey != "undefined") {
+          if(typeof otherSolutionsKey != "undefined" && !pathname.endsWith(".html") && !pathname.endsWith(".md")) {
             response.setHeader('Other-Solutions', JSON.stringify(otherSolutionsKey));
           } else {
             applyOperations(fileOperations);

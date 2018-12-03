@@ -1,4 +1,4 @@
--- input: pagename  The file to serve.
+-- input: path  The file to serve.
 -- input: vars:     URL query vars.
 -- output: the page, either raw or augmented with the toolbar and edit scripts.
 preludeEnv = __CurrentEnv__
@@ -15,30 +15,56 @@ canEditPage = userpermissions.pageowner && (vars |> case of {edit} -> edit == "t
 
 serverOwned = Update.conditionalFreeze (not permissionToEditServer)
 
-sourcecontent = if pagename == "server.elm" || pagename == "bin/server.elm" then
+path = if nodejs.isdir path then
+       if nodejs.isfile <| path + "index.html" then path + "index.html"
+  else if nodejs.isfile <| path + "/index.html" then path + "/index.html"
+  else if nodejs.isfile <| path + "index.elm" then path + "index.elm"
+  else if nodejs.isfile <| path + "/index.elm" then path + "/index.elm"
+  else if nodejs.isfile <| path + "README.md" then path + "README.md"
+  else if nodejs.isfile <| path + "/README.md" then path + "/README.md"
+  else path
+  else path
+
+sourcecontent = if path == "server.elm" then
     """<html><head></head><body>Sample server Elm</body></html>"""
   else
-    nodejs.fileread pagename
-  |> Maybe.withDefaultReplace (
-    serverOwned """<html><body>@(
-        if permissionToCreate then """<span>@pagename does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @pagename does not exist</span>"""
-      )</body></html>"""
-  )
+    if nodejs.isdir path then
+      """<html><head></head><body><h1><a href=''>/@path</a></h1>
+      <ul>@@(List.map (\name -> <li><a href=(path + "/" + name)>@@name</li>) (nodejs.listdir path))</ul>
+      Hint: place an <a href=(path + "/index.html")>index.html</a> or <a href=(path + "/index.elm")>index.elm</a> file to display something else than this page.</body></html>"""
+    else
+      if nodejs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then
+        """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
+      else
+        nodejs.fileread path
+      |> Maybe.withDefaultReplace (
+        serverOwned """<html><head></head><body>@(
+            if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist</span>"""
+          )</body></html>"""
+      )
 
 canEvaluate = vars |> case of {evaluate} -> evaluate; _ -> "true" 
   
 main = (if canEvaluate == "true" then
-      if Regex.matchIn """\.html$""" pagename then
-        case Regex.extract """^(?:(?!<html).)*([\s\S]*</html>)\s*$""" sourcecontent of
+      if Regex.matchIn """\.html$""" path then
+        case Regex.extract """^(?:(?!<html)[\s\S])*((?=<html)[\s\S]*</html>)\s*$""" sourcecontent of
           Just [interpretableHtml] ->
-            __evaluate__ [] interpretableHtml
-          _ ->  Err """@pagename is not a valid html file."""
-      else if Regex.matchIn """\.elm$""" pagename then
-        __evaluate__ (("vars", vars)::("pagename", pagename)::preludeEnv) sourcecontent 
+            __evaluate__ preludeEnv """<raw>@interpretableHtml</raw>"""
+            |> Result.andThen (case of
+              ["raw", _, [htmlNode]] -> Ok htmlNode
+              result -> Err """Html interpretation error: The interpretation of raw html did not work but produced @result"""
+            )
+          x ->  Err """@path is not a valid html file. Interpreation got: @x"""
+      else if Regex.matchIn """\.md""" path then
+        let markdownized = String.markdown sourcecontent in
+          case Html.parseViaEval markdownized of
+            x -> Ok <html><head></head><body>@x</body></html>
+      else if Regex.matchIn """\.elm$""" path || nodejs.isdir path then
+        __evaluate__ (("vars", vars)::("path", path)::preludeEnv) sourcecontent
       else
-        Err """Serving only .html and .elm files. Got @pagname"""
+        Err """Serving only .html, .md and .elm files. Got @path"""
     else
-    Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
+      Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
   ) |> (case of
   Err msg -> serverOwned <|
     <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
@@ -56,6 +82,7 @@ main = (if canEvaluate == "true" then
               (if canEditPage then serverOwned [editionmenu, codepreview sourcecontent] else freeze []) ++ bodychildren ++ Update.sizeFreeze (serverOwned [<script>@editionscript</script>])]
           x -> x
         )]
+      x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
 
 editionmenu = <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
@@ -76,7 +103,7 @@ menuitem.disabled {
   display: block;
 }
 </style>
-<menuitem>@pagename</menuitem>
+<menuitem>@path</menuitem>
 <menuitem class="disabled"><button onclick="""
 var cp = document.getElementById("editor_codepreview");
 if(cp !== null) {
@@ -87,7 +114,7 @@ if(cp !== null) {
 codepreview sourcecontent = 
 <div class="codepreview" id="editor_codepreview">
   <textarea id="editor_codepreview_textarea" save-attributes="scrollTop"
-    style="width:100%;height:200px" v=sourcecontent onchange="this.setAttribute('v', this.value)">@sourcecontent</textarea>
+    style="width:100%;height:200px" v=sourcecontent onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" sourcecontent then "\n" + sourcecontent else sourcecontent))</textarea>
 </div>
     
 editionscript = """function initSigninV2() {
@@ -157,6 +184,8 @@ editionscript = """function initSigninV2() {
   function domNodeToNativeValue(n) {
       if(n.nodeType == "3") {
         return ["TEXT", n.textContent];
+      } else if(n.nodeType == "8") {
+        return ["COMMENT", n.textContent];
       } else {
         var attributes = [];
         for(var i = 0; i < n.attributes.length; i++) {
@@ -234,7 +263,7 @@ editionscript = """function initSigninV2() {
               var ambiguityKey = xmlhttp.getResponseHeader("Other-Solutions");
               if(ambiguityKey !== null && typeof ambiguityKey != "undefined") {
                 var newMenu = document.createElement("menuitem");
-                newMenu.innerHTML = `<span style="color:red" id="ambiguity-id" v="${ambiguityKey}">Ambiguity detected.</span> Ambiguity resolution coming soon.`;
+                newMenu.innerHTML = `<span style="color:red" id="ambiguity-id" v="${ambiguityKey}">Ambiguity detected.</span> No file written.`;
                 newMenu.setAttribute("isghost", "true")
                 document.getElementById("themenu").append(newMenu);
               }

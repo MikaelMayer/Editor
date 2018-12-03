@@ -19,7 +19,7 @@ options = nodejs.fileread "data/pizzas.txt"
 dictionnaire = [
   ("English", [ ("abbreviation", "en")
               , ("Salut", "Hey")
-              , ("Tuveuxquellepizza", "Which pizzas do you want")
+              , ("Tuveuxquellepizza", "Which pizze do you want")
               , ("achoisiunepizza", "wants a pizza")
               , ("Choisistapizza", "Choose your pizza")
               , ("Margharita", "Margharita")

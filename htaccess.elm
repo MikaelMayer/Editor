@@ -6,19 +6,15 @@ match = Regex.matchIn
 
 readrules = [
     (match """\.\.(?:/|\\)|(?:/|\\)\.\.|^\.\.$""", False) -- We disallow relative paths
-  , (match """\.(png|jpg|ico)$""", True) -- We allow access to common media files
-  , (match """\.elm$""", True)
-  , (match """\.html$""", True)
   ]
 
 writerules = [
     (match """\.\.(?:/|\\)|(?:/|\\)\.\.|^\.\.$""", False) -- We disallow relative paths
   , (match """\.(png|jpg|ico)$""", False) -- We don't allow write access to any media files for now.
-  , (match """\.elm$""", True)
-  , (match """\.html$""", True)
+  , (match """\.(elm|md|html)$""", True)
   ]
 
-defaultPermission = False
+defaultPermission = True
 
 applyRules rules = case rules of
   [] -> defaultPermission

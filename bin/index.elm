@@ -1,8 +1,10 @@
-<html><head></head><body spellcheck="false">
-Welcome to editor!
+readmefile = "README.md"
 
-You can try the following:
-<ul>
-<li>Open <a href="http://127.0.0.1:3000/pizzas.elm?user=Anonymous&hl=fr&edit=true">pizzas.elm</a> as instructed in the README.md file</li>
-</ul>
-</body></html>
+readme = nodejs.fileread readmefile
+  |> Maybe.withDefault """# No @readmefile found."""
+
+source = """<html><head></head><body>@(String.markdown readme)</body></html>"""
+
+case __evaluate__ [] source of
+  Ok x -> x
+  Err x -> <html><head></head><body>Error while interpreting @readmefile:<pre>@x</pre>README content:<pre>@readme</pre></body></html>
