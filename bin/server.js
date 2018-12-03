@@ -192,7 +192,6 @@ const server = http.createServer((request, response) => {
     response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>htaccess.elm internal Error report</h1><pre style="white-space:pre-wrap">${access._0}</pre></div></body></html>`);
   } else if(access._0) {
     if(request.method == "GET") {
-      var q = urlParts.query;
       var header = path.endsWith(".ico") ? "image/ico" : header;
       var header = path.endsWith(".jpg") ? "image/jpg" : header;
       var header = path.endsWith(".gif") ? "image/gif" : header;
@@ -256,7 +255,9 @@ const server = http.createServer((request, response) => {
           response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
         } else {
           response.setHeader('New-Query', JSON.stringify(newQuery));
-          if(ambiguityKey != null && typeof ambiguityKey != "undefined" && !path.endsWith(".html") && !path.endsWith(".md")) {
+          if(ambiguityKey != null && typeof ambiguityKey != "undefined" &&
+             !path.endsWith(".html") && !path.endsWith(".md") &&
+             urlParts.query["edit"] == "true") {
             response.setHeader('Ambiguity-Key', ambiguityKey);
             response.setHeader('Ambiguity-Number', JSON.stringify(numberOfSolutionsSoFar));
             response.setHeader('Ambiguity-Selected', JSON.stringify(numSolutionSelected));
