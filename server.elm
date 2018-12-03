@@ -79,14 +79,22 @@ main = (if canEvaluate == "true" then
             ["body",
               (if canEditPage then serverOwned [["contenteditable", "true"]] else freeze []) ++
                 bodyattrs,
-              (if canEditPage then serverOwned [editionmenu, codepreview sourcecontent] else freeze []) ++ bodychildren ++ Update.sizeFreeze (serverOwned [<script>@editionscript</script>])]
+              (if canEditPage then serverOwned (editionmenu ++ [codepreview sourcecontent]) else freeze []) ++ bodychildren ++ Update.sizeFreeze (serverOwned [<script>@editionscript</script>])]
           x -> x
         )]
       x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
 
-editionmenu = <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
+editionmenu = [
+<menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
 <style>
+#menumargin {
+  padding-top: 1em;
+}
+menu {
+  position: fixed;
+  margin-top: 0px;
+}
 menu.edittoolbar {
   display: block;
   background: black;
@@ -119,7 +127,8 @@ var cp = document.getElementById("editor_codepreview");
 if(cp !== null) {
    cp.setAttribute("ghost-visible", cp.getAttribute("ghost-visible") == "true" ? "false": "true")
 }""">Display/hide source</button></menuitem>
-</menu>
+</menu>,
+<div id="menumargin"></div>]
 
 codepreview sourcecontent = 
 <div class="codepreview" id="editor_codepreview">
@@ -239,6 +248,7 @@ editionscript = """function initSigninV2() {
           if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
              ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
              ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
+             
             var n = JSON.parse(ambiguityNumber);
             var selected = JSON.parse(ambiguitySelected);
             var newMenu = document.createElement("menuitem");
@@ -322,10 +332,15 @@ editionscript = """function initSigninV2() {
       }
       t = setTimeout(function() {
         t = undefined;
-        console.log("sending post request");
+        
+        var newMenu = document.createElement("menuitem");
+        var notification = `Sending modifications to server...`;
+        newMenu.innerHTML = notification;
+        newMenu.setAttribute("isghost", "true")
+        document.getElementById("themenu").append(newMenu);
+        
         var xmlhttp = new XMLHttpRequest();
         xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-        console.log("sending modifications");
         xmlhttp.open("POST", location.pathname + location.search);
         xmlhttp.setRequestHeader("Content-Type", "application/json");
         xmlhttp.send(JSON.stringify(domNodeToNativeValue(document.body.parentElement)));

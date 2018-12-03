@@ -147,9 +147,10 @@ function loadpage(path, overrides, newvalue) {
   } else { // We update the page and re-render it.
     var newVal = sns.nativeToVal(newvalue);
     sns.fileOperations = [];
+    console.log("Started to update...");
     var result = sns.objEnv.string.update(env)(source)(newVal);
+    console.log("Update finished (first solution)");
     if(result.ctor == "Ok") {
-      console.log("update succeeded");
       var allSolutions = result._0;
       // Instead of iterating through all the solutions, just detect if there is an ambiguity.
       var solution = getOneSolution(path, source, allSolutions);
@@ -162,7 +163,6 @@ function loadpage(path, overrides, newvalue) {
         if(solution2 === false) { // No ambiguity, we can immediately process the change.
           return solution;
         } else {
-          console.log("ambiguity detected");
           var solutionKey = uniqueKey();
           var cachedSolution = {
               timestamp: (+ new Date()),
@@ -256,7 +256,7 @@ const server = http.createServer((request, response) => {
         } else {
           response.setHeader('New-Query', JSON.stringify(newQuery));
           if(ambiguityKey != null && typeof ambiguityKey != "undefined" &&
-             !path.endsWith(".html") && !path.endsWith(".md") &&
+             !path.endsWith(".html") && 
              urlParts.query["edit"] == "true") {
             response.setHeader('Ambiguity-Key', ambiguityKey);
             response.setHeader('Ambiguity-Number', JSON.stringify(numberOfSolutionsSoFar));
@@ -280,7 +280,7 @@ const server = http.createServer((request, response) => {
 
 
 // Load the Elm program into our namespace.
-console.log("Sketch-n-sketch Server ready !")
+console.log("Editor Server ready!")
 server.listen(port, hostname, () => {
-    console.log(`Server running at http://${hostname}:${port}/`);
+    console.log(`Point your browser at http://${hostname}:${port}/?edit=true`);
   });

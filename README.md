@@ -1,6 +1,6 @@
 # Editor: The First Reversible HTTP Server
 
-Editor is an HTtP server that not only displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages themselves to the source files.
+Editor is an HTTP server that not only displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages themselves to the source files.
 
 To visually edit a page, simply add `?edit=true` to its URL, and the content will be editable by the mouse and keyboard. Alternatively and anytime, you can use the DOM inspector of the browser of your choice to modify the source page.
 
@@ -20,7 +20,6 @@ then point your browser to http://127.0.0.1:3000
 ## Supported features
 
 * If you point the browser to a non-existing HTML file and modify it, it will automatically create it.
-
 * If a file `htaccess.elm` is at the root of the folder, it will be executed with an environment containing the variables `path` and `method` ("GET" or "POST") and should produce a boolean indicating if the operation is allowed: True meaning yes, False meaning no.
 * If a file `server.elm` is at the root the folder, it will always execute this file with an environment containing the variables `path` containing the requested path, a record `vars` containing the query variables, and should output the page.
 
@@ -47,23 +46,30 @@ Here you can witness the possibilities of a 60-line-of-code webpage in Editor. Y
 * Add new translated sentences from the webpage (wrap "Final choices" so that it becomes "{:Final choices:}". After a roundtrip update, switch to French and translate it ("Choix finaux").
 * Remove one's pizza choice by selecting the first "Choose your pizza" option.
 
-# Limitations, future work and caution
+### Publishing
 
-## HTML formatting caution
+Before doing `npm publish`, make sure to
+
+1. `npm bundle.js` to bundle the server code into the executable.
+2. `npm version patch` to patch Editor's version number
+
+## Limitations, future work and caution
+
+### HTML formatting caution
 
 - Make sure your source files have unix-style end of lines (\n and not \r\n). Else this might cause a lot of trouble.
 
-## Need for authentication
+### Need for authentication
 
 Since there is no authentication yet, everybody that has access to the server can in theory modify all the files present.
 Please do not use this server publicly until there is proper authentication.
 If you want to contribute to authentication, a pull request is welcome.
 
-## Need for concurrent editing
+### Need for concurrent editing
 
 In case there are two conflicting edits, they will not be merged, only the second will take place. There is a work in progress for merging edit diffs.
 
-## Need for better diffs
+### Need for better diffs
 
 Currently, updating the Elm program
 
@@ -86,7 +92,7 @@ but
 
 A work in progress will overcome this issue.
 
-## Need for templates
+### Need for templates
 
 We did not push templates yet but we will soon, by importing them from [Sketch-n-sketch](https://github.com/ravichugh/sketch-n-sketch). Among the templates, we want
 * Slides
@@ -96,21 +102,21 @@ We did not push templates yet but we will soon, by importing them from [Sketch-n
 * Worksheets
 * Forms
 
-## Need for a toolbar
+### Need for a toolbar
 
 We need a general-purpose HTML edition toolbar to edit all the web pages without relying only on the devtools.
 Furthermore, we need the toolbar to expose udpate ambiguities and let the user choose from them.
 
-## Need for a better WYSIWYG webpage editor.
+### Need for a better WYSIWYG webpage editor.
 
 Why not try [Slate?](https://www.slatejs.org) if it works for the entire HTML. Apparently it does.
 https://github.com/ianstormtaylor/slate/blob/master/docs/reference/slate-html-serializer/index.md
 
 
-# License
+## License
 
 This technology is offered without any warranty (for the moment).
 Please refer [Sketch-n-sketch](https://github.com/ravichugh/sketch-n-sketch)'s license to use this technology commercially.
-For academic projects this should be fine.
+For academic projects and webpages this should be fine.
 
 [^elm-pages]: Similar to PHP, pages written in an Elm-like language are executed and served as HTML. For more info on how to write such pages, visit the [main project page](https://github.com/ravichugh/sketch-n-sketch)
