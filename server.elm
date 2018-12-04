@@ -130,6 +130,58 @@ if(cp !== null) {
    cp.setAttribute("ghost-visible", cp.getAttribute("ghost-visible") == "true" ? "false": "true")
 }""">Display/hide source</button></menuitem>
 </menu>,
+<script>
+function isGhostNode(elem) {
+  return elem.nodeType == 1 &&
+    (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true");
+}
+function hasGhostAncestor(htmlElem) {
+  if(htmlElem == null) return false;
+  if(isGhostNode(htmlElem)) return true;
+  return hasGhostAncestor(htmlElem.parentNode);
+}
+function isGhostAttributeKey(name) {
+  return name.startsWith("ghost-");
+}
+
+function handleScriptInsertion(mutations) {
+  for(var i = 0; i < mutations.length; i++) {
+    // A mutation is a ghost if either
+    // -- The attribute starts with 'ghost-'
+    // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
+    // -- It is the modification of a node or an attribute inside a ghost node.
+    var mutation = mutations[i];
+    if(hasGhostAncestor(mutation.target)) continue;
+    if(mutation.type == "childList") {
+      for(var j = 0; j < mutation.addedNodes.length; j++) {
+        var addedNode = mutation.addedNodes[j];
+        if(addedNode.tagName == "SCRIPT" && typeof addedNode.getAttribute("src") == "string" &&
+           addedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") &gt;= 0 &&
+           addedNode.getAttribute("isghost") != "true") {
+         addedNode.setAttribute("isghost", "true");
+        }
+      }
+    }
+  }
+}
+
+if (typeof analyticsScriptNeutralizer !== "undefined") {
+  // console.log("analyticsScriptNeutralizer.disconnect()");
+  analyticsScriptNeutralizer.disconnect();
+}
+
+analyticsScriptNeutralizer = new MutationObserver(handleScriptInsertion);
+analyticsScriptNeutralizer.observe
+ ( document.body
+ , { attributes: false
+   , childList: true
+   , characterData: false
+   , attributeOldValue: false
+   , characterDataOldValue: false
+   , subtree: true
+   }
+ )
+</script>,
 <div id="menumargin"></div>]
 
 codepreview sourcecontent = 
@@ -138,22 +190,7 @@ codepreview sourcecontent =
     style="width:100%;height:200px" v=sourcecontent onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" sourcecontent then "\n" + sourcecontent else sourcecontent))</textarea>
 </div>
     
-editionscript = """function initSigninV2() {
-    console.log("platform.js loaded");
-  }
-
-  function isGhostNode(elem) {
-    return elem.nodeType == 1 &&
-      (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true");
-  }
-  function hasGhostAncestor(htmlElem) {
-    if(htmlElem == null) return false;
-    if(isGhostNode(htmlElem)) return true;
-    return hasGhostAncestor(htmlElem.parentNode);
-  }
-  function isGhostAttributeKey(name) {
-    return name.startsWith("ghost-");
-  }
+editionscript = """
   
   // Save / Load ghost attributes after a page is reloaded.
   // Same for some attributes
@@ -320,6 +357,9 @@ editionscript = """function initSigninV2() {
               onlyGhosts = false;
             }
           }
+          if(mutation.removedNodes.length > 0) {
+            onlyGhosts = false;
+          }
         } else {
           onlyGhosts = false;
         }
@@ -352,7 +392,6 @@ editionscript = """function initSigninV2() {
     if (typeof outputValueObserver !== "undefined") {
       // console.log("outputValueObserver.disconnect()");
       outputValueObserver.disconnect();
-      
     }
     
 
