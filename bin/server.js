@@ -12,7 +12,7 @@ const port = 3000;
 const serverFile = "./server.elm"
 const htaccessFile = "./htaccess.elm"
 
-// Don't meodify, this will be bundled with the file server.elm
+// Don't modify, this will be replaced by the content of 'server.elm'
 const defaultServerContent = "<html><head></head><body>Server not available.</body></html>";
 
 const defaultHtAccessFileContent = `if Regex.matchIn """\\.\\.(?:/|\\\\)|(?:/|\\\\)\\.\\.|^\\.\\.$""" path then False else True`
