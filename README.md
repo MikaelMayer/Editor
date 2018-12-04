@@ -53,6 +53,14 @@ Before doing `npm publish`, make sure to
 1. `npm bundle.js` to bundle the server code into the executable.
 2. `npm version patch` to patch Editor's version number
 
+### Publishing locally:
+
+Inside the folder containing the Editor folder, run the following command.
+
+     npm install ./Editor
+
+This will install all executables at the location given in `npm bin` and make them available in your PATH.
+     
 ## Limitations, future work and caution
 
 ### HTML formatting caution

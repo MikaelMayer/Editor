@@ -23,7 +23,7 @@
     "sketch-n-sketch": "^1.0.17"
   },
   "bin": {
-    "http-server-editor": "bin/server-generated.js"
+    "http-server-editor": "bin/server-generated.js",
     "editor": "bin/server-generated.js"
   },
   "files": [

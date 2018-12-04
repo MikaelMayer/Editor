@@ -77,11 +77,14 @@ function getSolutionByNum(solutionSet, num) {
     if(solutionSet.computed.length == num) { // If we select the last computed solution, we checked if we can compute more solutions.
       if(solutionSet.remaining !== false) {
         sns.fileOperations = [];
+        console.log("Checking for ambiguity #" + (num + 1));
         var lt = sns.lazyList.tail(solutionSet.remaining);
         var newSolution = getOneSolution(solutionSet.path, solutionSet.source, lt);
         if(newSolution === false) {
+          console.log("No more ambiguity");
           solutionSet.remaining = false;
         } else {
+          console.log("Ambiguity #" + (num + 1) + " found");
           solutionSet.remaining = lt;
           solutionSet.computed.push(newSolution);
         }
@@ -158,11 +161,14 @@ function loadpage(path, overrides, newvalue) {
         return [{ctor: "Err", _0: "Empty list of solutions"}];
       } else {
         sns.fileOperations = []; // Always do this before taking the tail of a stream of update solutions.
+        console.log("Checking for ambiguities");
         var allSolutionsTail = sns.lazyList.tail(allSolutions);
         var solution2 = getOneSolution(path, source, allSolutionsTail);
         if(solution2 === false) { // No ambiguity, we can immediately process the change.
+          console.log("No ambiguity");
           return solution;
         } else {
+          console.log("Ambiguity found");
           var solutionKey = uniqueKey();
           var cachedSolution = {
               timestamp: (+ new Date()),
@@ -196,7 +202,9 @@ const server = http.createServer((request, response) => {
       var header = path.endsWith(".jpg") ? "image/jpg" : header;
       var header = path.endsWith(".gif") ? "image/gif" : header;
       var header = path.endsWith(".png") ? "image/png" : header;
-      if(!header.startsWith("image/")) {
+      var header = path.endsWith(".svg") ? "image/svg+xml" : header;
+      var header = path.endsWith(".css") ? "text/css; charset=utf-8" : header;
+      if(!header.startsWith("image/") && !header.startsWith("text/css")) {
         var [htmlContent] = loadpage(path, urlParts.query);
         response.setHeader('Content-Type', header);
         response.statusCode = 200;

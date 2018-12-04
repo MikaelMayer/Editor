@@ -15,5 +15,5 @@ if(res.ctor == "Err") {
   console.log("Error", res._0);
 } else {
   var result = sns.valToNative(res._0)._0;
-  fs.writeFileSync("bin/server-generated.js", result, "utf8");
+  fs.writeFileSync("bin/server-generated.js", "#!/usr/bin/env node\n\n" + result, "utf8");
 }

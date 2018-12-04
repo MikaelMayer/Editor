@@ -55,7 +55,7 @@ main = (if canEvaluate == "true" then
               result -> Err """Html interpretation error: The interpretation of raw html did not work but produced @result"""
             )
           x ->  Err """@path is not a valid html file. Interpreation got: @x"""
-      else if Regex.matchIn """\.md""" path then
+      else if Regex.matchIn """\.md$""" path then
         let markdownized = String.markdown sourcecontent in
           case Html.parseViaEval markdownized of
             x -> Ok <html><head></head><body>@x</body></html>
@@ -94,6 +94,7 @@ editionmenu = [
 menu {
   position: fixed;
   margin-top: 0px;
+  z-index: 10000;
 }
 menu.edittoolbar {
   display: block;
@@ -116,6 +117,7 @@ menuitem > .solution:not(.selected):hover {
 }
 #editor_codepreview {
   display: none;
+  z-index: 9999;
 }
 #editor_codepreview[ghost-visible=true] {
   display: block;
