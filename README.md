@@ -62,6 +62,7 @@ Congratulations. In 17 lines of code, you created a Content Management System wh
 * Add/Modify/delete pizzas
 * Modify any text you see
 * Display the summary of choice
+
 Beware, the system does not support concurrent editing yet, make sure you alone edit the page at the same time.
     
 #### Advanced example
