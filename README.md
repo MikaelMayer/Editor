@@ -27,12 +27,12 @@ Then, point your browser to http://127.0.0.1:3000?edit=true
 * Pages containing Google Analytics insert a &lt;script> to the page, that should not be back-propagated. This servers ensures that this new &lt;script> is added the attribute `isghost="true"` to prevent back-propagation.  
   To set up your own predicates concerning which inserted elements should automatically be marked as ghost, insert the following snippet at the very beginning of your body and modify the predicate:
 
-    <script>
-    (setGhostOnInserted || []).push(insertedNode =>
-      insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
-      insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
-    );
-    </script>
+      <script>
+      (setGhostOnInserted || []).push(insertedNode =>
+        insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
+        insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
+      );
+      </script>
 
 ## Development
 
