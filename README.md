@@ -1,6 +1,6 @@
-# Editor: The First Reversible HTTP Server
+# Editor : The First Reversible HTTP Server
 
-Editor is an HTTP server that not only displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages to the source files themselves.
+Editor is an HTTP server that not *only* displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages to the source files themselves.
 
 To visually edit a page, simply add `?edit=true` to its URL, and the content will be editable by mouse and keyboard.
 Alternatively and anytime, you can use the DOM inspector of the browser of your choice to modify the source page.
@@ -34,46 +34,46 @@ Then, point your browser to http://127.0.0.1:3000?edit=true
       );
       </script>
 
-## Development
+## Simple dynamic example
 
-If you want to start the webserver after cloning the github repo, enter the commands:
+Create a file `pizzas.elm` with the following content:
 
-    npm install
-    node bin/server.js
+    user  = vars |> case of {user} -> user; _ -> "Anonymous"
+    userdata = [("Mikael", 2)]
+    options = ["Margharita", "Four Cheese", "Pepper"]
+    main =
+    <html><head></head><body>
+      <span>Hello @user!<br>
+      Select the pizza you want
+      @Html.select[]("Choose one..."::options)(
+      listDict.get user userdata
+      |> Maybe.withDefaultReplace (freeze 0))<br><br>
+     Final choices:<br>
+    @(List.map (\(name, id) ->
+      <span>@name choose @(List.find (\(i, n) -> i == id) (List.zipWithIndex options)
+        |> Maybe.map Tuple.second
+        |> Maybe.withDefault "that does not exist").<br></span>
+      ) userdata)
+    </span></body></html>
 
-then point your browser to http://127.0.0.1:3000
+Now launch Editor, and point your browser to http://127.0.0.1:3000/pizzas.elm?edit=true&user=RandomDude  
+Congratulations. In 17 lines of code, you created a Content Management System where all the CRUD operations (create-read-update-delete) can be done in the browser:
+* Selecting/Modifying someone's pizza choice
+* Add/Modify/delete pizzas
+* Modify any text you see
+* Display the summary of choice
+Beware, the system does not support concurrent editing yet, make sure you alone edit the page at the same time.
+    
+#### Advanced example
 
-You can test the server by pointing your browser to http://127.0.0.1:3000/test/pizzas.elm?user=Anonymous&hl=fr&edit=true  
-Here you can witness the possibilities of a 60-line-of-code webpage in Editor. You can...
-* Include and interpret data tiles (`nodejs.fileread "data/pizzas.txt"`).
-* Modify the current username directly from the webpage (see how it's updated in the URL)
-* Select a pizza choice and so that it is stored and added it to the corresponding summary below.
-* Change the summary style (text, color, font...) directly using the DOM explorer.
-* Change the translation language
-* Edit the current translated sentences
-* Add a new translation language (go to the DOM inspector, and duplicate `<option>English</option>`, and then rename it to German)
-* Add a new pizza (same but duplicate a pizza option)
-* Rename a pizza wherever it appears
-* Add new translated sentences from the webpage (wrap "Final choices" so that it becomes "{:Final choices:}". After a roundtrip update, switch to French and translate it ("Choix finaux").
-* Remove one's pizza choice by selecting the first "Choose your pizza" option.
+Look into [`test/pizzas.elm`](https://github.com/MikaelMayer/Editor/blob/master/test/pizzas.elm) and [`CONTRIBUTING.md`](https://github.com/MikaelMayer/Editor/blob/master/CONTRIBUTING.md) for a more advanced example covering the same website with file reading, evaluation, translation to different languages, deletion of choices, modification of pizza by name, and more.
 
-### Publishing
-
-Before doing `npm publish`, make sure to
-
-1. `npm bundle.js` to bundle the server code into the executable.
-2. `npm version patch` to patch Editor's version number
-
-### Publishing locally for testing.
-
-Inside the folder containing the Editor folder, run the following command.
-
-     npm install ./Editor
-
-This will install all executables at the location given in `npm bin` and make them available in your PATH.
-This can be useful for development.
-     
 ## Limitations, future work and caution
+
+### Ambiguity
+
+There are more ambiguity than there should be. It's hard to know what changes have been back-propagated and to compare them.
+We are aware of all these limitations. We are working on removing meaningless ambiguities, and on displaying a good summary of ambiguities that remain. Stay in touch !
 
 ### HTML formatting caution
 
@@ -82,8 +82,8 @@ This can be useful for development.
 ### Need for authentication
 
 Since there is no authentication yet, everybody that has access to the server can in theory modify all the files present.
-Please do not use this server publicly until there is proper authentication.
-If you want to contribute to authentication, a pull request is welcome.
+Please do not use this server for production until there is proper authentication.
+If you want to contribute to authentication, a pull request is welcome. See the API to ignore some insertions of elements such as Google Analytics scripts above.
 
 ### Need for concurrent editing
 
