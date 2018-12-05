@@ -15,14 +15,15 @@ Now, to launch a reversible HTTP server in any folder, run:
 
     editor
 
-the longer version of this command is `http-server-editor`.
+The longer version of this command is `http-server-editor`.  
 Then, point your browser to http://127.0.0.1:3000?edit=true
 
 ## Supported features
 
-* If you point the browser to a non-existing HTML file and modify it, it will automatically create it.
+* If you point the browser to a non-existing HTML or Elm file and modify it, it will display a default template and automatically create the file as soon as you modify the template.
 * If a file `htaccess.elm` is at the root of the folder, it will be executed with an environment containing the variables `path` and `method` ("GET" or "POST") and should produce a boolean indicating if the operation is allowed: True meaning yes, False meaning no.
-* If a file `server.elm` is at the root the folder, it will always execute this file with an environment containing the variables `path` containing the requested path, a record `vars` containing the query variables, and should output the page.
+* If a file `server.elm` is at the root the folder, it will always execute this file with an environment containing the variables `path` containing the requested path, a record `vars` containing the query variables, and this file should output the page.
+* Markdown styling can be customized by creating a `markdown.css` file. Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of the document using the DOM inspector.
 
 ## Development
 
@@ -54,19 +55,20 @@ Before doing `npm publish`, make sure to
 1. `npm bundle.js` to bundle the server code into the executable.
 2. `npm version patch` to patch Editor's version number
 
-### Publishing locally:
+### Publishing locally for testing.
 
 Inside the folder containing the Editor folder, run the following command.
 
      npm install ./Editor
 
 This will install all executables at the location given in `npm bin` and make them available in your PATH.
+This can be useful for development.
      
 ## Limitations, future work and caution
 
 ### HTML formatting caution
 
-- Make sure your source files have unix-style end of lines (\n and not \r\n). Else this might cause a lot of trouble.
+- On Windows, while loading dynamic `.elm` webpages, if you use `nodejs.fileread`, make sure to convert the resulting string with `String.newlines.toUnix`. This is a reversible function that ensures that the newlines are \n and not \r\n. Else, the reverse interpreter will replace all windows-like newlines \r\n by Unix-like newlines \n anyway but this might take a looong time.
 
 ### Need for authentication
 

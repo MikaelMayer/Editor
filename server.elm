@@ -25,7 +25,8 @@ path = if nodejs.isdir path then
   else path
   else path
 
-sourcecontent = if path == "server.elm" then
+sourcecontent = String.newlines.toUnix <|
+  if path == "server.elm" then
     """<html><head></head><body>Sample server Elm</body></html>"""
   else
     if nodejs.isdir path then
