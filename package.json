@@ -1,6 +1,6 @@
 {
   "name": "http-server-editor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "HTTP server that accepts user-triggered changes to static HTML & Markdown pages and dynamic .elm pages.",
   "main": "bin/server.js",
   "scripts": {
@@ -8,7 +8,8 @@
   },
   "keywords": [
     "bidirectional",
-    "web", "http",
+    "web",
+    "http",
     "server",
     "html",
     "markdown"
