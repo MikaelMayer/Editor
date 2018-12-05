@@ -215,9 +215,14 @@ const server = http.createServer((request, response) => {
         }
       } else {
         response.setHeader('Content-Type', header);
-        var content = fs.readFileSync("./" + path);
-        response.statusCode = 200;
-        response.end(content);
+        if(fs.existsSync("./" + path)) {
+          var content = fs.readFileSync("./" + path);
+          response.statusCode = 200;
+          response.end(content);
+        } else {
+          response.statusCode = 404;
+          response.end(`<html>body>${path} not found</body></html>`);
+        }
       }
     } else if(request.method == "POST") {
     var body = '';
@@ -266,9 +271,11 @@ const server = http.createServer((request, response) => {
           if(ambiguityKey != null && typeof ambiguityKey != "undefined" &&
              !path.endsWith(".html") && 
              urlParts.query["edit"] == "true") {
+            var ambiguityEnd = cachedSolutions[ambiguityKey].remaining === false;
             response.setHeader('Ambiguity-Key', ambiguityKey);
             response.setHeader('Ambiguity-Number', JSON.stringify(numberOfSolutionsSoFar));
             response.setHeader('Ambiguity-Selected', JSON.stringify(numSolutionSelected));
+            response.setHeader('Ambiguity-End', ambiguityEnd ? "true" : "false");
           } else {
             applyOperations(fileOperations);
           }

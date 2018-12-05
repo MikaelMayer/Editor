@@ -30,7 +30,9 @@ sourcecontent = if path == "server.elm" then
   else
     if nodejs.isdir path then
       """<html><head></head><body><h1><a href=''>/@path</a></h1>
-      <ul>@@(List.map (\name -> <li><a href=(path + "/" + name)>@@name</li>) (nodejs.listdir path))</ul>
+      <ul>@@(case Regex.extract "^(.*)/.*$" path of
+        Just [prev] -> [<li><a href=("/" + prev)>..</li>]
+        _ -> [<li><a href="/">..</li>])@@(List.map (\name -> <li><a href=("/" + path + "/" + name)>@@name</li>) (nodejs.listdir path))</ul>
       Hint: place an <a href=(path + "/index.html")>index.html</a> or <a href=(path + "/index.elm")>index.elm</a> file to display something else than this page.</body></html>"""
     else
       if nodejs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then
@@ -58,7 +60,52 @@ main = (if canEvaluate == "true" then
       else if Regex.matchIn """\.md$""" path then
         let markdownized = String.markdown sourcecontent in
           case Html.parseViaEval markdownized of
-            x -> Ok <html><head></head><body>@x</body></html>
+            x -> 
+              let markdownstyle = nodejs.fileread "markdown.css" |> Maybe.withDefaultReplace """pre {
+  padding: 10px 0 10px 30px;
+  color: cornflowerblue;
+}
+a {
+  text-decoration: none;
+  font-weight: bold;
+  color: #0268cd;
+}
+p {
+  margin: 1.0em 0 1.0em 0;
+}
+body {
+  text-align: justify;
+  font-family: Geneva, Verdana, sans-serif;
+  line-height: 1.75em;
+  background-color: #C9CFCD;
+}
+h1, h2, h3, h4 {
+  letter-spacing: -1px;
+  font-weight: normal;
+  color: #171717;
+}
+h2 {
+	font-size: 2.25em;
+}
+h3 {
+  padding: 25px 0 0 0;
+	font-size: 1.75em;
+}
+h4 {
+	font-size: 1.25em;
+  margin-top: 1.25em;
+}
+.wrapper {
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 10px;
+  max-width: 900px;
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-top: 20px;
+  background-color: white;
+}""" in
+              Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
       else if Regex.matchIn """\.elm$""" path || nodejs.isdir path then
         __evaluate__ (("vars", vars)::("path", path)::preludeEnv) sourcecontent
       else
@@ -111,9 +158,30 @@ menuitem > .solution {
 menuitem > .solution.selected {
   outline: white 2px solid;
 }
+menuitem > .solution.to-be-selected {
+  outline: #FCC 2px solid;
+  animation:spin 1s linear infinite;
+}
+@@keyframes spin{
+	from {
+    outline-color: #FAA;
+  }
+  33% {
+    outline-color: #AFA;
+  }
+  66% {
+    outline-color: #AAF;
+  }
+	to {
+    outline-color: #FAA;
+  }	
+}
 menuitem > .solution:not(.selected):hover {
   outline: #CCC 2px solid;
   cursor: pointer;
+}
+menuitem > .solution.notfinal {
+  color: #CCC;
 }
 #editor_codepreview {
   display: none;
@@ -284,6 +352,7 @@ editionscript = """
           var ambiguityKey = xmlhttp.getResponseHeader("Ambiguity-Key");
           var ambiguityNumber = xmlhttp.getResponseHeader("Ambiguity-Number");
           var ambiguitySelected = xmlhttp.getResponseHeader("Ambiguity-Selected");
+          var ambiguityEnd = xmlhttp.getResponseHeader("Ambiguity-End");
           if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
              ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
              ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
@@ -296,7 +365,7 @@ editionscript = """
               if(i == selected) {
                 disambiguationMenu += ` <span class="solution selected">#${i}</span>`
               } else {
-                disambiguationMenu += ` <a class="solution" onclick="selectAmbiguity('${ambiguityKey}', ${i})">#${i}</a>`
+                disambiguationMenu += ` <span class="solution${i == n && ambiguityEnd != 'true' ? ' notfinal' : ''}" onclick="this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})">#${i}</span>`
               }
             }
             disambiguationMenu += ` <button onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Accept current</button>`;
