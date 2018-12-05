@@ -9,14 +9,14 @@ Alternatively and anytime, you can use the DOM inspector of the browser of your 
 
 Install node.js and run the following command:
 
-    npm install http-server-editor
+    npm install -g http-server-editor
 
-Now, to launch a reversible HTTP server in any folder, run any of the following synonym commands:
+Now, to launch a reversible HTTP server in any folder, run:
 
-    http-server-editor
     editor
 
-then point your browser to http://127.0.0.1:3000
+the longer version of this command is `http-server-editor`.
+Then, point your browser to http://127.0.0.1:3000?edit=true
 
 ## Supported features
 
