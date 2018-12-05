@@ -136,7 +136,7 @@ editionmenu = [
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
 <style>
 #menumargin {
-  padding-top: 1em;
+  padding-top: 2em;
 }
 menu {
   position: fixed;
@@ -158,7 +158,7 @@ menuitem > .solution {
 menuitem > .solution.selected {
   outline: white 2px solid;
 }
-menuitem > .solution.to-be-selected {
+.to-be-selected {
   outline: #FCC 2px solid;
   animation:spin 1s linear infinite;
 }
@@ -445,9 +445,10 @@ editionscript = """
         t = undefined;
         
         var newMenu = document.createElement("menuitem");
-        var notification = `Sending modifications to server...`;
+        var notification = `Updating the source files...`;
         newMenu.innerHTML = notification;
-        newMenu.setAttribute("isghost", "true")
+        newMenu.setAttribute("isghost", "true");
+        newMenu.classList.add("to-be-selected");
         document.getElementById("themenu").append(newMenu);
         
         var xmlhttp = new XMLHttpRequest();

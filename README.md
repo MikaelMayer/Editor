@@ -1,8 +1,9 @@
 # Editor: The First Reversible HTTP Server
 
-Editor is an HTTP server that not only displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages themselves to the source files.
+Editor is an HTTP server that not only displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages to the source files themselves.
 
-To visually edit a page, simply add `?edit=true` to its URL, and the content will be editable by the mouse and keyboard. Alternatively and anytime, you can use the DOM inspector of the browser of your choice to modify the source page.
+To visually edit a page, simply add `?edit=true` to its URL, and the content will be editable by mouse and keyboard.
+Alternatively and anytime, you can use the DOM inspector of the browser of your choice to modify the source page.
 
 ## Quick launch
 
