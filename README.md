@@ -24,6 +24,15 @@ Then, point your browser to http://127.0.0.1:3000?edit=true
 * If a file `htaccess.elm` is at the root of the folder, it will be executed with an environment containing the variables `path` and `method` ("GET" or "POST") and should produce a boolean indicating if the operation is allowed: True meaning yes, False meaning no.
 * If a file `server.elm` is at the root the folder, it will always execute this file with an environment containing the variables `path` containing the requested path, a record `vars` containing the query variables, and this file should output the page.
 * Markdown styling can be customized by creating a `markdown.css` file. Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of the document using the DOM inspector.
+* Pages containing Google Analytics insert a &lt;script> to the page, that should not be back-propagated. This servers ensures that this new &lt;script> is added the attribute `isghost="true"` to prevent back-propagation.  
+  To set up your own predicates concerning which inserted elements should automatically be marked as ghost, insert the following snippet at the very beginning of your body and modify the predicate:
+
+```<script>
+(setGhostOnInserted || []).push(insertedNode =>
+  insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
+  insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
+);
+</script>```
 
 ## Development
 

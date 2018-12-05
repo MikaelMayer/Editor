@@ -213,6 +213,13 @@ function isGhostAttributeKey(name) {
   return name.startsWith("ghost-");
 }
 
+setGhostOnInserted = [];
+
+setGhostOnInserted.push(insertedNode =>
+  insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
+     insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
+);
+
 function handleScriptInsertion(mutations) {
   for(var i = 0; i < mutations.length; i++) {
     // A mutation is a ghost if either
@@ -223,11 +230,10 @@ function handleScriptInsertion(mutations) {
     if(hasGhostAncestor(mutation.target)) continue;
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
-        var addedNode = mutation.addedNodes[j];
-        if(addedNode.tagName == "SCRIPT" && typeof addedNode.getAttribute("src") == "string" &&
-           addedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") &gt;= 0 &&
-           addedNode.getAttribute("isghost") != "true") {
-         addedNode.setAttribute("isghost", "true");
+        var insertedNode = mutation.addedNodes[j];
+        if(!hasGhostAncestor(insertedNode) && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && setGhostOnInserted.find(pred => pred(insertedNode))) {
+         if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
+         insertedNode.isghost = true;
         }
       }
     }
