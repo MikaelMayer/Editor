@@ -25,10 +25,13 @@ Here you can witness the possibilities of a 60-line-of-code webpage in Editor. Y
 
 ### Publishing
 
-Before doing `npm publish`, make sure to
+Run `make update` to ensure that
 
-1. `npm bundle.js` to bundle the server code into the executable.
-2. `npm version patch` to patch Editor's version number
+* The sketch-n-sketch's version is up-to-date
+* `node bundle.js` is run to bundle the server code into the executable.
+* The version number is increased (via `npm version patch`)
+* The version is published to NPM's website
+* The same code is pushed to github
 
 ### Publishing locally for testing.
 

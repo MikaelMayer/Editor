@@ -1,6 +1,8 @@
 update:
 	npm update sketch-n-sketch
-	git commit -am "updated sketch-n-sketch's version"
+	git diff --quiet && git diff --staged --quiet || git commit -am "Updated sketch-n-sketch's version"
+	node bundle.js
+	git diff --quiet && git diff --staged --quiet || git commit -am "Updated the binary"
 	npm version patch
 	npm publish
 	git push origin master
