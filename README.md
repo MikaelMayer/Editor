@@ -133,6 +133,9 @@ Furthermore, we need the toolbar to expose udpate ambiguities and let the user c
 Why not try [Slate?](https://www.slatejs.org) if it works for the entire HTML. Apparently it does.
 https://github.com/ianstormtaylor/slate/blob/master/docs/reference/slate-html-serializer/index.md
 
+Froala's editor is nice as well but is not free
+https://www.froala.com/wysiwyg-editor
+Note that we could add a feature to drop an image like they are doing.
 
 ## License
 

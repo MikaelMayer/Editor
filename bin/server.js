@@ -238,7 +238,7 @@ const server = http.createServer((request, response) => {
         var fileOperations = [];
         if(ambiguityKey !== null && typeof ambiguityKey !== "undefined") {
           var selectAmbiguityStr = request.headers["select-ambiguity"];
-          if(selectAmbiguityStr !== null && typeof selectAmbiguityStr !== "undefined") {
+          if(selectAmbiguityStr != null) {
             numSolutionSelected = JSON.parse(selectAmbiguityStr);
             var solutionSet = cachedSolutions[ambiguityKey];
             if(typeof solutionSet != "undefined") {
@@ -249,18 +249,26 @@ const server = http.createServer((request, response) => {
             }
           } else {
             var acceptAmbiguityStr = request.headers["accept-ambiguity"];
-            if(acceptAmbiguityStr !== null && typeof acceptAmbiguityStr !== "undefined") {
+            if(acceptAmbiguityStr != null) {
               var acceptAmbiguity = JSON.parse(acceptAmbiguityStr);
               var solutionSet = cachedSolutions[ambiguityKey];
               [htmlContent, newQuery, fileOperations] = getSolutionByNum(solutionSet, acceptAmbiguity);
               ambiguityKey = undefined;
             } else {
-              htmlContent = {ctor:"Err", _0: "Solution set not found."};
+              var cancelAmbiguityStr = request.headers["cancel-ambiguity"];
+              if(cancelAmbiguityStr != null) {
+                ambiguityKey = undefined;
+                sns.fileOperations = [];
+                [htmlContent, newQuery, fileOperations] = loadpage(path, urlParts.query);
+                fileOperations = [];
+              } else {
+                htmlContent = {ctor:"Err", _0: "Solution set not found."};
+              }
             }
           }
         } else {
           var pushedValue = JSON.parse(body);
-          var [htmlContent, newQuery, fileOperations, ambiguityKey] = loadpage(path, urlParts.query, pushedValue);
+          [htmlContent, newQuery, fileOperations, ambiguityKey] = loadpage(path, urlParts.query, pushedValue);
         }
         response.statusCode = 201;
         response.setHeader('Content-Type', 'text/html; charset=utf-8');

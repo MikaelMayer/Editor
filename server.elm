@@ -184,20 +184,32 @@ menuitem > .solution:not(.selected):hover {
 menuitem > .solution.notfinal {
   color: #CCC;
 }
-#editor_codepreview {
+#editor_codepreview, #manualsync-menuitem {
   display: none;
   z-index: 9999;
 }
-#editor_codepreview[ghost-visible=true] {
-  display: block;
+#editor_codepreview[ghost-visible=true], #manualsync-menuitem[ghost-visible=true] {
+  display: inline-block;
+}
+[ghost-visible=false] {
+  display: none;
 }
 </style>
 <menuitem>@path</menuitem>
-<menuitem class="disabled"><button onclick="""
+<menuitem>
+<label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox"
+  onchange="""
 var cp = document.getElementById("editor_codepreview");
 if(cp !== null) {
-   cp.setAttribute("ghost-visible", cp.getAttribute("ghost-visible") == "true" ? "false": "true")
-}""">Display/hide source</button></menuitem>
+   cp.setAttribute("ghost-visible", this.checked ? "true": "false")
+}""">Show source</label>
+</menuitem>
+<menuitem>
+<label  title="If on, changes are automatically propagated after 1s after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" checked>Auto-sync</label>
+</menuitem>
+<menuitem id="manualsync-menuitem">
+<button onclick="sendModificationsToServer()">Send changes to server</button>
+</menuitem>
 </menu>,
 <script>
 function isGhostNode(elem) {
@@ -286,8 +298,8 @@ editionscript = """
       var id = elem.getAttribute("id");
       if(id !== null && typeof id !== "undefined") {
         var toSave = elem.getAttribute("save-attributes").split(" ");
-        for(i in toSave) {
-          var key = toSave[i];
+        for(j in toSave) {
+          var key = toSave[j];
           idDynamicAttributes.push([id, key, elem[key]])
         }
       }
@@ -348,9 +360,10 @@ editionscript = """
     
     var t = undefined;
     
-    handleServerPOSTResponse = xmlhttp => function () {
+    handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           //console.log("Received new content. Replacing the page.");
+          if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
           var saved = saveGhostAttributes();
           replaceContent(xmlhttp.responseText);
           applyGhostAttributes(saved);
@@ -375,7 +388,8 @@ editionscript = """
                 disambiguationMenu += ` <span class="solution${i == n && ambiguityEnd != 'true' ? ' notfinal' : ''}" onclick="this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})">#${i}</span>`
               }
             }
-            disambiguationMenu += ` <button onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Accept current</button>`;
+            disambiguationMenu += ` <button onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Save</button>`;
+            disambiguationMenu += ` <button onclick='cancelAmbiguity("${ambiguityKey}", ${selected})'>Cancel</button>`;
             newMenu.innerHTML = disambiguationMenu;
             newMenu.setAttribute("isghost", "true")
             document.getElementById("themenu").append(newMenu);
@@ -413,7 +427,41 @@ editionscript = """
       xmlhttp.send("{\"a\":1}");
     }
     
+    function cancelAmbiguity(key, num) {
+      var xmlhttp = new XMLHttpRequest();
+      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+      xmlhttp.open("POST", location.pathname + location.search);
+      xmlhttp.setRequestHeader("ambiguity-key", key);
+      xmlhttp.setRequestHeader("cancel-ambiguity", JSON.stringify(num));
+      xmlhttp.setRequestHeader("Content-Type", "application/json");
+      xmlhttp.send("{\"a\":1}");
+    }
+    
+    function sendModificationsToServer() {
+      if(document.getElementById("notification-menu") != null) {
+        document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
+        return;
+      }
+      var newMenu = document.createElement("menuitem");
+      var notification = `Updating the source files...`;
+      newMenu.innerHTML = notification;
+      newMenu.setAttribute("isghost", "true");
+      newMenu.setAttribute("id", "notification-menu");
+      newMenu.classList.add("to-be-selected");
+      document.getElementById("themenu").append(newMenu);
+      document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "false");
+      
+      var xmlhttp = new XMLHttpRequest();
+      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () =>
+        document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "true") // Because it will be saved
+      );
+      xmlhttp.open("POST", location.pathname + location.search);
+      xmlhttp.setRequestHeader("Content-Type", "application/json");
+      xmlhttp.send(JSON.stringify(domNodeToNativeValue(document.body.parentElement)));
+    }
+    
     function handleMutations(mutations) {
+      if(!document.getElementById("input-autosync").checked) return;
       var onlyGhosts = true;
       for(var i = 0; i < mutations.length && onlyGhosts; i++) {
         // A mutation is a ghost if either
@@ -451,18 +499,7 @@ editionscript = """
       t = setTimeout(function() {
         t = undefined;
         
-        var newMenu = document.createElement("menuitem");
-        var notification = `Updating the source files...`;
-        newMenu.innerHTML = notification;
-        newMenu.setAttribute("isghost", "true");
-        newMenu.classList.add("to-be-selected");
-        document.getElementById("themenu").append(newMenu);
-        
-        var xmlhttp = new XMLHttpRequest();
-        xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-        xmlhttp.open("POST", location.pathname + location.search);
-        xmlhttp.setRequestHeader("Content-Type", "application/json");
-        xmlhttp.send(JSON.stringify(domNodeToNativeValue(document.body.parentElement)));
+        sendModificationsToServer();
       }, @editdelay)
     }
   
