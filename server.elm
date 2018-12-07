@@ -5,7 +5,7 @@ preludeEnv = __CurrentEnv__
 
 editdelay = 1000
 
-userpermissions = {pageowner= True, admin= True}
+userpermissions = {pageowner= True, admin= (case vars of {admin} -> admin == "true"; _ -> False)}
 
 permissionToCreate = userpermissions.admin
 
@@ -42,7 +42,7 @@ sourcecontent = String.newlines.toUnix <|
         nodejs.fileread path
       |> Maybe.withDefaultReplace (
         serverOwned """<html><head></head><body>@(
-            if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist</span>"""
+            if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
           )</body></html>"""
       )
 
