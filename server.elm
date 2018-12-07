@@ -13,7 +13,18 @@ permissionToEditServer = userpermissions.admin -- should be possibly get from us
 
 canEditPage = userpermissions.pageowner && (vars |> case of {edit} -> edit == "true"; _ -> False)
 
-serverOwned = Update.conditionalFreeze (not permissionToEditServer)
+freezeWhen notPermission lazyMessage = Update.lens {
+  apply x = x
+  update {outputNew, diffs} =
+    if notPermission then
+      Err (lazyMessage ())
+    else
+      Ok (InputsWithDiffs [(outputNew, Just diffs)])
+}
+
+serverOwned what = freezeWhen (not permissionToEditServer) (\_ -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
+
+If you really intended to modify this, add ?admin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.""")
 
 path = if nodejs.isdir path then
        if nodejs.isfile <| path + "index.html" then path + "index.html"
@@ -41,7 +52,7 @@ sourcecontent = String.newlines.toUnix <|
       else
         nodejs.fileread path
       |> Maybe.withDefaultReplace (
-        serverOwned """<html><head></head><body>@(
+        serverOwned "404 page" """<html><head></head><body>@(
             if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
           )</body></html>"""
       )
@@ -114,7 +125,7 @@ h4 {
     else
       Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
   ) |> (case of
-  Err msg -> serverOwned <|
+  Err msg -> serverOwned "Error Report" <|
     <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
   Ok page -> page)
   |> case of
@@ -125,9 +136,9 @@ h4 {
         List.mapWithReverse identity (case of
           ["body", bodyattrs, bodychildren] ->
             ["body",
-              (if canEditPage then serverOwned [["contenteditable", "true"]] else freeze []) ++
+              (if canEditPage then serverOwned "contenteditable attribute of the body due to edit=true" [["contenteditable", "true"]] else freeze []) ++
                 bodyattrs,
-              (if canEditPage then serverOwned (editionmenu ++ [codepreview sourcecontent]) else freeze []) ++ bodychildren ++ Update.sizeFreeze (serverOwned [<script>@editionscript</script>])]
+              (if canEditPage then serverOwned "menu and code preview" (editionmenu ++ [codepreview sourcecontent]) else freeze []) ++ bodychildren ++ Update.sizeFreeze (serverOwned "synchronization script" [<script>@editionscript</script>])]
           x -> x
         )]
       x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -452,9 +463,11 @@ editionscript = """
       document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "false");
       
       var xmlhttp = new XMLHttpRequest();
-      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () =>
-        document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "true") // Because it will be saved
-      );
+      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {
+        if(!document.getElementById("input-autosync").checked) {
+          document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "true") // Because it will be saved
+        }
+      });
       xmlhttp.open("POST", location.pathname + location.search);
       xmlhttp.setRequestHeader("Content-Type", "application/json");
       xmlhttp.send(JSON.stringify(domNodeToNativeValue(document.body.parentElement)));
