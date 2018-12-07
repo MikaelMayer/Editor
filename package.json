@@ -23,7 +23,7 @@
     "url": "https://github.com/MikaelMayer/Editor.git"
   },
   "dependencies": {
-    "sketch-n-sketch": "^1.0.25"
+    "sketch-n-sketch": "^1.0.26"
   },
   "bin": {
     "http-server-editor": "bin/server-generated.js",
