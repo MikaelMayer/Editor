@@ -131,12 +131,12 @@ function applyOperations(operations) {
   for(var i = 0; i < operations.length; i++) {
     var {_1: path, _2: action} = operations[i];
     if(action["$d_ctor"] == "Write") {
-      fs.writeFileSync(path, action._2, "utf8");
+      fs.writeFileSync(path, action.args._2, "utf8");
     } else if(action["$d_ctor"] == "Create") {
       // TODO: Create the path if necessary
-      fs.writeFileSync(path, action._1, "utf8");
+      fs.writeFileSync(path, action.args._1, "utf8");
     } else if(action["$d_ctor"] == "Rename") {
-      fs.renameSync(path, action._1);
+      fs.renameSync(path, action.args._1);
     } else if(action["$d_ctor"] == "Delete") {
       fs.unlinkSync(path);
     } else {

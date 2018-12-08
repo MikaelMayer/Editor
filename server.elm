@@ -142,7 +142,7 @@ h4 {
             ["body",
               (if canEditPage then serverOwned "contenteditable attribute of the body due to edit=true" [["contenteditable", "true"]] else freeze []) ++
                 bodyattrs,
-              (if canEditPage then serverOwned "menu and code preview" (editionmenu ++ [codepreview sourcecontent]) else freeze []) ++ bodychildren ++ Update.sizeFreeze (serverOwned "synchronization script" [<script>@editionscript</script>])]
+              (if canEditPage then (serverOwned "edition menu" editionmenu ++ Update.sizeFreeze [(serverOwned "code preview box" codepreview) sourcecontent]) else freeze []) ++ bodychildren ++ Update.sizeFreeze (serverOwned "synchronization script" [<script>@editionscript</script>])]
           x -> x
         )]
       x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -203,7 +203,13 @@ menuitem > .solution.notfinal {
   display: none;
   z-index: 9999;
 }
-#editor_codepreview[ghost-visible=true], #manualsync-menuitem[ghost-visible=true] {
+[ghost-visible=true] {
+  display: block;
+}
+#editor_codepreview[ghost-visible=true] {
+  display: block;
+}
+#manualsync-menuitem[ghost-visible=true] {
   display: inline-block;
 }
 [ghost-visible=false] {
