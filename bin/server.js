@@ -226,7 +226,7 @@ function loadpage(path, overrides, newvalue) {
               computed: [solution, solution2],
               remaining: allSolutionsTail,
               path: path,
-              serverFile: serverFileContent
+              serverFileContent: serverFileContent
           }
           cachedSolutions[solutionKey] = cachedSolution;
           return solution.concat(solutionKey);
