@@ -6,3 +6,10 @@ update:
 	npm version patch
 	npm publish
 	git push origin master
+
+publish:
+	node bundle.js
+	git diff --quiet && git diff --staged --quiet || git commit -am "Updated the binary"
+	npm version patch
+	npm publish
+	git push origin master
