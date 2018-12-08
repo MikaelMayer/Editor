@@ -218,7 +218,7 @@ menuitem > .solution.notfinal {
 </style>
 <menuitem>@path</menuitem>
 <menuitem>
-<label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox"
+<label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox" save-attributes="checked"
   onchange="""
 var cp = document.getElementById("editor_codepreview");
 if(cp !== null) {
