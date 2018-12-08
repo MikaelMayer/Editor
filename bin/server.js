@@ -32,12 +32,9 @@ function readHtAccessFile() {
 }
 
 const sns = require("sketch-n-sketch");
-sns.params = sns.params || {};
-sns.params.delayedWrite = true;
-sns.fileOperations = sns.fileOperations || [];
 
-function evaluateToHtml(path, env, source) {
-  var result = sns.objEnv.string.evaluate(env)(source);
+function evaluateToHtml(path, env, serverFileContent) {
+  var result = sns.objEnv.string.evaluate(env)(serverFileContent);
   if(result.ctor == "Ok") {
     var out = sns.valToHTMLSource(result._0)
     if(out.ctor == "Ok") {
@@ -64,9 +61,9 @@ cachedSolutions = {
      timestamp: 0,
      computed: [["html page", "environment overrides", "fileOperations"],
                 ["html page 2", "environment overrides 2", "fileOperations 2..."]],
-     remaining: "false, or a LazyList whose head element is last computed solution. Call getOneSolution(this.path, this.source, sns.lazyList.tail(remaining)) on it to get one more solution if it exists",
+     remaining: "false, or a LazyList whose head element is last computed solution. Call getOneSolution(this.path, this.serverFileContent, sns.lazyList.tail(remaining)) on it to get one more solution if it exists",
      path: "The path that is being computed",
-     source: "The original source file of the server. Maybe be overwritten in fileOperations"
+     serverFileContent: "The original source file of the server. Maybe be overwritten in fileOperations"
   }
 }
 
@@ -76,10 +73,9 @@ function getSolutionByNum(solutionSet, num) {
   if(solutionSet.computed.length >= num && num >= 1) {
     if(solutionSet.computed.length == num) { // If we select the last computed solution, we checked if we can compute more solutions.
       if(solutionSet.remaining !== false) {
-        sns.fileOperations = [];
         console.log("Checking for ambiguity #" + (num + 1));
         var lt = sns.lazyList.tail(solutionSet.remaining);
-        var newSolution = getOneSolution(solutionSet.path, solutionSet.source, lt);
+        var newSolution = getOneSolution(solutionSet.path, solutionSet.serverFileContent, lt);
         if(newSolution === false) {
           console.log("No more ambiguity");
           solutionSet.remaining = false;
@@ -107,18 +103,25 @@ function uniqueKey() {
 
 function envToOverrides(env) { return env.vars; }
 
-function getOneSolution(path, source, allSolutions) {
+function getOneSolution(path, serverFileContent, allSolutions) {
   if(sns.lazyList.isEmpty(allSolutions)) return false;
-  var {_0: newEnv, _1: newSource} = sns.lazyList.head(allSolutions);
-  if(newSource != source) { // server file itself modified from the update method
-    sns.fileOperations = sns.fileOperations || [];
-    sns.fileOperations.push([ 'write',
-      { _1: serverFile,
-        _2: newSource}]);
+  var {_0: newEnv, _1: newServerFileContent} = sns.lazyList.head(allSolutions);
+  if(newServerFileContent != serverFileContent) { // server file itself modified from the update method
+    var d =
+      sns.process(sns.objEnv.string.evaluate({x: serverFileContent, y: newServerFileContent})(`__diff__ x y`))(sns.valToNative)
+    var diffsServerFileContent = 
+      d.ctor == "Ok" ? d._0 ? d._0.args ? d._0.args._1 ? d._0.args._1.args ? d._0.args._1.args._1 ? d._0.args._1.args._1 :
+        false : false : false : false : false : false;
+
+    newEnv.fileOperations.shift(
+      {"$t_ctor": "Tuple2",
+       _1: serverFile,
+       _2: {"$d_ctor": "Write",
+       args: {_1: serverFileContent, _2: newServerFileContent, _3: diffsServerFileContent}}
+       });
   }
-  var fo = sns.fileOperations;
-  var evaluated = evaluateToHtml(path, newEnv, newSource);
-  sns.fileOperations = [];
+  var fo = newEnv.fileOperations;
+  var evaluated = evaluateToHtml(path, newEnv, newServerFileContent);
   return [evaluated, envToOverrides(newEnv), fo]; 
   // Evaluates everything given the temporary context of writing the files.
 }
@@ -126,15 +129,65 @@ function getOneSolution(path, source, allSolutions) {
 // Apply the given operations to the file system. TODO: Merge different writes to a single file.
 function applyOperations(operations) {
   for(var i = 0; i < operations.length; i++) {
-    var [kind, action] = operations[i];
-    if(kind == "write") {
-      var {_1: path, _2: content} = action;
-      fs.writeFileSync(path, content, "utf8");
-    } else if (kind == "delete") {
-      var path = action;
+    var {_1: path, _2: action} = operations[i];
+    if(action["$d_ctor"] == "Write") {
+      fs.writeFileSync(path, action._2, "utf8");
+    } else if(action["$d_ctor"] == "Create") {
+      // TODO: Create the path if necessary
+      fs.writeFileSync(path, action._1, "utf8");
+    } else if(action["$d_ctor"] == "Rename") {
+      fs.renameSync(path, action._1);
+    } else if(action["$d_ctor"] == "Delete") {
       fs.unlinkSync(path);
+    } else {
+      console.log("unrecognized action:", action);
     }
   }
+}
+
+function stringDiffSummary(oldString, newString, stringDiffs) {
+  if(stringDiffs["$d_ctor"] == "Nothing") return "";
+  var listStringDiffs = stringDiffs.args._1.args._1; // It's a VStringDiffs
+  var offset = 0;
+  var summary = "";
+  for(var i = 0; i < listStringDiffs.length; i++) {
+    var {args: {_1: start, _2: end, _3: replaced}} = listStringDiffs[i];
+    var removed = oldString.substring(start, end);
+    var inserted = newString.substring(start + offset, start + offset + replaced);
+    var beforeRemoved = oldString.substring(0, start);
+    var linesBeforeRemoved = beforeRemoved.split(/\r\n|\r|\n/);
+    var lineNumber = linesBeforeRemoved.length;
+    var charNumber = linesBeforeRemoved[linesBeforeRemoved.length - 1].length + 1;
+    summary += "L" + lineNumber + "C" + charNumber + ", "
+    if(removed == "")
+      summary += "inserted '" + inserted + "'";
+    else if(inserted == "")
+      summary += "removed '" + removed + "'";
+    else
+      summary += "removed '" + removed + "', inserted '"+ inserted +"'";
+  }
+  return summary;
+}
+
+function fileOperationSummary(operations) {
+  if(operations == null) return "";
+  var summary = "";
+  for(var i = 0; i < operations.length; i++) {
+    var {_1: path, _2: action} = operations[i];
+    if(summary != "") summary += "\n";
+    if(action["$d_ctor"] == "Write") {
+      summary += "Modify " + path + ", " + stringDiffSummary(action.args._1, action.args._2, action.args._3);
+    } else if(action["$d_ctor"] == "Create") {
+      summary += "Created " + path;
+    } else if(action["$d_ctor"] == "Rename") {
+      summary += "Renamed " + path + " to " + action.args._1;
+    } else if(action["$d_ctor"] == "Delete") {
+      summary += "Deleted " + path;
+    } else {
+      console.log("unrecognized action:", action);
+    }
+  }
+  return summary;
 }
 
 // Returns a [Result of string containing the requested page, new overrides]
@@ -142,28 +195,26 @@ function applyOperations(operations) {
 function loadpage(path, overrides, newvalue) {
   // __dirname = path.resolve(); // If in the REPL
   if(typeof overrides != "object") overrides = {};
-  var source =  readServerFile();
-  var env = { vars: overrides, path: path };
+  var serverFileContent = readServerFile();
+  var env = { vars: overrides, path: path, fileOperations: [] };
   
   if(typeof newvalue == "undefined") {
-    return [evaluateToHtml(path, env, source), overrides];
+    return [evaluateToHtml(path, env, serverFileContent), overrides];
   } else { // We update the page and re-render it.
     var newVal = sns.nativeToVal(newvalue);
-    sns.fileOperations = [];
     console.log("Started to update...");
-    var result = sns.objEnv.string.update(env)(source)(newVal);
+    var result = sns.objEnv.string.update(env)(serverFileContent)(newVal);
     console.log("Update finished (first solution)");
     if(result.ctor == "Ok") {
       var allSolutions = result._0;
       // Instead of iterating through all the solutions, just detect if there is an ambiguity.
-      var solution = getOneSolution(path, source, allSolutions);
+      var solution = getOneSolution(path, serverFileContent, allSolutions);
       if(solution === false) {
         return [{ctor: "Err", _0: "Empty list of solutions"}];
       } else {
-        sns.fileOperations = []; // Always do this before taking the tail of a stream of update solutions.
         console.log("Checking for ambiguities");
         var allSolutionsTail = sns.lazyList.tail(allSolutions);
-        var solution2 = getOneSolution(path, source, allSolutionsTail);
+        var solution2 = getOneSolution(path, serverFileContent, allSolutionsTail);
         if(solution2 === false) { // No ambiguity, we can immediately process the change.
           console.log("No ambiguity");
           return solution;
@@ -175,7 +226,7 @@ function loadpage(path, overrides, newvalue) {
               computed: [solution, solution2],
               remaining: allSolutionsTail,
               path: path,
-              source: source
+              serverFile: serverFileContent
           }
           cachedSolutions[solutionKey] = cachedSolution;
           return solution.concat(solutionKey);
@@ -236,6 +287,7 @@ const server = http.createServer((request, response) => {
         var htmlContent = {ctor:"Err", _0: "Not yet defined"};
         var newQuery = "{}";
         var fileOperations = [];
+        var ambiguitiesSummary = [];
         if(ambiguityKey !== null && typeof ambiguityKey !== "undefined") {
           var selectAmbiguityStr = request.headers["select-ambiguity"];
           if(selectAmbiguityStr != null) {
@@ -244,6 +296,7 @@ const server = http.createServer((request, response) => {
             if(typeof solutionSet != "undefined") {
               [htmlContent, newQuery, fileOperations] = getSolutionByNum(solutionSet, numSolutionSelected);
               numberOfSolutionsSoFar = solutionSet.computed.length;
+              ambiguitiesSummary = solutionSet.computed.map(a => fileOperationSummary(a[2]));
             } else {
               htmlContent = {ctor:"Err", _0: "Solution set not found"};
             }
@@ -258,7 +311,6 @@ const server = http.createServer((request, response) => {
               var cancelAmbiguityStr = request.headers["cancel-ambiguity"];
               if(cancelAmbiguityStr != null) {
                 ambiguityKey = undefined;
-                sns.fileOperations = [];
                 [htmlContent, newQuery, fileOperations] = loadpage(path, urlParts.query);
                 fileOperations = [];
               } else {
@@ -279,15 +331,17 @@ const server = http.createServer((request, response) => {
           if(ambiguityKey != null && typeof ambiguityKey != "undefined" &&
              !path.endsWith(".html") && 
              urlParts.query["edit"] == "true") {
-            var ambiguityEnd = cachedSolutions[ambiguityKey].remaining === false;
+            var solutionSet = cachedSolutions[ambiguityKey];
+            var ambiguityEnd = solutionSet.remaining === false;
+            ambiguitiesSummary = solutionSet.computed.map(a => fileOperationSummary(a[2]));
             response.setHeader('Ambiguity-Key', ambiguityKey);
             response.setHeader('Ambiguity-Number', JSON.stringify(numberOfSolutionsSoFar));
             response.setHeader('Ambiguity-Selected', JSON.stringify(numSolutionSelected));
+            response.setHeader('Ambiguity-Summaries', JSON.stringify(ambiguitiesSummary));
             response.setHeader('Ambiguity-End', ambiguityEnd ? "true" : "false");
           } else {
             applyOperations(fileOperations);
           }
-          sns.fileOperations = [];
           response.end(htmlContent._0);
         }
         });

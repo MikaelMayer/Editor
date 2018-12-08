@@ -1,7 +1,11 @@
--- input: path  The file to serve.
--- input: vars:     URL query vars.
--- output: the page, either raw or augmented with the toolbar and edit scripts.
+-- input: path            The file to serve.
+-- input: vars:           URL query vars.
+-- input: fileOperations  The current set of delayed file disk operations.
+--    Note that Elm pages are given in context the path, the vars, and the file system (fs) to read other files
+-- output: The page, either raw or augmented with the toolbar and edit scripts.
 preludeEnv = __CurrentEnv__
+
+fs = nodejs.delayed fileOperations
 
 editdelay = 1000
 
@@ -26,13 +30,13 @@ serverOwned what = freezeWhen (not permissionToEditServer) (\_ -> """You tried t
 
 If you really intended to modify this, add ?admin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.""")
 
-path = if nodejs.isdir path then
-       if nodejs.isfile <| path + "index.html" then path + "index.html"
-  else if nodejs.isfile <| path + "/index.html" then path + "/index.html"
-  else if nodejs.isfile <| path + "index.elm" then path + "index.elm"
-  else if nodejs.isfile <| path + "/index.elm" then path + "/index.elm"
-  else if nodejs.isfile <| path + "README.md" then path + "README.md"
-  else if nodejs.isfile <| path + "/README.md" then path + "/README.md"
+path = if fs.isdir path then
+       if fs.isfile <| path + "index.html" then path + "index.html"
+  else if fs.isfile <| path + "/index.html" then path + "/index.html"
+  else if fs.isfile <| path + "index.elm" then path + "index.elm"
+  else if fs.isfile <| path + "/index.elm" then path + "/index.elm"
+  else if fs.isfile <| path + "README.md" then path + "README.md"
+  else if fs.isfile <| path + "/README.md" then path + "/README.md"
   else path
   else path
 
@@ -40,17 +44,17 @@ sourcecontent = String.newlines.toUnix <|
   if path == "server.elm" then
     """<html><head></head><body>Sample server Elm</body></html>"""
   else
-    if nodejs.isdir path then
+    if fs.isdir path then
       """<html><head></head><body><h1><a href=''>/@path</a></h1>
       <ul>@@(case Regex.extract "^(.*)/.*$" path of
         Just [prev] -> [<li><a href=("/" + prev)>..</li>]
-        _ -> [<li><a href="/">..</li>])@@(List.map (\name -> <li><a href=("/" + path + "/" + name)>@@name</li>) (nodejs.listdir path))</ul>
+        _ -> [<li><a href="/">..</li>])@@(List.map (\name -> <li><a href=("/" + path + "/" + name)>@@name</li>) (fs.listdir path))</ul>
       Hint: place an <a href=(path + "/index.html")>index.html</a> or <a href=(path + "/index.elm")>index.elm</a> file to display something else than this page.</body></html>"""
     else
-      if nodejs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then
+      if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
         """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
       else
-        nodejs.fileread path
+        fs.read path
       |> Maybe.withDefaultReplace (
         serverOwned "404 page" """<html><head></head><body>@(
             if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
@@ -73,7 +77,7 @@ main = (if canEvaluate == "true" then
         let markdownized = String.markdown sourcecontent in
           case Html.parseViaEval markdownized of
             x -> 
-              let markdownstyle = nodejs.fileread "markdown.css" |> Maybe.withDefaultReplace """pre {
+              let markdownstyle = fs.read "markdown.css" |> Maybe.withDefaultReplace """pre {
   padding: 10px 0 10px 30px;
   color: cornflowerblue;
 }
@@ -118,8 +122,8 @@ h4 {
   background-color: white;
 }""" in
               Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
-      else if Regex.matchIn """\.elm$""" path || nodejs.isdir path then
-        __evaluate__ (("vars", vars)::("path", path)::preludeEnv) sourcecontent
+      else if Regex.matchIn """\.(elm|leo)$""" path || fs.isdir path then
+        __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent
       else
         Err """Serving only .html, .md and .elm files. Got @path"""
     else
@@ -384,19 +388,22 @@ editionscript = """
           var ambiguityNumber = xmlhttp.getResponseHeader("Ambiguity-Number");
           var ambiguitySelected = xmlhttp.getResponseHeader("Ambiguity-Selected");
           var ambiguityEnd = xmlhttp.getResponseHeader("Ambiguity-End");
+          var ambiguitySummaries = xmlhttp.getResponseHeader("Ambiguity-Summaries");
           if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
              ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
              ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
              
             var n = JSON.parse(ambiguityNumber);
             var selected = JSON.parse(ambiguitySelected);
+            var summaries = JSON.parse(ambiguitySummaries);
             var newMenu = document.createElement("menuitem");
             var disambiguationMenu = `<span style="color:red" id="ambiguity-id" v="${ambiguityKey}">Ambiguity.</span> Solutions `;
             for(var i = 1; i <= n; i++) {
+              var summary = summaries[i-1].replace(/"/g,'&quot;');
               if(i == selected) {
-                disambiguationMenu += ` <span class="solution selected">#${i}</span>`
+                disambiguationMenu += ` <span class="solution selected" title="${summary}">#${i}</span>`
               } else {
-                disambiguationMenu += ` <span class="solution${i == n && ambiguityEnd != 'true' ? ' notfinal' : ''}" onclick="this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})">#${i}</span>`
+                disambiguationMenu += ` <span class="solution${i == n && ambiguityEnd != 'true' ? ' notfinal' : ''}" title="${summary}" onclick="this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})">#${i}</span>`
               }
             }
             disambiguationMenu += ` <button onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Save</button>`;

@@ -8,7 +8,7 @@ userdata = [
   , ("Laurent", 2)
   ]
   
-options = nodejs.fileread "data/pizzas.txt"
+options = fs.read "data/pizzas.txt"
   |> Maybe.withDefaultReplace (freeze """[
     "$Margharita",
     "$Queen",
