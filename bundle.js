@@ -2,10 +2,11 @@ const fs = require("fs");
 const sns = require("sketch-n-sketch");
 
 var res = sns.string.evaluate(`
+fs = nodejs.delayed nodejs.directFileOperations
 
-elmserver = nodejs.fileread "server.elm" |> Maybe.withDefaultLazy (\\_ -> error "server.elm not found")
+elmserver = fs.read "server.elm" |> Maybe.withDefaultLazy (\\_ -> error "server.elm not found")
 
-nodejs.fileread "bin/server.js"
+fs.read "bin/server.js"
 |> Maybe.withDefaultLazy (\\_ -> error "bin/server.js not found")
 |> Regex.replace "const defaultServerContent = .*;" (\\_ ->
   """const defaultServerContent = @(jsCode.stringOf elmserver);""")

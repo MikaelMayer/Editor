@@ -113,7 +113,7 @@ function getOneSolution(path, serverFileContent, allSolutions) {
       d.ctor == "Ok" ? d._0 ? d._0.args ? d._0.args._1 ? d._0.args._1.args ? d._0.args._1.args._1 ? d._0.args._1.args._1 :
         false : false : false : false : false : false;
 
-    newEnv.fileOperations.shift(
+    newEnv.fileOperations.unshift(
       {"$t_ctor": "Tuple2",
        _1: serverFile,
        _2: {"$d_ctor": "Write",
