@@ -499,26 +499,20 @@ editionscript = """
     function handleMutations(mutations) {
       console.log("mutations", mutations);
       if(document.getElementById("input-autosync") && !document.getElementById("input-autosync").checked) return;
-      console.log("processing");
       var onlyGhosts = true;
       for(var i = 0; i < mutations.length && onlyGhosts; i++) {
-        console.log("i", i);
         // A mutation is a ghost if either
         // -- The attribute starts with 'ghost-'
         // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
         // -- It is the modification of a node or an attribute inside a ghost node.
         var mutation = mutations[i];
-        console.log("#1");
         if(hasGhostAncestor(mutation.target)) continue;
-        console.log("#2");
         if(mutation.type == "attributes") {
-          console.log("#3");
           if(isGhostAttributeKey(mutation.attributeName)) {
           } else {
             onlyGhosts = false;
           }
         } else if(mutation.type == "childList") {
-          console.log("#4");
           for(var j = 0; j < mutation.addedNodes.length && onlyGhosts; j++) {
             if(!hasGhostAncestor(mutation.addedNodes[j])) {
               onlyGhosts = false;
@@ -528,17 +522,13 @@ editionscript = """
             onlyGhosts = false;
           }
         } else {
-          console.log("#5");
           onlyGhosts = false;
         }
-        console.log("#6");
       }
-      console.log("finished loop");
       if(onlyGhosts) {
-        console.log("mutations are only ghosts, skipping", mutations);
+        console.log("mutations are only ghosts, skipping");
         return;
       } // Send in post the new HTML along with the URL
-      console.log("mutations", mutations);
       if(typeof t !== "undefined") {
         clearTimeout(t);
       }
