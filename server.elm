@@ -144,7 +144,7 @@ h4 {
             ["body",
               (if canEditPage then serverOwned "contenteditable attribute of the body due to edit=true" [["contenteditable", "true"]] else freeze []) ++
                 bodyattrs,
-              (if canEditPage then (serverOwned "edition menu" editionmenu ++ Update.sizeFreeze [(serverOwned "code preview box" codepreview) sourcecontent]) else freeze []) ++ bodychildren ++ Update.sizeFreeze (serverOwned "synchronization script" [<script>@editionscript</script>])]
+              (if canEditPage then (serverOwned "edition menu" editionmenu ++ Update.sizeFreeze [(serverOwned "code preview box" codepreview) sourcecontent]) else freeze []) ++ serverOwned "initial script" initialScript ++ bodychildren ++ Update.sizeFreeze (serverOwned "synchronization script" [<script>@editionscript</script>])]
           x -> x
         )]
       x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -234,6 +234,9 @@ if(cp !== null) {
 <button onclick="sendModificationsToServer()">Send changes to server</button>
 </menuitem>
 </menu>,
+<div id="menumargin"></div>]
+
+initialScript = [
 <script>
 function isGhostNode(elem) {
   return elem.nodeType == 1 &&
@@ -291,8 +294,8 @@ analyticsScriptNeutralizer.observe
    , subtree: true
    }
  )
-</script>,
-<div id="menumargin"></div>]
+</script>
+]
 
 codepreview sourcecontent = 
 <div class="codepreview" id="editor_codepreview">
@@ -474,12 +477,14 @@ editionscript = """
       newMenu.setAttribute("isghost", "true");
       newMenu.setAttribute("id", "notification-menu");
       newMenu.classList.add("to-be-selected");
-      document.getElementById("themenu").append(newMenu);
-      document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "false");
+      if(document.getElementById("themenu") && document.getElementById("manualsync-menuitem")) {
+        document.getElementById("themenu").append(newMenu);
+        document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "false");
+      }
       
       var xmlhttp = new XMLHttpRequest();
       xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {
-        if(!document.getElementById("input-autosync").checked) {
+        if(document.getElementById("input-autosync") && !document.getElementById("input-autosync").checked) {
           document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "true") // Because it will be saved
         }
       });
@@ -489,21 +494,28 @@ editionscript = """
     }
     
     function handleMutations(mutations) {
-      if(!document.getElementById("input-autosync").checked) return;
+      console.log("mutations", mutations);
+      if(document.getElementById("input-autosync") && !document.getElementById("input-autosync").checked) return;
+      console.log("processing");
       var onlyGhosts = true;
       for(var i = 0; i < mutations.length && onlyGhosts; i++) {
+        console.log("i", i);
         // A mutation is a ghost if either
         // -- The attribute starts with 'ghost-'
         // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
         // -- It is the modification of a node or an attribute inside a ghost node.
         var mutation = mutations[i];
+        console.log("#1");
         if(hasGhostAncestor(mutation.target)) continue;
+        console.log("#2");
         if(mutation.type == "attributes") {
+          console.log("#3");
           if(isGhostAttributeKey(mutation.attributeName)) {
           } else {
             onlyGhosts = false;
           }
         } else if(mutation.type == "childList") {
+          console.log("#4");
           for(var j = 0; j < mutation.addedNodes.length && onlyGhosts; j++) {
             if(!hasGhostAncestor(mutation.addedNodes[j])) {
               onlyGhosts = false;
@@ -513,9 +525,12 @@ editionscript = """
             onlyGhosts = false;
           }
         } else {
+          console.log("#5");
           onlyGhosts = false;
         }
+        console.log("#6");
       }
+      console.log("finished loop");
       if(onlyGhosts) {
         console.log("mutations are only ghosts, skipping", mutations);
         return;
