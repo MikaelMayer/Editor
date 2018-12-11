@@ -65,14 +65,16 @@ canEvaluate = vars |> case of {evaluate} -> evaluate; _ -> "true"
   
 main = (if canEvaluate == "true" then
       if Regex.matchIn """\.html$""" path then
-        case Regex.extract """^(?:(?!<html)[\s\S])*((?=<html)[\s\S]*</html>)\s*$""" sourcecontent of
-          Just [interpretableHtml] ->
-            __evaluate__ preludeEnv """<raw>@interpretableHtml</raw>"""
-            |> Result.andThen (case of
-              ["raw", _, [htmlNode]] -> Ok htmlNode
-              result -> Err """Html interpretation error: The interpretation of raw html did not work but produced @result"""
-            )
-          x ->  Err """@path is not a valid html file. Interpreation got: @x"""
+        let interpretableData =
+          case Regex.extract """^(?:(?!<html)[\s\S])*((?=<html)[\s\S]*</html>)\s*$""" sourcecontent of
+            Just [interpretableHtml] -> serverOwned "begin raw tag" "<raw>" + interpretableHtml + serverOwned "end raw tag" "</raw>"
+            _ -> serverOwned "raw display of html - beginning" """<raw><html><head></head><body>""" + sourcecontent + serverOwned "raw display of html - end" """</body></html></raw>"""
+        in
+        __evaluate__ preludeEnv interpretableData
+        |> Result.andThen (case of
+          ["raw", _, [htmlNode]] -> Ok htmlNode
+          result -> Err """Html interpretation error: The interpretation of raw html did not work but produced @result"""
+        )
       else if Regex.matchIn """\.md$""" path then
         let markdownized = String.markdown sourcecontent in
           case Html.parseViaEval markdownized of

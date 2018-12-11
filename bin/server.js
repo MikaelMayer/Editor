@@ -165,6 +165,7 @@ function stringDiffSummary(oldString, newString, stringDiffs) {
       summary += "removed '" + removed + "'";
     else
       summary += "removed '" + removed + "', inserted '"+ inserted +"'";
+    offset += replaced - (end - start);
   }
   return summary;
 }
