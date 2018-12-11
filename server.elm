@@ -150,6 +150,8 @@ h4 {
       x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
 
+initialCheckedAttribute = [["checked", ""]]
+  
 editionmenu = [
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
 <style>
@@ -211,7 +213,7 @@ menuitem > .solution.notfinal {
 #editor_codepreview[ghost-visible=true] {
   display: block;
 }
-#manualsync-menuitem[ghost-visible=true] {
+#manualsync-menuitem[ghost-visible=true], #manualsync-menuitem[force-visible=true] {
   display: inline-block;
 }
 [ghost-visible=false] {
@@ -228,9 +230,10 @@ if(cp !== null) {
 }""">Show source</label>
 </menuitem>
 <menuitem>
-<label  title="If on, changes are automatically propagated after 1s after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" checked>Auto-sync</label>
+<label title="If on, changes are automatically propagated after 1s after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case vars of {autosync=autosyncattr} ->
+                       Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false") autosyncattr; _ -> serverOwned "initial checked attribute (use &autosync=true/false in query parameters to modify it)" [["checked", ""]])>Auto-sync</label>
 </menuitem>
-<menuitem id="manualsync-menuitem">
+<menuitem id="manualsync-menuitem" @(case vars of {autosync="false"} -> [["force-visible", "true"]]; _ -> [])>
 <button onclick="sendModificationsToServer()">Send changes to server</button>
 </menuitem>
 </menu>,
