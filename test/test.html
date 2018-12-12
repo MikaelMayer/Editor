@@ -8,10 +8,15 @@
 <tbody>
 <tr><th>Name</th><th>Price</th></tr>
 <tr><td>Bottle</td><td>2$</td></tr>
-<tr><td>Computer</td><td>2000$</td></tr>
+<tr><td>Level</td><td>10$</td></tr>
+<tr><td>Computer</td><td>2000$</td></tr>
+<tr><td>Salary</td><td>3000$</td></tr>
 <tr><td>Apple</td><td>1$</td></tr>
 </tbody>
 </table>
-<button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'))" contenteditable="false">Duplicate row</button>
+<button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'))">Duplicate row on cursor</button>
+<button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'), {onBeforeInsert: emptyTextContent})" contenteditable="false">Insert empty row before</button>
+<button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'), {after: true, onBeforeInsert: emptyTextContent})" contenteditable="false">Insert empty row after</button>
+<button style="display:none" class="editor-menu" onclick="remove(getEnclosingCaret('tr'))" contenteditable="false">Remove row</button>
 </body>
 </html>

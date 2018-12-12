@@ -21,14 +21,18 @@ freezeWhen notPermission lazyMessage = Update.lens {
   apply x = x
   update {outputNew, diffs} =
     if notPermission then
-      Err (lazyMessage ())
+      Err (lazyMessage (outputNew, diffs))
     else
       Ok (InputsWithDiffs [(outputNew, Just diffs)])
 }
 
-serverOwned what = freezeWhen (not permissionToEditServer) (\_ -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
+serverOwned what = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
 
-If you really intended to modify this, add ?admin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.""")
+If you really intended to modify this, add ?admin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
+
+For debugging purposes, below is the new value that was pushed:
+<pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
+""")
 
 path = if fs.isdir path then
        if fs.isfile <| path + "index.html" then path + "index.html"
@@ -307,16 +311,64 @@ function getSelectionStart() {
    return (node != null && node.nodeType == 3 ? node.parentNode : node);
 }
 function getEnclosingCaret(tagName) {
-  var where = getSelectionStart();
-  while(where != null && where.tagName.toLowerCase() != tagName.toLowerCase()) {
-    where = where.parentNode;
+  var w = getSelectionStart();
+  console.log("where", w);
+  while(w != null && w.tagName.toLowerCase() != tagName.toLowerCase()) {
+    w = w.parentNode;
   }
-  return where;
+  return w;
 }
-function duplicate(node) {
-  if(node != null && node.parentNode != null) {
-    node.parentNode.insertBefore(node.cloneNode(true), node);
+function emptyTextContent(node) {
+  if(node != null) {
+    if(node.nodeType == 3) {
+      node.textContent = "";
+    } else {
+      for(i in node.childNodes) {
+        emptyTextContent(node.childNodes[i]);
+      }
+    }
   }
+  return node;
+}
+function insertBefore(parent, node, beforeNode) {
+  if(beforeNode == null) {
+    parent.append(node);
+  } else {
+    parent.insertBefore(node, beforeNode);
+  }
+}
+
+function duplicate(node, options) {
+  if(typeof options == "undefined") options = {}
+  if(typeof options.onBeforeInsert != "function") options.onBeforeInsert = e => e;
+  if(node != null && node.parentNode != null) {
+    var insertBeforeNode = options.after ? node.nextSibling : node;
+    if(node.previousSibling != null) {
+      var next = node.nextSibling;
+      if(next.nodeType == 3 && next.nextSibling != null &&
+         next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "LI" || node.tagName == "TD")) {
+        var textElement = next.cloneNode(true);
+        insertBefore(node.parentNode, textElement, options.after ? node.nextSibling : node);
+        if(options.after) {
+          insertBeforeNode = textElement.nextSibling;
+        } else {
+          insertBeforeNode = textElement
+        }
+      }
+    }
+    var cloned = options.onBeforeInsert(node.cloneNode(true));
+    insertBefore(node.parentNode, cloned, insertBeforeNode);
+  }
+}
+function remove(node) {
+  if(node.previousSibling != null) { // Remove whitespace as well
+    var next = node.nextSibling;
+    if(next.nodeType == 3 && next.nextSibling != null &&
+       next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "LI" || node.tagName == "TD")) {
+      next.remove();
+    }
+  }
+  node.remove();
 }
 </script>
 ]

@@ -69,6 +69,25 @@ Beware, the system does not support concurrent editing yet, make sure you alone 
 
 Look into [`test/pizzas.elm`](https://github.com/MikaelMayer/Editor/blob/master/test/pizzas.elm) and [`CONTRIBUTING.md`](https://github.com/MikaelMayer/Editor/blob/master/CONTRIBUTING.md) for a more advanced example covering the same website with file reading, evaluation, translation to different languages, deletion of choices, modification of pizza by name, and more.
 
+## Add edition capabilities to your webpage
+
+When the `edit=true` search query param is set, the following style is injected to the page:
+
+    .editor-menu { display: initial !important; }
+
+This means that whatever had the class `editor-menu` will be displayed in this edit mode. You can use it to define your own scripts that self-modify the page. For example, adding these buttons allow you to manipulate rows on a table:
+
+    <button style="display:none" class="editor-menu"
+            onclick="duplicate(getEnclosingCaret('tr'))" contenteditable="false">Duplicate row</button>
+    <button style="display:none" class="editor-menu"
+            onclick="duplicate(getEnclosingCaret('tr'), {onBeforeInsert: emptyTextContent})" contenteditable="false">New row before</button>
+    <button style="display:none" class="editor-menu"
+            onclick="duplicate(getEnclosingCaret('tr'), {after: true, onBeforeInsert: emptyTextContent})" contenteditable="false">New row after</button>
+    <button style="display:none" class="editor-menu"
+            onclick="remove(getEnclosingCaret('tr'))" contenteditable="false">Remove row</button>
+
+A default toolbar is to come soon in Editor, keep in touch.
+    
 ## Limitations, future work and caution
 
 ### Ambiguity
