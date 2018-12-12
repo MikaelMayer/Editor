@@ -155,6 +155,9 @@ initialCheckedAttribute = [["checked", ""]]
 editionmenu = [
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
 <style>
+.editor-menu {
+  display: initial !important;
+}
 #menumargin {
   padding-top: 2em;
 }
@@ -297,6 +300,24 @@ analyticsScriptNeutralizer.observe
    , subtree: true
    }
  )
+
+// Self-editing capabilities
+function getSelectionStart() {
+   var node = document.getSelection().anchorNode;
+   return (node != null && node.nodeType == 3 ? node.parentNode : node);
+}
+function getEnclosingCaret(tagName) {
+  var where = getSelectionStart();
+  while(where != null && where.tagName.toLowerCase() != tagName.toLowerCase()) {
+    where = where.parentNode;
+  }
+  return where;
+}
+function duplicate(node) {
+  if(node != null && node.parentNode != null) {
+    node.parentNode.insertBefore(node.cloneNode(true), node);
+  }
+}
 </script>
 ]
 

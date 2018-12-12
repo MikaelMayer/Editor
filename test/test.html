@@ -3,5 +3,15 @@
 <html>
 <head>
 </head>
-<body>Hello world</body>
+<body>Hello world
+<table id="thetable">
+<tbody>
+<tr><th>Name</th><th>Price</th></tr>
+<tr><td>Bottle</td><td>2$</td></tr>
+<tr><td>Computer</td><td>2000$</td></tr>
+<tr><td>Apple</td><td>1$</td></tr>
+</tbody>
+</table>
+<button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'))" contenteditable="false">Duplicate row</button>
+</body>
 </html>
