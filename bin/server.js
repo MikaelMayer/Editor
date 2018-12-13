@@ -237,8 +237,17 @@ function loadpage(path, overrides, newvalue) {
   }
 }
 
+function toLeoQuery(query) {
+  var result = [];
+  for(key in query) {
+    result.push({"$t_ctor": "Tuple2", _1: key, _2: query[key]});
+  }
+  return result;
+}
+
 const server = http.createServer((request, response) => {
   var urlParts = url.parse(request.url, parseQueryString=true);
+  var query = toLeoQuery(urlParts.query);
   var path = urlParts.pathname.substring(1); // Without the slash.
   var accessResult = sns.objEnv.string.evaluate({path:path,method:request.method})(readHtAccessFile());
   var access = sns.process(accessResult)(sns.valToNative);
@@ -257,7 +266,7 @@ const server = http.createServer((request, response) => {
       var header = path.endsWith(".svg") ? "image/svg+xml" : header;
       var header = path.endsWith(".css") ? "text/css; charset=utf-8" : header;
       if(!header.startsWith("image/") && !header.startsWith("text/css")) {
-        var [htmlContent] = loadpage(path, urlParts.query);
+        var [htmlContent] = loadpage(path, query);
         response.setHeader('Content-Type', header);
         response.statusCode = 200;
         if(htmlContent.ctor == "Err") {
@@ -286,7 +295,7 @@ const server = http.createServer((request, response) => {
         var numberOfSolutionsSoFar = 2; // Only if Ambiguity-Key is set.
         var numSolutionSelected = 1;
         var htmlContent = {ctor:"Err", _0: "Not yet defined"};
-        var newQuery = "{}";
+        var newQuery = [];
         var fileOperations = [];
         var ambiguitiesSummary = [];
         if(ambiguityKey !== null && typeof ambiguityKey !== "undefined") {
@@ -312,7 +321,7 @@ const server = http.createServer((request, response) => {
               var cancelAmbiguityStr = request.headers["cancel-ambiguity"];
               if(cancelAmbiguityStr != null) {
                 ambiguityKey = undefined;
-                [htmlContent, newQuery, fileOperations] = loadpage(path, urlParts.query);
+                [htmlContent, newQuery, fileOperations] = loadpage(path, query);
                 fileOperations = [];
               } else {
                 htmlContent = {ctor:"Err", _0: "Solution set not found."};
@@ -321,7 +330,7 @@ const server = http.createServer((request, response) => {
           }
         } else {
           var pushedValue = JSON.parse(body);
-          [htmlContent, newQuery, fileOperations, ambiguityKey] = loadpage(path, urlParts.query, pushedValue);
+          [htmlContent, newQuery, fileOperations, ambiguityKey] = loadpage(path, query, pushedValue);
         }
         response.statusCode = 201;
         response.setHeader('Content-Type', 'text/html; charset=utf-8');

@@ -9,13 +9,12 @@ fs = nodejs.delayed fileOperations
 
 editdelay = 1000
 
-userpermissions = {pageowner= True, admin= (case vars of {admin} -> admin == "true"; _ -> False)}
+varadmin = listDict.get "admin" vars == Just "true"
+varedit = listDict.get "edit" vars == Just "true"
 
+userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
-
 permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
-
-varedit = (vars |> case of {edit} -> edit == "true"; _ -> False)
 
 canEditPage = userpermissions.pageowner && varedit
 
@@ -68,7 +67,7 @@ sourcecontent = String.newlines.toUnix <|
           )</body></html>"""
       )
 
-canEvaluate = vars |> case of {evaluate} -> evaluate; _ -> "true" 
+canEvaluate = listDict.get "evaluate" vars |> Maybe.withDefaultReplace (serverOwned "default value of evaluate" "true")
   
 main = (if canEvaluate == "true" then
       if Regex.matchIn """\.html$""" path then
@@ -224,7 +223,7 @@ menu input[type=checkbox]:checked + .label-checkbox {
 }
 
 menuitem > .solution.selected {
-  outline: white 2px solid;
+  outline: black 2px solid;
 }
 .to-be-selected {
   outline: #FCC 2px solid;
@@ -245,11 +244,11 @@ menuitem > .solution.selected {
   }	
 }
 menuitem > .solution:not(.selected):hover {
-  outline: #CCC 2px solid;
+  outline: #999 2px solid;
   cursor: pointer;
 }
 menuitem > .solution.notfinal {
-  color: #CCC;
+  color: #666;
 }
 #editor_codepreview, #manualsync-menuitem {
   display: none;
@@ -296,10 +295,10 @@ if(cp !== null) {
 </menuitem><div class=
                  "menu-separator"></div>
 <menuitem>
-<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case vars of {autosync=autosyncattr} ->
+<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case listDict.get "autosync" vars of Just autosyncattr ->
                        Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false") autosyncattr; _ -> serverOwned "initial checked attribute (use &autosync=true/false in query parameters to modify it)" [["checked", ""]])><span class= "label-checkbox">Auto-save</span></label>
 </menuitem>
-<menuitem id="manualsync-menuitem" @(case vars of {autosync="false"} -> [["force-visible", "true"]]; _ -> [])>
+<menuitem id="manualsync-menuitem" @(case listDict.get "autosync" vars of Just "false" -> [["force-visible", "true"]]; _ -> [])>
 <button onclick="sendModificationsToServer()" title= "Sends modifications to the server">Save</button>
 </menuitem>
 </menu>,
@@ -560,11 +559,10 @@ editionscript = """
           }
           if(newQueryStr !== null) {
             var newQuery = JSON.parse(newQueryStr);
-            var newQueryKeys = Object.keys(newQuery);
             var strQuery = "";
-            for(var i = 0; i < newQueryKeys.length; i++) {
-              var key = newQueryKeys[i];
-              strQuery = strQuery + (i == 0 ? "?" : "&") + key + "=" + newQuery[key];
+            for(var i = 0; i < newQuery.length; i++) {
+              var {_1: key, _2: value} = newQuery[i];
+              strQuery = strQuery + (i == 0 ? "?" : "&") + key + "=" + value
             }
             window.history.replaceState({}, "Current page", strQuery);
           }

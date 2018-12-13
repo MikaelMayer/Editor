@@ -1,6 +1,8 @@
-edit  = vars |> case of {edit} -> edit; _ -> "false"
-user  = vars |> case of {user} -> user; _ -> "Anonymous"
-hl    = vars |> case of {hl} -> hl; _ -> "en"
+edit  = listDict.get "edit" vars == Just "true"
+admin = listDict.get "admin" vars == Just "true"
+mbReplaceAdmin hint = if admin then Maybe.withDefaultReplace else Maybe.withDefaultReplace << (Update.lens { apply = identity, update = always <| Err """Cannot change the @hint without ?admin=true"""})
+user  = listDict.get "user" vars |> mbReplaceAdmin "default name" "Anonymous"
+hl    = listDict.get "hl" vars |> mbReplaceAdmin "default language" "en"
 
 userdata = [
     ("Mikael", 2)
@@ -19,7 +21,7 @@ options = fs.read "data/pizzas.txt"
 dictionnaire = [
   ("English", [ ("abbreviation", "en")
               , ("Salut", "Hey")
-              , ("Tuveuxquellepizza", "Which pizze do you want")
+              , ("Tuveuxquellepizza", "Which pizza do you want")
               , ("achoisiunepizza", "wants a pizza")
               , ("Choisistapizza", "Choose your pizza")
               , ("Margharita", "Margharita")

@@ -1,4 +1,4 @@
-user  = vars |> case of {user} -> user; _ -> "Anonymous"
+user  = listDict.get "user" vars |> Maybe.withDefaultReplace (freeze "Anonymous")
 userdata = [("Mikael", 2)]
 options = ["Margharita", "Four Cheese", "Pepper"]
 main =
