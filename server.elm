@@ -51,11 +51,13 @@ sourcecontent = String.newlines.toUnix <|
   else
     if fs.isdir path then
       let editlink = if varedit then "?edit=true" else "" in
-      """<html><head></head><body><h1><a href=''>/@path</a></h1>
+      """
+      let pathprefix = if path == "" then path else path + "/" in
+      <html><head></head><body><h1><a href=''>/@path</a></h1>
       <ul>@@(case Regex.extract "^(.*)/.*$" path of
         Just [prev] -> [<li><a href=("/" + prev)>..</li>]
-        _ -> [<li><a href="/" contenteditable="false">..</li>])@@(List.map (\name -> <li><a href=("/" + path + "/" + name + "@editlink") contenteditable="false">@@name</li>) (fs.listdir path))</ul>
-      Hint: place a <a href=("/" + path + "/README.md"+ "@editlink") contenteditable="false">README.md</a>, <a href=("/" + path + "/index.html" + "@editlink") contenteditable="false">index.html</a> or <a href=("/" + path + "/index.elm"+ "@editlink") contenteditable="false">index.elm</a> file to display something else than this page.</body></html>"""
+        _ -> if path == "" then [] else [<li><a href="/" contenteditable="false">..</li>])@@(List.map (\name -> <li><a href=("/" + pathprefix + name + "@editlink") contenteditable="false">@@name</li>) (fs.listdir path))</ul>
+      Hint: place a <a href=("/" + pathprefix + "README.md"+ "@editlink") contenteditable="false">README.md</a>, <a href=("/" + pathprefix + "index.html" + "@editlink") contenteditable="false">index.html</a> or <a href=("/" + pathprefix + "index.elm"+ "@editlink") contenteditable="false">index.elm</a> file to display something else than this page.</body></html>"""
     else
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
         """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
