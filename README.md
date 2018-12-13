@@ -1,6 +1,6 @@
 # Editor : The First Reversible HTTP Server
 
-![Screenshot of Editor](/screenshot.png?raw=true)
+![Screenshot of Editor](/screenshot.png?raw=true#1)
 
 Editor is an HTTP server that not *only* displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages to the source files themselves.
 
