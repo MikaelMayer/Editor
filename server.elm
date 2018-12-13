@@ -179,6 +179,8 @@ menu {
   margin-top: 0px;
   z-index: 10000;
   min-height: 1.5em;
+  font-family: sans-serif;
+  border: 1px solid #888;
 }
 menu.edittoolbar {
   display: block;
@@ -253,14 +255,31 @@ menuitem > .solution.notfinal {
 [ghost-visible=true] {
   display: initial !important;
 }
+[ghost-disabled=true] {
+  opacity: 0.5 !important;
+  cursor: initial;
+  pointer-events: none !important;
+}
+[ghost-disabled=false] {
+  opacity: 1  !important;
+  pointer-events: auto !important;
+}
+#manualsync-menuitem[ghost-disabled=false] > button {
+  cursor:pointer !important;
+  opacity: 1  !important;
+  pointer-events: auto !important;
+}
 #manualsync-menuitem[force-visible=true] {
   display: initial;
 }
 [ghost-visible=false] {
   display: none !important;
 }
-#manualsync-menuitem > button {
+#manualsync-menuitem> button {
   vertical-align: top;
+  opacity: 0.5;
+  cursor: initial;
+  pointer-events: none;
 }
 </style>
 <div class= "editor-logo">Editor</div><div class="menu-separator"></div><menuitem class= "filename" title= "the path of the file you are currently viewing">@path</menuitem>
@@ -273,11 +292,11 @@ if(cp !== null) {
 }"""><span class= "label-checkbox">Source</span></label>
 </menuitem>
 <menuitem>
-<label title="If on, changes are automatically propagated after 1s after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case vars of {autosync=autosyncattr} ->
-                       Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false") autosyncattr; _ -> serverOwned "initial checked attribute (use &autosync=true/false in query parameters to modify it)" [["checked", ""]])><span class= "label-checkbox">Auto-sync</span></label>
+<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case vars of {autosync=autosyncattr} ->
+                       Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false") autosyncattr; _ -> serverOwned "initial checked attribute (use &autosync=true/false in query parameters to modify it)" [["checked", ""]])><span class= "label-checkbox">Auto-save</span></label>
 </menuitem>
 <menuitem id="manualsync-menuitem" @(case vars of {autosync="false"} -> [["force-visible", "true"]]; _ -> [])>
-<button onclick="sendModificationsToServer()">Send changes to server</button>
+<button onclick="sendModificationsToServer()" title= "Sends modifications to the server">Save</button>
 </menuitem>
 </menu>,
 <div id="menumargin"></div>]
@@ -607,7 +626,6 @@ editionscript = """
     
     function handleMutations(mutations) {
       console.log("mutations", mutations);
-      if(document.getElementById("input-autosync") && !document.getElementById("input-autosync").checked) return;
       var onlyGhosts = true;
       for(var i = 0; i < mutations.length && onlyGhosts; i++) {
         // A mutation is a ghost if either
@@ -638,6 +656,13 @@ editionscript = """
         console.log("mutations are only ghosts, skipping");
         return;
       } // Send in post the new HTML along with the URL
+      if(document.getElementById("input-autosync") && !document.getElementById("input-autosync").checked) {
+        if(document.getElementById("manualsync-menuitem")) {
+          document.getElementById("manualsync-menuitem").setAttribute("ghost-disabled", "false");
+        }
+        return;
+      }
+      
       if(typeof t !== "undefined") {
         clearTimeout(t);
       }
