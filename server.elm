@@ -158,7 +158,16 @@ initialCheckedAttribute = [["checked", ""]]
   
 editionmenu = [
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
-<style>
+<style>menu .editor-logo {
+  display: inline-block;
+  margin-right: 5px;
+  font-weight: bold;
+}
+
+menuitem.filename {
+  color: #777;
+  padding-left: 3px;
+}
 .editor-menu {
   display: initial !important;
 }
@@ -169,19 +178,46 @@ menu {
   position: fixed;
   margin-top: 0px;
   z-index: 10000;
+  min-height: 1.5em;
 }
 menu.edittoolbar {
   display: block;
-  background: black;
-  color: white;
-  padding: 2px;
+  color: black;
+  background-color: #d5daff;
+  padding: 3px;
+  border-radius: 10px;
 }
 menuitem.disabled {
   color: #BBB;
 }
-menuitem > .solution {
-  
+menu input[type=checkbox] {
+  display: none;
 }
+menu input[type=checkbox]:checked + .label-checkbox {
+  background: #bcbbff;
+}
+.label-checkbox {
+  padding: 2px;
+  border-radius: 10px;
+}
+.label-checkbox:hover {
+  background-color: rgba(0,0,0,0.06);
+  cursor: pointer;
+}
+.menu-separator {
+  display: inline-block;
+  border-left: 1px solid #828282;
+  margin: 0 3px;
+  height: 1em;
+  padding: 0;
+  vertical-align: top;
+  line-height: normal;
+  outline: none;
+  overflow: hidden;
+  text-decoration: none;
+  width: 0;
+}
+
 menuitem > .solution.selected {
   outline: white 2px solid;
 }
@@ -215,30 +251,30 @@ menuitem > .solution.notfinal {
   z-index: 9999;
 }
 [ghost-visible=true] {
-  display: block;
+  display: initial !important;
 }
-#editor_codepreview[ghost-visible=true] {
-  display: block;
-}
-#manualsync-menuitem[ghost-visible=true], #manualsync-menuitem[force-visible=true] {
-  display: inline-block;
+#manualsync-menuitem[force-visible=true] {
+  display: initial;
 }
 [ghost-visible=false] {
-  display: none;
+  display: none !important;
+}
+#manualsync-menuitem > button {
+  vertical-align: top;
 }
 </style>
-<menuitem>@path</menuitem>
-<menuitem>
+<div class= "editor-logo">Editor</div><div class="menu-separator"></div><menuitem class= "filename" title= "the path of the file you are currently viewing">@path</menuitem>
+<div class="menu-separator"></div><menuitem>
 <label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox" save-attributes="checked"
   onchange="""
 var cp = document.getElementById("editor_codepreview");
 if(cp !== null) {
    cp.setAttribute("ghost-visible", this.checked ? "true": "false")
-}""">Show source</label>
+}"""><span class= "label-checkbox">Source</span></label>
 </menuitem>
 <menuitem>
 <label title="If on, changes are automatically propagated after 1s after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case vars of {autosync=autosyncattr} ->
-                       Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false") autosyncattr; _ -> serverOwned "initial checked attribute (use &autosync=true/false in query parameters to modify it)" [["checked", ""]])>Auto-sync</label>
+                       Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false") autosyncattr; _ -> serverOwned "initial checked attribute (use &autosync=true/false in query parameters to modify it)" [["checked", ""]])><span class= "label-checkbox">Auto-sync</span></label>
 </menuitem>
 <menuitem id="manualsync-menuitem" @(case vars of {autosync="false"} -> [["force-visible", "true"]]; _ -> [])>
 <button onclick="sendModificationsToServer()">Send changes to server</button>
