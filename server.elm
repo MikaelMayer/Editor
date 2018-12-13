@@ -15,7 +15,9 @@ permissionToCreate = userpermissions.admin
 
 permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
 
-canEditPage = userpermissions.pageowner && (vars |> case of {edit} -> edit == "true"; _ -> False)
+varedit = (vars |> case of {edit} -> edit == "true"; _ -> False)
+
+canEditPage = userpermissions.pageowner && varedit
 
 freezeWhen notPermission lazyMessage = Update.lens {
   apply x = x
@@ -49,11 +51,12 @@ sourcecontent = String.newlines.toUnix <|
     """<html><head></head><body>Sample server Elm</body></html>"""
   else
     if fs.isdir path then
+      let editlink = if varedit then "?edit=true" else "" in
       """<html><head></head><body><h1><a href=''>/@path</a></h1>
       <ul>@@(case Regex.extract "^(.*)/.*$" path of
         Just [prev] -> [<li><a href=("/" + prev)>..</li>]
-        _ -> [<li><a href="/">..</li>])@@(List.map (\name -> <li><a href=("/" + path + "/" + name)>@@name</li>) (fs.listdir path))</ul>
-      Hint: place an <a href=(path + "/index.html")>index.html</a> or <a href=(path + "/index.elm")>index.elm</a> file to display something else than this page.</body></html>"""
+        _ -> [<li><a href="/" contenteditable="false">..</li>])@@(List.map (\name -> <li><a href=("/" + path + "/" + name + "@editlink") contenteditable="false">@@name</li>) (fs.listdir path))</ul>
+      Hint: place a <a href=("/" + path + "/README.md"+ "@editlink") contenteditable="false">README.md</a>, <a href=("/" + path + "/index.html" + "@editlink") contenteditable="false">index.html</a> or <a href=("/" + path + "/index.elm"+ "@editlink") contenteditable="false">index.elm</a> file to display something else than this page.</body></html>"""
     else
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
         """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
@@ -290,7 +293,8 @@ var cp = document.getElementById("editor_codepreview");
 if(cp !== null) {
    cp.setAttribute("ghost-visible", this.checked ? "true": "false")
 }"""><span class= "label-checkbox">Source</span></label>
-</menuitem>
+</menuitem><div class=
+                 "menu-separator"></div>
 <menuitem>
 <label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case vars of {autosync=autosyncattr} ->
                        Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false") autosyncattr; _ -> serverOwned "initial checked attribute (use &autosync=true/false in query parameters to modify it)" [["checked", ""]])><span class= "label-checkbox">Auto-save</span></label>
