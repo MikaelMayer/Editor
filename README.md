@@ -36,6 +36,10 @@ Then, point your browser to http://127.0.0.1:3000?edit=true
       );
       </script>
 
+* You can drop images on a webpage, they are automatically uploaded at the current relative location, and an img html element is inserted. See how this works:
+
+  ![Demo of image drop](/drop-image.gif?raw=true)
+
 ## Simple dynamic example
 
 Create a file `pizzas.elm` with the following content:
