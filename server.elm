@@ -35,14 +35,17 @@ For debugging purposes, below is the new value that was pushed:
 <pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
 """)
 
-path = if fs.isdir path then
-       if fs.isfile <| path + "index.html" then path + "index.html"
-  else if fs.isfile <| path + "/index.html" then path + "/index.html"
-  else if fs.isfile <| path + "index.elm" then path + "index.elm"
-  else if fs.isfile <| path + "/index.elm" then path + "/index.elm"
-  else if fs.isfile <| path + "README.md" then path + "README.md"
-  else if fs.isfile <| path + "/README.md" then path + "/README.md"
-  else path
+path =
+  if fs.isdir path then
+   if listDict.get "ls" vars /= Just "true" then
+         if fs.isfile <| path + "index.html" then path + "index.html"
+    else if fs.isfile <| path + "/index.html" then path + "/index.html"
+    else if fs.isfile <| path + "index.elm" then path + "index.elm"
+    else if fs.isfile <| path + "/index.elm" then path + "/index.elm"
+    else if fs.isfile <| path + "README.md" then path + "README.md"
+    else if fs.isfile <| path + "/README.md" then path + "/README.md"
+    else path
+   else path
   else path
 
 sourcecontent = String.newlines.toUnix <|
@@ -286,7 +289,7 @@ menuitem > .solution.notfinal {
   pointer-events: none;
 }
 </style>
-<div class= "editor-logo">Editor <a href= "https://github.com/MikaelMayer/Editor/issues">needs your feedback!</a></div><div class="menu-separator"></div><menuitem class= "filename" title= "the path of the file you are currently viewing">@path</menuitem>
+<div class= "editor-logo">Editor <a href= "https://github.com/MikaelMayer/Editor/issues">needs your feedback!</a></div><div class="menu-separator"></div><menuitem class= "filename" title= "the path of the file you are currently viewing">@(if path == "" then serverOwned "empty path" "[root folder]" else path)</menuitem>
 <div class="menu-separator"></div><menuitem>
 <label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox" save-attributes="checked"
   onchange="""
