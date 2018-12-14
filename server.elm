@@ -695,6 +695,86 @@ editionscript = """
          , subtree: true
          }
        )
-     }, 10)"""
+     }, 10)
+    
+    function pasteHtmlAtCaret(html) {
+      var sel, range;
+      if (window.getSelection) {
+          // IE9 and non-IE
+          sel = window.getSelection();
+          if (sel.getRangeAt && sel.rangeCount) {
+              range = sel.getRangeAt(0);
+              range.deleteContents();
+
+              // Range.createContextualFragment() would be useful here but is
+              // only relatively recently standardized and is not supported in
+              // some browsers (IE9, for one)
+              var el = document.createElement("div");
+              el.innerHTML = html;
+              var frag = document.createDocumentFragment(), node, lastNode;
+              while ( (node = el.firstChild) ) {
+                  lastNode = frag.appendChild(node);
+              }
+              range.insertNode(frag);
+
+              // Preserve the selection
+              if (lastNode) {
+                  range = range.cloneRange();
+                  range.setStartAfter(lastNode);
+                  range.collapse(true);
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+              }
+          }
+      } else if (document.selection && document.selection.type != "Control") {
+          // IE < 9
+          document.selection.createRange().pasteHTML(html);
+      }
+    }
+     
+    function handleFileSelect(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+
+      var insertRelative = true;
+      
+      var files = evt.dataTransfer.files; // FileList object.
+      // files is a FileList of File objects. List some properties.
+      var output = [];
+      for (var i = 0, f; f = files[i]; i++) {
+        if(f.type.indexOf("image") == 0 && f.size < 30000000) {
+          // process image files under 30Mb
+          var xhr = new XMLHttpRequest();
+          var tmp = location.pathname.split("/");
+          tmp = tmp.slice(0, tmp.length - 1);
+          var storageFolder = tmp.join("/");
+          var storageLocation =  storageFolder + "/" + f.name;
+          xhr.onreadystatechange = ((xhr, path, name) => () => {
+            if (xhr.readyState == XMLHttpRequest.DONE) {
+              pasteHtmlAtCaret(`<img src="${path}" alt="${name}">`);
+            } else {
+              console.log("Error while uploading picture", xhr);
+            }
+          })(xhr, insertRelative ? f.name : storageLocation, f.name)
+          xhr.open("POST", storageLocation, true);
+          xhr.setRequestHeader("write-file", f.type);
+          xhr.send(f);
+        }
+      }
+    }
+
+    function handleDragOver(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
+    }
+
+    if(@(if varedit then "true" else "false")) {
+      console.log("You can now drop image files on the caret");
+      var dropZone = document.body;
+      dropZone.addEventListener('dragover', handleDragOver, false);
+      dropZone.addEventListener('drop', handleFileSelect, false);
+    }
+"""
 
 main

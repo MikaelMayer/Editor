@@ -10,7 +10,7 @@ readrules = [
 
 writerules = [
     (match """\.\.(?:/|\\)|(?:/|\\)\.\.|^\.\.$""", False) -- We disallow relative paths
-  , (match """\.(png|jpg|ico)$""", False) -- We don't allow write access to any media files for now.
+  -- , (match """\.(png|jpg|ico)$""", False) -- Uncomment if you want to prevent the writing of images.
   , (match """\.(elm|md|html)$""", True)
   ]
 

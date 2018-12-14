@@ -286,11 +286,22 @@ const server = http.createServer((request, response) => {
         }
       }
     } else if(request.method == "POST") {
-    var body = '';
-    request.on('data', function (data) {
-        body += data;
-    });
+    const chunks = [];
+    request.on('data', chunk => chunks.push(chunk));
     request.on('end', function () {
+        var allChunks = Buffer.concat(chunks);
+        if(request.headers["write-file"]) {
+          console.log("going to write file");
+          // Just a file that we write on disk.
+          var imageType = request.headers["write-file"];
+          var imageLocation = path;
+          console.log("going to write image file to ", imageLocation);
+          fs.writeFileSync(imageLocation, allChunks);
+          response.statusCode = 201;
+          response.end('');
+          return;
+        }
+        var body =  allChunks.toString();
         var ambiguityKey = request.headers["ambiguity-key"];
         var numberOfSolutionsSoFar = 2; // Only if Ambiguity-Key is set.
         var numSolutionSelected = 1;
