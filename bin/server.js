@@ -136,7 +136,10 @@ function applyOperations(operations) {
       // TODO: Create the path if necessary
       fs.writeFileSync(path, action.args._1, "utf8");
     } else if(action["$d_ctor"] == "Rename") {
-      fs.renameSync(path, action.args._1);
+      if(path.startsWith("/")) path = path.substring(1);
+      var newName = action.args._1;
+      if(newName.startsWith("/")) newName = newName.substring(1);
+      fs.renameSync(path, newName);
     } else if(action["$d_ctor"] == "Delete") {
       fs.unlinkSync(path);
     } else {

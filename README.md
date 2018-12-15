@@ -40,6 +40,11 @@ Then, point your browser to http://127.0.0.1:3000?edit=true
 
   ![Demo of image drop](/drop-image.gif?raw=true)
 
+* To force to list the files in a folder even though there is an `index.html` or a `README.md`, just append &ls=true in the URL query parameters.
+
+* From any view listing files, you can delete files by deleting the corresponding bullet point.
+  Similarly, to rename a file, go to devtools and rename the text of the link.
+
 ## Simple dynamic example
 
 Create a file `pizzas.elm` with the following content:
