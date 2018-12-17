@@ -20,31 +20,6 @@ Now, to launch a reversible HTTP server in any folder, run:
 The longer version of this command is `http-server-editor`.  
 Then, point your browser to http://127.0.0.1:3000?edit=true
 
-## Supported features
-
-* If you point the browser to a non-existing HTML or Elm file and modify it, it will display a default template and automatically create the file as soon as you modify the template.
-* If a file `htaccess.elm` is at the root of the folder, it will be executed with an environment containing the variables `path` and `method` ("GET" or "POST") and should produce a boolean indicating if the operation is allowed: True meaning yes, False meaning no.
-* If a file `server.elm` is at the root the folder, it will always execute this file with an environment containing the variables `path` containing the requested path, a record `vars` containing the query variables, and this file should output the page.
-* Markdown styling can be customized by creating a `markdown.css` file. Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of the document using the DOM inspector.
-* Pages containing Google Analytics insert a &lt;script> to the page, that should not be back-propagated. This servers ensures that this new &lt;script> is added the attribute `isghost="true"` to prevent back-propagation.  
-  To set up your own predicates concerning which inserted elements should automatically be marked as ghost, insert the following snippet at the very beginning of your body and modify the predicate:
-
-      <script>
-      (setGhostOnInserted || []).push(insertedNode =>
-        insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
-        insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
-      );
-      </script>
-
-* You can drop images on a webpage, they are automatically uploaded at the current relative location, and an img html element is inserted. See how this works:
-
-  ![Demo of image drop](/drop-image.gif?raw=true)
-
-* To force to list the files in a folder even though there is an `index.html` or a `README.md`, just append &ls=true in the URL query parameters.
-
-* From any view listing files, you can delete files by deleting the corresponding bullet point.
-  Similarly, to rename a file, go to devtools and rename the text of the link.
-
 ## Simple dynamic example
 
 Create a file `pizzas.elm` with the following content:
@@ -75,12 +50,67 @@ Congratulations. In 17 lines of code, you created a Content Management System wh
 * Display the summary of choice
 
 Beware, the system does not support concurrent editing yet, make sure you alone edit the page at the same time.
-    
+
 #### Advanced example
 
 Look into [`test/pizzas.elm`](https://github.com/MikaelMayer/Editor/blob/master/test/pizzas.elm) and [`CONTRIBUTING.md`](https://github.com/MikaelMayer/Editor/blob/master/CONTRIBUTING.md) for a more advanced example covering the same website with file reading, evaluation, translation to different languages, deletion of choices, modification of pizza by name, and more.
 
-## Add edition capabilities to your webpage
+## Supported features
+
+### Administrator rights
+
+It's possible to active the admin rights by setting `&admin=true` in the URL. With these rights, 
+
+* If you point the browser to a non-existing HTML or Elm file and modify it, it will display a default template and automatically create the file as soon as you modify the template.
+* If you modify the menus, it will create a modified `server.elm` at the root the folder instead of using the built-in one. Careful: when you upgrade Editor, you should remove this file.
+
+### Access permisions based on path
+
+If a file `htaccess.elm` is at the root of the folder, it will be executed with an environment containing the variables `path` and `method` ("GET" or "POST") and should produce a boolean (`True`/`False`)indicating if the operation is allowed.
+
+### Custom markdown styling
+
+Markdown styling can be customized by creating a `markdown.css` file at the root where Editor is launched.
+Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of the document using the DOM inspector.
+
+### Dealing with scripts that modify the page
+
+Some scripts such as Google Analytics insert more nodes into the page. These nodes should not be back-propagated.
+Editor can ensure that such inserted nodes are not back-propagated by marking them as ghost (i.e. setting the attribute `isghost` to `true`, either on the DOM or on javascript for text nodes). Here is how:
+
+To tell Editor that a node should not be back-propagated after it has just been inserted, just insert the following script at the beginning of the body:
+
+      <script>
+      (setGhostOnInserted || []).push(insertedNode =>
+        PREDICATE ON NODE
+      );
+      </script>
+
+and replace PREDICATE ON NODE with a predicate such as `insertedNode.nodeType == 1 && insertedNode.getAttribute("id") == "dummy"`.
+
+### Dealing with page reloads
+
+Editor refreshes the whole page each time a update is back-propagated. It is however possible to save some ghost attributes and some ghost nodes. Here is the list of things Editor saves are restors:
+
+* Any node with an `id` and `ghost-visible` DOM attribute will have its `ghost-visible` DOM attribute value restored.
+* Any node with an `id` and `save-attributes` DOM attribute will have all the javascript attributes, that are encoded in the value of `save-attributes` separated with space, restored.
+* Any node with a `save-ghost` attribute set to `true`, that is a child of `head` or whose parent has an `id`, will be reinserted back as a child to the `head` or the parent, if it does not yet exists.
+
+### Uploading media files.
+
+You can drop images on a webpage, they are automatically uploaded at the current relative location, and an img html element is inserted. See how this works:
+
+  ![Demo of image drop](/drop-image.gif?raw=true)
+
+### Listing files
+
+If a folder does not contain an `index.html` or a `README.md`, Editor will display a list of files.
+To force to list the files in a folder even though there is an `index.html` or a `README.md`, just append &ls=true in the URL query parameters.
+
+From any view listing files, you can delete files by deleting the corresponding bullet point.
+Similarly, to rename a file, go to devtools and rename the text of the link.
+
+### Add edition capabilities to your webpage
 
 When the `edit=true` search query param is set, the following style is injected to the page:
 
