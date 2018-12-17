@@ -1,0 +1,38 @@
+<html>
+<head>
+<title>ACE in good Action</title>
+<style type="text/css" media="screen">
+    #aceeditor { 
+          height: 224px;
+          width: 800px;
+          border: 1px solid #DDD;
+          border-radius: 4px;
+          border-bottom-right-radius: 0px;
+          margin-top: 5px;
+    }
+</style>
+</head>
+<body>
+<h1>Test with ACE</h1>
+<div id="aceeditor" list-ghost-attributes="class draggable style" children-are-ghosts="true" save-ghost-attributes="style"></div>
+<script>
+var script = document.createElement('script');
+script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/ace.js';
+script.async = false;
+script.setAttribute("isghost", "true");
+document.head.appendChild(script);
+script = document.createElement('script');
+script.innerText = `
+  console.log("executing script");
+  var aceeditor = ace.edit("aceeditor");
+  aceeditor.session.setMode("ace/mode/javascript");
+  aceeditor.setValue(\`function foo(items) {
+  var x = "All this is syntax highlighted";
+  return x;
+}\`);`
+script.async = false;
+script.setAttribute("isghost", "true");
+setTimeout(() => document.head.appendChild(script), 0);
+</script>
+</body>
+</html>

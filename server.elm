@@ -312,23 +312,64 @@ if(cp !== null) {
 initialScript = [
 <script>
 function isGhostNode(elem) {
-  return elem.nodeType == 1 &&
+  return elem && elem.nodeType == 1 &&
     (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true");
+}
+
+function areChildrenGhosts(n) {
+  return n && n.getAttribute && n.getAttribute("children-are-ghosts") == "true";
 }
 function hasGhostAncestor(htmlElem) {
   if(htmlElem == null) return false;
   if(isGhostNode(htmlElem)) return true;
-  return hasGhostAncestor(htmlElem.parentNode);
+  return areChildrenGhosts(htmlElem.parentNode) || hasGhostAncestor(htmlElem.parentNode);
 }
 function isGhostAttributeKey(name) {
   return name.startsWith("ghost-");
 }
+function isSpecificGhostAttributeKeyFromNode(n) {
+  var additionalGhostAttributes = ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ");
+  return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
+}
 
 setGhostOnInserted = [];
 
+// Analytics scripts
 setGhostOnInserted.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
      insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
+);
+
+// For for ace styles in header
+(setGhostOnInserted || []).push(insertedNode => {
+    if(insertedNode.tagName == "STYLE" && typeof insertedNode.getAttribute("id") == "string" &&
+     (insertedNode.getAttribute("id").startsWith("ace-") ||
+     insertedNode.getAttribute("id").startsWith("ace_"))) {
+      insertedNode.setAttribute("save-ghost", "true"); 
+      return true;
+    } else {
+      return false;
+    }
+  }
+);
+// For ace css themes
+(setGhostOnInserted || []).push(insertedNode => {
+  if(insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null) {
+    if(insertedNode.nextSibling && insertedNode.nextSibling.getAttribute &&
+      insertedNode.nextSibling.getAttribute("id").startsWith("ace-")) {
+      insertedNode.setAttribute("id", "loaded-aced-theme");
+      insertedNode.setAttribute("save-ghost", "true");
+      return true;
+    }
+    return false;
+  }
+  return false;
+  }
+);
+// For ace script for syntax highlight
+(setGhostOnInserted || []).push(insertedNode =>
+  insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
+     insertedNode.getAttribute("src").startsWith("https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/mode-j")
 );
 
 function handleScriptInsertion(mutations) {
@@ -358,7 +399,7 @@ if (typeof analyticsScriptNeutralizer !== "undefined") {
 
 analyticsScriptNeutralizer = new MutationObserver(handleScriptInsertion);
 analyticsScriptNeutralizer.observe
- ( document.body
+ ( document.body.parentElement
  , { attributes: false
    , childList: true
    , characterData: false
@@ -469,10 +510,23 @@ editionscript = """
         }
       }
     }
-    return [idGhostAttributes, idDynamicAttributes];
+    var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
+    var parentsGhostNodes = [];
+    for(var i = 0; i < ghostElemsToReinsert.length; i++) {
+      var elem = ghostElemsToReinsert[i];
+      if(elem.parentNode.tagName == "HEAD") {
+        parentsGhostNodes.push({parentSelector: "HEAD", node: elem});
+      } else {
+        var id =  elem.parentNode.getAttribute("id");
+        if(id != null) {
+          parentsGhostNodes.push({parentSelector: "#"+id, node: elem});
+        }
+      }
+    }
+    return [idGhostAttributes, idDynamicAttributes, parentsGhostNodes];
   }
   function applyGhostAttributes(attrs) {
-    var [idGhostAttributes, idDynamicAttributes] = attrs;
+    var [idGhostAttributes, idDynamicAttributes, parentsGhostNodes] = attrs;
     for(var i in idGhostAttributes) {
       var [id, attrs] = idGhostAttributes[i];
       var elem = document.getElementById(id);
@@ -485,8 +539,17 @@ editionscript = """
     for(var i in idDynamicAttributes) {
       var [id, key, value] = idDynamicAttributes[i];
       var elem = document.getElementById(id);
-      if(elem !== null && typeof elem !== "undefined") {
+      if(elem != null) {
         elem[key] = value;
+      }
+    }
+    for(var i in parentsGhostNodes) {
+      var {parentSelector: selector, node: elem} = parentsGhostNodes[i];
+      var parent = document.querySelector(selector);
+      if(parent != null) {
+        if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
+          parent.appendChild(elem);
+        }
       }
     }
   }
@@ -498,10 +561,11 @@ editionscript = """
         return ["COMMENT", n.textContent];
       } else {
         var attributes = [];
+        var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(n);
         for(var i = 0; i < n.attributes.length; i++) {
           var key = n.attributes[i].name;
           var value = n.attributes[i].value;
-          if(!isGhostAttributeKey(key)) {
+          if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key)) {
             if(key == "style") {
               value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2);
             }
@@ -509,9 +573,11 @@ editionscript = """
           }
         }
         var children = [];
-        for(i = 0; i < n.childNodes.length; i++) {
-          if(!isGhostNode(n.childNodes[i])) {
-            children.push(domNodeToNativeValue(n.childNodes[i]));
+        if(!areChildrenGhosts(n)) {
+          for(i = 0; i < n.childNodes.length; i++) {
+            if(!isGhostNode(n.childNodes[i])) {
+              children.push(domNodeToNativeValue(n.childNodes[i]));
+            }
           }
         }
         return [n.tagName.toLowerCase(), attributes, children];
@@ -632,7 +698,6 @@ editionscript = """
     }
     
     function handleMutations(mutations) {
-      console.log("mutations", mutations);
       var onlyGhosts = true;
       for(var i = 0; i < mutations.length && onlyGhosts; i++) {
         // A mutation is a ghost if either
@@ -640,23 +705,34 @@ editionscript = """
         // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
         // -- It is the modification of a node or an attribute inside a ghost node.
         var mutation = mutations[i];
-        if(hasGhostAncestor(mutation.target)) continue;
+        if(hasGhostAncestor(mutation.target)) {
+          continue;
+        }
         if(mutation.type == "attributes") {
-          if(isGhostAttributeKey(mutation.attributeName)) {
+          var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(mutation.target);
+          if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName)) {
           } else {
             onlyGhosts = false;
+            console.log("Attribute is not ghost", mutation);
           }
         } else if(mutation.type == "childList") {
-          for(var j = 0; j < mutation.addedNodes.length && onlyGhosts; j++) {
-            if(!hasGhostAncestor(mutation.addedNodes[j])) {
-              onlyGhosts = false;
+          if(!areChildrenGhosts(mutation.target)) {
+            for(var j = 0; j < mutation.addedNodes.length && onlyGhosts; j++) {
+              if(!hasGhostAncestor(mutation.addedNodes[j])) {
+                onlyGhosts = false;
+                console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
+              }
             }
-          }
-          if(mutation.removedNodes.length > 0) {
-            onlyGhosts = false;
+            for(var j = 0; j < mutation.removedNodes.length && onlyGhosts; j++) {
+              if(!isGhostNode(mutation.removedNodes[j])) {
+                onlyGhosts = false;
+                console.log(`Removed node ${j} was not a ghost`, mutation);
+              }
+            }
           }
         } else {
           onlyGhosts = false;
+          console.log("mutations other than attributes and childList are not ghosts", mutations);
         }
       }
       if(onlyGhosts) {
