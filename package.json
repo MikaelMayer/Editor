@@ -2,7 +2,7 @@
   "name": "http-server-editor",
   "version": "1.0.27",
   "description": "HTTP server that accepts user-triggered changes to static HTML & Markdown pages and dynamic .elm pages.",
-  "main": "bin/server.js",
+  "main": "bin/server-generated.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -30,10 +30,10 @@
     "editor": "bin/server-generated.js"
   },
   "files": [
-    "bin/server.js",
     "bin/server-generated.js",
     "favicon.ico",
     "README.md",
-    "LICENSE.md"
+    "LICENSE.md",
+    "CONTRIBUTING.md"
   ]
 }
