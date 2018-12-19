@@ -139,6 +139,14 @@ Editor can be run with some commands to change its default behavior.
 * `--admin=true` activates the admin mode (mostly to change `server.elm` -- deactivated by default). It can always be re-added on any URL by adding `?admin=false`
 * `--path=dir` launch Editor at the given directory (can be relative or absolute)
 
+### NPM require package
+
+You can invoke Editor as an NPM package in node.js. To do so, after installing `http-server-editor`, place in your code:
+
+    require("http-server-editor")({option:true});
+    
+You can use the syntax `option:true` to pass along any option described in the previous section 'Command line arguments'
+
 ## Limitations, future work and caution
 
 ### Ambiguity
