@@ -1,3 +1,17 @@
+
+var params = process.argv.slice(2);
+
+function getParam(x, defaultValue) {
+  var param = params.find(elem => elem.startsWith(x));
+  if(typeof param !== "undefined") {
+    var returnValue = param.substring(x.length + 1);
+    if(returnValue == "") return defaultValue;
+    return returnValue;
+  } else {
+    return defaultValue;
+  }
+}
+
 const fs = require("fs");
 //const https = require('https');
 const http = require('http');
@@ -9,8 +23,14 @@ const url = require('url');
 const hostname = '127.0.0.1';
 const port = 3000;
 
-const serverFile = "./server.elm"
-const htaccessFile = "./htaccess.elm"
+const serverFile = "./server.elm";
+const htaccessFile = "./htaccess.elm";
+var defaultOptions = {
+  edit:     getParam("--edit",     "true") == "true",
+  autosave: getParam("--autosave", "true") == "true",
+  question: getParam("--question", "true") == "true",
+  admin:    getParam("--admin",    "false") == "true"
+};
 
 // Don't modify, this will be replaced by the content of 'server.elm'
 const defaultServerContent = "<html><head></head><body>Server not available.</body></html>";
@@ -200,7 +220,7 @@ function loadpage(path, overrides, newvalue) {
   // __dirname = path.resolve(); // If in the REPL
   if(typeof overrides != "object") overrides = {};
   var serverFileContent = readServerFile();
-  var env = { vars: overrides, path: path, fileOperations: [] };
+  var env = { vars: overrides, defaultOptions: toLeoQuery(defaultOptions), path: path, fileOperations: [] };
   
   if(typeof newvalue == "undefined") {
     return [evaluateToHtml(path, env, serverFileContent), overrides];
@@ -304,6 +324,7 @@ const server = http.createServer((request, response) => {
           response.end('');
           return;
         }
+        var canAskQuestion = (request.headers["question"] || urlParts.query["question"] || (defaultOptions.questions ? "true" : "false")) == "true";
         var body =  allChunks.toString();
         var ambiguityKey = request.headers["ambiguity-key"];
         var numberOfSolutionsSoFar = 2; // Only if Ambiguity-Key is set.
@@ -353,8 +374,8 @@ const server = http.createServer((request, response) => {
         } else {
           response.setHeader('New-Query', JSON.stringify(newQuery));
           if(ambiguityKey != null && typeof ambiguityKey != "undefined" &&
-             !path.endsWith(".html") && 
-             urlParts.query["edit"] == "true") {
+             !path.endsWith(".html") && canAskQuestion &&
+             (urlParts.query["edit"] == "true" || (urlParts.query["edit"] == null && defaultOptions.edit))) {
             var solutionSet = cachedSolutions[ambiguityKey];
             var ambiguityEnd = solutionSet.remaining === false;
             ambiguitiesSummary = solutionSet.computed.map(a => fileOperationSummary(a[2]));
@@ -365,6 +386,7 @@ const server = http.createServer((request, response) => {
             response.setHeader('Ambiguity-End', ambiguityEnd ? "true" : "false");
           } else {
             applyOperations(fileOperations);
+            response.setHeader('Operations-Summary', fileOperationSummary(fileOperations));
           }
           response.end(htmlContent._0);
         }
@@ -381,7 +403,30 @@ const server = http.createServer((request, response) => {
 
 
 // Load the Elm program into our namespace.
-console.log("Editor Server ready!")
 server.listen(port, hostname, () => {
-    console.log(`Point your browser at http://${hostname}:${port}/?edit=true`);
-  });
+  console.log("Editor Server ready!");
+  if(defaultOptions.edit) {
+    console.log("Edit mode:     activated.    (toggle option: 'edit=false')");
+  } else {
+    console.log("Edit mode:     deactivated.  (toggle option: 'edit=true')");
+  }
+  if(defaultOptions.autosave) {
+    console.log("Autosave mode: activated.    (toggle option: 'autosave=false')");
+  } else {
+    console.log("Autosave mode: deactivated.  (toggle option: 'autosave=true')");
+  }
+  if(defaultOptions.question) {
+    console.log("Questions:     activated.    (toggle option: 'question=false')");
+  } else {
+    console.log("Questions:     deactivated.  (toggle option: 'question=true')");
+  }
+  console.log("To toggle any of these options in the browser, join these toggle options using '&', prefix this with '?', and append the result to any URL, ");
+  console.log(`Point your browser at http://${hostname}:${port}`);
+});
+
+module.exports = function(requireOptions) {
+  if(!requireOptions) return;
+  for(var k in requireOptions) {
+    defaultOptions[k] = requireOptions[k];
+  }
+}

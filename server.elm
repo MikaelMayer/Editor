@@ -1,16 +1,23 @@
 -- input: path            The file to serve.
 -- input: vars:           URL query vars.
+-- input: defaultOptions  default options (options that vars can override).
 -- input: fileOperations  The current set of delayed file disk operations.
 --    Note that Elm pages are given in context the path, the vars, and the file system (fs) to read other files
 -- output: The page, either raw or augmented with the toolbar and edit scripts.
 preludeEnv = __CurrentEnv__
 
-fs = nodejs.delayed fileOperations
+fs = nodejs.delayedFS nodejs.nodeFS fileOperations
 
 editdelay = 1000
 
-varadmin = listDict.get "admin" vars == Just "true"
-varedit = listDict.get "edit" vars == Just "true"
+boolVar name resDefault =
+  listDict.get name vars |>
+  Maybe.map (Update.bijection (case of "true" -> True; _ -> False) (case of True -> "true"; _ -> "false")) |>
+  Maybe.withDefaultReplace (
+    listDict.get name defaultOptions |> Maybe.withDefault resDefault |> freeze)
+
+varadmin = boolVar "admin" False
+varedit = boolVar "edit" True
 
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
@@ -161,7 +168,7 @@ h4 {
       x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
 
-initialCheckedAttribute = [["checked", ""]]
+boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false")
   
 editionmenu = [
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
@@ -288,6 +295,9 @@ menuitem > .solution.notfinal {
   cursor: initial;
   pointer-events: none;
 }
+.summary {
+  color: green;
+}
 </style>
 <div class= "editor-logo">Editor <a href= "https://github.com/MikaelMayer/Editor/issues">needs your feedback!</a></div><div class="menu-separator"></div><menuitem class= "filename" title= "the path of the file you are currently viewing">@(if path == "" then serverOwned "empty path" "[root folder]" else path)</menuitem>
 <div class="menu-separator"></div><menuitem>
@@ -300,10 +310,18 @@ if(cp !== null) {
 </menuitem><div class=
                  "menu-separator"></div>
 <menuitem>
-<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosync" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case listDict.get "autosync" vars of Just autosyncattr ->
-                       Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false") autosyncattr; _ -> serverOwned "initial checked attribute (use &autosync=true/false in query parameters to modify it)" [["checked", ""]])><span class= "label-checkbox">Auto-save</span></label>
+<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosave" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case listDict.get "autosave" vars of
+                      Just autosaveattr -> boolToCheck autosaveattr
+                      _ -> serverOwned "initial checked attribute (use &autosave=true or false in query parameters to modify it)"  (
+                             if boolVar "autosave" True then [["checked", ""]] else []))><span class= "label-checkbox">Auto-save</span></label>
 </menuitem>
-<menuitem id="manualsync-menuitem" @(case listDict.get "autosync" vars of Just "false" -> [["force-visible", "true"]]; _ -> [])>
+<menuitem>
+<label title="If off, ambiguities are resolved automatically. Does not apply for HTML pages"><input id="input-question" type="checkbox" save-attributes="checked" @(case listDict.get "question" vars of
+                       Just questionattr -> boolToCheck questionattr
+                       _ -> serverOwned "initial checked attribute (use &question=false in query parameters to modify it)" (
+                              if boolVar "question" True then [["checked", ""]] else []))><span class= "label-checkbox">Ask questions</span></label>
+</menuitem>
+<menuitem id="manualsync-menuitem" @(if boolVar "autosave" True then [] else [["force-visible", "true"]])>
 <button onclick="sendModificationsToServer()" title= "Sends modifications to the server">Save</button>
 </menuitem>
 </menu>,
@@ -370,6 +388,10 @@ setGhostOnInserted.push(insertedNode =>
 (setGhostOnInserted || []).push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
      insertedNode.getAttribute("src").startsWith("https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/mode-j")
+);
+// For ace script for syntax highlight
+(setGhostOnInserted || []).push(insertedNode =>
+  insertedNode.tagName == "ACE_OUTER"
 );
 
 function handleScriptInsertion(mutations) {
@@ -625,8 +647,19 @@ editionscript = """
             disambiguationMenu += ` <button onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Save</button>`;
             disambiguationMenu += ` <button onclick='cancelAmbiguity("${ambiguityKey}", ${selected})'>Cancel</button>`;
             newMenu.innerHTML = disambiguationMenu;
-            newMenu.setAttribute("isghost", "true")
-            document.getElementById("themenu").append(newMenu);
+            newMenu.setAttribute("isghost", "true");
+            if(document.getElementById("themenu"))
+              document.getElementById("themenu").append(newMenu);
+          } else {
+            var opSummary = xmlhttp.getResponseHeader("Operations-Summary");
+            var log = document.createElement("span");
+            log.setAttribute("class", "summary");
+            log.innerText = "Last action: " + opSummary;
+            var newMenu = document.createElement("menuitem");
+            newMenu.append(log);
+            newMenu.setAttribute("isghost", "true");
+            if(document.getElementById("themenu"))
+              document.getElementById("themenu").append(newMenu);
           }
           if(newQueryStr !== null) {
             var newQuery = JSON.parse(newQueryStr);
@@ -647,6 +680,7 @@ editionscript = """
       xmlhttp.setRequestHeader("ambiguity-key", key);
       xmlhttp.setRequestHeader("select-ambiguity", JSON.stringify(num));
       xmlhttp.setRequestHeader("Content-Type", "application/json");
+      xmlhttp.setRequestHeader("question", "true");
       xmlhttp.send("{\"a\":1}");
     }
     
@@ -688,12 +722,13 @@ editionscript = """
       
       var xmlhttp = new XMLHttpRequest();
       xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {
-        if(document.getElementById("input-autosync") && !document.getElementById("input-autosync").checked) {
+        if(document.getElementById("input-autosave") && !document.getElementById("input-autosave").checked) {
           document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "true") // Because it will be saved
         }
       });
       xmlhttp.open("POST", location.pathname + location.search);
       xmlhttp.setRequestHeader("Content-Type", "application/json");
+      xmlhttp.setRequestHeader("question", document.getElementById("input-question") && document.getElementById("input-question").checked ? "true" : "false");
       xmlhttp.send(JSON.stringify(domNodeToNativeValue(document.body.parentElement)));
     }
     
@@ -739,7 +774,7 @@ editionscript = """
         console.log("mutations are only ghosts, skipping");
         return;
       } // Send in post the new HTML along with the URL
-      if(document.getElementById("input-autosync") && !document.getElementById("input-autosync").checked) {
+      if(document.getElementById("input-autosave") && !document.getElementById("input-autosave").checked) {
         if(document.getElementById("manualsync-menuitem")) {
           document.getElementById("manualsync-menuitem").setAttribute("ghost-disabled", "false");
         }

@@ -32,7 +32,16 @@ script.innerText = `
 }\`);`
 script.async = false;
 script.setAttribute("isghost", "true");
-setTimeout(() => document.head.appendChild(script), 0);
+onAceLoaded = (delay) => () => {
+  if(typeof ace != "undefined") {
+    console.log("ace loaded.")
+    document.head.appendChild(script)
+  } else {
+    console.log("ace not loaded. Retrying in " + (delay * 2) + "ms");
+    setTimeout(onAceLoaded(delay * 2), 100);
+  }
+}
+onAceLoaded(1)();
 </script>
 </body>
 </html>

@@ -128,7 +128,16 @@ This means that whatever had the class `editor-menu` will be displayed in this e
             onclick="remove(getEnclosingCaret('tr'))" contenteditable="false">Remove row</button>
 
 A default toolbar is to come soon in Editor, keep in touch.
-    
+
+### Command-line arguments
+
+Editor can be run with some commands to change its default behavior.
+
+* `--edit=false` deactivates the edit mode (activated by default). It can always be re-added on any URL by adding `?edit=true`
+* `--autosave=false` deactivates the autosave functionality (activated by default). It can always be re-added on any URL by adding `?autosave=true`
+* `--question=false` automatically chooses the first answer in case of ambiguity (interactive questioning by default). It can always be re-added on any URL by adding `?question=true`
+* `--admin=true` activates the admin mode (mostly to change `server.elm` -- deactivated by default). It can always be re-added on any URL by adding `?admin=false`
+
 ## Limitations, future work and caution
 
 ### Ambiguity
