@@ -2,7 +2,7 @@ const fs = require("fs");
 const sns = require("sketch-n-sketch");
 
 var res = sns.string.evaluate(`
-fs = nodejs.delayed nodejs.directFileOperations
+fs = nodejs.delayedFS nodejs.nodeFS nodejs.nodeFSWrite
 
 elmserver = fs.read "server.elm" |> Maybe.withDefaultLazy (\\_ -> error "server.elm not found")
 
