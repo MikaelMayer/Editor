@@ -209,9 +209,21 @@ menuitem.disabled {
 menu input[type=checkbox] {
   display: none;
 }
+menu input[type=checkbox] + .label-checkbox {
+  color: #888;
+}
 menu input[type=checkbox]:checked + .label-checkbox {
   background: #bcbbff;
+  color: #000;
 }
+/*
+menu input[type=checkbox]:not(:checked) + .label-checkbox::after {
+  content: ": off";
+}
+menu input[type=checkbox]:checked + .label-checkbox::after {
+  content: ": on";
+}
+*/
 .label-checkbox {
   padding: 2px;
   border-radius: 10px;
@@ -224,7 +236,7 @@ menu input[type=checkbox]:checked + .label-checkbox {
   display: inline-block;
   border-left: 1px solid #828282;
   margin: 0 3px;
-  height: 1em;
+  height: 1.5em;
   padding: 0;
   vertical-align: top;
   line-height: normal;
@@ -307,19 +319,19 @@ var cp = document.getElementById("editor_codepreview");
 if(cp !== null) {
    cp.setAttribute("ghost-visible", this.checked ? "true": "false")
 }"""><span class= "label-checkbox">Source</span></label>
-</menuitem><div class=
-                 "menu-separator"></div>
-<menuitem>
-<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosave" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case listDict.get "autosave" vars of
-                      Just autosaveattr -> boolToCheck autosaveattr
-                      _ -> serverOwned "initial checked attribute (use &autosave=true or false in query parameters to modify it)"  (
-                             if boolVar "autosave" True then [["checked", ""]] else []))><span class= "label-checkbox">Auto-save</span></label>
-</menuitem>
+</menuitem><div class="menu-separator"></div>
 <menuitem>
 <label title="If off, ambiguities are resolved automatically. Does not apply for HTML pages"><input id="input-question" type="checkbox" save-attributes="checked" @(case listDict.get "question" vars of
                        Just questionattr -> boolToCheck questionattr
                        _ -> serverOwned "initial checked attribute (use &question=false in query parameters to modify it)" (
                               if boolVar "question" True then [["checked", ""]] else []))><span class= "label-checkbox">Ask questions</span></label>
+</menuitem>
+<div class="menu-separator"></div>
+<menuitem>
+<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosave" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case listDict.get "autosave" vars of
+                      Just autosaveattr -> boolToCheck autosaveattr
+                      _ -> serverOwned "initial checked attribute (use &autosave=true or false in query parameters to modify it)"  (
+                             if boolVar "autosave" True then [["checked", ""]] else []))><span class= "label-checkbox">Auto-save</span></label>
 </menuitem>
 <menuitem id="manualsync-menuitem" @(if boolVar "autosave" True then [] else [["force-visible", "true"]])>
 <button onclick="sendModificationsToServer()" title= "Sends modifications to the server">Save</button>
