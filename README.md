@@ -137,6 +137,7 @@ Editor can be run with some commands to change its default behavior.
 * `--autosave=false` deactivates the autosave functionality (activated by default). It can always be re-added on any URL by adding `?autosave=true`
 * `--question=false` automatically chooses the first answer in case of ambiguity (interactive questioning by default). It can always be re-added on any URL by adding `?question=true`
 * `--admin=true` activates the admin mode (mostly to change `server.elm` -- deactivated by default). It can always be re-added on any URL by adding `?admin=false`
+* `--path=dir` launch Editor at the given directory (can be relative or absolute)
 
 ## Limitations, future work and caution
 

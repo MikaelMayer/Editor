@@ -29,7 +29,8 @@ var defaultOptions = {
   edit:     getParam("--edit",     "true") == "true",
   autosave: getParam("--autosave", "true") == "true",
   question: getParam("--question", "true") == "true",
-  admin:    getParam("--admin",    "false") == "true"
+  admin:    getParam("--admin",    "false") == "true",
+  path: getParam("--path",    "")
 };
 
 // Don't modify, this will be replaced by the content of 'server.elm'

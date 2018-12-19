@@ -1,12 +1,29 @@
 -- input: path            The file to serve.
 -- input: vars:           URL query vars.
--- input: defaultOptions  default options (options that vars can override).
+-- input: defaultOptions  default options (options that vars can override for certain parts).
 -- input: fileOperations  The current set of delayed file disk operations.
 --    Note that Elm pages are given in context the path, the vars, and the file system (fs) to read other files
 -- output: The page, either raw or augmented with the toolbar and edit scripts.
 preludeEnv = __CurrentEnv__
 
+mbApplyPrefix = case listDict.get "path" defaultOptions of
+  Just "" -> Nothing
+  Nothing -> Nothing
+  Just prefix -> Just (\name -> if name == "" then prefix
+      else if Regex.matchIn "/$" prefix then prefix + name
+      else prefix + "/" + name)
+
 fs = nodejs.delayedFS nodejs.nodeFS fileOperations
+
+fs = case mbApplyPrefix of
+  Nothing -> fs
+  Just applyPrefix -> { fs |
+    read name = fs.read (applyPrefix name)
+    listdir name = fs.listdir (applyPrefix name)
+    listdircontent name = fs.listdircontent (applyPrefix name)
+    isdir name = fs.isdir (applyPrefix name)
+    isfile name = fs.isfile (applyPrefix name)
+  }
 
 editdelay = 1000
 
