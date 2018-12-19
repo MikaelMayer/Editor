@@ -735,7 +735,7 @@ editionscript = """
     
     function sendModificationsToServer() {
       if(document.getElementById("notification-menu") != null) {
-        document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
+        //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
         return;
       }
       var newMenu = document.createElement("menuitem");
@@ -918,6 +918,16 @@ editionscript = """
       dropZone.addEventListener('dragover', handleDragOver, false);
       dropZone.addEventListener('drop', handleFileSelect, false);
     }
+    
+    // Shortcuts
+    document.onkeydown = function(e) {
+      var key = e.which || e.keyCode;
+      if (e.which == 83 && (e.ctrlKey || e.metaKey)) { // CTRL+S or CMD+S: Save
+        sendModificationsToServer();
+        e.preventDefault();
+      }
+    };
+    document.onkeyup = document.onkeydown
 """
 
 main
