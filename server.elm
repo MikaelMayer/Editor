@@ -188,8 +188,47 @@ h4 {
 boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false")
   
 editionmenu = [
+<div id="docslinkbubble" class="docs-bubble docs-linkbubble-bubble" list-ghost-attributes="style" help="Modify or delete a link" tabindex="0" contenteditable="false"><a rel="noreferrer" id="docslinkbubble-linkpreview" list-ghost-attributes="href contenteditable" children-are-ghosts="true"></a><span> – <button id="docslinkbubble-modify" class="docs-bubble-link" tabindex="0">Modify</button> | <button id="docslinkbubble-delete" class="docs-bubble-link" tabindex="0">Delete</button></span></div>,
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
-<style>menu .editor-logo {
+<style>
+.docs-linkbubble-bubble {
+  z-index: 1503;
+}
+
+.docs-bubble {
+  background-color: #fff;
+  border-radius: 2px;
+  border: 1px solid;
+  border-color: #bbb #bbb #a8a8a8;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  color: #666;
+  cursor: default;
+  padding: 12px 20px;
+  position: absolute;
+  z-index: 1502;
+  white-space: nowrap;
+}
+
+.docs-bubble-link, .docs-bubble a {
+  color: #15c!important;
+  cursor: pointer;
+  text-decoration: none!important;
+}
+
+.docs-bubble-link:hover, .docs-bubble a:hover {
+  text-decoration: underline!important;
+}
+
+.docs-bubble-link[contenteditable=true], .docs-bubble a[contenteditable=true] {
+  cursor: text;
+  text-decoration: none!important;
+}
+
+.docs-bubble-link[contenteditable=true] + button, .docs-bubble a[contenteditable=true] + span > button:first-child {
+  outline: 1px solid black;
+}
+
+menu .editor-logo {
   display: inline-block;
   margin-right: 5px;
   font-weight: bold;
@@ -208,7 +247,7 @@ menuitem.filename {
 menu {
   position: fixed;
   margin-top: 0px;
-  z-index: 10000;
+  z-index: 1000;
   min-height: 1.5em;
   font-family: sans-serif;
   border: 1px solid #888;
@@ -293,7 +332,10 @@ menuitem > .solution.notfinal {
 }
 #editor_codepreview, #manualsync-menuitem {
   display: none;
-  z-index: 9999;
+  z-index: 999;
+}
+#docslinkbubble {
+  display: none;
 }
 [ghost-visible=true] {
   display: initial !important;
@@ -391,7 +433,7 @@ setGhostOnInserted.push(insertedNode =>
 (setGhostOnInserted || []).push(insertedNode => {
     if(insertedNode.tagName == "STYLE" && typeof insertedNode.getAttribute("id") == "string" &&
      (insertedNode.getAttribute("id").startsWith("ace-") ||
-     insertedNode.getAttribute("id").startsWith("ace_"))) {
+      insertedNode.getAttribute("id").startsWith("ace_"))) {
       insertedNode.setAttribute("save-ghost", "true"); 
       return true;
     } else {
@@ -680,7 +722,7 @@ editionscript = """
             if(document.getElementById("themenu"))
               document.getElementById("themenu").append(newMenu);
           } else {
-            var opSummary = xmlhttp.getResponseHeader("Operations-Summary");
+            var opSummary = decodeURI(xmlhttp.getResponseHeader("Operations-Summary"));
             var log = document.createElement("span");
             log.setAttribute("class", "summary");
             log.innerText = "Last action: " + opSummary;
@@ -923,11 +965,91 @@ editionscript = """
     document.onkeydown = function(e) {
       var key = e.which || e.keyCode;
       if (e.which == 83 && (e.ctrlKey || e.metaKey)) { // CTRL+S or CMD+S: Save
+        closeLinkWindow();
         sendModificationsToServer();
+        e.preventDefault();
+      }
+      if(e.which == 75 && (e.ctrlKey || e.metaKey)) { // CTRL+K: Insert link
+        document.execCommand('createLink', false, 'http://');
         e.preventDefault();
       }
     };
     document.onkeyup = document.onkeydown
+    
+    observeTargetA = null;
+    
+    onClickOnLink = function (event) {
+      var clickedElem = event.target;
+      if(clickedElem && clickedElem.tagName == "A" && clickedElem.getAttribute("id") != "docslinkbubble-linkpreview") {
+        var href = clickedElem.getAttribute("href");
+        if(href) {
+          var bottomX = clickedElem.offsetLeft;
+          var bottomY = clickedElem.offsetTop + clickedElem.offsetHeight;
+          var d = document.getElementById("docslinkbubble");
+          d.setAttribute("style", "left: " + bottomX + "; top: " + bottomY);
+          var targetA = document.getElementById("docslinkbubble-linkpreview");
+          targetA.setAttribute("href", href);
+          targetA.innerText = href;
+          d.setAttribute("ghost-visible", "true");
+          
+          var deleteButton = document.getElementById("docslinkbubble-delete");
+          deleteButton.onclick = () => {
+            clickedElem.outerHTML = clickedElem.innerHTML;
+            d.setAttribute("ghost-visible", "false");
+          }
+          
+          var modifyButton = document.getElementById("docslinkbubble-modify");
+          modifyButton.onclick = () => {
+            if (observeTargetA != null) {
+              observeTargetA.disconnect();
+              observeTargetA = null;
+            }
+            if(targetA.getAttribute("contenteditable") == "true") {
+              targetA.setAttribute("contenteditable", "false");
+            } else {
+              targetA.setAttribute("contenteditable", "true");
+              targetA.focus();
+              console.log("reconnect observeTargetA", targetA);
+              observeTargetA = new MutationObserver(function(mutations) {
+                console.log("targetA modified");
+                clickedElem.setAttribute("href", targetA.innerText);
+              });
+              observeTargetA.observe
+               ( targetA
+               , { attributes: false
+                 , childList: true
+                 , characterData: true
+                 , attributeOldValue: false
+                 , characterDataOldValue: true
+                 , subtree: true
+                 }
+               )
+            }
+          }
+        }
+      } else if(clickedElem.getAttribute &&
+           (clickedElem.getAttribute("id") == "docslinkbubble" ||
+            (clickedElem.parentNode && clickedElem.parentNode.getAttribute && clickedElem.parentNode.getAttribute("id") == "docslinkbubble") ||
+            (clickedElem.parentNode && clickedElem.parentNode.parentNode &&
+             clickedElem.parentNode.parentNode.getAttribute && clickedElem.parentNode.parentNode.getAttribute("id") == "docslinkbubble")
+            )) {
+      } else {
+        closeLinkWindow();
+      }
+      // Check if the event.target matches some selector, and do things...
+    }
+    
+    // Links edition
+    document.addEventListener('click', onClickOnLink, false);
+    
+    function closeLinkWindow() {
+      var d = document.getElementById("docslinkbubble");
+      if(d && d.getAttribute("ghost-visible") == "true") {
+        d.setAttribute("ghost-visible", "false");
+        var targetA = document.getElementById("docslinkbubble-linkpreview");
+        targetA.setAttribute("contenteditable", "false");
+      }
+    }
 """
 
 main

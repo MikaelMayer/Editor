@@ -102,6 +102,17 @@ You can drop images on a webpage, they are automatically uploaded at the current
 
   ![Demo of image drop](/drop-image.gif?raw=true)
 
+### Edit links
+
+  ![Demo of link editing](/create-link.gif?raw=true)
+
+In edit mode, if you click on a link, a pop-up appears, allowing you to
+* Navigate to the link
+* Modify the link's address
+* Delete the link
+
+You can add links by selecting some text and pressing CTRL+K, and then use the method above to edit the newly inserted link.
+
 ### Listing files
 
 If a folder does not contain an `index.html` or a `README.md`, Editor will display a list of files.

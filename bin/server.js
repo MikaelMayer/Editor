@@ -171,7 +171,8 @@ function applyOperations(operations) {
 
 function stringDiffSummary(oldString, newString, stringDiffs) {
   if(stringDiffs["$d_ctor"] == "Nothing") return "";
-  var listStringDiffs = stringDiffs.args._1.args._1; // It's a VStringDiffs
+  if(stringDiffs["$d_ctor"] == "Just") stringDiffs = stringDiffs.args._1;
+  var listStringDiffs = stringDiffs.args._1; // It's a VStringDiffs
   var offset = 0;
   var summary = "";
   for(var i = 0; i < listStringDiffs.length; i++) {
@@ -387,7 +388,7 @@ const server = http.createServer((request, response) => {
             response.setHeader('Ambiguity-End', ambiguityEnd ? "true" : "false");
           } else {
             applyOperations(fileOperations);
-            response.setHeader('Operations-Summary', fileOperationSummary(fileOperations));
+            response.setHeader('Operations-Summary', encodeURI(fileOperationSummary(fileOperations)));
           }
           response.end(htmlContent._0);
         }
