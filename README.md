@@ -2,7 +2,7 @@
 
 ![Screenshot of Editor](/screenshot-2.png?raw=true)
 
-Editor is an HTTP server that not *only* displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages to the source files themselves.
+Editor is an HTTP server that not only displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages to the source files themselves.
 
 To visually edit a page, simply add `?edit=true` to its URL, and the content will be editable by mouse and keyboard.
 Alternatively and anytime, you can use the DOM inspector of the browser of your choice to modify the source page.
@@ -18,17 +18,16 @@ Now, to launch a reversible HTTP server in any folder, run:
     editor
 
 The longer version of this command is `http-server-editor`.  
-Then, point your browser to http://127.0.0.1:3000?edit=true
+Then, point your browser to http://127.0.0.1:3000
 
 ## Simple dynamic example
 
 Create a file `pizzas.elm` with the following content:
 
-    user  = vars |> case of {user} -> user; _ -> "Anonymous"
+    user     = listDict.get "user" vars |> Maybe.withDefaultReplace "Anonymous"
     userdata = [("Mikael", 2)]
-    options = ["Margharita", "Four Cheese", "Pepper"]
-    main =
-    <html><head></head><body>
+    options  = ["Margharita", "Four Cheese", "Pepper"]
+    main     = <html><head></head><body>
       <span>Hello @user!<br>
       Select the pizza you want
       @Html.select[]("Choose one..."::options)(
@@ -42,8 +41,8 @@ Create a file `pizzas.elm` with the following content:
       ) userdata)
     </span></body></html>
 
-Now launch Editor, and point your browser to http://127.0.0.1:3000/pizzas.elm?edit=true&user=RandomDude  
-Congratulations. In 17 lines of code, you created a Content Management System where all the CRUD operations (create-read-update-delete) can be done in the browser:
+Now launch Editor, and point your browser to http://127.0.0.1:3000/pizzas.elm?user=RandomDude  
+Congratulations. In 16 lines of code, you created a Content Management System where all the CRUD operations (create-read-update-delete) can be done in the browser:
 * Selecting/Modifying someone's pizza choice
 * Add/Modify/delete pizzas
 * Modify any text you see
@@ -53,16 +52,16 @@ Beware, the system does not support concurrent editing yet, make sure you alone 
 
 #### Advanced example
 
-Look into [`test/pizzas.elm`](https://github.com/MikaelMayer/Editor/blob/master/test/pizzas.elm) and [`CONTRIBUTING.md`](https://github.com/MikaelMayer/Editor/blob/master/CONTRIBUTING.md) for a more advanced example covering the same website with file reading, evaluation, translation to different languages, deletion of choices, modification of pizza by name, and more.
+Look into [`test/pizzas.elm`](https://github.com/MikaelMayer/Editor/blob/master/test/pizzas.elm) and [`CONTRIBUTING.md`](https://github.com/MikaelMayer/Editor/blob/master/CONTRIBUTING.md) for more advanced examples covering the same website with file reading, evaluation, translation to different languages, deletion of choices, modification of pizza by name, and more.
 
 ## Supported features
 
 ### Administrator rights
 
-It's possible to active the admin rights by setting `&admin=true` in the URL. With these rights, 
+It's possible to active the admin rights by setting `&admin=true` or `?admin=true` in the URL. With these rights, 
 
 * If you point the browser to a non-existing HTML or Elm file and modify it, it will display a default template and automatically create the file as soon as you modify the template.
-* If you modify the menus, it will create a modified `server.elm` at the root the folder instead of using the built-in one. Careful: when you upgrade Editor, you should remove this file.
+* If you modify the menus, it will create a modified `server.elm` at the root the folder instead of using the built-in one. Careful: when you upgrade Editor, you should remove this file as there might be incompatibilities.
 
 ### Access permisions based on path
 
@@ -71,26 +70,36 @@ If a file `htaccess.elm` is at the root of the folder, it will be executed with 
 ### Custom markdown styling
 
 Markdown styling can be customized by creating a `markdown.css` file at the root where Editor is launched.
-Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of the document using the DOM inspector.
+Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of the document using the DOM inspector. This action will create the `markdown.css` file directly.
 
-### Dealing with scripts that modify the page
+### Dealing with scripts or plug-ins that modify the page
 
-Some scripts such as Google Analytics insert more nodes into the page. These nodes should not be back-propagated.
-Editor can ensure that such inserted nodes are not back-propagated by marking them as ghost (i.e. setting the attribute `isghost` to `true`, either on the DOM or on javascript for text nodes). Here is how:
+Some scripts or plugins (such as Google Analytics, Ace editor, Grammarly...) insert nodes or add special attributes. These nodes and attributes should not be back-propagated.  
+Editor offers several mechanisms to prevent this back-propagation. You can either do it manually or have Editor take care of that.
 
-To tell Editor that a node should not be back-propagated after it has just been inserted, just insert the following script at the beginning of the body:
+#### Commands via attributes
 
-      <script>
-      (setGhostOnInserted || []).push(insertedNode =>
-        PREDICATE ON NODE
-      );
-      </script>
+You can add special attributes to an HTML element to mark some parts as being "ghost", that is, they should not be back-propagated.
 
-and replace PREDICATE ON NODE with a predicate such as `insertedNode.nodeType == 1 && insertedNode.getAttribute("id") == "dummy"`.
+* `isghost="true"` on an element ensures that the whole element is ignored when back-propagation occurs. Alternatively, setting `element.isghost=true` in javascript results in the same effect without modifying the DOM.  
+  Never put isghost="true" on an element on the source side level, it would be automatically erased on the first back-propagation.
+* `list-ghost-attributes="attr1 attr2 ... attrn"` on an element ensures that any inserted attribute with one of the name `attr1` ... `attrn` will not be back-propagated.
+  Never put one of the `attr1` ... `attrn` attributes on the element directly, else it would be automatically erased on the first back-propagation.
+* `children-are-ghost="true"` on an element ensures that any inserted or modified child to this element is not back-propagated.
+  Never add children at the source level to an element which has this attribute, else they would be automatically erased on the first back-propagation.
+
+#### Editor's global ghost nodes and attributes.
+
+Editor also observes insertions and deletions and can mark some elements as ghost so you don't need to manage this yourself.
+In a script at the beginning of the body:
+
+* `(setGhostOnInserted || []).push(insertedNode => /*PREDICATE ON insertedNode*/);`: For any inserted node, if this predicate returns `true`, Editor will mark and consider it as ghost so you don't need to manage it.  
+  A simple predicate to filter out inserted nodes which have the class "dummy" would look like: `insertedNode.nodeType == 1 && insertedNode.classList && insertedNode.classList.contains("dummy")`.
+* `(globalGhostAttributeKeysFromNode || []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be considered as ghost.
 
 ### Dealing with page reloads
 
-Editor refreshes the whole page each time a update is back-propagated. It is however possible to save some ghost attributes and some ghost nodes. Here is the list of things Editor saves are restors:
+Editor re-writes the whole page each time a update is back-propagated. It is however possible to save some ghost attributes and some ghost nodes. Here is the list of things Editor saves and restores:
 
 * Any node with an `id` and `ghost-visible` DOM attribute will have its `ghost-visible` DOM attribute value restored.
 * Any node with an `id` and `save-attributes` DOM attribute will have all the javascript attributes, that are encoded in the value of `save-attributes` separated with space, restored.
@@ -116,7 +125,7 @@ You can add links by selecting some text and pressing CTRL+K, and then use the m
 ### Listing files
 
 If a folder does not contain an `index.html` or a `README.md`, Editor will display a list of files.
-To force to list the files in a folder even though there is an `index.html` or a `README.md`, just append &ls=true in the URL query parameters.
+To force to list the files in a folder even though there is an `index.html` or a `README.md`, just append &amp;ls=true in the URL query parameters.
 
 From any view listing files, you can delete files by deleting the corresponding bullet point.
 Similarly, to rename a file, go to devtools and rename the text of the link.
@@ -127,18 +136,7 @@ When the `edit=true` search query param is set, the following style is injected 
 
     .editor-menu { display: initial !important; }
 
-This means that whatever had the class `editor-menu` will be displayed in this edit mode. You can use it to define your own scripts that self-modify the page. For example, adding these buttons allow you to manipulate rows on a table:
-
-    <button style="display:none" class="editor-menu"
-            onclick="duplicate(getEnclosingCaret('tr'))" contenteditable="false">Duplicate row</button>
-    <button style="display:none" class="editor-menu"
-            onclick="duplicate(getEnclosingCaret('tr'), {onBeforeInsert: emptyTextContent})" contenteditable="false">New row before</button>
-    <button style="display:none" class="editor-menu"
-            onclick="duplicate(getEnclosingCaret('tr'), {after: true, onBeforeInsert: emptyTextContent})" contenteditable="false">New row after</button>
-    <button style="display:none" class="editor-menu"
-            onclick="remove(getEnclosingCaret('tr'))" contenteditable="false">Remove row</button>
-
-A default toolbar is to come soon in Editor, keep in touch.
+This means that whatever had the class `editor-menu` will be displayed in this edit mode. You can use it to define your own scripts that self-modify the page. A default toolbar is to come soon in Editor, keep in touch.
 
 ### Command-line arguments
 
@@ -160,71 +158,19 @@ You can use the syntax `option:true` to pass along any option described in the p
 
 ## Limitations, future work and caution
 
-### Ambiguity
+* **Ambiguities**: There are more ambiguity than there should be. We are working on removing meaningless ambiguities. Stay in touch!
 
-There are more ambiguity than there should be. It's hard to know what changes have been back-propagated and to compare them.
-We are aware of all these limitations. We are working on removing meaningless ambiguities, and on displaying a good summary of ambiguities that remain. Stay in touch !
+* **HTML formatting caution**: On Windows, while loading dynamic `.elm` webpages, if you use `fs.read`, make sure to convert the resulting string with `String.newlines.toUnix`. This is a reversible function that ensures that the newlines are \n and not \r\n. Else, the reverse interpreter will replace all windows-like newlines \r\n by Unix-like newlines \n anyway but this might take a looong time.
 
-### HTML formatting caution
+* **Need for authentication**: Since there is no authentication yet, everybody that has access to the server can easily modify all the files present. Please do not use this server for production until there is proper authentication. If you want to contribute to authentication, a pull request is welcome.
 
-- On Windows, while loading dynamic `.elm` webpages, if you use `nodejs.fileread`, make sure to convert the resulting string with `String.newlines.toUnix`. This is a reversible function that ensures that the newlines are \n and not \r\n. Else, the reverse interpreter will replace all windows-like newlines \r\n by Unix-like newlines \n anyway but this might take a looong time.
+* **Need for concurrent editing**: In case there are two conflicting edits, they will not be merged, only the second will take place. There is a work in progress for merging edit diffs.
 
-### Need for authentication
+* **Need for better diffs**: The set of edits to nodes is limited to modifications, insertions and deletions. There is no wrapping/unwrapping or other forms of clones. We are working on a new way to express a greater set of edits.
 
-Since there is no authentication yet, everybody that has access to the server can in theory modify all the files present.
-Please do not use this server for production until there is proper authentication.
-If you want to contribute to authentication, a pull request is welcome. See the API to ignore some insertions of elements such as Google Analytics scripts above.
+* **Need for templates**: Editor could allow you to create a page from given templates. We'll work on that. We already have several templates in [Sketch-n-sketch](https://github.com/ravichugh/sketch-n-sketch). Among the templates, we want slides, docs, recipe editor, worksheet, contact forms, academic webpage, etc.
 
-### Need for concurrent editing
-
-In case there are two conflicting edits, they will not be merged, only the second will take place. There is a work in progress for merging edit diffs.
-
-### Need for better diffs
-
-Currently, updating the Elm program
-
-    x = "user"
-    <html><body>Hello @x</body></html>
-
-with the new output value
-
-    <html><body>Hello <b>user</b></body></html>
-
-does not produce the expected
-
-    x = "user"
-    <html><body>Hello <b>@x</b></body></html>
-
-but
-
-    x = "user"
-    <html><body>Hello <b>user</b></body></html>
-
-A work in progress will overcome this issue.
-
-### Need for templates
-
-We did not push templates yet but we will soon, by importing them from [Sketch-n-sketch](https://github.com/ravichugh/sketch-n-sketch). Among the templates, we want
-* Slides
-* Bidirectional converters (e.g. Markdown, LaTeX)
-* Self-modifying webpages.
-* Recipe editor
-* Worksheets
-* Forms
-
-### Need for a toolbar
-
-We need a general-purpose HTML edition toolbar to edit all the web pages without relying only on the devtools.
-Furthermore, we need the toolbar to expose udpate ambiguities and let the user choose from them.
-
-### Need for a better WYSIWYG webpage editor.
-
-Why not try [Slate?](https://www.slatejs.org) if it works for the entire HTML. Apparently it does.
-https://github.com/ianstormtaylor/slate/blob/master/docs/reference/slate-html-serializer/index.md
-
-Froala's editor is nice as well but is not free
-https://www.froala.com/wysiwyg-editor
-Note that we could add a feature to drop an image like they are doing.
+* **Need for a toolbar**: It's very easy to add menus or contextual menus to do actions on the page, so we would not need to rely on devtools. The link edition is an example. PR are welcome to have a better menu bar to edit images, tables, etc.
 
 ## License
 

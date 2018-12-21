@@ -416,15 +416,30 @@ function hasGhostAncestor(htmlElem) {
 function isGhostAttributeKey(name) {
   return name.startsWith("ghost-");
 }
+
+globalGhostAttributeKeysFromNode = [];
+(globalGhostAttributeKeysFromNode || []).push(n =>
+  ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ").filter(a => a != "")
+);
+(globalGhostAttributeKeysFromNode || []).push(n =>
+  n && n.tagName == "HTML" ? ["class"] : []
+);
+(globalGhostAttributeKeysFromNode || []).push(n =>
+  n && n.tagName == "BODY" ? ["data-gr-c-s-loaded"] : []
+);
+
 function isSpecificGhostAttributeKeyFromNode(n) {
-  var additionalGhostAttributes = ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ");
+  var additionalGhostAttributes = [];
+  for(var k in globalGhostAttributeKeysFromNode) {
+    additionalGhostAttributes = additionalGhostAttributes.concat(globalGhostAttributeKeysFromNode[k](n))
+  }
   return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
 }
 
 setGhostOnInserted = [];
 
 // Analytics scripts
-setGhostOnInserted.push(insertedNode =>
+(setGhostOnInserted || []).push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
      insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
 );
@@ -445,6 +460,7 @@ setGhostOnInserted.push(insertedNode =>
 (setGhostOnInserted || []).push(insertedNode => {
   if(insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null) {
     if(insertedNode.nextSibling && insertedNode.nextSibling.getAttribute &&
+      insertedNode.nextSibling.getAttribute("id") &&
       insertedNode.nextSibling.getAttribute("id").startsWith("ace-")) {
       insertedNode.setAttribute("id", "loaded-aced-theme");
       insertedNode.setAttribute("save-ghost", "true");
