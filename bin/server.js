@@ -30,6 +30,7 @@ var defaultOptions = {
   autosave: getParam("--autosave", "true") == "true",
   question: getParam("--question", "true") == "true",
   admin:    getParam("--admin",    "false") == "true",
+  production:    getParam("--production",    "false") == "true",
   path: getParam("--path",    "")
 };
 

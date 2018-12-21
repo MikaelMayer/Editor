@@ -35,6 +35,7 @@ boolVar name resDefault =
 
 varadmin = boolVar "admin" False
 varedit = boolVar "edit" True
+varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
@@ -179,17 +180,66 @@ h4 {
             ["body",
               (if canEditPage then serverOwned "contenteditable attribute of the body due to edit=true" [["contenteditable", "true"]] else freeze []) ++
                 bodyattrs,
-              (if canEditPage then (serverOwned "edition menu" editionmenu ++ Update.sizeFreeze [(serverOwned "code preview box" codepreview) sourcecontent]) else freeze []) ++ serverOwned "initial script" initialScript ++ bodychildren ++ Update.sizeFreeze (serverOwned "synchronization script" [<script>@editionscript</script>])]
+              (if canEditPage then (serverOwned "edition menu" editionmenu ++ Update.sizeFreeze [(serverOwned "code preview box" codepreview) sourcecontent]) else
+               if not varedit && not varproduction then serverOwned "open edit box" [openEditBox] else
+               serverOwned "edit prelude when not in edit mode" []) ++ serverOwned "initial script" initialScript ++ bodychildren ++ Update.sizeFreeze (serverOwned "synchronization script" [<script>@editionscript</script>])]
           x -> x
         )]
       x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
 
+-- Box to switch to edit mode.
+switchEditBox toEdit = 
+  let prev = if toEdit then "false" else "true"
+      next = if toEdit then "true" else "false"
+      msg = if toEdit then "edit" else "x"
+      title = if toEdit then "Reload the page in edit mode" else "Reload the page without edit mode" in
+<div id="editbox" title=@title onclick="""
+ if(location.search.indexOf("edit=@prev") == -1) {
+   location.search = location.search.startsWith("?") ? location.search + "&edit=@next" : "?edit=@next"
+ } else {
+   location.search = location.search.replace(/edit=@prev/, "edit=@next");
+ }
+""">
+<style>#editbox {
+  @(if toEdit then """position: fixed;
+  margin-top: 2px;
+  margin-left: 2px;
+  background: white;
+  padding: 2px;
+  border-radius: 10px;
+  transform: scale(0.6);
+  """ else """position: absolute;
+  color: white;
+  background: black;
+  font-family: 'Helvetica', 'Arial', sans-serif;
+  font-size: 2em;
+  font-weight: bold;
+  text-align: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 5px;
+  transform: translate(-0.7em, -0.7em) scale(0.3);
+  """
+ )z-index: 20000;
+  opacity: 0.5;
+  cursor: pointer;
+}
+#editbox:hover {
+  opacity: 1;
+}
+</style>@msg
+</div>
+
+openEditBox = switchEditBox True
+closeEditBox = switchEditBox False
+  
 boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false")
   
 editionmenu = [
 <div id="docslinkbubble" class="docs-bubble docs-linkbubble-bubble" list-ghost-attributes="style" help="Modify or delete a link" tabindex="0" contenteditable="false"><a rel="noreferrer" id="docslinkbubble-linkpreview" list-ghost-attributes="href contenteditable" children-are-ghosts="true"></a><span> – <button id="docslinkbubble-modify" class="docs-bubble-link" tabindex="0">Modify</button> | <button id="docslinkbubble-delete" class="docs-bubble-link" tabindex="0">Delete</button></span></div>,
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
+@closeEditBox
 <style>
 .docs-linkbubble-bubble {
   z-index: 1503;
