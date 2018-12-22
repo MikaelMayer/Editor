@@ -1042,6 +1042,21 @@ editionscript = """
     
     observeTargetA = null;
     
+    addEditEqualToUrl = function(href, what) {
+      if(href.indexOf("://") == -1) { // Instrument the relative link so that it is edit=true
+        if(href.indexOf("?") >= 0) {
+          if(href.endsWith("?")) {
+            href = href + "edit=" + what
+          } else {
+            href = href + "&edit=" + what
+          }
+        } else {
+          href = href + "?edit=" + what
+        }
+      }
+      return href;
+    }
+    
     onClickOnLink = function (event) {
       var clickedElem = event.target;
       if(clickedElem && clickedElem.tagName == "A" && clickedElem.getAttribute("id") != "docslinkbubble-linkpreview") {
@@ -1053,18 +1068,8 @@ editionscript = """
           d.setAttribute("style", "left: " + bottomX + "; top: " + bottomY);
           var targetA = document.getElementById("docslinkbubble-linkpreview");
           var updateHref = function(href) {
-            @(if listDict.get "edit" defaultOptions |> Maybe.withDefault False |> not then """
-            if(href.indexOf("://") == -1) { // Instrument the relative link so that it is edit=true
-              if(href.indexOf("?") >= 0) {
-                if(href.endsWith("?")) {
-                  href = href + "edit=true"
-                } else {
-                  href = href + "&edit=true"
-                }
-              } else {
-                href = href + "?edit=true"
-              }
-            }""" else "")
+            href = @(if listDict.get "edit" defaultOptions |> Maybe.withDefault False |> not then """
+            addEditEqualToUrl(href, "true");""" else "href;")
             targetA.setAttribute("href", href);
           }
           updateHref(href);
@@ -1119,8 +1124,27 @@ editionscript = """
       // Check if the event.target matches some selector, and do things...
     }
     
-    // Links edition
-    document.addEventListener('click', onClickOnLink, false);
+    // Links edition - Might be empty.
+    @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then
+      -- Special case when ?edit=false but the default behavior is edit=true if nothing is set.
+      """document.onclick = function (e) {
+          e = e ||  window.event;
+          var node = e.target || e.srcElement;
+          while(node) {
+            if(node.tagName == "A" && node.getAttribute("href") && !node.onclick && !node.getAttribute("onclick")) {
+             var newLocation = addEditEqualToUrl(node.getAttribute("href"), "false");
+             console.log(newLocation);
+             window.location.href = newLocation;
+             e.stopPropagation();
+             return false;
+            } else {
+              node = node.parentNode;
+            }
+          }
+        }"""
+    else if varedit then
+      """document.addEventListener('click', onClickOnLink, false);"""
+    else "")
     
     function closeLinkWindow() {
       var d = document.getElementById("docslinkbubble");
