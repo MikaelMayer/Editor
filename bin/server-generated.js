@@ -27,7 +27,7 @@ const http = require('http');
 };*/
 const url = require('url');
 const hostname = getParam("hostname", '127.0.0.1');
-const port = Integer.parseInt(getParam("port", "3000"));
+const port = parseInt(getParam("port", "3000"));
 
 const serverFile = "./server.elm";
 const htaccessFile = "./htaccess.elm";
