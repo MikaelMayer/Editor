@@ -30,6 +30,7 @@ const port = parseInt(getParam("port", "3000"));
 const serverFile = "./server.elm";
 const htaccessFile = "./htaccess.elm";
 var path =  getParam("--path",    "");
+var question = getParam("--question", "true") == "true"
 
 var fileToOpen = getNonParam();
 if(fileToOpen) {
@@ -39,12 +40,13 @@ if(fileToOpen) {
     path = fileToOpen.replace(/[\/\\][^\/\\]*$/g, "");
   }
   fileToOpen = fileToOpen.replace(/.*[\/\\](?=[^\/\\]*$)/g, "");
+  question = false; // When opening a file, by default we should not ask questions.
 }
 
 var defaultOptions = {
   edit:     getParam("--edit",     "true") == "true",
   autosave: getParam("--autosave", "true") == "true",
-  question: getParam("--question", "true") == "true",
+  question: question,
   admin:    getParam("--admin",    "false") == "true",
   production:    getParam("--production",    "false") == "true",
   path:     path,

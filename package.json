@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "opn": "^5.4.0",
-    "sketch-n-sketch": "^1.2.3"
+    "sketch-n-sketch": "^1.2.4"
   },
   "bin": {
     "http-server-editor": "bin/server-generated.js",
