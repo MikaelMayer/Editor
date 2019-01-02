@@ -158,6 +158,8 @@ Editor can also be used to open files on the command line. This can be useful to
 This will launch a temporary version of Editor and open an URL to this file in the default browser.
 When the tab or window is closed, the temporary server is killed.
 
+On Windows, if you want to open a file from the explorer window, right-click on an HTML file, Open with, Choose another app, More apps, Look for another app on this PC, navigate to `C:\Users\[your username]\AppData\Roaming\npm` and select `editor.cmd`.
+
 ### NPM require package
 
 You can invoke Editor as an NPM package in node.js. To do so, after installing `http-server-editor`, place in your code:
