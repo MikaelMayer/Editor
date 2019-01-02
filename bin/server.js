@@ -320,8 +320,9 @@ const server = http.createServer((request, response) => {
         }
       } else {
         response.setHeader('Content-Type', header);
-        if(fs.existsSync("./" + path)) {
-          var content = fs.readFileSync("./" + path);
+        let expectedFilePath = (defaultOptions.path == "" ? "." : defaultOptions.path) + "/" + path;
+        if(fs.existsSync(expectedFilePath)) {
+          var content = fs.readFileSync(expectedFilePath);
           response.statusCode = 200;
           response.end(content);
         } else {

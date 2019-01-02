@@ -115,7 +115,10 @@ main = (if canEvaluate == "true" then
         let markdownized = String.markdown sourcecontent in
           case Html.parseViaEval markdownized of
             x -> 
-              let markdownstyle = fs.read "markdown.css" |> Maybe.withDefaultReplace """pre {
+              let markdownstyle = fs.read "markdown.css" |> Maybe.withDefaultReplace """img {
+  max-width: 100%;
+}
+pre {
   padding: 10px 0 10px 30px;
   color: cornflowerblue;
 }
@@ -781,8 +784,8 @@ editionscript = """
                 disambiguationMenu += ` <span class="solution${i == n && ambiguityEnd != 'true' ? ' notfinal' : ''}" title="${summary}" onclick="this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})">#${i}</span>`
               }
             }
-            disambiguationMenu += ` <button onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Save</button>`;
-            disambiguationMenu += ` <button onclick='cancelAmbiguity("${ambiguityKey}", ${selected})'>Cancel</button>`;
+            disambiguationMenu += ` <button id="saveambiguity" onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Save</button>`;
+            disambiguationMenu += ` <button id="cancelAmbiguity" onclick='cancelAmbiguity("${ambiguityKey}", ${selected})'>Cancel</button>`;
             newMenu.innerHTML = disambiguationMenu;
             newMenu.setAttribute("isghost", "true");
             if(document.getElementById("themenu"))
@@ -1031,7 +1034,11 @@ editionscript = """
       var key = e.which || e.keyCode;
       if (e.which == 83 && (e.ctrlKey || e.metaKey)) { // CTRL+S or CMD+S: Save
         closeLinkWindow();
-        sendModificationsToServer();
+        if(document.getElementById("saveambiguity")) {
+          eval(document.getElementById("saveambiguity").getAttribute("onclick") || "console.log('no onclick for saveambiguity')")
+        } else {
+          sendModificationsToServer();
+        }
         e.preventDefault();
       }
       if(e.which == 75 && (e.ctrlKey || e.metaKey)) { // CTRL+K: Insert link
