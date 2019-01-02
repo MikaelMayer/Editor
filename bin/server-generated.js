@@ -27,12 +27,17 @@ const http = require('http');
 };*/
 const url = require('url');
 const hostname = getParam("hostname", '127.0.0.1');
-const port = parseInt(getParam("port", "3000"));
+var port = parseInt(getParam("port", "3000"));
+
+const getPort = require('get-port');
+
+(async () => {
 
 const serverFile = "./server.elm";
 const htaccessFile = "./htaccess.elm";
 var path =  getParam("--path",    "");
-var question = getParam("--question", "true") == "true"
+var question = getParam("--question", "true") == "true";
+var autosave = getParam("--autosave", "true") == "true";
 
 var fileToOpen = getNonParam();
 if(fileToOpen) {
@@ -43,11 +48,13 @@ if(fileToOpen) {
   }
   fileToOpen = fileToOpen.replace(/.*[\/\\](?=[^\/\\]*$)/g, "");
   question = false; // When opening a file, by default we should not ask questions.
+  autosave = false; // When opening a file, by default we want to let the user save it.
 }
+var timeBeforeExit = 2000; // Number of ms after receiving the closing signal (if file open) to kill the server.
 
 var defaultOptions = {
   edit:     getParam("--edit",     "true") == "true",
-  autosave: getParam("--autosave", "true") == "true",
+  autosave: autosave,
   question: question,
   admin:    getParam("--admin",    "false") == "true",
   production:    getParam("--production",    "false") == "true",
@@ -293,6 +300,8 @@ function toLeoQuery(query) {
   return result;
 }
 
+var willkill = undefined;
+
 const server = http.createServer((request, response) => {
   var urlParts = url.parse(request.url, parseQueryString=true);
   var query = toLeoQuery(urlParts.query);
@@ -306,6 +315,10 @@ const server = http.createServer((request, response) => {
     response.statusCode = 500;
     response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>htaccess.elm internal Error report</h1><pre style="white-space:pre-wrap">${access._0}</pre></div></body></html>`);
   } else if(access._0) {
+    if(typeof willkill != "undefined") {
+      clearTimeout(willkill);
+      willkill = undefined;
+    }
     if(request.method == "GET") {
       var header = path.endsWith(".ico") ? "image/ico" : header;
       var header = path.endsWith(".jpg") ? "image/jpg" : header;
@@ -340,7 +353,8 @@ const server = http.createServer((request, response) => {
     request.on('end', function () {
         var allChunks = Buffer.concat(chunks);
         if(defaultOptions.closeable && request.headers["close"]) {
-          process.exit();
+          willkill = setTimeout(() => process.exit(), timeBeforeExit); // Kills the server after 1 second
+          return;
         } else if(request.headers["write-file"]) {
           console.log("going to write file");
           // Just a file that we write on disk.
@@ -429,6 +443,7 @@ const server = http.createServer((request, response) => {
   }
 });
 
+port = await getPort({host: hostname, port: [port, 3000, 3001, 3002, 3003, 3004]})
 
 // Load the Elm program into our namespace.
 server.listen(port, hostname, () => {
@@ -463,5 +478,7 @@ if(fileToOpen) {
   var opn = require('opn');
 
   // opens the url in the default browser 
-  opn('http://127.0.0.1:3000/'+fileToOpen);
+  opn("http://" + hostname + ":" + port + "/" + fileToOpen);
 }
+
+})(); // async
