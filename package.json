@@ -23,6 +23,7 @@
     "url": "https://github.com/MikaelMayer/Editor.git"
   },
   "dependencies": {
+    "get-port": "^4.1.0",
     "opn": "^5.4.0",
     "sketch-n-sketch": "^1.2.4"
   },
