@@ -12,6 +12,10 @@ function getParam(x, defaultValue) {
   }
 }
 
+function getNonParam() {
+  return params.find(elem => !elem.startsWith("-"))
+}
+
 const fs = require("fs");
 //const https = require('https');
 const http = require('http');
@@ -20,19 +24,33 @@ const http = require('http');
   cert: fs.readFileSync('keys/cert.pem')
 };*/
 const url = require('url');
-const hostname = '127.0.0.1';
-const port = 3000;
+const hostname = getParam("hostname", '127.0.0.1');
+const port = Integer.parseInt(getParam("port", "3000"));
 
 const serverFile = "./server.elm";
 const htaccessFile = "./htaccess.elm";
+var path =  getParam("--path",    "");
+
+var fileToOpen = getNonParam();
+if(fileToOpen) {
+  if(fileToOpen.indexOf("/") == -1 && fileToOpen.indexOf("\\") == -1) {
+    path = "";
+  } else {
+    path = fileToOpen.replace(/[\/\\][^\/\\]*$/g, "");
+  }
+  fileToOpen = fileToOpen.replace(/.*[\/\\](?=[^\/\\]*$)/g, "");
+}
+
 var defaultOptions = {
   edit:     getParam("--edit",     "true") == "true",
   autosave: getParam("--autosave", "true") == "true",
   question: getParam("--question", "true") == "true",
   admin:    getParam("--admin",    "false") == "true",
   production:    getParam("--production",    "false") == "true",
-  path: getParam("--path",    "")
+  path:     path,
+  closeable: !(!(fileToOpen))
 };
+
 
 // Don't modify, this will be replaced by the content of 'server.elm'
 const defaultServerContent = "<html><head></head><body>Server not available.</body></html>";
@@ -296,7 +314,7 @@ const server = http.createServer((request, response) => {
         response.setHeader('Content-Type', header);
         response.statusCode = 200;
         if(htmlContent.ctor == "Err") {
-          response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
+          response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`);
         } else {
           response.end(htmlContent._0);
         }
@@ -316,7 +334,9 @@ const server = http.createServer((request, response) => {
     request.on('data', chunk => chunks.push(chunk));
     request.on('end', function () {
         var allChunks = Buffer.concat(chunks);
-        if(request.headers["write-file"]) {
+        if(defaultOptions.closeable && request.headers["close"]) {
+          process.exit();
+        } else if(request.headers["write-file"]) {
           console.log("going to write file");
           // Just a file that we write on disk.
           var imageType = request.headers["write-file"];
@@ -407,7 +427,7 @@ const server = http.createServer((request, response) => {
 
 // Load the Elm program into our namespace.
 server.listen(port, hostname, () => {
-  console.log("Editor Server ready!");
+  console.log("Editor Server serving path " + defaultOptions.path);
   if(defaultOptions.edit) {
     console.log("Edit mode:     activated.    (toggle option: 'edit=false')");
   } else {
@@ -432,4 +452,11 @@ module.exports = function(requireOptions) {
   for(var k in requireOptions) {
     defaultOptions[k] = requireOptions[k];
   }
+}
+
+if(fileToOpen) {
+  var opn = require('opn');
+
+  // opens the url in the default browser 
+  opn('http://127.0.0.1:3000/'+fileToOpen);
 }

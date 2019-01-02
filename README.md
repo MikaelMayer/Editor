@@ -147,6 +147,16 @@ Editor can be run with some commands to change its default behavior.
 * `--question=false` automatically chooses the first answer in case of ambiguity (interactive questioning by default). It can always be re-added on any URL by adding `?question=true`
 * `--admin=true` activates the admin mode (mostly to change `server.elm` -- deactivated by default). It can always be re-added on any URL by adding `?admin=false`
 * `--path=dir` launch Editor at the given directory (can be relative or absolute)
+* '--port=8080' sets the listening port to 8080 (default: 3000).
+
+### Use Editor to open *.html, *.md and *.elm files
+
+Editor can also be used to open files on the command line. This can be useful to quickly edit one html or markdown file. Sample syntax:
+
+    editor test/links.html
+
+This will launch a temporary version of Editor and open an URL to this file in the default browser.
+When the tab or window is closed, the temporary server is killed.
 
 ### NPM require package
 

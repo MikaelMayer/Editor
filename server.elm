@@ -36,6 +36,7 @@ boolVar name resDefault =
 varadmin = boolVar "admin" False
 varedit = boolVar "edit" True
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
+iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
 
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
@@ -180,7 +181,7 @@ h4 {
               (if canEditPage then serverOwned "contenteditable attribute of the body due to edit=true" [["contenteditable", "true"]] else freeze []) ++
                 bodyattrs,
               (if canEditPage then (serverOwned "edition menu" editionmenu ++ Update.sizeFreeze [(serverOwned "code preview box" codepreview) sourcecontent]) else
-               if not varedit && not varproduction then serverOwned "open edit box" [openEditBox] else
+               if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
                serverOwned "edit prelude when not in edit mode" []) ++ serverOwned "initial script" initialScript ++ bodychildren ++ Update.sizeFreeze (serverOwned "synchronization script" [<script>@editionscript</script>])]
           x -> x
         )]
@@ -232,13 +233,13 @@ switchEditBox toEdit =
 
 openEditBox = switchEditBox True
 closeEditBox = switchEditBox False
-  
+
 boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false")
   
 editionmenu = [
 <div id="docslinkbubble" class="docs-bubble docs-linkbubble-bubble" list-ghost-attributes="style" help="Modify or delete a link" tabindex="0" contenteditable="false"><a rel="noreferrer" id="docslinkbubble-linkpreview" list-ghost-attributes="href contenteditable" children-are-ghosts="true"></a><span> – <button id="docslinkbubble-modify" class="docs-bubble-link" tabindex="0">Modify</button> | <button id="docslinkbubble-delete" class="docs-bubble-link" tabindex="0">Delete</button></span></div>,
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
-@closeEditBox
+@(if iscloseable then [] else closeEditBox)
 <style>
 .docs-linkbubble-bubble {
   z-index: 1503;
@@ -1062,8 +1063,9 @@ editionscript = """
       if(clickedElem && clickedElem.tagName == "A" && clickedElem.getAttribute("id") != "docslinkbubble-linkpreview") {
         var href = clickedElem.getAttribute("href");
         if(href) {
-          var bottomX = clickedElem.offsetLeft;
-          var bottomY = clickedElem.offsetTop + clickedElem.offsetHeight;
+          var rect = clickedElem.getBoundingClientRect();
+          var bottomX = window.scrollX + rect.left;
+          var bottomY = window.scrollY + rect.top + clickedElem.offsetHeight;
           var d = document.getElementById("docslinkbubble");
           d.setAttribute("style", "left: " + bottomX + "; top: " + bottomY);
           var targetA = document.getElementById("docslinkbubble-linkpreview");
@@ -1154,6 +1156,32 @@ editionscript = """
         targetA.setAttribute("contenteditable", "false");
       }
     }
+@(if iscloseable then """
+window.onbeforeunload = function (e) {
+    e = e || window.event;
+
+    var askConfirmation = document.getElementById("manualsync-menuitem") &&
+         document.getElementById("manualsync-menuitem").getAttribute("ghost-disabled") == "false";
+    const confirmation = 'You have unsaved modifications. Do you still want to exit?';
+
+    // For IE and Firefox prior to version 4
+    if (e) {
+      if(askConfirmation) {
+        e.returnValue = confirmation;
+      }
+    }
+    if(askConfirmation) {
+      // For Safari
+      return confirmation;
+    } else {
+      var xmlhttp = new XMLHttpRequest();
+      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+      xmlhttp.open("POST", location.pathname + location.search);
+      xmlhttp.setRequestHeader("close", "true");
+      xmlhttp.send("{\"a\":1}");
+    }
+};
+""" else "")
 """
 
 main
