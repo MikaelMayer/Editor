@@ -1,4 +1,4 @@
-# Editor : The First Reversible HTTP Server
+# Editor: The First Reversible HTTP Server
 
 ![Screenshot of Editor](/screenshot-2.png?raw=true)
 
@@ -149,7 +149,7 @@ Editor can be run with some commands to change its default behavior.
 * `--path=dir` launch Editor at the given directory (can be relative or absolute)
 * '--port=8080' sets the listening port to 8080 (default: 3000).
 
-### Use Editor to open *.html, *.md and *.elm files
+### Use Editor to open \*.html, \*.md and \*.elm files
 
 Editor can also be used to open files on the command line. This can be useful to quickly edit one html or markdown file. Sample syntax:
 
@@ -158,7 +158,10 @@ Editor can also be used to open files on the command line. This can be useful to
 This will launch a temporary version of Editor and open an URL to this file in the default browser.
 When the tab or window is closed, the temporary server is killed.
 
-On Windows, if you want to open a file from the explorer window, right-click on an HTML file, Open with, Choose another app, More apps, Look for another app on this PC, navigate to `C:\Users\[your username]\AppData\Roaming\npm` and select `editor.cmd`.
+On Windows, if you want to open a file from the explorer window, right-click on an HTML file, Open with, Choose another app[^note], More apps, Look for another app on this PC, navigate to `C:\Users\[your username]\AppData\Roaming\npm` and select `editor.cmd`.
+
+[^note]: At this point, check "Always use this app to open `*.html/*.md files"` to ensure Editor always appears in the list of apps that can open html files.
+You can always revert to your favorite Desktop application to open these files later.
 
 ### NPM require package
 
