@@ -4,7 +4,8 @@
 -- input: fileOperations  The current set of delayed file disk operations.
 --    Note that Elm pages are given in context the path, the vars, and the file system (fs) to read other files
 -- output: The page, either raw or augmented with the toolbar and edit scripts.
-preludeEnv = __CurrentEnv__
+preludeEnv = let _ = googlesigninbutton in -- Force googlesigninbutton to be evaluated before preludeEnv
+  __CurrentEnv__
 
 mbApplyPrefix = case listDict.get "path" defaultOptions of
   Just "" -> Nothing
@@ -514,20 +515,17 @@ setGhostOnInserted = [];
     }
   }
 );
-// For ace css themes
-(setGhostOnInserted || []).push(insertedNode => {
-  if(insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null) {
-    if(insertedNode.nextSibling && insertedNode.nextSibling.getAttribute &&
-      insertedNode.nextSibling.getAttribute("id") &&
-      insertedNode.nextSibling.getAttribute("id").startsWith("ace-")) {
-      insertedNode.setAttribute("id", "loaded-aced-theme");
-      insertedNode.setAttribute("save-ghost", "true");
-      return true;
-    }
-    return false;
-  }
-  return false;
-  }
+// For Google sign-in buttons and i-frames
+(setGhostOnInserted || []).push(insertedNode =>
+  (insertedNode.tagName == "DIV" &&
+    insertedNode.classList.contains("abcRioButton")) ||
+  (insertedNode.tagName == "IFRAME" &&
+    insertedNode.getAttribute("id") == "ssIFrame_google")
+);
+// For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
+(setGhostOnInserted || []).push(insertedNode => 
+  insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null &&
+  insertedNode.parentElement.tagName == "HEAD" && (insertedNode.setAttribute("save-ghost", "true") || true)
 );
 // For ace script for syntax highlight
 (setGhostOnInserted || []).push(insertedNode =>
@@ -1220,5 +1218,52 @@ window.onbeforeunload = function (e) {
 };
 """ else "")
 """
+
+googlesigninbutton = [
+<style>
+a.closeGoogleSignIn {
+  margin-left: 2px;
+  padding-left: 4px;
+  padding-right: 5px;
+}
+a.closeGoogleSignIn:hover {
+  background: #AAA;
+  color: white;
+  border-radius: 10px;
+}
+</style>,
+<div class="g-signin2" data-onsuccess="onGoogleSignIn" list-ghost-attributes="data-gapiscan data-onload" children-are-ghost="true"></div>,
+<script>
+function onGoogleSignIn(googleUser) {
+  var profile = googleUser.getBasicProfile();
+  
+  var wasSignedIn = googleAuthIdToken ? true : false;
+  // When set, will be used throughout 
+  googleAuthIdToken = googleUser.getAuthResponse().id_token;
+  var addSignout = (name) => {
+    var signin = document.querySelector(".abcRioButtonContents").children[1];
+    signin.setAttribute("title", "Signed in as " + name);
+    var signout = document.createElement("a");
+    signout.classList.add("closeGoogleSignIn");
+    signout.setAttribute("title", "Sign out");
+    signout.innerText = "x";
+    signout.onclick = () => {
+      var auth2 = gapi.auth2.getAuthInstance();
+      auth2.signOut().then(() => {
+        auth2.disconnect();
+        googleAuthIdToken = undefined;
+        console.log('User signed out.');
+      });
+    }
+    signin.append(signout);
+  }
+  addSignout(profile.getName());
+  if(!wasSignedIn) { // Necessary to ensure that we don't reload the page the second time it is loaded.
+    reloadPage();
+  }
+}
+</script>,
+<script id="googlesigninscript" src="https://apis.google.com/js/platform.js" async defer save-ghost-attributes="gapi_processed"></script>
+]
 
 main
