@@ -26,7 +26,10 @@ const http = require('http');
 const url = require('url');
 const hostname = getParam("hostname", '127.0.0.1');
 var port = parseInt(getParam("port", "3000"));
-          
+
+// The default client id is suitable only for localhost:3000
+var googleClientId = getParam("google-client-id", "844835838734-2iphm3ff20ephn906md1ru8vbkpu4mg8.apps.googleusercontent.com");
+
 const getPort = require('get-port');
 
 async function start() {
@@ -251,6 +254,7 @@ function loadpage(path, vars, user, newvalue) {
   if(typeof vars != "object") vars = {};
   var serverFileContent = readServerFile();
   var env = {
+      googleClientId: googleClientId,
       vars: vars,
       user: toLeoQuery(user || {}),
       defaultOptions: toLeoQuery(defaultOptions),
@@ -446,24 +450,15 @@ const server = http.createServer((request, response) => {
         var token = request.headers["id-token"];
         if(token) {
           const {OAuth2Client} = require('google-auth-library');
-          const client = new OAuth2Client("844835838734-2iphm3ff20ephn906md1ru8vbkpu4mg8.apps.googleusercontent.com");
+          const client = new OAuth2Client(googleClientId);
  
           async function verify() {
             const ticket = await client.verifyIdToken({
                 idToken: token,
-                //audience: "844835838734-ldunknpvlt4v9eac8osr3ja3ccq32rv9.apps.googleusercontent.com",  // Specify the CLIENT_ID of the app that accesses the backend
-                audience: "844835838734-2iphm3ff20ephn906md1ru8vbkpu4mg8.apps.googleusercontent.com"
-                // Or, if multiple clients access the backend:
-                //[CLIENT_ID_1, CLIENT_ID_2, CLIENT_ID_3]
+                audience: googleClientId // Array of client ids if multiple clients access the backend.
             });
             const userdata = ticket.getPayload();
-            //const userid = userdata['sub'];
-            // Check if the user exists. If yes, updates its information to the live database.
-            
             continueWithLoading(userdata); // Only authenticated users can access their information. Great!
-            
-            // If request specified a G Suite domain:
-            //const domain = payload['hd'];
           }
           verify().catch(err => {
             console.log(err);

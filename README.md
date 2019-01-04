@@ -149,6 +149,7 @@ Editor can be run with some commands to change its default behavior.
 * `--admin=true` activates the admin mode (mostly to change `server.elm` -- deactivated by default). It can always be re-added on any URL by adding `?admin=false`
 * `--path=dir` launch Editor at the given directory (can be relative or absolute)
 * '--port=8080' sets the listening port to 8080 (default: 3000).
+* '--google-client-id=YOURCLIENTID.apps.googleusercontent.com' sets the google authentification client ID (see authentication below)
 
 ### Use Editor to open \*.html, \*.md and \*.elm files
 
@@ -171,6 +172,10 @@ You can invoke Editor as an NPM package in node.js. To do so, after installing `
     require("http-server-editor")({option:true});
     
 You can use the syntax `option:true` to pass along any option described in the previous section 'Command line arguments'
+
+### Authentication (experimental)
+
+
 
 ## Limitations, future work and caution
 

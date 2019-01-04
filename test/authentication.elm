@@ -1,6 +1,6 @@
 <html>
 <head>
-<meta name="google-signin-client_id" content="844835838734-2iphm3ff20ephn906md1ru8vbkpu4mg8.apps.googleusercontent.com">
+<meta name="google-signin-client_id" content=@googleClientId>
 <title>Hello authenticated world</title>
 <style>
 a.closeSignIn {
@@ -30,7 +30,7 @@ a.closeSignIn:hover {
 </script>
 <script id="googlesigninscript" src="https://apis.google.com/js/platform.js" async defer save-ghost-attributes="gapi_processed"></script>
 <h1>
-<img src=@(listDict.get "picture" user |> Maybe.withDefault "")> Hello @(listDict.get "given_name" user |> Maybe.withDefault "Anonymous")!</h1>
+<img src=@(listDict.get "picture" user |> Maybe.withDefault "")> Hello @(listDict.get "given_name" user |> Maybe.withDefault "Anonymous")!</h1>
 <div class="g-signin2" data-onsuccess="onSignIn" list-ghost-attributes="data-gapiscan data-onload" children-are-ghost="true"></div>
 <script>
 addSignout = (name) => {

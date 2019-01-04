@@ -816,6 +816,7 @@ editionscript = """
               log.innerText = "Last action: " + opSummary;
               var newMenu = document.createElement("menuitem");
               newMenu.append(log);
+              newMenu.setAttribute("id", "lastaction");
               newMenu.setAttribute("isghost", "true");
               if(document.getElementById("themenu"))
                 document.getElementById("themenu").append(newMenu);
@@ -888,6 +889,9 @@ editionscript = """
       newMenu.setAttribute("isghost", "true");
       newMenu.setAttribute("id", "notification-menu");
       newMenu.classList.add("to-be-selected");
+      if(document.getElementById('lastaction')) {
+        document.getElementById('lastaction').remove();
+      }
       if(document.getElementById("themenu") && document.getElementById("manualsync-menuitem")) {
         document.getElementById("themenu").append(newMenu);
         document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "false");
