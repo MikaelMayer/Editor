@@ -25,7 +25,7 @@
   "dependencies": {
     "get-port": "^4.1.0",
     "opn": "^5.4.0",
-    "sketch-n-sketch": "^1.2.4"
+    "sketch-n-sketch": "^1.2.5"
   },
   "bin": {
     "http-server-editor": "bin/server-generated.js",

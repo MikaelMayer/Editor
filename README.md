@@ -177,7 +177,9 @@ You can use the syntax `option:true` to pass along any option described in the p
 
 * **HTML formatting caution**: On Windows, while loading dynamic `.elm` webpages, if you use `fs.read`, make sure to convert the resulting string with `String.newlines.toUnix`. This is a reversible function that ensures that the newlines are \n and not \r\n. Else, the reverse interpreter will replace all windows-like newlines \r\n by Unix-like newlines \n anyway but this might take a looong time.
 
-* **Need for authentication**: Since there is no authentication yet, everybody that has access to the server can easily modify all the files present. Please do not use this server for production until there is proper authentication. If you want to contribute to authentication, a pull request is welcome.
+* **Need for authentication**: Since there is no authentication yet, everybody that has access to the server can easily modify all the files present. Please do not use this server for production until there is proper authentication. If you want to contribute to authentication, a pull request is welcome.  
+  Auth0 seems promising:  
+  https://auth0.com/docs/quickstart/webapp/nodejs#configure-auth0
 
 * **Need for concurrent editing**: In case there are two conflicting edits, they will not be merged, only the second will take place. There is a work in progress for merging edit diffs.
 
