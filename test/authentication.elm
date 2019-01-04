@@ -17,7 +17,10 @@ a.closeSignIn:hover {
 </head>
 <body>
 <script>
-(setGhostOnInserted || []).push(insertedNode => insertedNode.tagName == "STYLE" && insertedNode.attributes.length == 0);
+(setGhostOnInserted || []).push(insertedNode =>
+  insertedNode.tagName == "STYLE" && insertedNode.parentNode.tagName == "HEAD" &&
+  insertedNode.attributes.length == 0 && 
+  (insertedNode.setAttribute("save-ghost", "true") || true));
 (setGhostOnInserted || []).push(insertedNode =>
   (insertedNode.tagName == "DIV" &&
     insertedNode.classList.contains("abcRioButton")) ||
@@ -25,7 +28,7 @@ a.closeSignIn:hover {
     insertedNode.getAttribute("id") == "ssIFrame_google")
 );
 </script>
-<script src="https://apis.google.com/js/platform.js" async defer></script>
+<script id="googlesigninscript" src="https://apis.google.com/js/platform.js" async defer save-ghost-attributes="gapi_processed"></script>
 <h1>
 <img src=@(listDict.get "picture" user |> Maybe.withDefault "")> Hello @(listDict.get "given_name" user |> Maybe.withDefault "Anonymous")!</h1>
 <div class="g-signin2" data-onsuccess="onSignIn" list-ghost-attributes="data-gapiscan data-onload" children-are-ghost="true"></div>
@@ -51,19 +54,13 @@ addSignout = (name) => {
 function onSignIn(googleUser) {
   var profile = googleUser.getBasicProfile();
   
-  var wasSignedIn = googleAuthIdToken ? "true" : "false";
+  var wasSignedIn = googleAuthIdToken ? true : false;
   // When set, will be used throughout 
   googleAuthIdToken = googleUser.getAuthResponse().id_token;
-  
-  /*console.log('ID: ' + profile.getId()); // Do not send to your backend! Use an ID token instead.
-  console.log('Name: ' + profile.getName());
-  console.log('Image URL: ' + profile.getImageUrl());
-  console.log('Email: ' + profile.getEmail()); // This is null if the 'email' scope is not present.
-  */
   addSignout(profile.getName());
-  
   if(!wasSignedIn) { // Necessary to ensure that we don't reload the page the second time it is loaded.
     reloadPage();
+  } else {
   }
 }
 </script>
