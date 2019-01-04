@@ -32,8 +32,6 @@ var googleClientId = getParam("google-client-id", "844835838734-2iphm3ff20ephn90
 
 const getPort = require('get-port');
 
-async function start() {
-
 const serverFile = "./server.elm";
 const htaccessFile = "./htaccess.elm";
 var path =  getParam("--path",    "");
@@ -63,6 +61,8 @@ var defaultOptions = {
   closeable: !(!(fileToOpen))
 };
 
+
+async function start() {
 
 // Don't modify, this will be replaced by the content of 'server.elm'
 const defaultServerContent = "<html><head></head><body>Server not available.</body></html>";
