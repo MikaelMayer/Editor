@@ -148,9 +148,10 @@ Editor can be run with some commands to change its default behavior.
 * `--question=false` automatically chooses the first answer in case of ambiguity (interactive questioning by default). It can always be re-added on any URL by adding `?question=true`
 * `--admin=true` activates the admin mode (mostly to change `server.elm` -- deactivated by default). It can always be re-added on any URL by adding `?admin=false`
 * `--path=dir` launch Editor at the given directory (can be relative or absolute)
-* '--port=8080' sets the listening port to 8080 (default: 3000).
-* '--google-client-id=YOURCLIENTID.apps.googleusercontent.com' sets the google authentification client ID (see authentication below)
-
+* `--port=8080` sets the listening port to 8080 (default: 3000).
+* `--google-client-id=YOURCLIENTID.apps.googleusercontent.com` sets the google authentification client ID (see authentication below)
+* `--openbrowser=true` launches a browser to open the URL where Editor is listening
+`
 ### Use Editor to open \*.html, \*.md and \*.elm files
 
 Editor can also be used to open files on the command line. This can be useful to quickly edit one html or markdown file. Sample syntax:
@@ -177,10 +178,11 @@ You can use the syntax `option:true` to pass along any option described in the p
 
 It is now possible to authenticate on dynamic webpages using Google's Sign-in. The following is a minimal example illustrating how to authenticate and use the result:
 
-  <html><head><meta name="google-signin-client_id" content=@googleClientId></head>
-  <body>@googlesigninbutton
-  <h1><img src=@(listDict.get "picture" user |> Maybe.withDefault "")> Hello @(listDict.get "given_name" user |> Maybe.withDefault "Anonymous")!</h1>
-  </body></html>
+    <html><head><meta name="google-signin-client_id" content=@googleClientId></head>
+    <body>@googlesigninbutton
+    <h1><img src=@(listDict.get "picture" user |> Maybe.withDefault "")>
+    Hello @(listDict.get "given_name" user |> Maybe.withDefault "Anonymous")!</h1>
+    </body></html>
 
 That's it! Under the hood, `googleClientId` is by default my own app's client ID that works only for `localhost:3000`. If you want to modify it to use your own, register an app and credentials [there](https://console.developers.google.com/apis/credentials), obtain a cliend ID, and add to the command-line that runs Editor `--google-client-id=...` as specified in the *Command-line arguments* section above.
 

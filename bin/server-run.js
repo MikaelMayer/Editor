@@ -60,7 +60,8 @@ var defaultOptions = {
   admin:    getParam("--admin",    "false") == "true",
   production:    getParam("--production",    "false") == "true",
   path:     path,
-  closeable: !(!(fileToOpen))
+  closeable: !(!(fileToOpen)),
+  openbrowser: getParam("--openbrowser", "false") == "true"
 };
 
 
@@ -510,6 +511,11 @@ if(fileToOpen) {
 
   // opens the url in the default browser 
   opn("http://" + hostname + ":" + port + "/" + fileToOpen);
+} else if(defaultOptions.openbrowser) {
+  var opn = require('opn');
+
+  // opens the url in the default browser 
+  opn("http://" + hostname + ":" + port);
 }
 } // async declaration of start()
 
@@ -523,6 +529,7 @@ module.exports = function(requireOptions) {
       defaultOptions[k] = requireOptions[k];
     }
     start();
+    return;
   }
 }
 
