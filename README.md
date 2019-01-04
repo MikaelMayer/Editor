@@ -175,6 +175,16 @@ You can use the syntax `option:true` to pass along any option described in the p
 
 ### Authentication (experimental)
 
+It is now possible to authenticate on dynamic webpages using Google's Sign-in. The following is a minimal example illustrating how to authenticate and use the result:
+
+  <html><head><meta name="google-signin-client_id" content=@googleClientId></head>
+  <body>@googlesigninbutton
+  <h1><img src=@(listDict.get "picture" user |> Maybe.withDefault "")> Hello @(listDict.get "given_name" user |> Maybe.withDefault "Anonymous")!</h1>
+  </body></html>
+
+That's it! Under the hood, `googleClientId` is by default my own app's client ID that works only for `localhost:3000`. If you want to modify it to use your own, register an app and credentials [there](https://console.developers.google.com/apis/credentials), obtain a cliend ID, and add to the command-line that runs Editor `--google-client-id=...` as specified in the *Command-line arguments* section above.
+
+
 
 
 ## Limitations, future work and caution

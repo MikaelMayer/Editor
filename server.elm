@@ -4,6 +4,8 @@
 -- input: fileOperations  The current set of delayed file disk operations.
 --    Note that Elm pages are given in context the path, the vars, and the file system (fs) to read other files
 -- output: The page, either raw or augmented with the toolbar and edit scripts.
+listGetOrElse key listDict default = listDict.get key listDict |> Maybe.withDefault default
+
 preludeEnv = let _ = googlesigninbutton in -- Force googlesigninbutton to be evaluated before preludeEnv
   __CurrentEnv__
 
@@ -42,17 +44,11 @@ iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (free
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
 permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
+-- List.contains ("sub", "102014571179481340426") user -- That's my Google user ID.
 
 canEditPage = userpermissions.pageowner && varedit
 
-freezeWhen notPermission lazyMessage = Update.lens {
-  apply x = x
-  update {outputNew, diffs} =
-    if notPermission then
-      Err (lazyMessage (outputNew, diffs))
-    else
-      Ok (InputsWithDiffs [(outputNew, Just diffs)])
-}
+{freezeWhen} = Update
 
 serverOwned what = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
 
@@ -1219,7 +1215,7 @@ window.onbeforeunload = function (e) {
 """ else "")
 """
 
-googlesigninbutton = [
+googlesigninbutton = serverOwned "the google sign-in button" [
 <style>
 a.closeGoogleSignIn {
   margin-left: 2px;

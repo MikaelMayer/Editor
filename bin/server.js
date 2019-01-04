@@ -24,7 +24,7 @@ const http = require('http');
   cert: fs.readFileSync('keys/cert.pem')
 };*/
 const url = require('url');
-const hostname = getParam("hostname", '127.0.0.1');
+const hostname = getParam("hostname", 'localhost');
 var port = parseInt(getParam("port", "3000"));
 
 // The default client id is suitable only for localhost:3000
