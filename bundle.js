@@ -16,5 +16,6 @@ if(res.ctor == "Err") {
   console.log("Error", res._0);
 } else {
   var result = sns.valToNative(res._0)._0;
-  fs.writeFileSync("bin/server-generated.js", "#!/usr/bin/env node\n\n" + result, "utf8");
+  fs.writeFileSync("bin/server-run.js", "#!/usr/bin/env node\n\n" + result, "utf8");
+  fs.writeFileSync("bin/server-npm-package.js", result.replace(/\/\*REMOVE_FOR_NPM_INCLUDE[\s\S]*END_REMOVE\*\//g, ""), "utf8");
 }

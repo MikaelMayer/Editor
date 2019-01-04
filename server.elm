@@ -425,7 +425,7 @@ menuitem > .solution.notfinal {
 </style>
 <div class= "editor-logo">Editor <a href= "https://github.com/MikaelMayer/Editor/issues">(report issue)</a></div><div class="menu-separator"></div><menuitem class= "filename" title= "the path of the file you are currently viewing">@(if path == "" then serverOwned "empty path" "[root folder]" else path)</menuitem>
 <div class="menu-separator"></div><menuitem>
-<label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox" save-attributes="checked"
+<label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox" save-properties="checked"
   onchange="""
 var cp = document.getElementById("editor_codepreview");
 if(cp !== null) {
@@ -433,14 +433,14 @@ if(cp !== null) {
 }"""><span class= "label-checkbox">Source</span></label>
 </menuitem><div class="menu-separator"></div>
 <menuitem>
-<label title="If off, ambiguities are resolved automatically. Does not apply for HTML pages"><input id="input-question" type="checkbox" save-attributes="checked" @(case listDict.get "question" vars of
+<label title="If off, ambiguities are resolved automatically. Does not apply for HTML pages"><input id="input-question" type="checkbox" save-properties="checked" @(case listDict.get "question" vars of
                        Just questionattr -> boolToCheck questionattr
                        _ -> serverOwned "initial checked attribute (use &question=false in query parameters to modify it)" (
                               if boolVar "question" True then [["checked", ""]] else []))><span class= "label-checkbox">Ask questions</span></label>
 </menuitem>
 <div class="menu-separator"></div>
 <menuitem>
-<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosave" type="checkbox" save-attributes="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case listDict.get "autosave" vars of
+<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosave" type="checkbox" save-properties="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case listDict.get "autosave" vars of
                       Just autosaveattr -> boolToCheck autosaveattr
                       _ -> serverOwned "initial checked attribute (use &autosave=true or false in query parameters to modify it)"  (
                              if boolVar "autosave" True then [["checked", ""]] else []))><span class= "label-checkbox">Auto-save</span></label>
@@ -453,6 +453,10 @@ if(cp !== null) {
 
 initialScript = [
 <script>
+if(typeof googleAuthIdToken == "undefined") {
+  var googleAuthIdToken = undefined;
+}
+
 function isGhostNode(elem) {
   return elem && elem.nodeType == 1 &&
     (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true");
@@ -472,7 +476,8 @@ function isGhostAttributeKey(name) {
 
 globalGhostAttributeKeysFromNode = [];
 (globalGhostAttributeKeysFromNode || []).push(n =>
-  ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ").filter(a => a != "")
+  ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ").concat(
+    ((n && n.getAttribute && n.getAttribute("save-ghost-attributes")) || "").split(" ")).filter(a => a != "")
 );
 (globalGhostAttributeKeysFromNode || []).push(n =>
   n && n.tagName == "HTML" ? ["class"] : []
@@ -641,7 +646,7 @@ function remove(node) {
 
 codepreview sourcecontent = 
 <div class="codepreview" id="editor_codepreview">
-  <textarea id="editor_codepreview_textarea" save-attributes="scrollTop"
+  <textarea id="editor_codepreview_textarea" save-properties="scrollTop"
     style="width:100%;height:200px" v=sourcecontent onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" sourcecontent then "\n" + sourcecontent else sourcecontent))</textarea>
 </div>
     
@@ -656,16 +661,30 @@ editionscript = """
       var id = ghostModified[i].getAttribute("id");
       if(id !== null && typeof id !== "undefined") {
         idGhostAttributes.push([id,
-          {"ghost-visible": ghostModified[i].getAttribute("ghost-visible")}]);
+          "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
       }
     }
-    var elemsWithAttributesToSave = document.querySelectorAll("[save-attributes]");
+    var ghostAttributesModified = document.querySelectorAll("[save-ghost-attributes]");
+    console.log(ghostAttributesModified);
+    for(var i = 0; i < ghostAttributesModified.length; i++) {
+      var elem = ghostAttributesModified[i];
+      var id = elem.getAttribute("id");
+      if(id != null) {
+        var toSave = elem.getAttribute("save-ghost-attributes").split(" ");
+        for(j in toSave) {
+          var key = toSave[j];
+          idGhostAttributes.push([id, key, elem.getAttribute(key)]);
+        }
+      }
+    }
+    
+    var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
     var idDynamicAttributes = [];
     for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
       var elem = elemsWithAttributesToSave[i];
       var id = elem.getAttribute("id");
       if(id !== null && typeof id !== "undefined") {
-        var toSave = elem.getAttribute("save-attributes").split(" ");
+        var toSave = elem.getAttribute("save-properties").split(" ");
         for(j in toSave) {
           var key = toSave[j];
           idDynamicAttributes.push([id, key, elem[key]])
@@ -690,12 +709,10 @@ editionscript = """
   function applyGhostAttributes(attrs) {
     var [idGhostAttributes, idDynamicAttributes, parentsGhostNodes] = attrs;
     for(var i in idGhostAttributes) {
-      var [id, attrs] = idGhostAttributes[i];
+      var [id, key, attr] = idGhostAttributes[i];
       var elem = document.getElementById(id);
-      if(elem !== null && typeof elem !== "undefined") {
-        for(key in attrs) {
-          elem.setAttribute(key, attrs[key]);
-        }
+      if(elem != null) {
+        elem.setAttribute(key, attr);
       }
     }
     for(var i in idDynamicAttributes) {
@@ -791,15 +808,18 @@ editionscript = """
             if(document.getElementById("themenu"))
               document.getElementById("themenu").append(newMenu);
           } else {
-            var opSummary = decodeURI(xmlhttp.getResponseHeader("Operations-Summary"));
-            var log = document.createElement("span");
-            log.setAttribute("class", "summary");
-            log.innerText = "Last action: " + opSummary;
-            var newMenu = document.createElement("menuitem");
-            newMenu.append(log);
-            newMenu.setAttribute("isghost", "true");
-            if(document.getElementById("themenu"))
-              document.getElementById("themenu").append(newMenu);
+            var opSummaryEncoded = xmlhttp.getResponseHeader("Operations-Summary");
+            if(opSummaryEncoded) {
+              var opSummary = decodeURI(opSummaryEncoded);
+              var log = document.createElement("span");
+              log.setAttribute("class", "summary");
+              log.innerText = "Last action: " + opSummary;
+              var newMenu = document.createElement("menuitem");
+              newMenu.append(log);
+              newMenu.setAttribute("isghost", "true");
+              if(document.getElementById("themenu"))
+                document.getElementById("themenu").append(newMenu);
+            }
           }
           if(newQueryStr !== null) {
             var newQuery = JSON.parse(newQueryStr);
@@ -813,35 +833,48 @@ editionscript = """
         }
     }
     
-    function selectAmbiguity(key, num) {
+    notifyServer = callback => {
       var xmlhttp = new XMLHttpRequest();
-      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {
+        if(document.getElementById("input-autosave") && !document.getElementById("input-autosave").checked) {
+          document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "true") // Because it will be saved
+        }
+      });
       xmlhttp.open("POST", location.pathname + location.search);
-      xmlhttp.setRequestHeader("ambiguity-key", key);
-      xmlhttp.setRequestHeader("select-ambiguity", JSON.stringify(num));
       xmlhttp.setRequestHeader("Content-Type", "application/json");
-      xmlhttp.setRequestHeader("question", "true");
-      xmlhttp.send("{\"a\":1}");
+      if(googleAuthIdToken) {
+        xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
+      }
+      var result = callback(xmlhttp);
+      xmlhttp.send(result || "{\"a\":1}");
+    }
+    
+    function reloadPage() { // Use this only after a successful login
+      notifyServer(xmlhttp => {
+        xmlhttp.setRequestHeader("reload", "true");
+      })
+    }
+    
+    function selectAmbiguity(key, num) {
+      notifyServer(xmlhttp => {
+        xmlhttp.setRequestHeader("ambiguity-key", key);
+        xmlhttp.setRequestHeader("select-ambiguity", JSON.stringify(num));
+        xmlhttp.setRequestHeader("question", "true");
+      });
     }
     
     function acceptAmbiguity(key, num) {
-      var xmlhttp = new XMLHttpRequest();
-      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-      xmlhttp.open("POST", location.pathname + location.search);
-      xmlhttp.setRequestHeader("ambiguity-key", key);
-      xmlhttp.setRequestHeader("accept-ambiguity", JSON.stringify(num));
-      xmlhttp.setRequestHeader("Content-Type", "application/json");
-      xmlhttp.send("{\"a\":1}");
+      notifyServer(xmlhttp => {
+        xmlhttp.setRequestHeader("ambiguity-key", key);
+        xmlhttp.setRequestHeader("accept-ambiguity", JSON.stringify(num));
+      });
     }
     
     function cancelAmbiguity(key, num) {
-      var xmlhttp = new XMLHttpRequest();
-      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-      xmlhttp.open("POST", location.pathname + location.search);
-      xmlhttp.setRequestHeader("ambiguity-key", key);
-      xmlhttp.setRequestHeader("cancel-ambiguity", JSON.stringify(num));
-      xmlhttp.setRequestHeader("Content-Type", "application/json");
-      xmlhttp.send("{\"a\":1}");
+      notifyServer(xmlhttp => {
+        xmlhttp.setRequestHeader("ambiguity-key", key);
+        xmlhttp.setRequestHeader("cancel-ambiguity", JSON.stringify(num));
+      });
     }
     
     function sendModificationsToServer() {
@@ -859,17 +892,10 @@ editionscript = """
         document.getElementById("themenu").append(newMenu);
         document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "false");
       }
-      
-      var xmlhttp = new XMLHttpRequest();
-      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {
-        if(document.getElementById("input-autosave") && !document.getElementById("input-autosave").checked) {
-          document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "true") // Because it will be saved
-        }
-      });
-      xmlhttp.open("POST", location.pathname + location.search);
-      xmlhttp.setRequestHeader("Content-Type", "application/json");
-      xmlhttp.setRequestHeader("question", document.getElementById("input-question") && document.getElementById("input-question").checked ? "true" : "false");
-      xmlhttp.send(JSON.stringify(domNodeToNativeValue(document.body.parentElement)));
+      notifyServer(xmlhttp => {
+        xmlhttp.setRequestHeader("question", document.getElementById("input-question") && document.getElementById("input-question").checked ? "true" : "false");
+        return JSON.stringify(domNodeToNativeValue(document.body.parentElement));
+      })
     }
     
     function handleMutations(mutations) {

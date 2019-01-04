@@ -101,8 +101,9 @@ In a script at the beginning of the body:
 
 Editor re-writes the whole page each time a update is back-propagated. It is however possible to save some ghost attributes and some ghost nodes. Here is the list of things Editor saves and restores:
 
-* Any node with an `id` and `ghost-visible` DOM attribute will have its `ghost-visible` DOM attribute value restored.
-* Any node with an `id` and `save-attributes` DOM attribute will have all the javascript attributes, that are encoded in the value of `save-attributes` separated with space, restored.
+* Any node with an `id` and a `ghost-visible` DOM attribute will have its `ghost-visible` DOM attribute value restored.
+* Any node with an `id` and a `save-properties` DOM attribute will have all the javascript properties, that are encoded in the value of `save-properties` separated with space, restored.
+* Any node with an `id` and a `save-ghost-attributes` DOM attribute will have all its attributes, whose name are encoded in the value of `save-ghost-attributes` separated with spaces, restored. Attributes in `save-ghost-attributes` are automatically considered as ghost attributes, so no `list-ghost-attributes` is necessary;
 * Any node with a `save-ghost` attribute set to `true`, that is a child of `head` or whose parent has an `id`, will be reinserted back as a child to the `head` or the parent, if it does not yet exists.
 
 ### Uploading media files.

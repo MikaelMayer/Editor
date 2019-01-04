@@ -26,10 +26,10 @@ const http = require('http');
 const url = require('url');
 const hostname = getParam("hostname", '127.0.0.1');
 var port = parseInt(getParam("port", "3000"));
-
+          
 const getPort = require('get-port');
 
-(async () => {
+async function start() {
 
 const serverFile = "./server.elm";
 const htaccessFile = "./htaccess.elm";
@@ -108,8 +108,8 @@ function lazyListToList(ll) {
 cachedSolutions = {
   key: {
      timestamp: 0,
-     computed: [["html page", "environment overrides", "fileOperations"],
-                ["html page 2", "environment overrides 2", "fileOperations 2..."]],
+     computed: [["html page", "environment vars", "fileOperations"],
+                ["html page 2", "environment vars 2", "fileOperations 2..."]],
      remaining: "false, or a LazyList whose head element is last computed solution. Call getOneSolution(this.path, this.serverFileContent, sns.lazyList.tail(remaining)) on it to get one more solution if it exists",
      path: "The path that is being computed",
      serverFileContent: "The original source file of the server. Maybe be overwritten in fileOperations"
@@ -150,7 +150,7 @@ function uniqueKey() {
   return "" + potentialkey;
 }
 
-function envToOverrides(env) { return env.vars; }
+function envToVars(env) { return env.vars; }
 
 function getOneSolution(path, serverFileContent, allSolutions) {
   if(sns.lazyList.isEmpty(allSolutions)) return false;
@@ -171,7 +171,7 @@ function getOneSolution(path, serverFileContent, allSolutions) {
   }
   var fo = newEnv.fileOperations;
   var evaluated = evaluateToHtml(path, newEnv, newServerFileContent);
-  return [evaluated, envToOverrides(newEnv), fo]; 
+  return [evaluated, envToVars(newEnv), fo]; 
   // Evaluates everything given the temporary context of writing the files.
 }
 
@@ -246,14 +246,19 @@ function fileOperationSummary(operations) {
 
 // Returns a [Result of string containing the requested page, new overrides]
 // If newvalue is defined, performs an update before returning the page.
-function loadpage(path, overrides, newvalue) {
+function loadpage(path, vars, user, newvalue) {
   // __dirname = path.resolve(); // If in the REPL
-  if(typeof overrides != "object") overrides = {};
+  if(typeof vars != "object") vars = {};
   var serverFileContent = readServerFile();
-  var env = { vars: overrides, defaultOptions: toLeoQuery(defaultOptions), path: path, fileOperations: [] };
+  var env = {
+      vars: vars,
+      user: toLeoQuery(user || {}),
+      defaultOptions: toLeoQuery(defaultOptions),
+      path: path,
+      fileOperations: [] };
   
   if(typeof newvalue == "undefined") {
-    return [evaluateToHtml(path, env, serverFileContent), overrides];
+    return [evaluateToHtml(path, env, serverFileContent), vars];
   } else { // We update the page and re-render it.
     var newVal = sns.nativeToVal(newvalue);
     console.log("Started to update...");
@@ -325,7 +330,7 @@ const server = http.createServer((request, response) => {
       var header = path.endsWith(".svg") ? "image/svg+xml" : header;
       var header = path.endsWith(".css") ? "text/css; charset=utf-8" : header;
       if(!header.startsWith("image/") && !header.startsWith("text/css")) {
-        var [htmlContent] = loadpage(path, query);
+        var [htmlContent] = loadpage(path, query, undefined);
         response.setHeader('Content-Type', header);
         response.statusCode = 200;
         if(htmlContent.ctor == "Err") {
@@ -346,14 +351,14 @@ const server = http.createServer((request, response) => {
         }
       }
     } else if(request.method == "POST") {
-    const chunks = [];
-    request.on('data', chunk => chunks.push(chunk));
-    request.on('end', function () {
+      const chunks = [];
+      request.on('data', chunk => chunks.push(chunk));
+      request.on('end', function () {
         var allChunks = Buffer.concat(chunks);
         if(defaultOptions.closeable && request.headers["close"]) {
-          willkill = setTimeout(() => process.exit(), timeBeforeExit); // Kills the server after 1 second
+          willkill = setTimeout(() => process.exit(), timeBeforeExit); // Kills the server after 2 seconds
           return;
-        } else if(request.headers["write-file"]) {
+        } else if(request.headers["write-file"]) { // With this and with the correct permissions, we can overwrite any file.
           console.log("going to write file");
           // Just a file that we write on disk.
           var imageType = request.headers["write-file"];
@@ -364,75 +369,113 @@ const server = http.createServer((request, response) => {
           response.end('');
           return;
         }
-        var canAskQuestion = (request.headers["question"] || urlParts.query["question"] || (defaultOptions.questions ? "true" : "false")) == "true";
-        var body =  allChunks.toString();
-        var ambiguityKey = request.headers["ambiguity-key"];
-        var numberOfSolutionsSoFar = 2; // Only if Ambiguity-Key is set.
-        var numSolutionSelected = 1;
-        var htmlContent = {ctor:"Err", _0: "Not yet defined"};
-        var newQuery = [];
-        var fileOperations = [];
-        var ambiguitiesSummary = [];
-        if(ambiguityKey !== null && typeof ambiguityKey !== "undefined") {
-          var selectAmbiguityStr = request.headers["select-ambiguity"];
-          if(selectAmbiguityStr != null) {
-            numSolutionSelected = JSON.parse(selectAmbiguityStr);
-            var solutionSet = cachedSolutions[ambiguityKey];
-            if(typeof solutionSet != "undefined") {
-              [htmlContent, newQuery, fileOperations] = getSolutionByNum(solutionSet, numSolutionSelected);
-              numberOfSolutionsSoFar = solutionSet.computed.length;
-              ambiguitiesSummary = solutionSet.computed.map(a => fileOperationSummary(a[2]));
-            } else {
-              htmlContent = {ctor:"Err", _0: "Solution set not found"};
-            }
-          } else {
-            var acceptAmbiguityStr = request.headers["accept-ambiguity"];
-            if(acceptAmbiguityStr != null) {
-              var acceptAmbiguity = JSON.parse(acceptAmbiguityStr);
+        
+        var continueWithLoading = (userdata) => {
+          var canAskQuestion = (request.headers["question"] || urlParts.query["question"] || (defaultOptions.questions ? "true" : "false")) == "true";
+          var body =  allChunks.toString();
+          var ambiguityKey = request.headers["ambiguity-key"];
+          var numberOfSolutionsSoFar = 2; // Only if Ambiguity-Key is set.
+          var numSolutionSelected = 1;
+          var htmlContent = {ctor:"Err", _0: "Not yet defined"};
+          var newQuery = [];
+          var fileOperations = [];
+          var ambiguitiesSummary = [];
+          if(ambiguityKey !== null && typeof ambiguityKey !== "undefined") {
+            var selectAmbiguityStr = request.headers["select-ambiguity"];
+            if(selectAmbiguityStr != null) {
+              numSolutionSelected = JSON.parse(selectAmbiguityStr);
               var solutionSet = cachedSolutions[ambiguityKey];
-              [htmlContent, newQuery, fileOperations] = getSolutionByNum(solutionSet, acceptAmbiguity);
-              ambiguityKey = undefined;
-            } else {
-              var cancelAmbiguityStr = request.headers["cancel-ambiguity"];
-              if(cancelAmbiguityStr != null) {
-                ambiguityKey = undefined;
-                [htmlContent, newQuery, fileOperations] = loadpage(path, query);
-                fileOperations = [];
+              if(typeof solutionSet != "undefined") {
+                [htmlContent, newQuery, fileOperations] = getSolutionByNum(solutionSet, numSolutionSelected);
+                numberOfSolutionsSoFar = solutionSet.computed.length;
+                ambiguitiesSummary = solutionSet.computed.map(a => fileOperationSummary(a[2]));
               } else {
-                htmlContent = {ctor:"Err", _0: "Solution set not found."};
+                htmlContent = {ctor:"Err", _0: "Solution set not found"};
+              }
+            } else {
+              var acceptAmbiguityStr = request.headers["accept-ambiguity"];
+              if(acceptAmbiguityStr != null) {
+                var acceptAmbiguity = JSON.parse(acceptAmbiguityStr);
+                var solutionSet = cachedSolutions[ambiguityKey];
+                [htmlContent, newQuery, fileOperations] = getSolutionByNum(solutionSet, acceptAmbiguity);
+                ambiguityKey = undefined;
+              } else {
+                var cancelAmbiguityStr = request.headers["cancel-ambiguity"];
+                if(cancelAmbiguityStr != null) {
+                  ambiguityKey = undefined;
+                  [htmlContent, newQuery, fileOperations] = loadpage(path, query, userdata);
+                  fileOperations = [];
+                } else {
+                  htmlContent = {ctor:"Err", _0: "Solution set not found."};
+                }
               }
             }
-          }
-        } else {
-          var pushedValue = JSON.parse(body);
-          [htmlContent, newQuery, fileOperations, ambiguityKey] = loadpage(path, query, pushedValue);
-        }
-        response.statusCode = 201;
-        response.setHeader('Content-Type', 'text/html; charset=utf-8');
-        if(htmlContent.ctor == "Err") {
-          response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
-        } else {
-          response.setHeader('New-Query', JSON.stringify(newQuery));
-          if(ambiguityKey != null && typeof ambiguityKey != "undefined" &&
-             !path.endsWith(".html") && canAskQuestion &&
-             (urlParts.query["edit"] == "true" || (urlParts.query["edit"] == null && defaultOptions.edit))) {
-            var solutionSet = cachedSolutions[ambiguityKey];
-            var ambiguityEnd = solutionSet.remaining === false;
-            ambiguitiesSummary = solutionSet.computed.map(a => fileOperationSummary(a[2]));
-            response.setHeader('Ambiguity-Key', ambiguityKey);
-            response.setHeader('Ambiguity-Number', JSON.stringify(numberOfSolutionsSoFar));
-            response.setHeader('Ambiguity-Selected', JSON.stringify(numSolutionSelected));
-            response.setHeader('Ambiguity-Summaries', JSON.stringify(ambiguitiesSummary));
-            response.setHeader('Ambiguity-End', ambiguityEnd ? "true" : "false");
+          } else if(request.headers["reload"]) {
+            [htmlContent, newQuery, fileOperations] = loadpage(path, query, userdata);
           } else {
-            applyOperations(fileOperations);
-            response.setHeader('Operations-Summary', encodeURI(fileOperationSummary(fileOperations)));
+            var pushedValue = JSON.parse(body);
+            [htmlContent, newQuery, fileOperations, ambiguityKey] = loadpage(path, query, userdata, pushedValue);
           }
-          response.end(htmlContent._0);
+          response.statusCode = 201;
+          response.setHeader('Content-Type', 'text/html; charset=utf-8');
+          if(htmlContent.ctor == "Err") {
+            response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
+          } else {
+            response.setHeader('New-Query', JSON.stringify(newQuery));
+            if(ambiguityKey != null && typeof ambiguityKey != "undefined" &&
+               !path.endsWith(".html") && canAskQuestion &&
+               (urlParts.query["edit"] == "true" || (urlParts.query["edit"] == null && defaultOptions.edit))) {
+              var solutionSet = cachedSolutions[ambiguityKey];
+              var ambiguityEnd = solutionSet.remaining === false;
+              ambiguitiesSummary = solutionSet.computed.map(a => fileOperationSummary(a[2]));
+              response.setHeader('Ambiguity-Key', ambiguityKey);
+              response.setHeader('Ambiguity-Number', JSON.stringify(numberOfSolutionsSoFar));
+              response.setHeader('Ambiguity-Selected', JSON.stringify(numSolutionSelected));
+              response.setHeader('Ambiguity-Summaries', JSON.stringify(ambiguitiesSummary));
+              response.setHeader('Ambiguity-End', ambiguityEnd ? "true" : "false");
+            } else {
+              if(fileOperations) {
+                applyOperations(fileOperations);
+                response.setHeader('Operations-Summary', encodeURI(fileOperationSummary(fileOperations)));
+              }
+            }
+            response.end(htmlContent._0);
+          }
         }
-        });
+        
+        var token = request.headers["id-token"];
+        if(token) {
+          const {OAuth2Client} = require('google-auth-library');
+          const client = new OAuth2Client("844835838734-2iphm3ff20ephn906md1ru8vbkpu4mg8.apps.googleusercontent.com");
+ 
+          async function verify() {
+            const ticket = await client.verifyIdToken({
+                idToken: token,
+                //audience: "844835838734-ldunknpvlt4v9eac8osr3ja3ccq32rv9.apps.googleusercontent.com",  // Specify the CLIENT_ID of the app that accesses the backend
+                audience: "844835838734-2iphm3ff20ephn906md1ru8vbkpu4mg8.apps.googleusercontent.com"
+                // Or, if multiple clients access the backend:
+                //[CLIENT_ID_1, CLIENT_ID_2, CLIENT_ID_3]
+            });
+            const userdata = ticket.getPayload();
+            //const userid = userdata['sub'];
+            // Check if the user exists. If yes, updates its information to the live database.
+            
+            continueWithLoading(userdata); // Only authenticated users can access their information. Great!
+            
+            // If request specified a G Suite domain:
+            //const domain = payload['hd'];
+          }
+          verify().catch(err => {
+            console.log(err);
+            continueWithLoading(undefined);            
+          });
+          return;
+        } else {
+          continueWithLoading(undefined);
+        }
+      });
     } else {
-      response.statusCode = 200;
+      response.statusCode = 400;
       response.end("Unknown method");
     }
   } else {
@@ -465,18 +508,27 @@ server.listen(port, hostname, () => {
   console.log(`Point your browser at http://${hostname}:${port}`);
 });
 
-module.exports = function(requireOptions) {
-  if(!requireOptions) return;
-  for(var k in requireOptions) {
-    defaultOptions[k] = requireOptions[k];
-  }
-}
-
 if(fileToOpen) {
   var opn = require('opn');
 
   // opens the url in the default browser 
   opn("http://" + hostname + ":" + port + "/" + fileToOpen);
 }
+} // async declaration of start()
 
-})(); // async
+// Never called when starting the server from command-line.
+module.exports = function(requireOptions) {
+  if(!requireOptions) {
+    start();
+    return;
+  } else {
+    for(var k in requireOptions) {
+      defaultOptions[k] = requireOptions[k];
+    }
+    start();
+  }
+}
+
+/*REMOVE_FOR_NPM_INCLUDE*/
+start();
+/*END_REMOVE*/

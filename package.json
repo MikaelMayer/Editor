@@ -2,7 +2,7 @@
   "name": "http-server-editor",
   "version": "1.0.39",
   "description": "HTTP server that accepts user-triggered changes to static HTML & Markdown pages and dynamic .elm pages.",
-  "main": "bin/server-generated.js",
+  "main": "bin/server-npm-package.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -24,15 +24,17 @@
   },
   "dependencies": {
     "get-port": "^4.1.0",
+    "google-auth-library": "^2.0.2",
     "opn": "^5.4.0",
-    "sketch-n-sketch": "^1.2.5"
+    "sketch-n-sketch": "^1.2.6"
   },
   "bin": {
-    "http-server-editor": "bin/server-generated.js",
-    "editor": "bin/server-generated.js"
+    "http-server-editor": "bin/server-run.js",
+    "editor": "bin/server-run.js"
   },
   "files": [
-    "bin/server-generated.js",
+    "bin/server-run.js",
+    "bin/server-npm-package.js",
     "favicon.ico",
     "README.md",
     "LICENSE.md",

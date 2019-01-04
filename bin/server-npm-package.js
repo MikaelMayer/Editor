@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 
 var params = process.argv.slice(2);
 
@@ -28,10 +26,10 @@ const http = require('http');
 const url = require('url');
 const hostname = getParam("hostname", '127.0.0.1');
 var port = parseInt(getParam("port", "3000"));
-
+          
 const getPort = require('get-port');
 
-(async () => {
+async function start() {
 
 const serverFile = "./server.elm";
 const htaccessFile = "./htaccess.elm";
@@ -365,6 +363,34 @@ const server = http.createServer((request, response) => {
           response.statusCode = 201;
           response.end('');
           return;
+        } else if(request.headers["tokensignin"]) {
+          var token = request.headers["tokensignin"];
+          const {OAuth2Client} = require('google-auth-library');
+          const client = new OAuth2Client("844835838734-2iphm3ff20ephn906md1ru8vbkpu4mg8.apps.googleusercontent.com");
+          //const client = new OAuth2Client("844835838734-ldunknpvlt4v9eac8osr3ja3ccq32rv9.apps.googleusercontent.com");
+
+          async function verify() {
+            const ticket = await client.verifyIdToken({
+                idToken: token,
+                //audience: "844835838734-ldunknpvlt4v9eac8osr3ja3ccq32rv9.apps.googleusercontent.com",  // Specify the CLIENT_ID of the app that accesses the backend
+                audience: "844835838734-2iphm3ff20ephn906md1ru8vbkpu4mg8.apps.googleusercontent.com"
+                // Or, if multiple clients access the backend:
+                //[CLIENT_ID_1, CLIENT_ID_2, CLIENT_ID_3]
+            });
+            const payload = ticket.getPayload();
+            const userid = payload['sub'];
+            console.log(payload);
+            response.statusCode = 200;
+            response.end(userid);
+            
+            // If request specified a G Suite domain:
+            //const domain = payload['hd'];
+          }
+          verify().catch(err => {
+            response.statusCode = 404;
+            response.end("anonymous - error " + err);            
+          });
+          return;
         }
         var canAskQuestion = (request.headers["question"] || urlParts.query["question"] || (defaultOptions.questions ? "true" : "false")) == "true";
         var body =  allChunks.toString();
@@ -467,18 +493,25 @@ server.listen(port, hostname, () => {
   console.log(`Point your browser at http://${hostname}:${port}`);
 });
 
-module.exports = function(requireOptions) {
-  if(!requireOptions) return;
-  for(var k in requireOptions) {
-    defaultOptions[k] = requireOptions[k];
-  }
-}
-
 if(fileToOpen) {
   var opn = require('opn');
 
   // opens the url in the default browser 
   opn("http://" + hostname + ":" + port + "/" + fileToOpen);
 }
+} // async declaration of start()
 
-})(); // async
+// Never called when starting the server from command-line.
+module.exports = function(requireOptions) {
+  if(!requireOptions) {
+    start();
+    return;
+  } else {
+    for(var k in requireOptions) {
+      defaultOptions[k] = requireOptions[k];
+    }
+    start();
+  }
+}
+
+
