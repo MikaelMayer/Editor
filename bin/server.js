@@ -12,6 +12,15 @@ function getParam(x, defaultValue) {
   }
 }
 
+function existsParam(x) {
+  var param = params.find(elem => elem == x);
+  return typeof param !== "undefined";
+}
+
+function isBoolParamTrue(x) {
+  return existsParam(x) || getParam(x, "false") == true;
+}
+
 function getNonParam() {
   return params.find(elem => !elem.startsWith("-"))
 }
@@ -51,11 +60,11 @@ var defaultOptions = {
   edit:     getParam("--edit",     "true") == "true",
   autosave: autosave,
   question: question,
-  admin:    getParam("--admin",    "false") == "true",
-  production:    getParam("--production",    "false") == "true",
+  admin:    isBoolParamTrue("--admin"),
+  production:    isBoolParamTrue("--production"),
   path:     path,
   closeable: !(!(fileToOpen)),
-  openbrowser: getParam("--openbrowser", "false") == "true",
+  openbrowser: isBoolParamTrue("--openbrowser"),
   key: "localhost-key.pem",
   cert: "localhost.pem"
 };
@@ -520,7 +529,7 @@ if(fileToOpen) {
   var opn = require('opn');
 
   // opens the url in the default browser 
-  opn(protocol + "http://" + hostname + ":" + port);
+  opn(protocol + "://" + hostname + ":" + port);
 }
 } // async declaration of start()
 
