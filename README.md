@@ -1,13 +1,15 @@
-# Editor: The First Reversible HTTP Server
+# Editor: The First Reversible HTTP/HTTPS Server
 
 ![Screenshot of Editor](/screenshot-2.png?raw=true)
 
-Editor is an HTTP server that not only displays HTML (.html), Markdown (.md) and Elm (.elm [^elm-pages]) pages, but also propagates back modifications made to the pages to the source files themselves.
+Editor is an HTTP/HTTPS server that not only displays HTML (.html), Markdown (.md) and Elm (.elm[^elm-pages]) pages,
+but also propagates back modifications made to the pages to the source files themselves.
 
-To visually edit a page, simply add `?edit=true` to its URL, and the content will be editable by mouse and keyboard.
+To edit the page, just use the mouse and keyboard as you would do for a word document.
 Alternatively and anytime, you can use the DOM inspector of the browser of your choice to modify the source page.
+Editor also offers some convenience tools to upload images and create/modify links.
 
-## Quick launch
+## Install and launch
 
 Install node.js and run the following command:
 
@@ -18,7 +20,7 @@ Now, to launch a reversible HTTP server in any folder, run:
     editor
 
 The longer version of this command is `http-server-editor`.  
-Then, point your browser to http://127.0.0.1:3000
+Then, point your browser to http://localhost:3000
 
 ## Simple dynamic example
 
@@ -41,103 +43,18 @@ Create a file `pizzas.elm` with the following content:
       ) userdata)
     </span></body></html>
 
-Now launch Editor, and point your browser to http://127.0.0.1:3000/pizzas.elm?user=RandomDude  
+Now launch Editor, and point your browser to http://localhost:3000/pizzas.elm?user=RandomDude  
 Congratulations. In 16 lines of code, you created a Content Management System where all the CRUD operations (create-read-update-delete) can be done in the browser:
 * Selecting/Modifying someone's pizza choice
 * Add/Modify/delete pizzas
 * Modify any text you see
-* Display the summary of choice
+* Display a summary of choices
 
-Beware, the system does not support concurrent editing yet, make sure you alone edit the page at the same time.
-
-#### Advanced example
+### Advanced example
 
 Look into [`test/pizzas.elm`](https://github.com/MikaelMayer/Editor/blob/master/test/pizzas.elm) and [`CONTRIBUTING.md`](https://github.com/MikaelMayer/Editor/blob/master/CONTRIBUTING.md) for more advanced examples covering the same website with file reading, evaluation, translation to different languages, deletion of choices, modification of pizza by name, and more.
 
 ## Supported features
-
-### Administrator rights
-
-It's possible to active the admin rights by setting `&admin=true` or `?admin=true` in the URL. With these rights, 
-
-* If you point the browser to a non-existing HTML or Elm file and modify it, it will display a default template and automatically create the file as soon as you modify the template.
-* If you modify the menus, it will create a modified `server.elm` at the root the folder instead of using the built-in one. Careful: when you upgrade Editor, you should remove this file as there might be incompatibilities.
-
-### Access permisions based on path
-
-If a file `htaccess.elm` is at the root of the folder, it will be executed with an environment containing the variables `path` and `method` ("GET" or "POST") and should produce a boolean (`True`/`False`)indicating if the operation is allowed.
-
-### Custom markdown styling
-
-Markdown styling can be customized by creating a `markdown.css` file at the root where Editor is launched.
-Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of the document using the DOM inspector. This action will create the `markdown.css` file directly.
-
-### Dealing with scripts or plug-ins that modify the page
-
-Some scripts or plugins (such as Google Analytics, Ace editor, Grammarly...) insert nodes or add special attributes. These nodes and attributes should not be back-propagated.  
-Editor offers several mechanisms to prevent this back-propagation. You can either do it manually or have Editor take care of that.
-
-#### Commands via attributes
-
-You can add special attributes to an HTML element to mark some parts as being "ghost", that is, they should not be back-propagated.
-
-* `isghost="true"` on an element ensures that the whole element is ignored when back-propagation occurs. Alternatively, setting `element.isghost=true` in javascript results in the same effect without modifying the DOM.  
-  Never put isghost="true" on an element on the source side level, it would be automatically erased on the first back-propagation.
-* `list-ghost-attributes="attr1 attr2 ... attrn"` on an element ensures that any inserted attribute with one of the name `attr1` ... `attrn` will not be back-propagated.
-  Never put one of the `attr1` ... `attrn` attributes on the element directly, else it would be automatically erased on the first back-propagation.
-* `children-are-ghost="true"` on an element ensures that any inserted or modified child to this element is not back-propagated.
-  Never add children at the source level to an element which has this attribute, else they would be automatically erased on the first back-propagation.
-
-#### Editor's global ghost nodes and attributes.
-
-Editor also observes insertions and deletions and can mark some elements as ghost so you don't need to manage this yourself.
-In a script at the beginning of the body:
-
-* `(setGhostOnInserted || []).push(insertedNode => /*PREDICATE ON insertedNode*/);`: For any inserted node, if this predicate returns `true`, Editor will mark and consider it as ghost so you don't need to manage it.  
-  A simple predicate to filter out inserted nodes which have the class "dummy" would look like: `insertedNode.nodeType == 1 && insertedNode.classList && insertedNode.classList.contains("dummy")`.
-* `(globalGhostAttributeKeysFromNode || []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be considered as ghost.
-
-### Dealing with page reloads
-
-Editor re-writes the whole page each time a update is back-propagated. It is however possible to save some ghost attributes and some ghost nodes. Here is the list of things Editor saves and restores:
-
-* Any node with an `id` and a `ghost-visible` DOM attribute will have its `ghost-visible` DOM attribute value restored.
-* Any node with an `id` and a `save-properties` DOM attribute will have all the javascript properties, that are encoded in the value of `save-properties` separated with space, restored.
-* Any node with an `id` and a `save-ghost-attributes` DOM attribute will have all its attributes, whose name are encoded in the value of `save-ghost-attributes` separated with spaces, restored. Attributes in `save-ghost-attributes` are automatically considered as ghost attributes, so no `list-ghost-attributes` is necessary;
-* Any node with a `save-ghost` attribute set to `true`, that is a child of `head` or whose parent has an `id`, will be reinserted back as a child to the `head` or the parent, if it does not yet exists.
-
-### Uploading media files.
-
-You can drop images on a webpage, they are automatically uploaded at the current relative location, and an img html element is inserted. See how this works:
-
-  ![Demo of image drop](/drop-image.gif?raw=true)
-
-### Edit links
-
-  ![Demo of link editing](/create-link.gif?raw=true)
-
-In edit mode, if you click on a link, a pop-up appears, allowing you to
-* Navigate to the link
-* Modify the link's address
-* Delete the link
-
-You can add links by selecting some text and pressing CTRL+K, and then use the method above to edit the newly inserted link.
-
-### Listing files
-
-If a folder does not contain an `index.html` or a `README.md`, Editor will display a list of files.
-To force to list the files in a folder even though there is an `index.html` or a `README.md`, just append &amp;ls=true in the URL query parameters.
-
-From any view listing files, you can delete files by deleting the corresponding bullet point.
-Similarly, to rename a file, go to devtools and rename the text of the link.
-
-### Add edition capabilities to your webpage
-
-When the `edit=true` search query param is set, the following style is injected to the page:
-
-    .editor-menu { display: initial !important; }
-
-This means that whatever had the class `editor-menu` will be displayed in this edit mode. You can use it to define your own scripts that self-modify the page. A default toolbar is to come soon in Editor, keep in touch.
 
 ### Command-line arguments
 
@@ -151,8 +68,133 @@ Editor can be run with some commands to change its default behavior.
 * `--port=8080` sets the listening port to 8080 (default: 3000).
 * `--google-client-id=YOURCLIENTID.apps.googleusercontent.com` sets the google authentification client ID (see authentication below)
 * `--openbrowser=true` launches a browser to open the URL where Editor is listening
-`
-### Use Editor to open \*.html, \*.md and \*.elm files
+* `--key=file-key.pem` sets the file containing the key for the https protocol (default: `localhost-key.pem`)
+* `--cert=file.pem` sets the file containing the certificate for the https protocol (default: `localhost.pem`)
+
+### Editing pages
+
+#### Uploading media files.
+
+When Editor displays a webpage in edit mode, place the caret anywhere and drop an image from your file system.
+Images are automatically uploaded at the current relative location, and an &lt;img&gt; is inserted. See how this works:
+
+  ![Demo of image drop](/drop-image.gif?raw=true)
+
+#### Edit links
+
+![Demo of link editing](/create-link.gif?raw=true)
+
+In edit mode, if you click on a link, a pop-up appears, allowing you to
+* Navigate to the link
+* Modify the link's address
+* Delete the link
+
+For now, you can add links by selecting some text and pressing CTRL+K, and then use the method above to edit the newly inserted link.
+
+#### Listing, Renaming, Deleting files
+
+When the path on which Editor is opened is a folder, Editor will look for an `index.elm`, and `index.html` or a `README.md` to display by default.
+Else it will display a list of files (unless `htaccess.elm` prevents it).
+In any case, to force Editor to list the files in a folder, append &amp;ls=true in the URL query parameters.
+
+From any view listing files, you can delete files by deleting the corresponding bullet point.
+Similarly, to rename a file, browser the file list in edit mode and rename a bullet point.
+
+![Listing files](/ls.png?raw=true]
+
+### Advanced page editing and styling
+
+#### Custom markdown styling
+
+Editor can directly render markdown files. Markdown styling can be customized by creating a `markdown.css` file at the root where Editor is launched.
+Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of the document using the DOM inspector. This action will create the `markdown.css` file directly.
+
+#### Dealing with scripts or plug-ins that modify the page
+
+Some scripts or plugins (such as Google Analytics, Ace editor, Grammarly...) insert nodes or add special attributes. These nodes and attributes should not be back-propagated.  
+Editor offers several mechanisms to prevent this unwanted back-propagation.
+
+If you are the author of dynamically added elements or attributes to the page, Editor provides you a way to mark them as ghosts so that they will not be back-propagated. To do so:
+
+* The attribute `isghost="true"` on an element ensures that the whole element is ignored when back-propagation occurs.
+  Alternatively, setting `element.isghost=true` in javascript results in the same effect without modifying the DOM.  
+  Never put isghost="true" on an element on the source side level, it would be automatically erased on the first back-propagation.
+* The attribute `list-ghost-attributes="attr1 attr2 ... attrn"` on an element ensures that any inserted attribute with one of the name `attr1` ... `attrn` will not be back-propagated.
+  Never put one of the `attr1` ... `attrn` attributes on the source side level, else it would be automatically erased on the first back-propagation.
+* The attribute `children-are-ghost="true"` on an element ensures that any inserted or modified child to this element is not back-propagated.
+  Never add children at the source level to an element which has this attribute, else they would be automatically erased on the first back-propagation.
+
+If you are not yourself adding dynamic elements or attributes, Editor also observes insertions and deletions and lets you mark inserted elements as ghosts.
+In a script at the beginning of the body:
+
+* `(setGhostOnInserted || []).push(insertedNode => /*PREDICATE ON insertedNode*/);`: For any inserted node, if this predicate returns `true`, Editor will mark and consider the `insertedNode` as ghost.  
+  A simple predicate to filter out inserted nodes which have the class "dummy" would look like: `insertedNode.nodeType == 1 && insertedNode.classList && insertedNode.classList.contains("dummy")`.
+* `(globalGhostAttributeKeysFromNode || []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be considered as ghost.
+
+#### Saving ghost attributes and properties on page rewrite after edits.
+
+Editor re-writes the whole page each time a update is back-propagated. It is however possible to save some ghost attributes and some ghost nodes. Here is the list of things Editor saves and restores:
+
+* Any node with an `id` and a `ghost-visible` DOM attribute will have its `ghost-visible` DOM attribute value restored.
+* Any node with an `id` and a `save-properties` DOM attribute will have all the javascript properties, that are encoded in the value of `save-properties` separated with space, restored.
+* Any node with an `id` and a `save-ghost-attributes` DOM attribute will have all its attributes, whose name are encoded in the value of `save-ghost-attributes` separated with spaces, restored. Attributes in `save-ghost-attributes` are automatically considered as ghost attributes, so no `list-ghost-attributes` is necessary;
+* Any node with a `save-ghost` attribute set to `true`, that is a child of `head` or whose parent has an `id`, will be reinserted back as a child to the `head` or the parent, if it does not yet exists.
+
+#### Add edition capabilities to your webpage
+
+When Editor is in Edit mode, the following style is injected to the page:
+
+    .editor-menu { display: initial !important; }
+
+This means that whatever had the class `editor-menu` will be displayed in this edit mode.
+For example, `<button style="display:none" class="editor-menu">Click me</button>` is a button that will only appear when the page is opened with Editor in edit mode.
+You can use this mechanism to define your own scripts that self-modify the page.
+
+### Security
+
+#### Configure HTTPS
+
+The recommended way to create a localhost HTTPS certificate is to use [mkcert](https://github.com/FiloSottile/mkcert) which is very easy to install.
+
+    mkcert --install
+    mkcert localhost
+
+To have Editor launch an HTTPS server instead of HTTP, just place `localhost-key.pem` and `localhost.pem` where you launch Editor.
+Alternatively, you can specify the path to these files via command-line (see `--key` and `--cert` above).
+To launch a production server, make sure to deny access to the certificate and the key (see `htaccess.elm` above); 
+
+#### Path-based access permisions
+
+If a file `htaccess.elm` is at the root of the folder, it will be executed with an environment containing the variables `path` and `method` ("GET" or "POST") and should produce a boolean (`True`/`False`)indicating if the operation is allowed.
+
+For example, a simple `htaccess.elm` that prevents relative paths and access to the local key and certificate looks at follows:
+
+    not (Regex.matchIn """\.\.(?:/|\\)|(?:/|\\)\.\.|^\.\.$""" path) &&
+    not (Regex.matchIn """.*\.pem""" path)
+
+
+#### Authentication (experimental)
+
+It is now possible to authenticate on dynamic webpages using Google's Sign-in. The following is a minimal example illustrating how to authenticate and use the result:
+
+    <html><head><meta name="google-signin-client_id" content=@googleClientId></head>
+    <body>@googlesigninbutton
+    <h1><img src=@(listDict.get "picture" user |> Maybe.withDefault "")>
+    Hello @(listDict.get "given_name" user |> Maybe.withDefault "Anonymous")!</h1>
+    </body></html>
+
+That's it! Under the hood, `googleClientId` is by default my own app's client ID that works only for `localhost:3000`. If you want to modify it to use your own, register an app and credentials [there](https://console.developers.google.com/apis/credentials), obtain a cliend ID, and add to the command-line that runs Editor `--google-client-id=...` as specified in the *Command-line arguments* section above.
+
+#### Administrator rights (soon obsolete, to be replaced by authentication)
+
+It's possible to active the admin rights by setting `&admin=true` or `?admin=true` in the URL. With these rights, 
+
+* If you point the browser to a non-existing HTML or Elm file and modify it, it will display a default template and automatically create the file as soon as you modify the template.
+* If you modify the menus, it will create a modified `server.elm` at the root the folder instead of using the built-in one. Careful: when you upgrade Editor, you should remove this file as there might be incompatibilities.
+
+### Integrate Editor
+
+#### Use Editor to open \*.html, \*.md and \*.elm files
 
 Editor can also be used to open files on the command line. This can be useful to quickly edit one html or markdown file. Sample syntax:
 
@@ -166,28 +208,14 @@ On Windows, if you want to open a file from the explorer window, right-click on 
 [^note]: At this point, check "Always use this app to open `*.html/*.md files"` to ensure Editor always appears in the list of apps that can open html files.
 You can always revert to your favorite Desktop application to open these files later.
 
-### NPM require package
+#### NPM require package
 
 You can invoke Editor as an NPM package in node.js. To do so, after installing `http-server-editor`, place in your code:
 
-    require("http-server-editor")({option:true});
+    require("http-server-editor")({edit:true});
     
-You can use the syntax `option:true` to pass along any option described in the previous section 'Command line arguments'
-
-### Authentication (experimental)
-
-It is now possible to authenticate on dynamic webpages using Google's Sign-in. The following is a minimal example illustrating how to authenticate and use the result:
-
-    <html><head><meta name="google-signin-client_id" content=@googleClientId></head>
-    <body>@googlesigninbutton
-    <h1><img src=@(listDict.get "picture" user |> Maybe.withDefault "")>
-    Hello @(listDict.get "given_name" user |> Maybe.withDefault "Anonymous")!</h1>
-    </body></html>
-
-That's it! Under the hood, `googleClientId` is by default my own app's client ID that works only for `localhost:3000`. If you want to modify it to use your own, register an app and credentials [there](https://console.developers.google.com/apis/credentials), obtain a cliend ID, and add to the command-line that runs Editor `--google-client-id=...` as specified in the *Command-line arguments* section above.
-
-
-
+You can use the syntax `option:true` to pass along any option described in the previous section 'Command line arguments'.
+As example, [Hyde](https://github.com/MikaelMayer/hyde-build-tool) is a website builder is using this way to launch Editor.
 
 ## Limitations, future work and caution
 
@@ -195,17 +223,14 @@ That's it! Under the hood, `googleClientId` is by default my own app's client ID
 
 * **HTML formatting caution**: On Windows, while loading dynamic `.elm` webpages, if you use `fs.read`, make sure to convert the resulting string with `String.newlines.toUnix`. This is a reversible function that ensures that the newlines are \n and not \r\n. Else, the reverse interpreter will replace all windows-like newlines \r\n by Unix-like newlines \n anyway but this might take a looong time.
 
-* **Need for authentication**: Since there is no authentication yet, everybody that has access to the server can easily modify all the files present. Please do not use this server for production until there is proper authentication. If you want to contribute to authentication, a pull request is welcome.  
-  Auth0 seems promising:  
-  https://auth0.com/docs/quickstart/webapp/nodejs#configure-auth0
-
 * **Need for concurrent editing**: In case there are two conflicting edits, they will not be merged, only the second will take place. There is a work in progress for merging edit diffs.
 
 * **Need for better diffs**: The set of edits to nodes is limited to modifications, insertions and deletions. There is no wrapping/unwrapping or other forms of clones. We are working on a new way to express a greater set of edits.
 
 * **Need for templates**: Editor could allow you to create a page from given templates. We'll work on that. We already have several templates in [Sketch-n-sketch](https://github.com/ravichugh/sketch-n-sketch). Among the templates, we want slides, docs, recipe editor, worksheet, contact forms, academic webpage, etc.
 
-* **Need for a toolbar**: It's very easy to add menus or contextual menus to do actions on the page, so we would not need to rely on devtools. The link edition is an example. PR are welcome to have a better menu bar to edit images, tables, etc.
+* **Need for a toolbar**: It would be very easy to add menus or contextual menus to do actions on the page, so we would not need to rely on devtools.
+The link edition is such an example. PR are welcome to have a better menu bar to edit images, tables, etc.
 
 ## License
 

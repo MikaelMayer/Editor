@@ -17,12 +17,8 @@ function getNonParam() {
 }
 
 const fs = require("fs");
-//const https = require('https');
-const http = require('http');
-/*var options = {
-  key: fs.readFileSync('keys/key.pem'),
-  cert: fs.readFileSync('keys/cert.pem')
-};*/
+const https = require('https');
+//const http = require('http');
 const url = require('url');
 const hostname = getParam("hostname", 'localhost');
 var port = parseInt(getParam("port", "3000"));
@@ -59,16 +55,18 @@ var defaultOptions = {
   production:    getParam("--production",    "false") == "true",
   path:     path,
   closeable: !(!(fileToOpen)),
-  openbrowser: getParam("--openbrowser", "false") == "true"
+  openbrowser: getParam("--openbrowser", "false") == "true",
+  key: "localhost-key.pem",
+  cert: "localhost.pem"
 };
-
 
 async function start() {
 
 // Don't modify, this will be replaced by the content of 'server.elm'
 const defaultServerContent = "<html><head></head><body>Server not available.</body></html>";
 
-const defaultHtAccessFileContent = `if Regex.matchIn """\\.\\.(?:/|\\\\)|(?:/|\\\\)\\.\\.|^\\.\\.$""" path then False else True`
+const defaultHtAccessFileContent = `if Regex.matchIn """\\.\\.(?:/|\\\\)|(?:/|\\\\)\\.\\.|^\\.\\.$""" path then False else
+    not (Regex.matchIn """.*\\.pem""" path)`
 
 function readServerFile() {
   if(fs.existsSync(serverFile)) {
@@ -310,7 +308,16 @@ function toLeoQuery(query) {
 
 var willkill = undefined;
 
-const server = http.createServer((request, response) => {
+var key = fs.existsSync(defaultOptions.key) ? fs.readFileSync(defaultOptions.key) : null;
+var cert = fs.existsSync(defaultOptions.cert) ? fs.readFileSync(defaultOptions.cert) : null;
+var httpsOptions = { key: key, cert: cert };
+var protocol = key && cert ? "https" : "http";
+var httpOrHttps = require(protocol);
+if(protocol == "http") {
+  console.log(`${defaultOptions.key} (--key) and/or ${defaultOptions.cert} (--cert) files missing. Starting http server instead of https.`);
+}
+
+const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
   var urlParts = url.parse(request.url, parseQueryString=true);
   var query = toLeoQuery(urlParts.query);
   var path = urlParts.pathname.substring(1); // Without the slash.
@@ -501,19 +508,19 @@ server.listen(port, hostname, () => {
     console.log("Questions:     deactivated.  (toggle option: 'question=true')");
   }
   console.log("To toggle any of these options in the browser, join these toggle options using '&', prefix this with '?', and append the result to any URL, ");
-  console.log(`Point your browser at http://${hostname}:${port}`);
+  console.log(`Point your browser at ${protocol}://${hostname}:${port}`);
 });
 
 if(fileToOpen) {
   var opn = require('opn');
 
   // opens the url in the default browser 
-  opn("http://" + hostname + ":" + port + "/" + fileToOpen);
+  opn(protocol + "://" + hostname + ":" + port + "/" + fileToOpen);
 } else if(defaultOptions.openbrowser) {
   var opn = require('opn');
 
   // opens the url in the default browser 
-  opn("http://" + hostname + ":" + port);
+  opn(protocol + "http://" + hostname + ":" + port);
 }
 } // async declaration of start()
 

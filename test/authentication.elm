@@ -7,6 +7,6 @@
 @googlesigninbutton
 <h1>
 <img src=@(listDict.get "picture" user |> Maybe.withDefault "")> Hello @(listDict.get "given_name" user |> Maybe.withDefault "Anonymous")!</h1>
-@(toString user)
+Your name is @(listDict.get "family_name" user |> Maybe.withDefault "")
 </body>
 </html>
