@@ -534,6 +534,10 @@ setGhostOnInserted = [];
 (setGhostOnInserted || []).push(insertedNode =>
   insertedNode.tagName == "ACE_OUTER"
 );
+// For the grammarly extension
+(setGhostOnInserted || []).push(insertedNode =>
+  insertedNode.classList.contains("gr-top-z-index") || insertedNode.classList.contains("gr-top-zero")
+);
 
 function handleScriptInsertion(mutations) {
   for(var i = 0; i < mutations.length; i++) {
