@@ -3,7 +3,11 @@
 -- input: defaultOptions  default options (options that vars can override for certain parts).
 -- input: fileOperations  The current set of delayed file disk operations.
 --    Note that Elm pages are given in context the path, the vars, and the file system (fs) to read other files
--- output: The page, either raw or augmented with the toolbar and edit scripts.
+-- output: The page, either (almost) uninstrumented or augmented with the toolbar and edit scripts.
+
+{--------------------------------------------------------
+    Permission handling, file system, options processing
+---------------------------------------------------------}
 listGetOrElse key listDict default = listDict.get key listDict |> Maybe.withDefault default
 
 preludeEnv = let _ = googlesigninbutton in -- Force googlesigninbutton to be evaluated before preludeEnv
@@ -58,31 +62,47 @@ For debugging purposes, below is the new value that was pushed:
 <pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
 """)
 
+canEvaluate = listDict.get "evaluate" vars |> Maybe.withDefaultReplace (serverOwned "default value of evaluate" "true")
+
+{--------------------------------------------------------
+ Rewrite path to either a folder or a default file under
+---------------------------------------------------------}
+
+path: String
 path =
   if fs.isdir path then
    if listDict.get "ls" vars /= Just "true" then
-         if fs.isfile <| path + "index.html" then path + "index.html"
-    else if fs.isfile <| path + "/index.html" then path + "/index.html"
-    else if fs.isfile <| path + "index.elm" then path + "index.elm"
-    else if fs.isfile <| path + "/index.elm" then path + "/index.elm"
-    else if fs.isfile <| path + "README.md" then path + "README.md"
-    else if fs.isfile <| path + "/README.md" then path + "/README.md"
-    else path
+     List.mapFirstSuccess (\test ->
+       if fs.isfile <| path + test then Just (path + test) else Nothing)
+       ["index.elm" , "/index.elm", "index.html", "/index.html", "README.md" , "/README.md" ]
+     |> Maybe.withDefault path
    else path
   else path
 
+{---------------------------------------------------------------------------
+ Retrieves the string content of the path. For folders, creates a custom page
+----------------------------------------------------------------------------}
+
+sourcecontent: String
 sourcecontent = String.newlines.toUnix <|
   if path == "server.elm" then
-    """<html><head></head><body>Sample server Elm</body></html>"""
+    """<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>"""
   else
     if fs.isdir path then
+      let
+        pathprefix = if path == "" then path else path + "/"
+        maybeUp = case Regex.extract "^(.*)/.*$" path of
+          Just [prev] -> """<li><a href="/@prev">..</li> :: """
+          _ -> if path == "" then "" else """<li><a href="/" contenteditable="false">..</li> ::"""
+      in
       """
-      let pathprefix = if path == "" then path else path + "/" in
       <html><head></head><body><h1><a href=''>/@path</a></h1>
-      <ul>@@(case Regex.extract "^(.*)/.*$" path of
-        Just [prev] -> [<li><a href=("/" + prev)>..</li>]
-        _ -> if path == "" then [] else [<li><a href="/" contenteditable="false">..</li>])@@(List.map (\name -> <li><a href=("/" + pathprefix + name)>@@name</li>) (fs.listdir path))</ul>
-      Hint: place a <a href=("/" + pathprefix + "README.md?edit=true") contenteditable="false">README.md</a>, <a href=("/" + pathprefix + "index.html?edit=true") contenteditable="false">index.html</a> or <a href=("/" + pathprefix + "index.elm?edit=true") contenteditable="false">index.elm</a> file to display something else than this page.</body></html>"""
+      @@["ul", [], @maybeUp (List.map (\name -> <li><a href=("/@pathprefix" + name)>@@name</li>) (fs.listdir path))]
+      Hint: place a
+      <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,
+      <a href=("/@(pathprefix)index.html?edit=true") contenteditable="false">index.html</a> or
+      <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
+      file to display something else than this page.</body></html>"""
     else
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
         """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
@@ -94,100 +114,82 @@ sourcecontent = String.newlines.toUnix <|
           )</body></html>"""
       )
 
-canEvaluate = listDict.get "evaluate" vars |> Maybe.withDefaultReplace (serverOwned "default value of evaluate" "true")
-  
-main = (if canEvaluate == "true" then
-      if Regex.matchIn """\.html$""" path then
-        let interpretableData =
-          case Regex.extract """^(?:(?!<html)[\s\S])*((?=<html)[\s\S]*</html>)\s*$""" sourcecontent of
-            Just [interpretableHtml] -> serverOwned "begin raw tag" "<raw>" + interpretableHtml + serverOwned "end raw tag" "</raw>"
-            _ -> serverOwned "raw display of html - beginning" """<raw><html><head></head><body>""" + sourcecontent + serverOwned "raw display of html - end" """</body></html></raw>"""
-        in
-        __evaluate__ preludeEnv interpretableData
-        |> Result.andThen (case of
-          ["raw", _, [htmlNode]] -> Ok htmlNode
-          result -> Err """Html interpretation error: The interpretation of raw html did not work but produced @result"""
-        )
-      else if Regex.matchIn """\.md$""" path then
-        let markdownized = String.markdown sourcecontent in
-          case Html.parseViaEval markdownized of
-            x -> 
-              let markdownstyle = fs.read "markdown.css" |> Maybe.withDefaultReplace """img {
-  max-width: 100%;
-}
-pre {
-  padding: 10px 0 10px 30px;
-  color: cornflowerblue;
-}
-a {
-  text-decoration: none;
-  font-weight: bold;
-  color: #0268cd;
-}
-p {
-  margin: 1.0em 0 1.0em 0;
-}
-body {
-  text-align: justify;
-  font-family: Geneva, Verdana, sans-serif;
-  line-height: 1.75em;
-  background-color: #C9CFCD;
-}
-h1, h2, h3, h4 {
-  letter-spacing: -1px;
-  font-weight: normal;
-  color: #171717;
-}
-h2 {
-	font-size: 2.25em;
-}
-h3 {
-  padding: 25px 0 0 0;
-	font-size: 1.75em;
-}
-h4 {
-	font-size: 1.25em;
-  margin-top: 1.25em;
-}
-.wrapper {
-  margin-left: auto;
-  margin-right: auto;
-  margin-top: 10px;
-  max-width: 900px;
-  padding-left: 20px;
-  padding-right: 20px;
-  padding-top: 20px;
-  background-color: white;
-}""" in
-              Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
-      else if Regex.matchIn """\.(elm|leo)$""" path || fs.isdir path then
-        __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent
-      else
-        Err """Serving only .html, .md and .elm files. Got @path"""
-    else
-      Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
-  ) |> (case of
+{---------------------------------------------------------------------------
+ Evaluates the page according to the path extension.
+ - Wraps html pages to parse them as raw html
+ - Interprets markdown pages and evaluate them as raw html with CSS
+ - Directly evaluate sources from elm/leo pages or folders
+----------------------------------------------------------------------------}
+evaluatedPage: Result String Html
+evaluatedPage =
+  if canEvaluate /= "true" then
+    Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
+  else if Regex.matchIn """\.html$""" path then
+    let interpretableData =
+      case Regex.extract """^(?:(?!<html)[\s\S])*((?=<html)[\s\S]*</html>)\s*$""" sourcecontent of
+        Just [interpretableHtml] -> serverOwned "begin raw tag" "<raw>" + interpretableHtml + serverOwned "end raw tag" "</raw>"
+        _ -> serverOwned "raw display of html - beginning" """<raw><html><head></head><body>""" + sourcecontent + serverOwned "raw display of html - end" """</body></html></raw>"""
+    in
+    __evaluate__ preludeEnv interpretableData
+    |> Result.andThen (case of
+      ["raw", _, [htmlNode]] -> Ok htmlNode
+      result -> Err """Html interpretation error: The interpretation of raw html did not work but produced @result"""
+    )
+  else if Regex.matchIn """\.md$""" path then
+    let markdownized = String.markdown sourcecontent in
+      case Html.parseViaEval markdownized of
+        x -> 
+          let markdownstyle = fs.read "markdown.css" |> Maybe.withDefaultReplace defaultMarkdowncss in
+          Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
+  else if Regex.matchIn """\.(elm|leo)$""" path || fs.isdir path then
+    __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent
+  else Err """Serving only .html, .md and .elm files. Got @path"""
+
+{---------------------------------------------------------------------------
+ Recovers from evaluation errors
+----------------------------------------------------------------------------}
+recoveredEvaluatedPage: Html
+recoveredEvaluatedPage = case evaluatedPage of
   Err msg -> serverOwned "Error Report" <|
     <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
-  Ok page -> page)
-  |> case of
-      ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
-        List.filter (case of
-          [_, _] -> False
-          _ -> True) |>
-        List.mapWithReverse identity (case of
-          ["body", bodyattrs, bodychildren] ->
-            ["body",
-              (if canEditPage then serverOwned "contenteditable attribute of the body due to edit=true" [["contenteditable", "true"]] else freeze []) ++
-                bodyattrs,
-              (if canEditPage then (serverOwned "edition menu" editionmenu ++ Update.sizeFreeze [(serverOwned "code preview box" codepreview) sourcecontent]) else
-               if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
-               serverOwned "edit prelude when not in edit mode" []) ++ serverOwned "initial script" initialScript ++ bodychildren ++ Update.sizeFreeze (serverOwned "synchronization script" [<script>@editionscript</script>])]
-          x -> x
-        )]
-      x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
+  Ok page -> page
+
+{---------------------------------------------------------------------------
+ Instruments the resulting HTML page
+ - Removes whitespace that are siblings of <head> and <body>
+ - !f the page is editable:
+   * Adds the contenteditable attribute to body
+   * Adds the edition menu and the source preview area
+ - Else: Adds the "edit" box to switch to edit mode
+ - Adds the initial scripts
+ - Append the edition scripts so that we can modify the page even without edit mode (that's dangerous, should we avoid this?)
+----------------------------------------------------------------------------}
+main: Html
+main = case recoveredEvaluatedPage of
+  ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
+    List.filter (case of [_, _] -> False; _ -> True) |>
+    List.mapWithReverse identity (case of
+      ["body", bodyattrs, bodychildren] ->
+        ["body",
+           (if canEditPage then
+             [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
+            else freeze []) ++
+           bodyattrs,
+          (if canEditPage then (serverOwned "edition menu" editionmenu ++ Update.sizeFreeze [(serverOwned "code preview box" codepreview) sourcecontent]) else
+           if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
+           serverOwned "edit prelude when not in edit mode" []) ++
+           serverOwned "initial script" initialScript ++
+           bodychildren ++
+           (serverOwned "synchronization script" [<script>@editionscript</script>])]
+      x -> x -- head
+    )]
+  x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
 
+{---------------------------------------------------------------------------
+ Definitions for the pipeline above
+----------------------------------------------------------------------------}
+  
 -- Box to switch to edit mode.
 switchEditBox toEdit = 
   let prev = if toEdit then "false" else "true"
@@ -1261,5 +1263,53 @@ function onGoogleSignIn(googleUser) {
 </script>,
 <script id="googlesigninscript" src="https://apis.google.com/js/platform.js" async defer save-ghost-attributes="gapi_processed"></script>
 ]
+
+defaultMarkdowncss = """img {
+  max-width: 100%;
+}
+pre {
+  padding: 10px 0 10px 30px;
+  color: cornflowerblue;
+}
+a {
+  text-decoration: none;
+  font-weight: bold;
+  color: #0268cd;
+}
+p {
+  margin: 1.0em 0 1.0em 0;
+}
+body {
+  text-align: justify;
+  font-family: Geneva, Verdana, sans-serif;
+  line-height: 1.75em;
+  background-color: #C9CFCD;
+}
+h1, h2, h3, h4 {
+  letter-spacing: -1px;
+  font-weight: normal;
+  color: #171717;
+}
+h2 {
+	font-size: 2.25em;
+}
+h3 {
+  padding: 25px 0 0 0;
+	font-size: 1.75em;
+}
+h4 {
+	font-size: 1.25em;
+  margin-top: 1.25em;
+}
+.wrapper {
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 10px;
+  max-width: 900px;
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-top: 20px;
+  background-color: white;
+}"""
 
 main

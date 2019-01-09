@@ -11,7 +11,7 @@ Editor also offers some convenience tools to upload images and create/modify lin
 
 ## Install and launch
 
-Install node.js and run the following command:
+Make sure nodejs is installed [node.js](https://nodejs.org/), open a terminal or command line interface, and run the following command:
 
     npm install -g http-server-editor
 
