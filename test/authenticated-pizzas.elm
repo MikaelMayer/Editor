@@ -7,7 +7,7 @@ userdata = [
 
 -- List of potential admins
 potentialadmins =
-  []
+  ["102014571179481340426"]
   |> List.map Just 
 
 -- Ensures that only owners and admins can modify their own pizza
@@ -65,7 +65,7 @@ username  =
   |> Maybe.map Tuple.first
   |> Maybe.withDefaultLazy (\_ ->
     let default _ =   listDict.get "given_name" user |> mbReplaceAdmin "default name" "Anonymous" in
-    if admin then
+    if potentialadmin then
       listDict.get "given_name" vars
       |> Maybe.withDefault (default ())
     else
@@ -74,7 +74,7 @@ username  =
 
     
 -- The list of pizzas (only modifiable by admin)
-options = adminModifiable "list of pissas" ["Margharita", "Four Cheese", "Pepper"]
+options = adminModifiable "list of pissas" ["Margharita", "Four Cheese", "Pepper", "Napoli"]
 
 -- The interface for potential admins and admins
 admininterface =
@@ -99,8 +99,12 @@ content =
       finalChoices =
         userdata
         |> List.map (\(sub, (name, id)) ->
-          <span>@name choose @(List.findByAReturnB Tuple.first Tuple.second (id - freeze 1) (List.zipWithIndex options)
-            |> Maybe.withDefault "a pizza that does not exist").<br></span>
+          let chosenPizza =
+                List.findByAReturnB Tuple.first Tuple.second (id - freeze 1) (List.zipWithIndex options)
+                |> Maybe.withDefault "a pizza that does not exist"
+          in
+            adminModifiable "template for choosing" (\name chosenPizza ->
+            <span>@name would like a @(chosenPizza).<br></span>) name chosenPizza
         )
     in
       adminModifiable "content template" (\username selection finalChoices ->
@@ -138,16 +142,17 @@ Let's how to get started to play around this file:
      <li>The website displays what Laurent would see if he was logged in.</li>
      <li>Remove <code>admin=true&amp;</code> from the URL.</li>
      <li>Change Laurent's name, and pizza. This modification is stored into the database</li>
-     <li>Try to modify the template by modifying "would like a" to "choose". It fails because Laurent is not an admin</li>
+     <li>Try to modify the template by modifying "would like a" to "choose". Reload the page after it fails (because Laurent is not an admin)</li>
   </ul>
   </li>
 <li>
    You can also simulate a not yet existing account
    <ul>
-     <li>Append <code>&amp;sub=12345&amp;given_name=faked</code</li>
-     <li>Choose a pizza. The name and pizza are store with respect to the sub</li>
+     <li>Append <code>?sub=12345&amp;given_name=faked</code></li>
+     <li>Choose a pizza. The name and pizza are stored with respect to the sub</li>
    </ul>
 </li>
+<li>To finish, add again <code>admin=true&amp;</code> and add/rename pizzas.
 </ul>
 </body>
 </html>) googleClientId googlesigninbutton admininterface content
