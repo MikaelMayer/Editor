@@ -125,8 +125,10 @@ This webpage only authorizes you to modify the parts you <i>own</i>.<br>
 <br>
 Let's how to get started to play around this file:
 <ul>
-<li>Sign in using your Google account, accept the permissions</li>
-<li>After the page reloads, select a pizza. Wait for the page to save your changes.<br>The list "final choices" should display your choice</li>
+<li>Sign in using your Google account, accept the permissions.</li>
+<li>Disable the "Ask questions" button by clicking on it, if it's on.</li>
+<li>Select a pizza (e.g. Four Cheese). Wait for the page to save your changes.<br>
+    The list "final choices" should now include your choice</li>
 <li>Go to the source file `authenticated-pizzas.elm`. In the variable <code>userdata</code>, you should see a string of digits close to your name, it's your <code>sub</code>.<br>Add your <code>sub</code> to the list of potential admins and reload the page</li>
 <li>Now you should see the button <button>Activate admin mode</button>. Click on it. It will add <code>?admin=true</code> to the URL.</li>
 <li>As an admin, you can modify the template. Modify "choose" to "would like a" for example.</li>
