@@ -250,6 +250,8 @@ It is now possible to authenticate on dynamic webpages using Google's Sign-in. T
 
 That's it! Under the hood, `googleClientId` is by default my own app's client ID that works only for `localhost:3000`. If you want to modify it to use your own, register an app and credentials [there](https://console.developers.google.com/apis/credentials), obtain a cliend ID, and add to the command-line that runs Editor `--google-client-id=...` as specified in the *Command-line arguments* section above.
 
+A more advanced example using authentication to create a doodle where users can only modify the data they own is the file [test/authenticated-pizzas.elm](test/authenticated-pizzas.elm);
+
 #### Administrator rights (soon obsolete, to be replaced by authentication)
 
 It's possible to active the admin rights by setting `&admin=true` or `?admin=true` in the URL. With these rights, 

@@ -6,6 +6,7 @@ update:
 	npm version patch
 	npm publish
 	git push origin master
+	npm install -g http-server-editor
 
 publish:
 	node bundle.js
@@ -13,3 +14,4 @@ publish:
 	npm version patch
 	npm publish
 	git push origin master
+	npm install -g http-server-editor
