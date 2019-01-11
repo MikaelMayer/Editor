@@ -583,7 +583,6 @@ function getSelectionStart() {
 }
 function getEnclosingCaret(tagName) {
   var w = getSelectionStart();
-  console.log("where", w);
   while(w != null && w.tagName.toLowerCase() != tagName.toLowerCase()) {
     w = w.parentNode;
   }
@@ -614,10 +613,10 @@ function duplicate(node, options) {
   if(typeof options.onBeforeInsert != "function") options.onBeforeInsert = e => e;
   if(node != null && node.parentNode != null) {
     var insertBeforeNode = options.after ? node.nextSibling : node;
-    if(node.previousSibling != null) {
+    if(node.nextSibling != null) {
       var next = node.nextSibling;
       if(next.nodeType == 3 && next.nextSibling != null &&
-         next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "LI" || node.tagName == "TD")) {
+         next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
         var textElement = next.cloneNode(true);
         insertBefore(node.parentNode, textElement, options.after ? node.nextSibling : node);
         if(options.after) {
@@ -635,7 +634,7 @@ function remove(node) {
   if(node.previousSibling != null) { // Remove whitespace as well
     var next = node.nextSibling;
     if(next.nodeType == 3 && next.nextSibling != null &&
-       next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "LI" || node.tagName == "TD")) {
+       next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
       next.remove();
     }
   }

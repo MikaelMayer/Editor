@@ -22,6 +22,44 @@ Now, to launch a reversible HTTP server in any folder, run:
 The longer version of this command is `http-server-editor`.  
 Then, point your browser to http://localhost:3000
 
+## Features
+
+* Toolbar
+  - One-click close/open Edit mode
+  - Display and modify the source code of the page being viewed.
+  - Autosave or Save button (default)
+  - Manual ambiguity resolution
+    - Preview of changes to the visual webpage
+    - Summary of changes to the file system
+    - Save/cancel current solution
+  - Automatic ambiguity resolution button ('questions')
+* Page viewing and edition
+  - Static files \*.html, \*.md supported
+  - Dynamic files \*.elm or \*.leo supported with file reading on disk and a full-feature functional programming language.
+  - Entire page editable via `contenteditable` -- Change any text, add elements to lists, delete images, etc.
+  - Contextual menu to edit links
+  - Image drop at the caret location
+  - DOM modifiable using developer's tools (F12 in most browsers)
+  - File listing to rename or delete files (`?ls=true` on URL)
+  - Javascript API for custom page edition buttons
+  - Customize css for rendering markdown
+  - Keyboard shortcuts (links cTRL+K, save CTRL+S)
+* Security
+  - Editor launches in HTTPS if the key and certificates are present (see below)
+  - path-based access permissions configurable (`htaccess.elm`)
+  - Authentication is currently experimental
+* Compatibility with plug-ins
+  - Editor is compatible with Google Analytics, Google Sign-in, Ace Editor and many functions of Grammarly.
+  - Javascript API to specify which modifications to the DOM should not be back-propagated.
+* Integration
+  - Command-line launch
+    - Configurable options
+    - Serve a folder
+    - Open a file on disk
+  - Windows integration
+    - Open a file on disk
+  - NPM package
+
 ## Simple dynamic example
 
 Create a file `pizzas.elm` with the following content:
@@ -149,6 +187,33 @@ When Editor is in Edit mode, the following style is injected to the page:
 This means that whatever had the class `editor-menu` will be displayed in this edit mode.
 For example, `<button style="display:none" class="editor-menu">Click me</button>` is a button that will only appear when the page is opened with Editor in edit mode.
 You can use this mechanism to define your own scripts that self-modify the page.
+
+Here is a couple of function helpers that Editor provides globally to simplify your button's callbacks:
+
+    // Recursively deletes all text nodes of the HtmlNode
+    emptyTextContent(node: HtmlNode)
+    
+    // Returns the innermost node of the given tag that contains the caret.
+    getEnclosingCaret(tagName: String): HtmlNode 
+    
+    // Inserts `node` before the `beforeNode` which should be a child of `parent`
+    // If `beforeNode` is undefined or not provided, `node` is appended to the children of `parent`
+    insertBefore(parent: HtmlNode, node: HtmlNode [, beforeNode: HtmlNode])
+
+    // Duplicates `node`.
+    //   If the node is a <tr>, <th>, <td> or <li> followed by a text node (whitespace) and a node of the same tag,
+    //   then duplicates the whitespace as well.
+    // All options have default values.
+    // options: {
+    //   // If `after` is true, then the cloned node is inserted *after* the original node instead of before (default);
+    //   after: Bool, 
+    //   // `onBeforeInsert` transforms the cloned node just before it is inserted.
+    //   onBeforeInsert: HtmlNode -> HtmlNode
+    // }
+    duplicate(node: HtmlNode [, options])
+    
+    // Removes a node. If the node is a <tr>, <th>, <td> or <li>, removes the whitespace before as well.
+    remove(node: HtmlNode)
 
 ### Security
 

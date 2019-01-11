@@ -41,7 +41,7 @@ const serverFile = "./server.elm";
 const htaccessFile = "./htaccess.elm";
 var path =  getParam("--path",    "");
 var question = getParam("--question", "true") == "true";
-var autosave = getParam("--autosave", "true") == "true";
+var autosave = getParam("--autosave", "false") == "true";
 
 var fileToOpen = getNonParam();
 if(fileToOpen) {
