@@ -12,10 +12,19 @@ potentialadmins =
 
 -- Ensures that only owners and admins can modify their own pizza
 userdata = 
-  let checkOwner (sub, x) =
-    Update.freezeWhen (usersub /= sub && not admin) (\_ -> "cannot modify someone else's data") (sub, x)
+  let canModify (sub, x) =
+    if sub == usersub || admin then
+      Nothing
+    else
+      Just "cannot modify someone else's data if already answered"
   in
-  List.map checkOwner userdata
+  {-
+  -- TODO: Implement these checks
+  List.update.errOnInsert canModify <|
+  List.update.errOnUpdate canModify <|
+  List.update.errOnDelete canModify <|
+  -}
+  userdata
 
 -- Helpers
 adminModifiable hint =
@@ -34,7 +43,12 @@ admin =
   potentialadmin && (listDict.get "admin" vars == Just "true")
   
 -- Default value of type a for 'Maybe a' that can only be modified by admins
-mbReplaceAdmin hint = if admin then Maybe.withDefaultReplace else Maybe.withDefaultReplace << (Update.lens { apply = identity, update = always <| Err """Cannot change the @hint if you are not an admin"""})
+mbReplaceAdmin hint =
+  if admin then
+    Maybe.withDefaultReplace
+  else
+    \default x ->
+      Maybe.withDefaultReplace (Update.lens { apply = identity, update = always <| Err """Cannot change the @hint if you are not an admin"""} default) x
 
 -- The user subject number. Admins can simulate users by adding &sub=... to the URL
 usersub =
