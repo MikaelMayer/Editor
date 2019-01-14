@@ -331,7 +331,7 @@ if(protocol == "http") {
 const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
   var urlParts = url.parse(request.url, parseQueryString=true);
   var query = toLeoQuery(urlParts.query);
-  var path = urlParts.pathname.substring(1); // Without the slash.
+  var path = decodeURIComponent(urlParts.pathname.substring(1)); // Without the slash.
   var accessResult = sns.objEnv.string.evaluate({path:path,method:request.method})(readHtAccessFile());
   var access = sns.process(accessResult)(sns.valToNative);
   var header = 'text/html; charset=utf-8';
