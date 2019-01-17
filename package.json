@@ -26,7 +26,7 @@
     "get-port": "^4.1.0",
     "google-auth-library": "^2.0.2",
     "opn": "^5.4.0",
-    "sketch-n-sketch": "^1.2.6"
+    "sketch-n-sketch": "^1.2.8"
   },
   "bin": {
     "http-server-editor": "bin/server-run.js",
