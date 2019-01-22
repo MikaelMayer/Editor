@@ -452,6 +452,10 @@ if(cp !== null) {
 
 initialScript = [
 <script>
+// TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
+// https://developers.google.com/identity/sign-in/web/server-side-flow
+// https://stackoverflow.com/questions/32902734/how-to-make-google-sign-in-token-valid-for-longer-than-1-hour
+// https://www.w3schools.com/js/js_cookies.asp
 if(typeof googleAuthIdToken == "undefined") {
   var googleAuthIdToken = undefined;
 }
