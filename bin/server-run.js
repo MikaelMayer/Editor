@@ -379,7 +379,9 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
       request.on('end', function () {
         var allChunks = Buffer.concat(chunks);
         if(defaultOptions.closeable && request.headers["close"]) {
-          willkill = setTimeout(() => process.exit(), timeBeforeExit); // Kills the server after 2 seconds
+          willkill = setTimeout(() => process.exit(), timeBeforeExit); // Kills the server after 2 seconds if the webpage is not requested.
+          response.statusCode = 200;
+          response.end('');
           return;
         } else if(request.headers["write-file"]) { // With this and with the correct permissions, we can overwrite any file.
           console.log("going to write file");
