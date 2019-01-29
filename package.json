@@ -17,7 +17,7 @@
   "homepage": "https://github.com/MikaelMayer/Editor",
   "bugs": "https://github.com/MikaelMayer/Editor/issues",
   "author": "Mikael Mayer <mikael.mayer@polytechnique.org>",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/MikaelMayer/Editor.git"
