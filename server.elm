@@ -1216,7 +1216,7 @@ window.onbeforeunload = function (e) {
     } else {
       var xmlhttp = new XMLHttpRequest();
       xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-      xmlhttp.open("POST", location.pathname + location.search);
+      xmlhttp.open("POST", location.pathname + location.search, false); // Async
       xmlhttp.setRequestHeader("close", "true");
       xmlhttp.send("{\"a\":1}");
     }
