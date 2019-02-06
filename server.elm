@@ -940,7 +940,7 @@ editionscript = """
           }
         } else {
           onlyGhosts = false;
-          console.log("mutations other than attributes and childList are not ghosts", mutations);
+          console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
         }
       }
       if(onlyGhosts) {
@@ -1060,26 +1060,77 @@ editionscript = """
       var dropZone = document.body;
       dropZone.addEventListener('dragover', handleDragOver, false);
       dropZone.addEventListener('drop', handleFileSelect, false);
-    }
     
-    // Shortcuts
-    document.onkeydown = function(e) {
-      var key = e.which || e.keyCode;
-      if (e.which == 83 && (e.ctrlKey || e.metaKey)) { // CTRL+S or CMD+S: Save
-        closeLinkWindow();
-        if(document.getElementById("saveambiguity")) {
-          eval(document.getElementById("saveambiguity").getAttribute("onclick") || "console.log('no onclick for saveambiguity')")
-        } else {
-          sendModificationsToServer();
+      var lastclick = 0;
+      // Shortcuts
+      document.onkeydown = function(e) {
+        var key = e.which || e.keyCode;
+        if (e.which == 83 && (e.ctrlKey || e.metaKey)) { // CTRL+S or CMD+S: Save
+          closeLinkWindow();
+          if(document.getElementById("saveambiguity")) {
+            eval(document.getElementById("saveambiguity").getAttribute("onclick") || "console.log('no onclick for saveambiguity')")
+          } else {
+            sendModificationsToServer();
+          }
+          e.preventDefault();
         }
-        e.preventDefault();
+        if(e.which == 75 && (e.ctrlKey || e.metaKey)) { // CTRL+K: Insert link
+          if(new Date().valueOf() - lastclick > 100) {
+            document.execCommand('createLink', false, 'http://');
+            e.preventDefault();
+            var s = getSelection();
+            s = s ? s.anchorNode : s;
+            s = s ? s.parentNode : s;
+            lastclick = new Date().valueOf();
+            onClickOnLink({target: s, modify: true});
+          }
+          // Open link.
+        }
+      };
+      document.onkeyup = document.onkeydown
+      
+      var bodyeditable = document.querySelector("body[contenteditable=true]");
+      var onKeypress = e => {
+        if(e.keyCode==13 && !e.shiftKey){ // [Enter] key
+            // If we are inside a paragraph, we split the paragraph.
+            // If we are directly inside a div, we add a paragraph separator.
+            // We delete everything between anchorNode and focusNode
+            var caretSelection = document.getSelection();
+            var x = caretSelection.anchorNode;
+            if(x && x.nodeType == 1) {
+              if(x.parentNode && getComputedStyle(x.parentNode).display == "block") {
+                e.preventDefault(); //Prevent default browser
+                var range = caretSelection.getRangeAt(0);
+                range.deleteContents();
+                caretSelection = document.getSelection();
+                x = caretSelection.anchorNode;
+                if(x.parentNode.tagName == "p") { // Split the p
+                  var newPar = document.createElement("p");
+                  
+                  var fo = caretSelection.anchorOffset;
+                  if(fo < x.text.length) {
+                    newPar.append(document.createTextNode(x.text.substring(fo)));
+                    x.deleteData(fo,x.text.length - fo);
+                  }
+                  var y = x.nextSibling;
+                  while(y) {
+                    var yy = y;
+                    y = y.nextSibling;
+                    newPar.append(yy); // Moves yy
+                  }
+                  x.parentNode.insertAdjacentElement("afterend", newPar);
+                } else { // insert br
+                  range.insertNode(document.createElement("br"))
+                }
+              }
+            }
+        }
       }
-      if(e.which == 75 && (e.ctrlKey || e.metaKey)) { // CTRL+K: Insert link
-        document.execCommand('createLink', false, 'http://');
-        e.preventDefault();
+      if(bodyeditable && !bodyeditable.configured) {
+        bodyeditable.configured = true;
+        bodyeditable.addEventListener("keypress", onKeypress, true);
       }
-    };
-    document.onkeyup = document.onkeydown
+    }
     
     observeTargetA = null;
     
@@ -1125,13 +1176,15 @@ editionscript = """
           }
           
           var modifyButton = document.getElementById("docslinkbubble-modify");
-          modifyButton.onclick = () => {
+          var clickStart = 0;
+          var onclick = function() {
             if (observeTargetA != null) {
               observeTargetA.disconnect();
               observeTargetA = null;
             }
             if(targetA.getAttribute("contenteditable") == "true") {
               targetA.setAttribute("contenteditable", "false");
+              console.log("disconnect observeTargetA", targetA);
             } else {
               targetA.setAttribute("contenteditable", "true");
               targetA.focus();
@@ -1152,6 +1205,10 @@ editionscript = """
                  }
                )
             }
+          }
+          modifyButton.onclick = onclick;
+          if(event.modify) {
+            onclick();
           }
         }
       } else if(clickedElem.getAttribute &&

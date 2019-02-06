@@ -159,7 +159,7 @@ If you are the author of dynamically added elements or attributes to the page, E
   Never put isghost="true" on an element on the source side level, it would be automatically erased on the first back-propagation.
 * The attribute `list-ghost-attributes="attr1 attr2 ... attrn"` on an element ensures that any inserted attribute with one of the name `attr1` ... `attrn` will not be back-propagated.
   Never put one of the `attr1` ... `attrn` attributes on the source side level, else it would be automatically erased on the first back-propagation.
-* The attribute `children-are-ghost="true"` on an element ensures that any inserted or modified child to this element is not back-propagated.
+* The attribute `children-are-ghosts="true"` on an element ensures that any inserted or modified child to this element is not back-propagated.
   Never add children at the source level to an element which has this attribute, else they would be automatically erased on the first back-propagation.
 
 If you are not yourself adding dynamic elements or attributes, Editor also observes insertions and deletions and lets you mark inserted elements as ghosts.
