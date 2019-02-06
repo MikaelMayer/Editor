@@ -1095,9 +1095,10 @@ editionscript = """
             // If we are inside a paragraph, we split the paragraph.
             // If we are directly inside a div, we add a paragraph separator.
             // We delete everything between anchorNode and focusNode
+            // TODO: Handle ul and li
             var caretSelection = document.getSelection();
             var x = caretSelection.anchorNode;
-            if(x && x.nodeType == 1) {
+            if(x && x.nodeType == 3) { // text node
               if(x.parentNode && getComputedStyle(x.parentNode).display == "block") {
                 e.preventDefault(); //Prevent default browser
                 var range = caretSelection.getRangeAt(0);
