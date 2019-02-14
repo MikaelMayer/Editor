@@ -1,6 +1,6 @@
 {
   "name": "http-server-editor",
-  "version": "1.0.54",
+  "version": "1.0.55",
   "description": "HTTP server that accepts user-triggered changes to static HTML & Markdown pages and dynamic .elm pages.",
   "main": "bin/server-npm-package.js",
   "scripts": {
