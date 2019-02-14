@@ -234,20 +234,24 @@ function stringDiffSummary(oldString, newString, stringDiffs) {
   return summary;
 }
 
+function relativePath(filepath) {
+  return filepath.substring(path.length);
+}
+
 function fileOperationSummary(operations) {
   if(operations == null) return "";
   var summary = "";
   for(var i = 0; i < operations.length; i++) {
-    var {_1: path, _2: action} = operations[i];
+    var {_1: filepath, _2: action} = operations[i];
     if(summary != "") summary += "\n";
     if(action["$d_ctor"] == "Write") {
-      summary += "Modify " + path + ", " + stringDiffSummary(action.args._1, action.args._2, action.args._3);
+      summary += "Modify " + relativePath(filepath) + ", " + stringDiffSummary(action.args._1, action.args._2, action.args._3);
     } else if(action["$d_ctor"] == "Create") {
-      summary += "Created " + path;
+      summary += "Created " + relativePath(filepath);
     } else if(action["$d_ctor"] == "Rename") {
-      summary += "Renamed " + path + " to " + action.args._1;
+      summary += "Renamed " + relativePath(filepath) + " to " + action.args._1;
     } else if(action["$d_ctor"] == "Delete") {
-      summary += "Deleted " + path;
+      summary += "Deleted " + relativePath(filepath);
     } else {
       console.log("unrecognized action:", action);
     }

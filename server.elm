@@ -823,6 +823,7 @@ editionscript = """
               newMenu.setAttribute("isghost", "true");
               if(document.getElementById("themenu"))
                 document.getElementById("themenu").append(newMenu);
+                setTimeout(function() { newMenu.remove(); }, 2000);
             }
           }
           if(newQueryStr !== null) {

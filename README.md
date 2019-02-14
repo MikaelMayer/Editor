@@ -11,7 +11,7 @@ Editor also offers some convenience tools to upload images and create/modify lin
 
 ## Install and launch
 
-Make sure [node.js](https://nodejs.org/) is installed. Open a terminal or command line interface, and run the following command:
+Make sure [node.js](https://nodejs.org/) is installed. Open a terminal (Linux/Mac) or PowerShell (Windows: WIN+R, PowerShell, Enter), and enter the following command:
 
     npm install -g http-server-editor
 
@@ -19,7 +19,6 @@ Now, to launch a reversible HTTP server in any folder, run:
 
     editor
 
-The longer version of this command is `http-server-editor`.  
 Then, point your browser to http://localhost:3000
 
 ## Features
@@ -154,13 +153,15 @@ Editor offers several mechanisms to prevent this unwanted back-propagation.
 
 If you are the author of dynamically added elements or attributes to the page, Editor provides you a way to mark them as ghosts so that they will not be back-propagated. To do so:
 
+* Attributes starting with "ghost-" are considered as ghost.
+  *Never add an attribute starting with "ghost-" on the source program, it would be automatically erased on the first back-propagation.*
 * The attribute `isghost="true"` on an element ensures that the whole element is ignored when back-propagation occurs.
   Alternatively, setting `element.isghost=true` in javascript results in the same effect without modifying the DOM.  
-  Never put isghost="true" on an element on the source side level, it would be automatically erased on the first back-propagation.
+  *Never put isghost="true" on an element on the source side level, it would be automatically erased on the first back-propagation.*
 * The attribute `list-ghost-attributes="attr1 attr2 ... attrn"` on an element ensures that any inserted attribute with one of the name `attr1` ... `attrn` will not be back-propagated.
-  Never put one of the `attr1` ... `attrn` attributes on the source side level, else it would be automatically erased on the first back-propagation.
+  *Never put one of the `attr1` ... `attrn` attributes on the source side level, else it would be automatically erased on the first back-propagation.*
 * The attribute `children-are-ghosts="true"` on an element ensures that any inserted or modified child to this element is not back-propagated.
-  Never add children at the source level to an element which has this attribute, else they would be automatically erased on the first back-propagation.
+  *Never add children at the source level to an element which has this attribute, else they would be automatically erased on the first back-propagation.*
 
 If you are not yourself adding dynamic elements or attributes, Editor also observes insertions and deletions and lets you mark inserted elements as ghosts.
 In a script at the beginning of the body:
