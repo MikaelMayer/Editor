@@ -10,7 +10,7 @@
 ---------------------------------------------------------}
 listGetOrElse key listDict default = listDict.get key listDict |> Maybe.withDefault default
 
-preludeEnv = let _ = googlesigninbutton in -- Force googlesigninbutton to be evaluated before preludeEnv
+preludeEnv = let _ = googlesigninbutton in -- Forces googlesigninbutton to be evaluated before preludeEnv
   __CurrentEnv__
 
 mbApplyPrefix = case listDict.get "path" defaultOptions of
