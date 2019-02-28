@@ -1153,6 +1153,9 @@ editionscript = """
     
     onClickOnLink = function (event) {
       var clickedElem = event.target;
+      while(clickedElem && clickedElem.tagName != "A") {
+        clickedElem = clickedElem.parentElement;
+      }
       if(clickedElem && clickedElem.tagName == "A" && clickedElem.getAttribute("id") != "docslinkbubble-linkpreview") {
         var href = clickedElem.getAttribute("href");
         if(href) {
