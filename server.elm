@@ -323,11 +323,9 @@ menu input[type=checkbox] {
   display: none;
 }
 menu input[type=checkbox] + .label-checkbox {
-  color: #888;
 }
 menu input[type=checkbox]:checked + .label-checkbox {
   background: #bcbbff;
-  color: #000;
 }
 /*
 menu input[type=checkbox]:not(:checked) + .label-checkbox::after {
@@ -423,11 +421,52 @@ menuitem > .solution.notfinal {
   cursor: initial;
   pointer-events: none;
 }
+#editor_codepreview {
+  width: 100%;
+  height: 200px;
+}
+@@media screen and (pointer: coarse) {
+  div.editor-logo {
+    display: none;
+  }
+  menuitem.filename {
+    display: none;
+  }
+  menuitem {
+    font-size: 2.5em;
+  }
+  menuitem#manualsync-menuitem > button {
+    font-size: 1em;
+  }
+  menuitem#question-menuitem {
+    display: none;
+  }
+  menuitem#autosave-menuitem {
+    display: none;
+  }
+  #menumargin {
+    padding-top: 5em;
+  }
+  #editor_codepreview {
+    width: 100%;
+    height: 600px;
+  }
+  #editor_codepreview > textarea {
+    width: 100%;
+    height: 600px;
+    -webkit-box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
+    -moz-box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
+    box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
+  }
+  div.menu-separator {
+    display: none;
+  }
+}
 .summary {
   color: green;
 }
 </style>
-<div class= "editor-logo">Editor <a href= "https://github.com/MikaelMayer/Editor/issues">(report issue)</a></div><div class="menu-separator"></div><menuitem class= "filename" title= "the path of the file you are currently viewing">@(if path == "" then serverOwned "empty path" "[root folder]" else path)</menuitem>
+<div class="editor-logo">Editor <a href= "https://github.com/MikaelMayer/Editor/issues">(report issue)</a></div><div class="menu-separator"></div><menuitem class= "filename" title= "the path of the file you are currently viewing">@(if path == "" then serverOwned "empty path" "[root folder]" else path)</menuitem>
 <div class="menu-separator"></div><menuitem>
 <label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox" save-properties="checked"
   onchange="""
@@ -436,14 +475,14 @@ if(cp !== null) {
    cp.setAttribute("ghost-visible", this.checked ? "true": "false")
 }"""><span class= "label-checkbox">Source</span></label>
 </menuitem><div class="menu-separator"></div>
-<menuitem>
+<menuitem id="question-menuitem">
 <label title="If off, ambiguities are resolved automatically. Does not apply for HTML pages"><input id="input-question" type="checkbox" save-properties="checked" @(case listDict.get "question" vars of
                        Just questionattr -> boolToCheck questionattr
                        _ -> serverOwned "initial checked attribute (use &question=false in query parameters to modify it)" (
                               if boolVar "question" True then [["checked", ""]] else []))><span class= "label-checkbox">Ask questions</span></label>
 </menuitem>
 <div class="menu-separator"></div>
-<menuitem>
+<menuitem id="autosave-menuitem">
 <label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosave" type="checkbox" save-properties="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case listDict.get "autosave" vars of
                       Just autosaveattr -> boolToCheck autosaveattr
                       _ -> serverOwned "initial checked attribute (use &autosave=true or false in query parameters to modify it)"  (
@@ -657,7 +696,7 @@ function remove(node) {
 codepreview sourcecontent = 
 <div class="codepreview" id="editor_codepreview">
   <textarea id="editor_codepreview_textarea" save-properties="scrollTop"
-    style="width:100%;height:200px" v=sourcecontent onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" sourcecontent then "\n" + sourcecontent else sourcecontent))</textarea>
+     v=sourcecontent onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" sourcecontent then "\n" + sourcecontent else sourcecontent))</textarea>
 </div>
     
 editionscript = """
@@ -830,7 +869,8 @@ editionscript = """
               newMenu.setAttribute("isghost", "true");
               if(document.getElementById("themenu"))
                 document.getElementById("themenu").append(newMenu);
-                setTimeout(function() { newMenu.remove(); }, 2000);
+                var newmenutimeout = setTimeout(function() { newMenu.remove(); }, 2000);
+                newMenu.onclick = ((n) => () => clearTimeout(n))(newmenutimeout);
             }
           }
           if(newQueryStr !== null) {
