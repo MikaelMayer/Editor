@@ -1,6 +1,8 @@
 -- input: path            The file to serve.
 -- input: vars:           URL query vars.
 -- input: defaultOptions  default options (options that vars can override for certain parts).
+--                        If nodefs is set, will use it instead of nodejs.nodeFS
+--                        If browserSide is set, will use a different kind of request. 
 -- input: fileOperations  The current set of delayed file disk operations.
 --    Note that Elm pages are given in context the path, the vars, and the file system (fs) to read other files
 -- output: The page, either (almost) uninstrumented or augmented with the toolbar and edit scripts.
@@ -20,7 +22,10 @@ mbApplyPrefix = case listDict.get "path" defaultOptions of
       else if Regex.matchIn "/$" prefix then prefix + name
       else prefix + "/" + name)
 
-fs = nodejs.delayedFS nodejs.nodeFS fileOperations
+directReadFileSystem =
+  listDict.get "nodefs" defaultOptions |> Maybe.withDefault nodejs.nodeFS
+
+fs = nodejs.delayedFS directReadFileSystem fileOperations
 
 fs = case mbApplyPrefix of
   Nothing -> fs
@@ -452,6 +457,8 @@ if(cp !== null) {
 
 initialScript = [
 <script>
+var XHRequest = @(if listDict.get "browserSide" defaultOptions == Just True then "ProxiedServerRequest" else "XMLHttpRequest");
+
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
 // https://stackoverflow.com/questions/32902734/how-to-make-google-sign-in-token-valid-for-longer-than-1-hour
@@ -839,7 +846,7 @@ editionscript = """
     }
     
     notifyServer = callback => {
-      var xmlhttp = new XMLHttpRequest();
+      var xmlhttp = new XHRequest();
       xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {
         if(document.getElementById("input-autosave") && !document.getElementById("input-autosave").checked) {
           document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "true") // Because it will be saved
@@ -1032,7 +1039,7 @@ editionscript = """
       for (var i = 0, f; f = files[i]; i++) {
         if(f.type.indexOf("image") == 0 && f.size < 30000000) {
           // process image files under 30Mb
-          var xhr = new XMLHttpRequest();
+          var xhr = new XHRequest();
           var tmp = location.pathname.split("/");
           tmp = tmp.slice(0, tmp.length - 1);
           var storageFolder = tmp.join("/");
@@ -1216,7 +1223,7 @@ editionscript = """
             onclick();
           }
         }
-      } else if(clickedElem.getAttribute &&
+      } else if(clickedElem && clickedElem.getAttribute &&
            (clickedElem.getAttribute("id") == "docslinkbubble" ||
             (clickedElem.parentNode && clickedElem.parentNode.getAttribute && clickedElem.parentNode.getAttribute("id") == "docslinkbubble") ||
             (clickedElem.parentNode && clickedElem.parentNode.parentNode &&
@@ -1276,7 +1283,7 @@ window.onbeforeunload = function (e) {
       // For Safari
       return confirmation;
     } else {
-      var xmlhttp = new XMLHttpRequest();
+      var xmlhttp = new XHRequest();
       xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
       xmlhttp.open("POST", location.pathname + location.search, false); // Async
       xmlhttp.setRequestHeader("close", "true");
