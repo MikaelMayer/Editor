@@ -423,7 +423,14 @@ menuitem > .solution.notfinal {
 }
 #editor_codepreview {
   width: 100%;
-  height: 200px;
+  height: 600px;
+}
+#editor_codepreview > textarea {
+  width: 100%;
+  height: 600px;
+  -webkit-box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
+  -moz-box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
+  box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
 }
 @@media screen and (pointer: coarse) {
   div.editor-logo {
@@ -450,13 +457,6 @@ menuitem > .solution.notfinal {
   #editor_codepreview {
     width: 100%;
     height: 600px;
-  }
-  #editor_codepreview > textarea {
-    width: 100%;
-    height: 600px;
-    -webkit-box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
-    -moz-box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
-    box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
   }
   div.menu-separator {
     display: none;
@@ -696,7 +696,7 @@ function remove(node) {
 codepreview sourcecontent = 
 <div class="codepreview" id="editor_codepreview">
   <textarea id="editor_codepreview_textarea" save-properties="scrollTop"
-     v=sourcecontent onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" sourcecontent then "\n" + sourcecontent else sourcecontent))</textarea>
+     v=sourcecontent @(if boolVar "autosave" True then [] else [["onkeyup", "this.setAttribute('v', this.value)"]]) onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" sourcecontent then "\n" + sourcecontent else sourcecontent))</textarea>
 </div>
     
 editionscript = """
