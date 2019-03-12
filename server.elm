@@ -1079,19 +1079,26 @@ editionscript = """
       for (var i = 0, f; f = files[i]; i++) {
         if(f.type.indexOf("image") == 0 && f.size < 30000000) {
           // process image files under 30Mb
-          var xhr = new XHRequest();
+          var xhr = new XMLHttpRequest();
           var tmp = location.pathname.split("/");
           tmp = tmp.slice(0, tmp.length - 1);
           var storageFolder = tmp.join("/");
           var storageLocation =  storageFolder + "/" + f.name;
           xhr.onreadystatechange = ((xhr, path, name) => () => {
             if (xhr.readyState == XMLHttpRequest.DONE) {
-              pasteHtmlAtCaret(`<img src="${path}" alt="${name}">`);
-            } else {
-              console.log("Error while uploading picture", xhr);
+              if (xhr.status == 200) {
+                console.log(xhr);
+                pasteHtmlAtCaret(`<img src="${path}" alt="${name}">`);
+              } else {
+                console.log("Error while uploading picture", xhr);
+              }
             }
-          })(xhr, insertRelative ? f.name : storageLocation, f.name)
+          })(xhr, insertRelative ? f.name : storageLocation, f.name);
+          @(if listDict.get "browserSide" defaultOptions == Just True then """
+          xhr.open("POST", "/editor.php?location=" + encodeURIComponent(storageLocation), true);
+          """ else """
           xhr.open("POST", storageLocation, true);
+          """);
           xhr.setRequestHeader("write-file", f.type);
           xhr.send(f);
         }
