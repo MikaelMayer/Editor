@@ -41,7 +41,10 @@ editdelay = 1000
 
 boolVar name resDefault =
   listDict.get name vars |>
-  Maybe.map (Update.bijection (case of "true" -> True; _ -> False) (case of True -> "true"; _ -> "false")) |>
+  Maybe.map (\original ->
+    Update.bijection
+      (case of "true" -> True; "" -> True; _ -> False)
+      (case of True -> if original == "true" || original == "" then original else "true"; _ -> "false") original) |>
   Maybe.withDefaultReplace (
     listDict.get name defaultOptions |> Maybe.withDefault resDefault |> freeze)
 
@@ -88,12 +91,13 @@ path =
  Retrieves the string content of the path. For folders, creates a custom page
 ----------------------------------------------------------------------------}
 
-sourcecontent: String
-sourcecontent = String.newlines.toUnix <|
+(sourcecontent, folderView): (String, Boolean)
+(sourcecontent, folderView) = Tuple.mapFirst String.newlines.toUnix <|
   if path == "server.elm" then
-    """<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>"""
+    ("""<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""", False)
   else
     if fs.isdir path then
+      flip (,) True <|
       let
         pathprefix = if path == "" then path else path + "/"
         maybeUp = case Regex.extract "^(.*)/.*$" path of
@@ -102,13 +106,14 @@ sourcecontent = String.newlines.toUnix <|
       in
       """
       <html><head></head><body><h1><a href=''>/@path</a></h1>
-      @@["ul", [], @maybeUp (List.map (\name -> <li><a href=("/@pathprefix" + name)>@@name</li>) (fs.listdir path))]
+      @@(["ul", [], @maybeUp (List.map (\name -> <li><a href=("/@pathprefix" + name)>@@name</li>) (fs.listdir path))])
       Hint: place a
       <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,
       <a href=("/@(pathprefix)index.html?edit=true") contenteditable="false">index.html</a> or
       <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
       file to display something else than this page.</body></html>"""
     else
+      flip (,) False <|
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
         """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
       else
@@ -878,7 +883,7 @@ editionscript = """
             var strQuery = "";
             for(var i = 0; i < newQuery.length; i++) {
               var {_1: key, _2: value} = newQuery[i];
-              strQuery = strQuery + (i == 0 ? "?" : "&") + key + "=" + value
+              strQuery = strQuery + (i == 0 ? "?" : "&") + key + (value === "" && key == "edit" ? "" : "=" + value)
             }
             window.history.replaceState({}, "Current page", strQuery);
           }
@@ -1077,31 +1082,32 @@ editionscript = """
       // files is a FileList of File objects. List some properties.
       var output = [];
       for (var i = 0, f; f = files[i]; i++) {
-        if(f.type.indexOf("image") == 0 && f.size < 30000000) {
-          // process image files under 30Mb
-          var xhr = new XMLHttpRequest();
-          var tmp = location.pathname.split("/");
-          tmp = tmp.slice(0, tmp.length - 1);
-          var storageFolder = tmp.join("/");
-          var storageLocation =  storageFolder + "/" + f.name;
-          xhr.onreadystatechange = ((xhr, path, name) => () => {
-            if (xhr.readyState == XMLHttpRequest.DONE) {
-              if (xhr.status == 200) {
-                console.log(xhr);
+        var xhr = new XMLHttpRequest();
+        var tmp = location.pathname.split("/");
+        tmp = tmp.slice(0, tmp.length - 1);
+        var storageFolder = tmp.join("/");
+        var storageLocation =  storageFolder + "/" + f.name;
+        //if(f.size < 30000000)
+        xhr.onreadystatechange = ((xhr, filetype, path, name) => () => {
+          if (xhr.readyState == XMLHttpRequest.DONE) {
+            if (xhr.status == 200) {@(if folderView then """
+              reloadPage();"""
+              else """
+              if(filetype.indexOf("image") == 0) {
                 pasteHtmlAtCaret(`<img src="${path}" alt="${name}">`);
-              } else {
-                console.log("Error while uploading picture", xhr);
-              }
+              }""")
+            } else {
+              console.log("Error while uploading picture", xhr);
             }
-          })(xhr, insertRelative ? f.name : storageLocation, f.name);
-          @(if listDict.get "browserSide" defaultOptions == Just True then """
-          xhr.open("POST", "/editor.php?location=" + encodeURIComponent(storageLocation), true);
-          """ else """
-          xhr.open("POST", storageLocation, true);
-          """);
-          xhr.setRequestHeader("write-file", f.type);
-          xhr.send(f);
-        }
+          }
+        })(xhr, f.type, insertRelative ? f.name : storageLocation, f.name);
+        @(if listDict.get "browserSide" defaultOptions == Just True then """
+        xhr.open("POST", "/editor.php?location=" + encodeURIComponent(storageLocation), true);
+        """ else """
+        xhr.open("POST", storageLocation, true);
+        """);
+        xhr.setRequestHeader("write-file", f.type);
+        xhr.send(f);
       }
     }
 
