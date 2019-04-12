@@ -134,10 +134,44 @@ evaluatedPage: Result String Html
 evaluatedPage =
   if canEvaluate /= "true" then
     Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
-  else if Regex.matchIn """\.html$""" path then
+  else
+  let isPhp = Regex.matchIn """\.php$""" path in
+  let isHtml = Regex.matchIn """\.html$""" path in
+  if isHtml || isPhp then
+    let sourcecontent = if isHtml then sourcecontent else
+      let phpToElm =
+        let phpStringToElmString =
+          Regex.replace """(\")([^\"]*)(\")""" <| \m ->
+            nth m.group 1 +
+            (nth m.group 2
+            |> Regex.replace """\$[0-9a-zA-Z_]*""" (\n ->
+               freeze "\" + " + nth n.group 0 + freeze " + \"")) +
+            nth m.group 3
+        in
+        \string ->
+        string |>
+        Regex.replace """<\?php\s+echo\s+([^;]+?);\s+\?>"""
+           (\m -> freeze "@(" + nth m.group 1 + freeze ")") |>
+        Regex.replace """^\s*<\?php(\s+(?:(?!\?>)[\s\S])*)\?>([\s\S]*)$"""
+          (\m ->
+            nth m.group 1 
+            |> Regex.replace """(\r?\n\s*)(\$[0-9a-zA-Z_]*\s*=\s*)((?:(?!;).)*)(;)"""
+                 (\assign -> (nth assign.group 1) +
+                   freeze "let " +
+                   (nth assign.group 2) +
+                   phpStringToElmString (nth assign.group 3) +
+                   freeze " in")
+            |> (\res -> res + freeze " " + String.q3 + nth m.group 2 + String.q3))
+      in
+      let elmSourceContent = phpToElm sourcecontent in
+      __evaluate__ (("$_GET", vars)::("path", path)::("fs", fs)::preludeEnv) elmSourceContent |>
+      case of
+        Err msg -> serverOwned "error message" "<html><head></head><body><pre>Error elm-reinterpreted php: " + msg + "</pre></body></html>"
+        Ok sourcecontent -> sourcecontent
+    in
     let interpretableData =
       case Regex.extract """^(?:(?!<html)[\s\S])*((?=<html)[\s\S]*</html>)\s*$""" sourcecontent of
-        Just [interpretableHtml] -> serverOwned "begin raw tag" "<raw>" + interpretableHtml + serverOwned "end raw tag" "</raw>"
+        Just [interpretableHtml] -> freeze "<raw>" + interpretableHtml + freeze "</raw>"
         _ -> serverOwned "raw display of html - beginning" """<raw><html><head></head><body>""" + sourcecontent + serverOwned "raw display of html - end" """</body></html></raw>"""
     in
     __evaluate__ preludeEnv interpretableData

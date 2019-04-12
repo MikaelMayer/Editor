@@ -2,8 +2,28 @@
 
 <html>
 <head>
+<style>
+body {
+  margin-left: 20px;
+  margin-top: 20px;
+  margin-bottom: 40px;
+}
+</style>
 </head>
-<body>Hello world
+<body>
+<h1 id="title1" class="t1">Title 1</h1>
+<p id="par">Hello world in a paragraph</p>
+<ol id="ol1" class="cl1">
+<li class="first">List item1</li>
+<li>List item2</li>
+<li>List item3</li>
+</ol>
+Hello world outside a <a href="https://google.com">paragraph</a>.
+<li>List item outside UL 1</li>
+<li>List item outside UL 2</li>
+<li>List item outside UL 3</li>
+<h2>Title 2 - with a table below</h2>
+
 <table id="thetable">
 <tbody>
 <tr><th>Name</th><th>Price</th></tr>
@@ -18,5 +38,6 @@
 <button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'), {onBeforeInsert: emptyTextContent})" contenteditable="false">Insert empty row before</button>
 <button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'), {after: true, onBeforeInsert: emptyTextContent})" contenteditable="false">Insert empty row after</button>
 <button style="display:none" class="editor-menu" onclick="remove(getEnclosingCaret('tr'))" contenteditable="false">Remove row</button>
+<a href="https://www.google.com">A link at the end</a> to make sure edition is working anywhere.
 </body>
 </html>
