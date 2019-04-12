@@ -230,7 +230,7 @@ main = case recoveredEvaluatedPage of
            serverOwned "edit prelude when not in edit mode" []) ++
            serverOwned "initial script" initialScript ++
            bodychildren ++
-           (serverOwned "synchronization script" [<script>@editionscript</script>])]
+           (serverOwned "synchronization script and placeholder" [<script>@editionscript</script>, <div class="bottom-menu"> </div>])]
       x -> x -- head
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -287,9 +287,20 @@ openEditBox = switchEditBox True
 closeEditBox = switchEditBox False
 
 boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false")
-  
+
+-- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu = [
 <div id="docslinkbubble" class="docs-bubble docs-linkbubble-bubble" list-ghost-attributes="style" help="Modify or delete a link" tabindex="0" contenteditable="false"><a rel="noreferrer" id="docslinkbubble-linkpreview" list-ghost-attributes="href contenteditable" children-are-ghosts="true"></a><span> – <button id="docslinkbubble-modify" class="docs-bubble-link" tabindex="0">Modify</button> | <button id="docslinkbubble-delete" class="docs-bubble-link" tabindex="0">Delete</button></span></div>,
+<div id="modify-menu" class="bottom-menu">
+<!--ul>
+<li>Menu for mobile coming soon!</li>
+<li>Selection, move, cut/copy/paste menu</li>
+<li>Options menu (questions, autosave)</li>
+<li>Source</li>
+<li>Edit attribute menu / shortcut for links</li>
+</ul-->
+<div class="information" children-are-ghosts="true"></div>
+</div>,
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
 @(if iscloseable then [] else closeEditBox)
 <style>
@@ -478,16 +489,19 @@ menuitem > .solution.notfinal {
   box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
 }
 @@media screen and (pointer: coarse) {
+  body {
+    font-size: 48px;
+  }
   div.editor-logo {
     display: none;
   }
   menuitem.filename {
     display: none;
   }
-  menuitem {
+  /*menuitem {
     font-size: 2.5em;
-  }
-  menuitem#manualsync-menuitem > button {
+  }*/
+  button {
     font-size: 1em;
   }
   menuitem#question-menuitem {
@@ -510,8 +524,33 @@ menuitem > .solution.notfinal {
 .summary {
   color: green;
 }
+[ghost-hovered=true] {
+  outline: 1px solid #00FF00;
+}
+[ghost-clicked=true] {
+  outline: 1px solid green;
+}
+div.bottom-menu {
+  width: 100%;
+  height: 30%;
+}
+div#modify-menu {
+  position: fixed;
+  bottom: 0px;
+  left: 0px;
+  background-color: #DDD;
+  font-size: 16px;
+}
+@@media (pointer: coarse) {
+  div#modify-menu {
+    font-size: 48px;
+  }
+}
+
 </style>
-<div class="editor-logo">Editor <a href= "https://github.com/MikaelMayer/Editor/issues">(report issue)</a></div><div class="menu-separator"></div><menuitem class= "filename" title= "the path of the file you are currently viewing">@(if path == "" then serverOwned "empty path" "[root folder]" else path)</menuitem>
+<div class="editor-logo">Editor <a href= "https://github.com/MikaelMayer/Editor/issues">(report issue)</a></div>
+<div class="menu-separator"></div>
+<menuitem class= "filename" title= "the path of the file you are currently viewing">@(if path == "" then serverOwned "empty path" "[root folder]" else path)</menuitem>
 <div class="menu-separator"></div><menuitem>
 <label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox" save-properties="checked"
   onchange="""
@@ -1251,81 +1290,152 @@ editionscript = """
       return href;
     }
     
+    var currentlySelectedElement = undefined;
+    
     onClickOnLink = function (event) {
       var clickedElem = event.target;
-      while(clickedElem && clickedElem.tagName != "A") {
-        clickedElem = clickedElem.parentElement;
-      }
-      if(clickedElem && clickedElem.tagName == "A" && clickedElem.getAttribute("id") != "docslinkbubble-linkpreview") {
-        var href = clickedElem.getAttribute("href");
-        if(href) {
-          var rect = clickedElem.getBoundingClientRect();
-          var bottomX = window.scrollX + rect.left;
-          var bottomY = window.scrollY + rect.top + clickedElem.offsetHeight;
-          var d = document.getElementById("docslinkbubble");
-          d.setAttribute("style", "left: " + bottomX + "; top: " + bottomY);
-          var targetA = document.getElementById("docslinkbubble-linkpreview");
-          var updateHref = function(href) {
-            href = @(if listDict.get "edit" defaultOptions |> Maybe.withDefault False |> not then """
-            addEditEqualToUrl(href, "true");""" else "href;")
-            targetA.setAttribute("href", href);
-          }
-          updateHref(href);
-          targetA.innerText = href;
-          d.setAttribute("ghost-visible", "true");
-          
-          var deleteButton = document.getElementById("docslinkbubble-delete");
-          deleteButton.onclick = () => {
-            clickedElem.outerHTML = clickedElem.innerHTML;
-            d.setAttribute("ghost-visible", "false");
-          }
-          
-          var modifyButton = document.getElementById("docslinkbubble-modify");
-          var clickStart = 0;
-          var onclick = function() {
-            if (observeTargetA != null) {
-              observeTargetA.disconnect();
-              observeTargetA = null;
-            }
-            if(targetA.getAttribute("contenteditable") == "true") {
-              targetA.setAttribute("contenteditable", "false");
-              console.log("disconnect observeTargetA", targetA);
-            } else {
-              targetA.setAttribute("contenteditable", "true");
-              targetA.focus();
-              console.log("reconnect observeTargetA", targetA);
-              observeTargetA = new MutationObserver(function(mutations) {
-                console.log("targetA modified");
-                clickedElem.setAttribute("href", targetA.innerText);
-                updateHref(targetA.innerText); // Instrumented link
-              });
-              observeTargetA.observe
-               ( targetA
-               , { attributes: false
-                 , childList: true
-                 , characterData: true
-                 , attributeOldValue: false
-                 , characterDataOldValue: true
-                 , subtree: true
-                 }
-               )
-            }
-          }
-          modifyButton.onclick = onclick;
-          if(event.modify) {
-            onclick();
-          }
+      var ancestors = [];
+      var tmp = clickedElem;
+      var aElement;
+      var ancestorIsModifyBox = false;
+      while(tmp) {
+        ancestors.push(tmp);
+        if(tmp.getAttribute && tmp.getAttribute("id") == "modify-menu") {
+          ancestorIsModifyBox = true;
         }
-      } else if(clickedElem && clickedElem.getAttribute &&
-           (clickedElem.getAttribute("id") == "docslinkbubble" ||
-            (clickedElem.parentNode && clickedElem.parentNode.getAttribute && clickedElem.parentNode.getAttribute("id") == "docslinkbubble") ||
-            (clickedElem.parentNode && clickedElem.parentNode.parentNode &&
-             clickedElem.parentNode.parentNode.getAttribute && clickedElem.parentNode.parentNode.getAttribute("id") == "docslinkbubble")
-            )) {
-      } else {
-        closeLinkWindow();
+        if(!aElement && clickedElem.tagName === "A") { // First link.
+          aElement = clickedElem;
+        }
+        tmp = tmp.parentElement;
       }
+      if(ancestorIsModifyBox || ancestors[ancestors.length - 1].tagName != "HTML") return;
+      console.log("not modify box", ancestors)
+      document.querySelectorAll("[ghost-clicked=true]").forEach((elem) => elem.removeAttribute("ghost-clicked"));
+      currentlySelectedElement = undefined;
+      if(clickedElem.setAttribute) {
+        currentlySelectedElement = clickedElem;
+      } else if(clickedElem.parentNode.setAttribute) {
+        currentlySelectedElement = clickedElem.parentNode;
+      }
+      if(currentlySelectedElement) {
+        currentlySelectedElement.setAttribute("ghost-clicked", "true");
+      }
+      if(!window.matchMedia("(pointer: coarse)").matches) {// Only for desktop
+        if(aElement && aElement.tagName == "A" && aElement.getAttribute("id") != "docslinkbubble-linkpreview") {
+          var href = aElement.getAttribute("href");
+          if(href) {
+            var rect = aElement.getBoundingClientRect();
+            var bottomX = window.scrollX + rect.left;
+            var bottomY = window.scrollY + rect.top + aElement.offsetHeight;
+            var d = document.getElementById("docslinkbubble");
+            d.setAttribute("style", "left: " + bottomX + "; top: " + bottomY);
+            var targetA = document.getElementById("docslinkbubble-linkpreview");
+            var updateHref = function(href) {
+              href = @(if listDict.get "edit" defaultOptions |> Maybe.withDefault False |> not then """
+              addEditEqualToUrl(href, "true");""" else "href;")
+              targetA.setAttribute("href", href);
+            }
+            updateHref(href);
+            targetA.innerText = href;
+            d.setAttribute("ghost-visible", "true");
+            
+            var deleteButton = document.getElementById("docslinkbubble-delete");
+            deleteButton.onclick = () => {
+              aElement.outerHTML = aElement.innerHTML;
+              d.setAttribute("ghost-visible", "false");
+            }
+            
+            var modifyButton = document.getElementById("docslinkbubble-modify");
+            var clickStart = 0;
+            var onclick = function() {
+              if (observeTargetA != null) {
+                observeTargetA.disconnect();
+                observeTargetA = null;
+              }
+              if(targetA.getAttribute("contenteditable") == "true") {
+                targetA.setAttribute("contenteditable", "false");
+                console.log("disconnect observeTargetA", targetA);
+              } else {
+                targetA.setAttribute("contenteditable", "true");
+                targetA.focus();
+                console.log("reconnect observeTargetA", targetA);
+                observeTargetA = new MutationObserver(function(mutations) {
+                  console.log("targetA modified");
+                  aElement.setAttribute("href", targetA.innerText);
+                  updateHref(targetA.innerText); // Instrumented link
+                });
+                observeTargetA.observe
+                 ( targetA
+                 , { attributes: false
+                   , childList: true
+                   , characterData: true
+                   , attributeOldValue: false
+                   , characterDataOldValue: true
+                   , subtree: true
+                   }
+                 )
+              }
+            }
+            modifyButton.onclick = onclick;
+            if(event.modify) {
+              onclick();
+            }
+          }
+        } else if(clickedElem && clickedElem.getAttribute &&
+             (clickedElem.getAttribute("id") == "docslinkbubble" ||
+              (clickedElem.parentNode && clickedElem.parentNode.getAttribute && clickedElem.parentNode.getAttribute("id") == "docslinkbubble") ||
+              (clickedElem.parentNode && clickedElem.parentNode.parentNode &&
+               clickedElem.parentNode.parentNode.getAttribute && clickedElem.parentNode.parentNode.getAttribute("id") == "docslinkbubble")
+              )) {
+          // Let's not close the edit link window if the user clicked something inside it.
+        } else {
+          // Anything else will quit the link window.
+          closeLinkWindow();
+        }
+      } // End if on Desktop.
+      updateInformationDiv(clickedElem);
       // Check if the event.target matches some selector, and do things...
+    }
+    
+    function updateInformationDiv(clickedElem) {
+      var informationDiv = document.querySelector("#modify-menu > .information");
+      if(informationDiv) {
+        function summary(element) {
+          var summary = element.tagName.toLowerCase();
+          if(element.getAttribute("id")) {
+            summary += "#" + element.getAttribute("id");
+          }
+          if(element.getAttribute("class") && element.getAttribute("class").trim().length) {
+            summary += "." + element.getAttribute("class").split(".");
+          }
+          return summary;
+        }
+        informationDiv.innerHTML = "";
+        var finalHtml = `<span class="current selected">Selected: ${summary(clickedElem)}</span>`;
+        if(clickedElem.previousElementSibling) {
+          finalHtml = `<span class="previous action" select="previousElementSibling">Previous: ${summary(clickedElem.previousElementSibling)}</span><br>` + finalHtml;
+        }
+        if(clickedElem.nextElementSibling) {
+          finalHtml += `<br><span class="next action" select="nextElementSibling">Next: ${summary(clickedElem.nextElementSibling)}</span>`;
+        }
+        if(clickedElem.parentElement) {
+          finalHtml += `<br><span class="parent action" select="parentElement">Parent: ${summary(clickedElem.parentElement)}</span>`;
+        }
+        informationDiv.innerHTML = finalHtml;
+        informationDiv.querySelectorAll(".action").forEach(span => {
+            span.onclick = function(event) {
+              var selected = document.querySelector("[ghost-clicked=true]");
+              if(selected) {
+                var nextSelected = selected[this.getAttribute("select")];
+                selected.removeAttribute("ghost-clicked");
+                nextSelected.setAttribute("ghost-clicked", "true");
+                updateInformationDiv(nextSelected);
+              }
+            }
+          }
+        )
+        return true;
+      }
     }
     
     // Links edition - Might be empty.
@@ -1399,7 +1509,7 @@ a.closeGoogleSignIn:hover {
   border-radius: 10px;
 }
 </style>,
-<div class="g-signin2" data-onsuccess="onGoogleSignIn" list-ghost-attributes="data-gapiscan data-onload" children-are-ghost="true"></div>,
+<div class="g-signin2" data-onsuccess="onGoogleSignIn" list-ghost-attributes="data-gapiscan data-onload" children-are-ghosts="true"></div>,
 <script>
 function onGoogleSignIn(googleUser) {
   var profile = googleUser.getBasicProfile();
