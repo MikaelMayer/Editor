@@ -1,6 +1,6 @@
 <?php
 
-$who = "World";
+$who = $_GET["who"];
 $what = "Hello $who";
 
 ?>

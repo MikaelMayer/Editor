@@ -141,12 +141,15 @@ evaluatedPage =
     let sourcecontent = if isHtml then sourcecontent else
       let phpToElm =
         let phpStringToElmString =
-          Regex.replace """(\")([^\"]*)(\")""" <| \m ->
+          (Regex.replace """(\")([^\"]*)(\")""" <| \m ->
             nth m.group 1 +
             (nth m.group 2
             |> Regex.replace """\$[0-9a-zA-Z_]*""" (\n ->
                freeze "\" + " + nth n.group 0 + freeze " + \"")) +
-            nth m.group 3
+            nth m.group 3) >>
+          (Regex.replace """\$_GET\[([^\]]*)\]""" <| \m ->
+            freeze "listDict.get "+ nth m.group 1 + freeze " $_GET |> Maybe.withDefaultReplace ''"
+          )
         in
         \string ->
         string |>
