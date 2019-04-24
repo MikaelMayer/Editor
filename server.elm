@@ -173,13 +173,16 @@ evaluatedPage =
         Ok sourcecontent -> sourcecontent
     in
     let interpretableData =
-      case Regex.extract """^(?:(?!<html)[\s\S])*((?=<html)[\s\S]*</html>)\s*$""" sourcecontent of
-        Just [interpretableHtml] -> freeze "<raw>" + interpretableHtml + freeze "</raw>"
-        _ -> serverOwned "raw display of html - beginning" """<raw><html><head></head><body>""" + sourcecontent + serverOwned "raw display of html - end" """</body></html></raw>"""
+          case Regex.extract """^\s*<!DOCTYPE(?:(?!>)[\s\S])*>([\s\S]*)$""" sourcecontent of
+            Just [interpretableHtml] -> serverOwned "begin raw tag" "<raw>" + interpretableHtml + serverOwned "end raw tag" "</raw>"
+            _ -> serverOwned "raw display of html - beginning" """<raw><html><head></head><body>""" + sourcecontent + serverOwned "raw display of html - end" """</body></html></raw>"""
     in
     __evaluate__ preludeEnv interpretableData
     |> Result.andThen (case of
-      ["raw", _, [htmlNode]] -> Ok htmlNode
+      ["raw", _, nodes] ->
+        case List.find (case of ["html", _, _] as n -> True; _ -> False) nodes of
+          Just n -> Ok n
+          Nothing -> Err """No top-level HTML node found""" 
       result -> Err """Html interpretation error: The interpretation of raw html did not work but produced @result"""
     )
   else if Regex.matchIn """\.md$""" path then
@@ -346,7 +349,7 @@ menuitem.filename {
 menu {
   position: fixed;
   margin-top: 0px;
-  z-index: 1000;
+  z-index: 100000;
   min-height: 1.5em;
   font-family: sans-serif;
   border: 1px solid #888;
