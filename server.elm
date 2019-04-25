@@ -230,7 +230,7 @@ main = case recoveredEvaluatedPage of
            serverOwned "edit prelude when not in edit mode" []) ++
            serverOwned "initial script" initialScript ++
            bodychildren ++
-           (serverOwned "synchronization script and placeholder" [<script>@editionscript</script>, <div class="bottom-menu"> </div>])]
+           (serverOwned "synchronization script and placeholder" [<script>@editionscript</script>, <div class="bottom-placeholder"> </div>])]
       x -> x -- head
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -291,7 +291,7 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu = [
 <div id="docslinkbubble" class="docs-bubble docs-linkbubble-bubble" list-ghost-attributes="style" help="Modify or delete a link" tabindex="0" contenteditable="false"><a rel="noreferrer" id="docslinkbubble-linkpreview" list-ghost-attributes="href contenteditable" children-are-ghosts="true"></a><span> – <button id="docslinkbubble-modify" class="docs-bubble-link" tabindex="0">Modify</button> | <button id="docslinkbubble-delete" class="docs-bubble-link" tabindex="0">Delete</button></span></div>,
-<div id="modify-menu" class="bottom-menu">
+<div id="modify-menu" list-ghost-attributes="style class" contenteditable="false">
 <!--ul>
 <li>Menu for mobile coming soon!</li>
 <li>Selection, move, cut/copy/paste menu</li>
@@ -493,6 +493,9 @@ menuitem > .solution.notfinal {
   body {
     font-size: 48px;
   }
+  menu.edittoolbar {
+    right: 10px;
+  }
   div.editor-logo {
     display: none;
   }
@@ -526,11 +529,10 @@ menuitem > .solution.notfinal {
   color: green;
 }
 
-div.bottom-menu {
-  width: 100%;
-  height: 30%;
-}
 div#modify-menu {
+  -webkit-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
+  -moz-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
+  box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
   position: fixed;
   top: 0px;
   right: 0px;
@@ -538,12 +540,23 @@ div#modify-menu {
   height: 100%;
   background-color: #DDD;
   font-size: 16px;
+  transform: translate(100%, 0px);
+  transition-property: transform;
+  transition-duration: 0.5s;
 }
-
+div#modify-menu.visible {
+  transform: translate(0%, 0%);
+}
+div#modify-menu h3 {
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
 :root {
   --context-color: rgba(0, 128, 128, 0.8); 
   --context-button-color: rgba(0, 192, 192, 0.8);
   --context-button-color-hover: rgba(0, 212, 212, 0.8);
+  --context-button-color-inert: rgba(128, 128, 128, 0.8);
+  --context-button-color-inert-hover: rgba(150, 150, 150, 0.8);
   --context-menu-height: 30px;
   --context-menu-button-width: 40px;
 }
@@ -559,7 +572,7 @@ div#context-menu {
   background-color: var(--context-color);
   color: white;
   font-weight: bold;
-  z-index: 100000;
+  z-index: 1000000;
 }
 div#context-menu.visible {
   display: block;
@@ -572,6 +585,9 @@ div#context-menu .context-menu-button {
   height: var(--context-menu-height);
   width: var(--context-menu-button-width);
   cursor: pointer;
+}
+div#context-menu .context-menu-button.inert {
+  background: var(--context-button-color-inert)
 }
 svg.context-menu-icon > path {
   fill:none;
@@ -588,6 +604,9 @@ svg.context-menu-icon.fill > path {
 div#context-menu .context-menu-button:hover {
   background: var(--context-button-color-hover);
 }
+div#context-menu .context-menu-button.inert:hover {
+  background: var(--context-button-color-inert-hover)
+}
 @@media (pointer: coarse) {
   div#modify-menu {
     font-size: 48px;
@@ -595,8 +614,13 @@ div#context-menu .context-menu-button:hover {
     left: 0px;
     top: initial;
     right: initial;
-    height: initial;
+    height: 30%;
     width: 100%;
+    transform: translate(0px, 100%);
+  }
+  div.bottom-placeholder {
+    width: 100%;
+    height: 30%;
   }
   
   :root {
@@ -639,6 +663,26 @@ if(cp !== null) {
 initialScript = [
 <script>
 var XHRequest = @(if listDict.get "browserSide" defaultOptions == Just True then "ProxiedServerRequest" else "XMLHttpRequest");
+
+function el(tag, attributes, children, properties) {
+  let x = document.createElement(tag);
+  if(typeof attributes == "object")
+    for(let k in attributes)
+      x.setAttribute(k, attributes[k]);
+  if(Array.isArray(children)) {
+    for(let child of children) {
+      if(typeof child !== "undefined")
+        x.appendChild(child);
+    }
+  } else if(typeof children !== "undefined") {
+    x.append(children);
+  }
+  if(typeof properties == "object") {
+    for(let k in properties)
+      x[k] = properties[k];
+  }
+  return x;
+}
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
@@ -983,7 +1027,7 @@ editionscript = """
             var n = JSON.parse(ambiguityNumber);
             var selected = JSON.parse(ambiguitySelected);
             var summaries = JSON.parse(ambiguitySummaries);
-            var newMenu = document.createElement("menuitem");
+            var newMenu = el("menuitem", {isghost: "true"});
             var disambiguationMenu = `<span style="color:red" id="ambiguity-id" v="${ambiguityKey}">Ambiguity.</span> Solutions `;
             for(var i = 1; i <= n; i++) {
               var summary = summaries[i-1].replace(/"/g,'&quot;');
@@ -996,20 +1040,15 @@ editionscript = """
             disambiguationMenu += ` <button id="saveambiguity" onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Save</button>`;
             disambiguationMenu += ` <button id="cancelAmbiguity" onclick='cancelAmbiguity("${ambiguityKey}", ${selected})'>Cancel</button>`;
             newMenu.innerHTML = disambiguationMenu;
-            newMenu.setAttribute("isghost", "true");
             if(document.getElementById("themenu"))
               document.getElementById("themenu").append(newMenu);
           } else {
             var opSummaryEncoded = xmlhttp.getResponseHeader("Operations-Summary");
             if(opSummaryEncoded) {
               var opSummary = decodeURI(opSummaryEncoded);
-              var log = document.createElement("span");
-              log.setAttribute("class", "summary");
-              log.innerText = "Last action: " + opSummary;
-              var newMenu = document.createElement("menuitem");
-              newMenu.append(log);
-              newMenu.setAttribute("id", "lastaction");
-              newMenu.setAttribute("isghost", "true");
+              var newMenu =
+                el("menuitem", {id: "lastaction", isghost: "true"},
+                  el("span", {"class": "summary"}, "Last action: " + opSummary));
               if(document.getElementById("themenu"))
                 document.getElementById("themenu").append(newMenu);
                 var newmenutimeout = setTimeout(function() { newMenu.remove(); }, 2000);
@@ -1077,12 +1116,9 @@ editionscript = """
         //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
         return;
       }
-      var newMenu = document.createElement("menuitem");
-      var notification = `Updating the source files...`;
-      newMenu.innerHTML = notification;
-      newMenu.setAttribute("isghost", "true");
-      newMenu.setAttribute("id", "notification-menu");
-      newMenu.classList.add("to-be-selected");
+      var newMenu = el("menuitem",
+        {isghost: true, id: "notification-menu", class:"to-be-selected"},
+        `Updating the source files...`);
       if(document.getElementById('lastaction')) {
         document.getElementById('lastaction').remove();
       }
@@ -1187,10 +1223,10 @@ editionscript = """
               // Range.createContextualFragment() would be useful here but is
               // only relatively recently standardized and is not supported in
               // some browsers (IE9, for one)
-              var el = document.createElement("div");
-              el.innerHTML = html;
+              var div = document.createElement("div");
+              div.innerHTML = html;
               var frag = document.createDocumentFragment(), node, lastNode;
-              while ( (node = el.firstChild) ) {
+              while ( (node = div.firstChild) ) {
                   lastNode = frag.appendChild(node);
               }
               range.insertNode(frag);
@@ -1457,15 +1493,15 @@ editionscript = """
           closeLinkWindow();
         }
       } // End if on Desktop.
-      updateInformationDiv(clickedElem);
+      updateInteractionDiv(clickedElem);
       // Check if the event.target matches some selector, and do things...
     }
     
-    function updateInformationDiv(clickedElem) {
+    function updateInteractionDiv(clickedElem) {
       var contextMenu = document.querySelector("#context-menu");
-      var informationDiv = document.querySelector("#modify-menu > .information");
-      if(clickedElem && informationDiv && contextMenu) {
-        function summary(element) {
+      var interactionDiv = document.querySelector("#modify-menu > .information");
+      if(clickedElem && interactionDiv && contextMenu) {
+        /*function summary(element) {
           var summary = element.tagName.toLowerCase();
           if(element.getAttribute("id")) {
             summary += "#" + element.getAttribute("id");
@@ -1474,31 +1510,62 @@ editionscript = """
             summary += "." + element.getAttribute("class").split(".");
           }
           return summary;
-        }
-        informationDiv.innerHTML = "";
-        var finalHtml = `<span class="current selected">Selected: ${summary(clickedElem)}</span>`;
-        if(clickedElem.previousElementSibling) {
-          finalHtml = `<span class="previous action" select="previousElementSibling">Previous: ${summary(clickedElem.previousElementSibling)}</span><br>` + finalHtml;
-        }
-        if(clickedElem.nextElementSibling) {
-          finalHtml += `<br><span class="next action" select="nextElementSibling">Next: ${summary(clickedElem.nextElementSibling)}</span>`;
-        }
-        if(clickedElem.parentElement) {
-          finalHtml += `<br><span class="parent action" select="parentElement">Parent: ${summary(clickedElem.parentElement)}</span>`;
-        }
-        informationDiv.innerHTML = finalHtml;
-        informationDiv.querySelectorAll(".action").forEach(span => {
-            span.onclick = function(event) {
-              var selected = document.querySelector("[ghost-clicked=true]");
-              if(selected) {
-                var nextSelected = selected[this.getAttribute("select")];
-                selected.removeAttribute("ghost-clicked");
-                nextSelected.setAttribute("ghost-clicked", "true");
-                updateInformationDiv(nextSelected);
-              }
-            }
+        }*/
+        interactionDiv.innerHTML = "";
+        interactionDiv.append(el("h3", {"class":"elementName"}, clickedElem.tagName.toLowerCase()));
+        for(let i = 0; i < clickedElem.attributes.length; i++) {
+          let name = clickedElem.attributes[i].name;
+          if(name === "ghost-clicked") continue;
+          let value = clickedElem.attributes[i].value;
+          let nv = el("div", {"class": "keyvalue"});
+          if(false /*name == "style"*/) {
+            // Do something special for styles.
+          } else {
+            let isHref = name === "href" && clickedElem.tagName === "A";
+            interactionDiv.append(
+              el("div", {"class": "keyvalue"}, [
+                el("span", {}, name + ": "),
+                el("input", {"type": "text", value: value},
+                  [], {
+                    onkeyup: ((name, isHref) => function () {
+                        clickedElem.setAttribute(name, this.value);
+                        if(isHref) {
+                          this.nextSibling.setAttribute("href", this.value);
+                        }
+                      })(name, isHref)
+                  }
+                ),
+                isHref ? el("a", {href: value}, "Open"): undefined
+                ]
+              ));
           }
-        )
+        }
+        interactionDiv.append(el("hr"));
+        interactionDiv.append(el("div", {}, "Add an attribute:"));
+        let highlightsubmit = function() {
+          let attrName = this.parentElement.querySelector("[name=name]").value;
+          this.parentElement.querySelector("[type=submit]").disabled =
+            attrName === "" || attrName.trim() !== attrName
+        }
+        interactionDiv.append(el("div", {"class": "keyvalue"},
+          [el("form", {}, [
+             el("input", {"type": "text", placeholder: "name", value: "", name:"name"}, [], {onkeyup: highlightsubmit}),
+             el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit}),
+             el("input", {"type": "submit", value: "Add"}, [], {disabled: true})],
+               {onsubmit: function() {
+                 clickedElem.setAttribute(
+                   this.querySelector("[name=name]").value,
+                   this.querySelector("[name=value]").value);
+                 updateInteractionDiv(clickedElem);
+               }})]));
+        if(clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE") {
+          interactionDiv.append(el("hr"));
+          interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
+                  clickedElem.innerText, {
+                    onkeyup: function () { clickedElem.innerText = this.value; }
+                  }));
+        }
+        
         // What to put in context menu?
         contextMenu.innerHTML = "";
         let numButtons = 0;
@@ -1521,6 +1588,62 @@ editionscript = """
             topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
             ; 
         }
+        if(clickedElem.parentElement) {
+          addButton(`<svg class="context-menu-icon" width="40" height="30">
+              <path d="M 8,19 8,22 11,22 M 12,18 8,22 M 8,10 8,7 11,7 M 12,10 8,7 M 27,7 30,7 30,10 M 26,10 30,7 M 31,19 31,22 28,22 M 26,18 31,22 M 12,12 12,10 M 12,16 12,14 M 14,18 12,18 M 18,18 16,18 M 22,18 20,18 M 26,18 24,18 M 26,14 26,16 M 26,10 26,12 M 22,10 24,10 M 18,10 20,10 M 14,10 16,10 M 5,5 35,5 35,25 5,25 Z"/></svg>`,
+                {title: "Select parent", "class": "inert"},
+                {onclick: (c => event => {
+                  let parent = c.parentElement;
+                  if(parent.tagName === "TBODY" && parent.parentElement && parent.parentElement.tagName === "TABLE") parent = parent.parentElement;
+                  c.removeAttribute("ghost-clicked");
+                  parent.setAttribute("ghost-clicked", "true");
+                  updateInteractionDiv(parent)})(clickedElem) }
+              );
+        }
+        if(clickedElem.children.length > 0) {
+          addButton(`<svg class="context-menu-icon" width="40" height="30">
+              <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
+                {title: "Select first child", "class": "inert"},
+                {onclick: (c => event => {
+                  let firstChild = c.children[0];
+                  if(firstChild.tagName === "TBODY" && firstChild.children && firstChild.children.length > 0) firstChild = firstChild.children[0];
+                  c.removeAttribute("ghost-clicked");
+                  firstChild.setAttribute("ghost-clicked", "true");
+                  updateInteractionDiv(firstChild)})(clickedElem) }
+              );
+        }
+        if(clickedElem.previousElementSibling) {
+          addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
+          {title: "Select previous sibling", class: "inert"},
+          {onclick: ((c, contextMenu) => (event) => {
+              let prev = c.previousElementSibling;
+              c.removeAttribute("ghost-clicked");
+              prev.setAttribute("ghost-clicked", "true");
+              updateInteractionDiv(prev);
+            })(clickedElem, contextMenu)
+          });
+        }
+        if(clickedElem.nextElementSibling) {
+          addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
+          {title: "Select next sibling", class: "inert"},
+          {onclick: ((c, contextMenu) => (event) => {
+              let next = c.nextElementSibling;
+              c.removeAttribute("ghost-clicked");
+              next.setAttribute("ghost-clicked", "true");
+              updateInteractionDiv(next);
+            })(clickedElem, contextMenu)
+          });
+        }
+        addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z" /></svg>`,
+            {title: "Open/close settings tab", "class": "inert"},
+            {onclick: ((c, contextMenu) => event => {
+                document.querySelector("#modify-menu").classList.toggle("visible");
+                // TODO: Open meaningful context menu.
+              })(clickedElem, contextMenu)
+            });
         if(clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
           addButton(`<svg class="context-menu-icon fill" width="40" height="30">
             <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
@@ -1533,7 +1656,7 @@ editionscript = """
               if(wsTxtNode) { // We move the whitespace as well.
                 c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
               }
-              updateInformationDiv(c);
+              updateInteractionDiv(c);
             })(clickedElem, contextMenu)
           });
         }
@@ -1549,17 +1672,10 @@ editionscript = """
               if(wsTxtNode) { // We move the whitespace as well
                 nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
               }
-              updateInformationDiv(c);
+              updateInteractionDiv(c);
             })(clickedElem, contextMenu)
           });
         }
-        addButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z" /></svg>`,
-            {title: "Open settings tab"},
-            {onclick: ((c, contextMenu) => event => {
-                // TODO: Open meaningful context menu.
-              })(clickedElem, contextMenu)
-            });
         addButton(`<svg class="context-menu-icon" width="40" height="30">
             <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
             <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
@@ -1567,7 +1683,7 @@ editionscript = """
           {onclick: ((c, contextMenu) => (event) => {
               c.removeAttribute("ghost-clicked");
               let cloned = duplicate(c);
-              if(cloned) updateInformationDiv(cloned);
+              if(cloned) updateInteractionDiv(cloned);
               else contextMenu.classList.remove("visible");
             })(clickedElem, contextMenu)
           });
@@ -1585,12 +1701,16 @@ editionscript = """
             })(clickedElem, contextMenu)
           });
         
-        
+        let baseElem = clickedElem;
+        while(baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE") {
+          baseElem = baseElem.nextElementSibling;
+        }
+        baseElem = baseElem || clickedElem;
         // Find out where to place context menu.
-        let clickedElemLeft = window.scrollX + clickedElem.getBoundingClientRect().left;
-        let clickedElemTop = window.scrollY + clickedElem.getBoundingClientRect().top;
-        let clickedElemBottom = window.scrollY + clickedElem.getBoundingClientRect().bottom;
-        let clickedElemRight = window.scrollX + clickedElem.getBoundingClientRect().right;
+        let clickedElemLeft = window.scrollX + baseElem.getBoundingClientRect().left;
+        let clickedElemTop = window.scrollY + baseElem.getBoundingClientRect().top;
+        let clickedElemBottom = window.scrollY + baseElem.getBoundingClientRect().bottom;
+        let clickedElemRight = window.scrollX + baseElem.getBoundingClientRect().right;
         let buttonHeight = window.matchMedia("(pointer: coarse)").matches ? 48 : 30;
         let buttonWidth  = window.matchMedia("(pointer: coarse)").matches ? 48 : 40;
         let desiredWidth = numButtons * buttonWidth;
@@ -1603,6 +1723,8 @@ editionscript = """
             desiredTop = window.innerHeight - buttonHeight; 
           }
         }
+        if(desiredLeft < 0) desiredLeft = 0;
+        if(desiredTop < 0) desiredTop = 0;
         contextMenu.style.left = desiredLeft + "px";
         contextMenu.style.top = desiredTop + "px";
         contextMenu.style.width = desiredWidth + "px";
