@@ -525,10 +525,10 @@ menuitem > .solution.notfinal {
   color: green;
 }
 [ghost-hovered=true] {
-  outline: 1px solid #00FF00;
+  outline: 2px solid rgba(0, 128, 0, 0.5);
 }
 [ghost-clicked=true] {
-  outline: 1px solid green;
+  outline: 2px solid rgba(0, 128, 128, 0.5);
 }
 div.bottom-menu {
   width: 100%;
@@ -536,14 +536,22 @@ div.bottom-menu {
 }
 div#modify-menu {
   position: fixed;
-  bottom: 0px;
-  left: 0px;
+  top: 0px;
+  right: 0px;
+  width: 400px;
+  height: 100%;
   background-color: #DDD;
   font-size: 16px;
 }
 @@media (pointer: coarse) {
   div#modify-menu {
     font-size: 48px;
+    bottom: 0px;
+    left: 0px;
+    top: initial;
+    right: initial;
+    height: initial;
+    width: 100%;
   }
 }
 
