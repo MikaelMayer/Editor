@@ -301,6 +301,7 @@ editionmenu = [
 </ul-->
 <div class="information" children-are-ghosts="true"></div>
 </div>,
+<div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class"></div>,
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
 @(if iscloseable then [] else closeEditBox)
 <style>
@@ -524,12 +525,7 @@ menuitem > .solution.notfinal {
 .summary {
   color: green;
 }
-[ghost-hovered=true] {
-  outline: 2px solid rgba(0, 128, 0, 0.5);
-}
-[ghost-clicked=true] {
-  outline: 2px solid rgba(0, 128, 128, 0.5);
-}
+
 div.bottom-menu {
   width: 100%;
   height: 30%;
@@ -543,6 +539,55 @@ div#modify-menu {
   background-color: #DDD;
   font-size: 16px;
 }
+
+:root {
+  --context-color: rgba(0, 128, 128, 0.8); 
+  --context-button-color: rgba(0, 192, 192, 0.8);
+  --context-button-color-hover: rgba(0, 212, 212, 0.8);
+  --context-menu-height: 30px;
+  --context-menu-button-width: 40px;
+}
+[ghost-hovered=true] {
+  outline: 2px solid var(--context-color);
+}
+[ghost-clicked=true] {
+  outline: 2px solid var(--context-color);
+}
+div#context-menu {
+  position: absolute;
+  display: none;
+  background-color: var(--context-color);
+  color: white;
+  font-weight: bold;
+  z-index: 100000;
+}
+div#context-menu.visible {
+  display: block;
+  height: var(--context-menu-height);
+  width: 200px;
+}
+div#context-menu .context-menu-button {
+  background: var(--context-button-color);
+  display: inline-block;
+  height: var(--context-menu-height);
+  width: var(--context-menu-button-width);
+  cursor: pointer;
+}
+svg.context-menu-icon > path {
+  fill:none;
+  stroke:#FFFFFF;
+  stroke-width:2px;
+  stroke-linecap:butt;
+  -linejoin:miter;
+  stroke-opacity:1;
+}
+svg.context-menu-icon.fill > path {
+  fill:#FFFFFF;
+  stroke-width:1px;
+}
+div#context-menu .context-menu-button:hover {
+  background: var(--context-button-color-hover);
+}
 @@media (pointer: coarse) {
   div#modify-menu {
     font-size: 48px;
@@ -552,6 +597,11 @@ div#modify-menu {
     right: initial;
     height: initial;
     width: 100%;
+  }
+  
+  :root {
+    --context-menu-height: 48px;
+    --context-menu-button-width: 48px;
   }
 }
 
@@ -1306,18 +1356,23 @@ editionscript = """
       var tmp = clickedElem;
       var aElement;
       var ancestorIsModifyBox = false;
+      var ancestorIsContextMenu = false;
       while(tmp) {
         ancestors.push(tmp);
         if(tmp.getAttribute && tmp.getAttribute("id") == "modify-menu") {
           ancestorIsModifyBox = true;
+        }
+        if(tmp.getAttribute && tmp.getAttribute("id") == "context-menu") {
+          ancestorIsContextMenu = true;
         }
         if(!aElement && clickedElem.tagName === "A") { // First link.
           aElement = clickedElem;
         }
         tmp = tmp.parentElement;
       }
-      if(ancestorIsModifyBox || ancestors[ancestors.length - 1].tagName != "HTML") return;
-      console.log("not modify box", ancestors)
+      if(ancestorIsModifyBox || ancestorIsContextMenu || ancestors[ancestors.length - 1].tagName != "HTML") return;
+      //console.log("not modify box", ancestors)
+      document.querySelector("#context-menu").classList.remove("visible");
       document.querySelectorAll("[ghost-clicked=true]").forEach((elem) => elem.removeAttribute("ghost-clicked"));
       currentlySelectedElement = undefined;
       if(clickedElem.setAttribute) {
@@ -1328,7 +1383,7 @@ editionscript = """
       if(currentlySelectedElement) {
         currentlySelectedElement.setAttribute("ghost-clicked", "true");
       }
-      if(!window.matchMedia("(pointer: coarse)").matches) {// Only for desktop
+      if(!window.matchMedia("(pointer: coarse)").matches) {// Only for desktop we display the link editor.
         if(aElement && aElement.tagName == "A" && aElement.getAttribute("id") != "docslinkbubble-linkpreview") {
           var href = aElement.getAttribute("href");
           if(href) {
@@ -1406,8 +1461,9 @@ editionscript = """
     }
     
     function updateInformationDiv(clickedElem) {
+      var contextMenu = document.querySelector("#context-menu");
       var informationDiv = document.querySelector("#modify-menu > .information");
-      if(informationDiv) {
+      if(clickedElem && informationDiv && contextMenu) {
         function summary(element) {
           var summary = element.tagName.toLowerCase();
           if(element.getAttribute("id")) {
@@ -1442,6 +1498,101 @@ editionscript = """
             }
           }
         )
+        // What to put in context menu?
+        contextMenu.innerHTML = "";
+        let numButtons = 0;
+        let addButton = function(innerHTML, attributes, properties) {
+          let button = document.createElement("div");
+          for(let k in attributes) {
+            button.setAttribute(k, attributes[k]);
+          }
+          button.classList.add("context-menu-button");
+          for(let k in properties) {
+            button[k] = properties[k];
+          }
+          button.innerHTML = innerHTML;
+          contextMenu.append(button);
+          numButtons++;
+        }
+        let reorderCompatible = (node1, node2) => {
+          return node1.tagName === node2.tagName; 
+        }
+        if(clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+          addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
+          {title: "Move selected element up"},
+          {onclick: ((c, contextMenu) => (event) => {
+              let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
+                 c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
+              // There is whitespace before this element, we try to reinsert
+              c.parentElement.insertBefore(c, c.previousElementSibling);
+              if(wsTxtNode) { // We move the whitespace as well.
+                c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
+              }
+              updateInformationDiv(c);
+            })(clickedElem, contextMenu)
+          });
+        }
+        if(clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+          addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
+          {title: "Move selected element down"},
+          {onclick: ((c, contextMenu) => (event) => {
+              let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
+                c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
+              c.nextElementSibling.insertAdjacentElement("afterend", c);
+              if(wsTxtNode) { // We move the whitespace as well.
+                c.nextElementSibling.insertAdjacentText("afterend", wsTxtNode);
+              }
+              updateInformationDiv(c);
+            })(clickedElem, contextMenu)
+          });
+        }
+        addButton(`<svg class="context-menu-icon" width="40" height="30">
+            <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
+            <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
+          {title: "Clone selected element"},
+          {onclick: ((c, contextMenu) => (event) => {
+              c.removeAttribute("ghost-clicked");
+              duplicate(c);
+              contextMenu.classList.remove("visible");
+            })(clickedElem, contextMenu)
+          });
+        addButton(`<svg class="context-menu-icon" width="40" height="30">
+            <path d="m 9,7.5 22,0" />
+            <path d="m 12,7.5 0,14 c 0,3 1,4 3,4 l 10,-0 c 2,0 3,-1 3,-3.5 l 0,-14" />
+            <path d="m 17,7 c -0,-4.5 6,-4.5 6,0"/>
+            <path d="M 16,11.5 16,22.5" />
+            <path d="m 20,11.5 0,11" />
+            <path d="m 24,11.5 0,11" /></svg>`,
+          {title: "Delete selected element"},
+          {onclick: ((c, contextMenu) => (event) => {
+              c.remove();
+              contextMenu.classList.remove("visible");
+            })(clickedElem, contextMenu)
+          });
+        
+        
+        // Find out where to place context menu.
+        let clickedElemLeft = window.scrollX + clickedElem.getBoundingClientRect().left;
+        let clickedElemTop = window.scrollY + clickedElem.getBoundingClientRect().top;
+        let clickedElemBottom = window.scrollY + clickedElem.getBoundingClientRect().bottom;
+        let clickedElemRight = window.scrollX + clickedElem.getBoundingClientRect().right;
+        let buttonHeight = window.matchMedia("(pointer: coarse)").matches ? 48 : 30;
+        let buttonWidth  = window.matchMedia("(pointer: coarse)").matches ? 48 : 40;
+        let desiredWidth = numButtons * buttonWidth;
+        let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth / 2;
+        let desiredTop = clickedElemTop - buttonHeight; 
+        if(desiredTop - window.scrollY < 9) {
+          desiredTop = clickedElemBottom;
+          if(desiredTop + buttonHeight > window.innerHeight) {
+            desiredTop = window.innerHeight - buttonHeight; 
+          }
+        }
+        contextMenu.style.left = desiredLeft + "px";
+        contextMenu.style.top = desiredTop + "px";
+        contextMenu.style.width = desiredWidth + "px";
+        contextMenu.classList.add("visible");
         return true;
       }
     }
