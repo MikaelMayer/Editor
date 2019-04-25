@@ -820,6 +820,7 @@ function duplicate(node, options) {
     }
     var cloned = options.onBeforeInsert(node.cloneNode(true));
     insertBefore(node.parentNode, cloned, insertBeforeNode);
+    return cloned;
   }
 }
 function remove(node) {
@@ -1515,7 +1516,10 @@ editionscript = """
           numButtons++;
         }
         let reorderCompatible = (node1, node2) => {
-          return node1.tagName === node2.tagName; 
+          let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
+          return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
+            topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
+            ; 
         }
         if(clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
           addButton(`<svg class="context-menu-icon fill" width="40" height="30">
@@ -1540,22 +1544,31 @@ editionscript = """
           {onclick: ((c, contextMenu) => (event) => {
               let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
                 c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
-              c.nextElementSibling.insertAdjacentElement("afterend", c);
-              if(wsTxtNode) { // We move the whitespace as well.
-                c.nextElementSibling.insertAdjacentText("afterend", wsTxtNode);
+              let nodeToInsertAfter = c.nextElementSibling;
+              nodeToInsertAfter.insertAdjacentElement("afterend", c);
+              if(wsTxtNode) { // We move the whitespace as well
+                nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
               }
               updateInformationDiv(c);
             })(clickedElem, contextMenu)
           });
         }
+        addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z" /></svg>`,
+            {title: "Open settings tab"},
+            {onclick: ((c, contextMenu) => event => {
+                // TODO: Open meaningful context menu.
+              })(clickedElem, contextMenu)
+            });
         addButton(`<svg class="context-menu-icon" width="40" height="30">
             <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
             <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
           {title: "Clone selected element"},
           {onclick: ((c, contextMenu) => (event) => {
               c.removeAttribute("ghost-clicked");
-              duplicate(c);
-              contextMenu.classList.remove("visible");
+              let cloned = duplicate(c);
+              if(cloned) updateInformationDiv(cloned);
+              else contextMenu.classList.remove("visible");
             })(clickedElem, contextMenu)
           });
         addButton(`<svg class="context-menu-icon" width="40" height="30">
@@ -1581,7 +1594,8 @@ editionscript = """
         let buttonHeight = window.matchMedia("(pointer: coarse)").matches ? 48 : 30;
         let buttonWidth  = window.matchMedia("(pointer: coarse)").matches ? 48 : 40;
         let desiredWidth = numButtons * buttonWidth;
-        let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth / 2;
+        let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
+        if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
         let desiredTop = clickedElemTop - buttonHeight; 
         if(desiredTop - window.scrollY < 9) {
           desiredTop = clickedElemBottom;
