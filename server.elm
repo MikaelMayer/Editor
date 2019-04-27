@@ -175,6 +175,9 @@ evaluatedPage =
     let interpretableData =
           case Regex.extract """^\s*<!DOCTYPE(?:(?!>)[\s\S])*>([\s\S]*)$""" sourcecontent of
             Just [interpretableHtml] -> serverOwned "begin raw tag" "<raw>" + interpretableHtml + serverOwned "end raw tag" "</raw>"
+            _ ->
+          case Regex.extract """^[\s\S]*?(<html\b[\s\S]*)$""" sourcecontent of
+            Just [interpretableHtml] -> serverOwned "begin raw tag" "<raw>" + interpretableHtml + serverOwned "end raw tag" "</raw>"
             _ -> serverOwned "raw display of html - beginning" """<raw><html><head></head><body>""" + sourcecontent + serverOwned "raw display of html - end" """</body></html></raw>"""
     in
     __evaluate__ preludeEnv interpretableData
@@ -1471,7 +1474,7 @@ editionscript = """
             f.startOffset === f.endOffset && f.startContainer === f.endContainer) return;
         return f;
       })();
-      let caretPosition = options.notextselection ? undefined : (() => {
+      let caretPosition = options.notextselection || clickedElem.tagName === "HEAD" ? undefined : (() => {
         let selection = window.getSelection();
         if(!selection) return;
         let f = selection.getRangeAt(0);
@@ -1499,12 +1502,15 @@ editionscript = """
       if(options.insertElement) {
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
+          clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
           el("span", {}, [
             el("input", {type: "radio", id: "radioInsertBeforeNode", name: "insertionPlace", value: "before"}),
             el("label", {"for": "radioInsertBeforeNode"}, "Before node")]),
+          clickedElem.tagName === "HTML" ? undefined :
           el("span", {}, [
             el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}),
-            el("label", {"for": "radioInsertAtCaret"}, "At caret")]),
+            el("label", {"for": "radioInsertAtCaret"}, caretPosition ? "At caret" : "As child")]),
+          clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
           el("span", {}, [
             el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: true}),
             el("label", {"for": "radioInsertAfterNode"}, "After node")]),
@@ -1519,10 +1525,12 @@ editionscript = """
           })();
           let insertionStyle = (() => {
             let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
+            let defaultValue = "after";
             for (let i = 0, length = radios.length; i < length; i++) {
               if (radios[i].checked) return radios[i].getAttribute("value");
+              defaultValue = radios[i].getAttribute("value")
             }
-            return "after";
+            return defaultValue;
           })();
           if(insertionStyle === "after") {
             if(typeof newElement === "string") {
@@ -1552,6 +1560,17 @@ editionscript = """
             } else {
               clickedElem.insertBefore(newElement, txt.nextSibling)
             }
+          } else { // Insert at the end of the selected element, inside.
+            if(typeof newElement === "string") {
+              // TODO: append at the element.
+              let tmpSpan = el("span");
+              clickedElem.insertBefore(tmpSpan, null);
+              tmpSpan.insertAdjacentHTML("afterend", newElement);
+              tmpSpan.remove();
+            } else {
+              // Insert at the end.
+              clickedElem.insertBefore(newElement, null);
+            }
           }
           if(typeof newElement !== "string") {
             updateInteractionDiv(newElement);
@@ -1559,26 +1578,38 @@ editionscript = """
             updateInteractionDiv(clickedElem);
           }
         }
-        // TODO: Filter and sort which one we can add
-        interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", { "class": "templateengine"}, "Link",
-            {tagCreate:"a", childCreate: "Name_your_link"}), {onclick: insertTag}));
-        interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", { "class": "templateengine" }, "Paragraph",
-            {tagCreate:"p", childCreate: "Inserted paragraph"}), {onclick: insertTag}));
-        interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", { "class": "templateengine"}, "Bulleted list",
-            {tagCreate:"ul", propsCreate: { innerHTML: "\n  <li><br></li>\n"}}), {onclick: insertTag}));
-        interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", { "class": "templateengine"}, "Numbered list",
-            {tagCreate:"ol", propsCreate: { innerHTML: "\n  <li><br></li>\n"}}), {onclick: insertTag}));
-        interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", { "class": "templateengine"}, "List item",
-            {tagCreate:"li", propsCreate: { innerHTML: "<br>"}}), {onclick: insertTag}));
-        for(let i = 1; i <= 6; i++) {
+        if(clickedElem.tagName === "HEAD") {
           interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine"}, "Header " + i,
-              {tagCreate:"h" + i, propsCreate: { innerHTML: "Title" + i}}), {onclick: insertTag}));
+            el("span", { "class": "templateengine"}, "Title",
+              {tagCreate:"title", childCreate: "Page_title"}), {onclick: insertTag}));
+          interactionDiv.append(el("div", {"class": "tagName"},
+            el("span", { "class": "templateengine" }, "Style",
+              {tagCreate:"style", childCreate: "/*Your CSS below*/"}), {onclick: insertTag}));
+          interactionDiv.append(el("div", {"class": "tagName"},
+            el("span", { "class": "templateengine"}, "Script",
+              {tagCreate:"script", childCreate: "/*Your CSS below*/"}), {onclick: insertTag}));
+        } else {
+          // TODO: Filter and sort which one we can add
+          interactionDiv.append(el("div", {"class": "tagName"},
+            el("span", { "class": "templateengine"}, "Link",
+              {tagCreate:"a", childCreate: "Name_your_link"}), {onclick: insertTag}));
+          interactionDiv.append(el("div", {"class": "tagName"},
+            el("span", { "class": "templateengine" }, "Paragraph",
+              {tagCreate:"p", childCreate: "Inserted paragraph"}), {onclick: insertTag}));
+          interactionDiv.append(el("div", {"class": "tagName"},
+            el("span", { "class": "templateengine"}, "Bulleted list",
+              {tagCreate:"ul", propsCreate: { innerHTML: "\n  <li><br></li>\n"}}), {onclick: insertTag}));
+          interactionDiv.append(el("div", {"class": "tagName"},
+            el("span", { "class": "templateengine"}, "Numbered list",
+              {tagCreate:"ol", propsCreate: { innerHTML: "\n  <li><br></li>\n"}}), {onclick: insertTag}));
+          interactionDiv.append(el("div", {"class": "tagName"},
+            el("span", { "class": "templateengine"}, "List item",
+              {tagCreate:"li", propsCreate: { innerHTML: "<br>"}}), {onclick: insertTag}));
+          for(let i = 1; i <= 6; i++) {
+            interactionDiv.append(el("div", {"class": "tagName"},
+              el("span", { "class": "templateengine"}, "Header " + i,
+                {tagCreate:"h" + i, propsCreate: { innerHTML: "Title" + i}}), {onclick: insertTag}));
+          }
         }
         interactionDiv.append(el("div", {"class": "tagName"},
            [el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
@@ -1720,7 +1751,7 @@ editionscript = """
       interactionDiv.append(keyvalues);
       //interactionDiv.append(el("hr"));
 
-      if(clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE") {
+      if(clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE" || clickedElem.tagName === "TITLE") {
         interactionDiv.append(el("hr"));
         interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
                 [], {
