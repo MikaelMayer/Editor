@@ -290,7 +290,6 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu = [
-<div id="docslinkbubble" class="docs-bubble docs-linkbubble-bubble" list-ghost-attributes="style" help="Modify or delete a link" tabindex="0" contenteditable="false"><a rel="noreferrer" id="docslinkbubble-linkpreview" list-ghost-attributes="href contenteditable" children-are-ghosts="true"></a><span> – <button id="docslinkbubble-modify" class="docs-bubble-link" tabindex="0">Modify</button> | <button id="docslinkbubble-delete" class="docs-bubble-link" tabindex="0">Delete</button></span></div>,
 <div id="modify-menu" list-ghost-attributes="style class" contenteditable="false">
 <!--ul>
 <li>Menu for mobile coming soon!</li>
@@ -301,47 +300,10 @@ editionmenu = [
 </ul-->
 <div class="information" children-are-ghosts="true"></div>
 </div>,
-<div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class"></div>,
+<div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
 @(if iscloseable then [] else closeEditBox)
 <style>
-.docs-linkbubble-bubble {
-  z-index: 1503;
-}
-
-.docs-bubble {
-  background-color: #fff;
-  border-radius: 2px;
-  border: 1px solid;
-  border-color: #bbb #bbb #a8a8a8;
-  box-shadow: 0 1px 3px rgba(0,0,0,.2);
-  color: #666;
-  cursor: default;
-  padding: 12px 20px;
-  position: absolute;
-  z-index: 1502;
-  white-space: nowrap;
-}
-
-.docs-bubble-link, .docs-bubble a {
-  color: #15c!important;
-  cursor: pointer;
-  text-decoration: none!important;
-}
-
-.docs-bubble-link:hover, .docs-bubble a:hover {
-  text-decoration: underline!important;
-}
-
-.docs-bubble-link[contenteditable=true], .docs-bubble a[contenteditable=true] {
-  cursor: text;
-  text-decoration: none!important;
-}
-
-.docs-bubble-link[contenteditable=true] + button, .docs-bubble a[contenteditable=true] + span > button:first-child {
-  outline: 1px solid black;
-}
-
 menu .editor-logo {
   display: inline-block;
   margin-right: 5px;
@@ -446,9 +408,6 @@ menuitem > .solution.notfinal {
   display: none;
   z-index: 999;
 }
-#docslinkbubble {
-  display: none;
-}
 [ghost-visible=true] {
   display: initial !important;
 }
@@ -538,11 +497,14 @@ div#modify-menu {
   right: 0px;
   width: 400px;
   height: 100%;
-  background-color: #DDD;
+  background-color: var(--context-color);
+  color: white;
+  padding: 5px;
   font-size: 16px;
   transform: translate(100%, 0px);
   transition-property: transform;
   transition-duration: 0.5s;
+  z-index: 100000;
 }
 div#modify-menu.visible {
   transform: translate(0%, 0%);
@@ -550,6 +512,16 @@ div#modify-menu.visible {
 div#modify-menu h3 {
   margin-top: 2px;
   margin-bottom: 2px;
+}
+div#modify-menu div.keyvalues {
+  display: table;
+}
+div#modify-menu div.keyvalues > div.keyvalue {
+  display: table-row;
+}
+div#modify-menu div.keyvalues > div.keyvalue > * {
+  display: table-cell;
+  padding: 4px;
 }
 :root {
   --context-color: rgba(0, 128, 128, 0.8); 
@@ -1394,6 +1366,7 @@ editionscript = """
       var aElement;
       var ancestorIsModifyBox = false;
       var ancestorIsContextMenu = false;
+      var link = undefined;
       while(tmp) {
         ancestors.push(tmp);
         if(tmp.getAttribute && tmp.getAttribute("id") == "modify-menu") {
@@ -1404,6 +1377,7 @@ editionscript = """
         }
         if(!aElement && clickedElem.tagName === "A") { // First link.
           aElement = clickedElem;
+          link = aElement.getAttribute("href");
         }
         tmp = tmp.parentElement;
       }
@@ -1420,84 +1394,14 @@ editionscript = """
       if(currentlySelectedElement) {
         currentlySelectedElement.setAttribute("ghost-clicked", "true");
       }
-      if(!window.matchMedia("(pointer: coarse)").matches) {// Only for desktop we display the link editor.
-        if(aElement && aElement.tagName == "A" && aElement.getAttribute("id") != "docslinkbubble-linkpreview") {
-          var href = aElement.getAttribute("href");
-          if(href) {
-            var rect = aElement.getBoundingClientRect();
-            var bottomX = window.scrollX + rect.left;
-            var bottomY = window.scrollY + rect.top + aElement.offsetHeight;
-            var d = document.getElementById("docslinkbubble");
-            d.setAttribute("style", "left: " + bottomX + "; top: " + bottomY);
-            var targetA = document.getElementById("docslinkbubble-linkpreview");
-            var updateHref = function(href) {
-              href = @(if listDict.get "edit" defaultOptions |> Maybe.withDefault False |> not then """
-              addEditEqualToUrl(href, "true");""" else "href;")
-              targetA.setAttribute("href", href);
-            }
-            updateHref(href);
-            targetA.innerText = href;
-            d.setAttribute("ghost-visible", "true");
-            
-            var deleteButton = document.getElementById("docslinkbubble-delete");
-            deleteButton.onclick = () => {
-              aElement.outerHTML = aElement.innerHTML;
-              d.setAttribute("ghost-visible", "false");
-            }
-            
-            var modifyButton = document.getElementById("docslinkbubble-modify");
-            var clickStart = 0;
-            var onclick = function() {
-              if (observeTargetA != null) {
-                observeTargetA.disconnect();
-                observeTargetA = null;
-              }
-              if(targetA.getAttribute("contenteditable") == "true") {
-                targetA.setAttribute("contenteditable", "false");
-                console.log("disconnect observeTargetA", targetA);
-              } else {
-                targetA.setAttribute("contenteditable", "true");
-                targetA.focus();
-                console.log("reconnect observeTargetA", targetA);
-                observeTargetA = new MutationObserver(function(mutations) {
-                  console.log("targetA modified");
-                  aElement.setAttribute("href", targetA.innerText);
-                  updateHref(targetA.innerText); // Instrumented link
-                });
-                observeTargetA.observe
-                 ( targetA
-                 , { attributes: false
-                   , childList: true
-                   , characterData: true
-                   , attributeOldValue: false
-                   , characterDataOldValue: true
-                   , subtree: true
-                   }
-                 )
-              }
-            }
-            modifyButton.onclick = onclick;
-            if(event.modify) {
-              onclick();
-            }
-          }
-        } else if(clickedElem && clickedElem.getAttribute &&
-             (clickedElem.getAttribute("id") == "docslinkbubble" ||
-              (clickedElem.parentNode && clickedElem.parentNode.getAttribute && clickedElem.parentNode.getAttribute("id") == "docslinkbubble") ||
-              (clickedElem.parentNode && clickedElem.parentNode.parentNode &&
-               clickedElem.parentNode.parentNode.getAttribute && clickedElem.parentNode.parentNode.getAttribute("id") == "docslinkbubble")
-              )) {
-          // Let's not close the edit link window if the user clicked something inside it.
-        } else {
-          // Anything else will quit the link window.
-          closeLinkWindow();
-        }
-      } // End if on Desktop.
-      updateInteractionDiv(clickedElem);
+      updateInteractionDiv(clickedElem, link);
       // Check if the event.target matches some selector, and do things...
     }
     
-    function updateInteractionDiv(clickedElem) {
+    var wasteBasketSVG = `<svg class="context-menu-icon" width="40" height="30">
+          <path d="m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0" /></svg>`;
+    
+    function updateInteractionDiv(clickedElem, link) {
       var contextMenu = document.querySelector("#context-menu");
       var interactionDiv = document.querySelector("#modify-menu > .information");
       if(clickedElem && interactionDiv && contextMenu) {
@@ -1513,7 +1417,8 @@ editionscript = """
         }*/
         interactionDiv.innerHTML = "";
         interactionDiv.append(el("h3", {"class":"elementName"}, clickedElem.tagName.toLowerCase()));
-        for(let i = 0; i < clickedElem.attributes.length; i++) {
+        let keyvalues = el("div", {"class":"keyvalues"});
+        for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
           let name = clickedElem.attributes[i].name;
           if(name === "ghost-clicked") continue;
           let value = clickedElem.attributes[i].value;
@@ -1522,7 +1427,7 @@ editionscript = """
             // Do something special for styles.
           } else {
             let isHref = name === "href" && clickedElem.tagName === "A";
-            interactionDiv.append(
+            keyvalues.append(
               el("div", {"class": "keyvalue"}, [
                 el("span", {}, name + ": "),
                 el("input", {"type": "text", value: value},
@@ -1531,15 +1436,27 @@ editionscript = """
                         clickedElem.setAttribute(name, this.value);
                         if(isHref) {
                           this.nextSibling.setAttribute("href", this.value);
+                          let livelink = document.querySelector("#livelink");
+                          if(livelink) {
+                            livelink.setAttribute("href", this.value);
+                          }
                         }
                       })(name, isHref)
                   }
                 ),
-                isHref ? el("a", {href: value}, "Open"): undefined
+                isHref ? el("a", {href: value}, "Open"): undefined,
+                el("div", {"class":"modify-menu-icon"}, [], {
+                  innerHTML: wasteBasketSVG,
+                  onclick: ((name) => function() {
+                    clickedElem.removeAttribute(name);
+                    updateInteractionDiv(clickedElem);
+                  })(name)
+                })
                 ]
               ));
           }
         }
+        interactionDiv.append(keyvalues);
         interactionDiv.append(el("hr"));
         interactionDiv.append(el("div", {}, "Add an attribute:"));
         let highlightsubmit = function() {
@@ -1547,17 +1464,19 @@ editionscript = """
           this.parentElement.querySelector("[type=submit]").disabled =
             attrName === "" || attrName.trim() !== attrName
         }
-        interactionDiv.append(el("div", {"class": "keyvalue"},
-          [el("form", {}, [
-             el("input", {"type": "text", placeholder: "name", value: "", name:"name"}, [], {onkeyup: highlightsubmit}),
-             el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit}),
-             el("input", {"type": "submit", value: "Add"}, [], {disabled: true})],
-               {onsubmit: function() {
-                 clickedElem.setAttribute(
-                   this.querySelector("[name=name]").value,
-                   this.querySelector("[name=value]").value);
-                 updateInteractionDiv(clickedElem);
-               }})]));
+        if(clickedElem.nodeType === 1) {
+          interactionDiv.append(el("div", {"class": "keyvalue"},
+            [el("form", {}, [
+               el("input", {"type": "text", placeholder: "name", value: "", name:"name"}, [], {onkeyup: highlightsubmit}),
+               el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit}),
+               el("input", {"type": "submit", value: "Add"}, [], {disabled: true})],
+                 {onsubmit: function() {
+                   clickedElem.setAttribute(
+                     this.querySelector("[name=name]").value,
+                     this.querySelector("[name=value]").value);
+                   updateInteractionDiv(clickedElem);
+                 }})]));
+        }
         if(clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE") {
           interactionDiv.append(el("hr"));
           interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
@@ -1570,14 +1489,8 @@ editionscript = """
         contextMenu.innerHTML = "";
         let numButtons = 0;
         let addButton = function(innerHTML, attributes, properties) {
-          let button = document.createElement("div");
-          for(let k in attributes) {
-            button.setAttribute(k, attributes[k]);
-          }
+          let button = el("div", attributes, [], properties);
           button.classList.add("context-menu-button");
-          for(let k in properties) {
-            button[k] = properties[k];
-          }
           button.innerHTML = innerHTML;
           contextMenu.append(button);
           numButtons++;
@@ -1587,6 +1500,11 @@ editionscript = """
           return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
             topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
             ; 
+        }
+        if(link) {
+          addButton(`<a id="livelink" href="${link}"><svg class="context-menu-icon fill" width="40" height="30">
+            <path d="M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z" /></svg></a>`,
+            {title: "Go to " + link, "class": "inert"});
         }
         if(clickedElem.parentElement) {
           addButton(`<svg class="context-menu-icon" width="40" height="30">
@@ -1600,7 +1518,7 @@ editionscript = """
                   updateInteractionDiv(parent)})(clickedElem) }
               );
         }
-        if(clickedElem.children.length > 0) {
+        if(clickedElem.children && clickedElem.children.length > 0) {
           addButton(`<svg class="context-menu-icon" width="40" height="30">
               <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
                 {title: "Select first child", "class": "inert"},
@@ -1687,19 +1605,15 @@ editionscript = """
               else contextMenu.classList.remove("visible");
             })(clickedElem, contextMenu)
           });
-        addButton(`<svg class="context-menu-icon" width="40" height="30">
-            <path d="m 9,7.5 22,0" />
-            <path d="m 12,7.5 0,14 c 0,3 1,4 3,4 l 10,-0 c 2,0 3,-1 3,-3.5 l 0,-14" />
-            <path d="m 17,7 c -0,-4.5 6,-4.5 6,0"/>
-            <path d="M 16,11.5 16,22.5" />
-            <path d="m 20,11.5 0,11" />
-            <path d="m 24,11.5 0,11" /></svg>`,
-          {title: "Delete selected element"},
-          {onclick: ((c, contextMenu) => (event) => {
-              c.remove();
-              contextMenu.classList.remove("visible");
-            })(clickedElem, contextMenu)
-          });
+        if(clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
+          addButton(wasteBasketSVG,
+            {title: "Delete selected element"},
+            {onclick: ((c, contextMenu) => (event) => {
+                c.remove();
+                contextMenu.classList.remove("visible");
+              })(clickedElem, contextMenu)
+            });
+        }
         
         let baseElem = clickedElem;
         while(baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE") {
@@ -1754,15 +1668,6 @@ editionscript = """
     else if varedit then
       """document.addEventListener('click', onClickOnLink, false);"""
     else "")
-    
-    function closeLinkWindow() {
-      var d = document.getElementById("docslinkbubble");
-      if(d && d.getAttribute("ghost-visible") == "true") {
-        d.setAttribute("ghost-visible", "false");
-        var targetA = document.getElementById("docslinkbubble-linkpreview");
-        targetA.setAttribute("contenteditable", "false");
-      }
-    }
 @(if iscloseable then """
 window.onbeforeunload = function (e) {
     e = e || window.event;
