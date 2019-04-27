@@ -1510,8 +1510,13 @@ editionscript = """
             el("label", {"for": "radioInsertAfterNode"}, "After node")]),
         ]));
         let insertTag = function() {
-          let span = this.querySelector("span");
-          let newElement = el(span.tagCreate, span.attrCreate, span.childCreate, span.propsCreate);
+          let newElement = (() => {
+            let parent = this;
+            while(parent && !parent.classList.contains("tagName")) parent = parent.parentElement;
+            let model = parent.querySelector(".templateengine");
+            if(typeof model.innerHTMLCreate === "string") return model.innerHTMLCreate;
+            return el(model.tagCreate, model.attrCreate, model.childCreate, model.propsCreate);
+          })();
           let insertionStyle = (() => {
             let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
             for (let i = 0, length = radios.length; i < length; i++) {
@@ -1520,9 +1525,17 @@ editionscript = """
             return "after";
           })();
           if(insertionStyle === "after") {
-            clickedElem.parentElement.insertBefore(newElement, clickedElem.nextSibling);
+            if(typeof newElement === "string") {
+              clickedElem.insertAdjacentHTML("afterend", newElement);
+            } else {
+              clickedElem.parentElement.insertBefore(newElement, clickedElem.nextSibling);
+            }
           } else if(insertionStyle === "before") {
-            clickedElem.parentElement.insertBefore(newElement, clickedElem);
+            if(typeof newElement === "string") {
+              clickedElem.insertAdjacentHTML("beforebegin", newElement);
+            } else {
+              clickedElem.parentElement.insertBefore(newElement, clickedElem);
+            }
           } else if(typeof options.caretPosition !== "undefined") {
             let s = options.caretPosition;
             let txt = s.startContainer;
@@ -1531,31 +1544,48 @@ editionscript = """
               txt.parentElement.insertBefore(document.createTextNode(txt.textContent.substring(s.startOffset)), txt.nextSibling);
               txt.textContent = txt.textContent.substring(0, s.startOffset);
             }
-            clickedElem.insertBefore(newElement, txt.nextSibling)
+            if(typeof newElement === "string") {
+              let tmpSpan = el("span");
+              clickedElem.insertBefore(tmpSpan, txt.nextSibling)
+              tmpSpan.insertAdjacentHTML("afterend", newElement);
+              tmpSpan.remove();
+            } else {
+              clickedElem.insertBefore(newElement, txt.nextSibling)
+            }
           }
-          updateInteractionDiv(newElement);
+          if(typeof newElement !== "string") {
+            updateInteractionDiv(newElement);
+          } else {
+            updateInteractionDiv(clickedElem);
+          }
         }
         // TODO: Filter and sort which one we can add
         interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", {}, "Link",
+          el("span", { "class": "templateengine"}, "Link",
             {tagCreate:"a", childCreate: "Name_your_link"}), {onclick: insertTag}));
         interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", {}, "Paragraph",
+          el("span", { "class": "templateengine" }, "Paragraph",
             {tagCreate:"p", childCreate: "Inserted paragraph"}), {onclick: insertTag}));
         interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", {}, "Bulleted list",
+          el("span", { "class": "templateengine"}, "Bulleted list",
             {tagCreate:"ul", propsCreate: { innerHTML: "\n  <li><br></li>\n"}}), {onclick: insertTag}));
         interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", {}, "Numbered list",
+          el("span", { "class": "templateengine"}, "Numbered list",
             {tagCreate:"ol", propsCreate: { innerHTML: "\n  <li><br></li>\n"}}), {onclick: insertTag}));
         interactionDiv.append(el("div", {"class": "tagName"},
-          el("span", {}, "List item",
+          el("span", { "class": "templateengine"}, "List item",
             {tagCreate:"li", propsCreate: { innerHTML: "<br>"}}), {onclick: insertTag}));
         for(let i = 1; i <= 6; i++) {
           interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", {}, "Header " + i,
+            el("span", { "class": "templateengine"}, "Header " + i,
               {tagCreate:"h" + i, propsCreate: { innerHTML: "Title" + i}}), {onclick: insertTag}));
         }
+        interactionDiv.append(el("div", {"class": "tagName"},
+           [el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
+           el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
+              innerHTML: plusSVG,
+              onclick: insertTag
+            })]));
         document.querySelector("#modify-menu").classList.toggle("visible", true);
         return;
       }
