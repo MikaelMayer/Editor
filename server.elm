@@ -1406,206 +1406,215 @@ editionscript = """
     function updateInteractionDiv(clickedElem, link) {
       var contextMenu = document.querySelector("#context-menu");
       var interactionDiv = document.querySelector("#modify-menu > .information");
-      if(clickedElem && interactionDiv && contextMenu) {
-        function summary(element) {
-          var summary = element.tagName.toLowerCase();
-          if(element.getAttribute("id")) {
-            summary += "#" + element.getAttribute("id");
-          }
-          if(element.getAttribute("class") && element.getAttribute("class").trim().length) {
-            summary += "." + element.getAttribute("class").split(".");
-          }
-          return summary;
+      if(!clickedElem || !interactionDiv || !contextMenu) return;
+      let selectionRange = (() => {
+        let selection = window.getSelection();
+        if(!selection) return;
+        let firstRange = selection.getRangeAt(0); 
+        if(!firstRange || !firstRange.getBoundingClientRect || firstRange.startOffset === firstRange.endOffset) return;
+        return firstRange;
+      })();
+      
+      function summary(element) {
+        var summary = element.tagName.toLowerCase();
+        if(element.getAttribute("id")) {
+          summary += "#" + element.getAttribute("id");
         }
-        interactionDiv.innerHTML = "";
-        interactionDiv.append(el("h3", {"class":"elementName"}, clickedElem.tagName.toLowerCase()));
-        let keyvalues = el("div", {"class":"keyvalues"});
-        for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
-          let name = clickedElem.attributes[i].name;
-          if(name === "ghost-clicked") continue;
-          let value = clickedElem.attributes[i].value;
-          let nv = el("div", {"class": "keyvalue"});
-          if(false /*name == "style"*/) {
-            // Do something special for styles.
-          } else {
-            let isHref = name === "href" && clickedElem.tagName === "A";
-            keyvalues.append(
-              el("div", {"class": "keyvalue"}, [
-                el("span", {}, name + ": "),
-                el("input", {"type": "text", value: value},
-                  [], {
-                    onkeyup: ((name, isHref) => function () {
-                        clickedElem.setAttribute(name, this.value);
-                        if(isHref) {
-                          this.nextSibling.setAttribute("href", this.value);
-                          let livelink = document.querySelector("#livelink");
-                          if(livelink) {
-                            livelink.setAttribute("href", this.value);
-                          }
+        if(element.getAttribute("class") && element.getAttribute("class").trim().length) {
+          summary += "." + element.getAttribute("class").split(".");
+        }
+        return summary;
+      }
+      interactionDiv.innerHTML = "";
+      interactionDiv.append(el("h3", {"class":"elementName"}, clickedElem.tagName.toLowerCase()));
+      let keyvalues = el("div", {"class":"keyvalues"});
+      for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
+        let name = clickedElem.attributes[i].name;
+        if(name === "ghost-clicked") continue;
+        let value = clickedElem.attributes[i].value;
+        let nv = el("div", {"class": "keyvalue"});
+        if(false /*name == "style"*/) {
+          // Do something special for styles.
+        } else {
+          let isHref = name === "href" && clickedElem.tagName === "A";
+          keyvalues.append(
+            el("div", {"class": "keyvalue"}, [
+              el("span", {}, name + ": "),
+              el("input", {"type": "text", value: value},
+                [], {
+                  onkeyup: ((name, isHref) => function () {
+                      clickedElem.setAttribute(name, this.value);
+                      if(isHref) {
+                        this.nextSibling.setAttribute("href", this.value);
+                        let livelink = document.querySelector("#livelink");
+                        if(livelink) {
+                          livelink.setAttribute("href", this.value);
                         }
-                      })(name, isHref)
-                  }
-                ),
-                isHref ? el("a", {href: value}, "Open"): undefined,
-                el("div", {"class":"modify-menu-icon"}, [], {
-                  innerHTML: wasteBasketSVG,
-                  onclick: ((name) => function() {
-                    clickedElem.removeAttribute(name);
-                    updateInteractionDiv(clickedElem);
-                  })(name)
-                })
-                ]
-              ));
-          }
-        }
-        interactionDiv.append(keyvalues);
-        interactionDiv.append(el("hr"));
-        interactionDiv.append(el("div", {}, "Add an attribute:"));
-        let highlightsubmit = function() {
-          let attrName = this.parentElement.querySelector("[name=name]").value;
-          this.parentElement.querySelector("[type=submit]").disabled =
-            attrName === "" || attrName.trim() !== attrName
-        }
-        if(clickedElem.nodeType === 1) {
-          interactionDiv.append(el("div", {"class": "keyvalue"},
-            [el("form", {}, [
-               el("input", {"type": "text", placeholder: "name", value: "", name:"name"}, [], {onkeyup: highlightsubmit}),
-               el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit}),
-               el("input", {"type": "submit", value: "Add"}, [], {disabled: true})],
-                 {onsubmit: function() {
-                   clickedElem.setAttribute(
-                     this.querySelector("[name=name]").value,
-                     this.querySelector("[name=value]").value);
-                   updateInteractionDiv(clickedElem);
-                 }})]));
-        }
-        if(clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE") {
-          interactionDiv.append(el("hr"));
-          interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
-                  clickedElem.innerText, {
-                    onkeyup: function () { clickedElem.innerText = this.value; }
-                  }));
-        }
-        
-        // What to put in context menu?
-        contextMenu.innerHTML = "";
-        let numButtons = 0;
-        let addButton = function(innerHTML, attributes, properties) {
-          let button = el("div", attributes, [], properties);
-          button.classList.add("context-menu-button");
-          button.innerHTML = innerHTML;
-          contextMenu.append(button);
-          numButtons++;
-        }
-        let reorderCompatible = (node1, node2) => {
-          let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
-          return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
-            topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
-            ; 
-        }
-        if(link) {
-          addButton(`<a id="livelink" href="${link}"><svg class="context-menu-icon fill" width="40" height="30">
-            <path d="M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z" /></svg></a>`,
-            {title: "Go to " + link, "class": "inert"});
-        }
-        if(clickedElem.parentElement) {
-          addButton(`<svg class="context-menu-icon" width="40" height="30">
-              <path d="M 8,19 8,22 11,22 M 12,18 8,22 M 8,10 8,7 11,7 M 12,10 8,7 M 27,7 30,7 30,10 M 26,10 30,7 M 31,19 31,22 28,22 M 26,18 31,22 M 12,12 12,10 M 12,16 12,14 M 14,18 12,18 M 18,18 16,18 M 22,18 20,18 M 26,18 24,18 M 26,14 26,16 M 26,10 26,12 M 22,10 24,10 M 18,10 20,10 M 14,10 16,10 M 5,5 35,5 35,25 5,25 Z"/></svg>`,
-                {title: "Select parent (" + summary(clickedElem.parentElement) + ")", "class": "inert"},
-                {onclick: (c => event => {
-                  let parent = c.parentElement;
-                  if(parent.tagName === "TBODY" && parent.parentElement && parent.parentElement.tagName === "TABLE") parent = parent.parentElement;
-                  c.removeAttribute("ghost-clicked");
-                  parent.setAttribute("ghost-clicked", "true");
-                  updateInteractionDiv(parent)})(clickedElem),
-                 onmouseenter() { clickedElem.parentElement.setAttribute("ghost-hovered", "true") },
-                 onmouseleave() { clickedElem.parentElement.removeAttribute("ghost-hovered") }
+                      }
+                    })(name, isHref)
                 }
-              );
+              ),
+              isHref ? el("a", {href: value}, "Open"): undefined,
+              el("div", {"class":"modify-menu-icon"}, [], {
+                innerHTML: wasteBasketSVG,
+                onclick: ((name) => function() {
+                  clickedElem.removeAttribute(name);
+                  updateInteractionDiv(clickedElem);
+                })(name)
+              })
+              ]
+            ));
         }
-        if(clickedElem.children && clickedElem.children.length > 0) {
-          addButton(`<svg class="context-menu-icon" width="40" height="30">
-              <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
-                {title: "Select first child (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
-                {onclick: (c => event => {
-                  let firstChild = c.children[0];
-                  if(firstChild.tagName === "TBODY" && firstChild.children && firstChild.children.length > 0) firstChild = firstChild.children[0];
-                  c.removeAttribute("ghost-clicked");
-                  firstChild.setAttribute("ghost-clicked", "true");
-                  updateInteractionDiv(firstChild)})(clickedElem),
-                 onmouseenter() { clickedElem.children[0].setAttribute("ghost-hovered", "true") },
-                 onmouseleave() { clickedElem.children[0].removeAttribute("ghost-hovered") }
-                 }
-              );
-        }
-        if(clickedElem.previousElementSibling) {
-          addButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
-          {title: "Select previous sibling (" + summary(clickedElem.previousElementSibling) + ")", class: "inert"},
-          {onclick: ((c, contextMenu) => (event) => {
-              let prev = c.previousElementSibling;
-              c.removeAttribute("ghost-clicked");
-              prev.setAttribute("ghost-clicked", "true");
-              updateInteractionDiv(prev);
-            })(clickedElem, contextMenu),
-           onmouseenter() { clickedElem.previousElementSibling.setAttribute("ghost-hovered", "true") },
-           onmouseleave() { clickedElem.previousElementSibling.removeAttribute("ghost-hovered") }
-          });
-        }
-        if(clickedElem.nextElementSibling) {
-          addButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
-          {title: "Select next sibling (" + summary(clickedElem.nextElementSibling) + ")", class: "inert"},
-          {onclick: ((c, contextMenu) => (event) => {
-              let next = c.nextElementSibling;
-              c.removeAttribute("ghost-clicked");
-              next.setAttribute("ghost-clicked", "true");
-              updateInteractionDiv(next);
-            })(clickedElem, contextMenu),
-           onmouseenter() { clickedElem.nextElementSibling.setAttribute("ghost-hovered", "true") },
-           onmouseleave() { clickedElem.nextElementSibling.removeAttribute("ghost-hovered") }
-          });
-        }
+      }
+      interactionDiv.append(keyvalues);
+      interactionDiv.append(el("hr"));
+      interactionDiv.append(el("div", {}, "Add an attribute:"));
+      let highlightsubmit = function() {
+        let attrName = this.parentElement.querySelector("[name=name]").value;
+        this.parentElement.querySelector("[type=submit]").disabled =
+          attrName === "" || attrName.trim() !== attrName
+      }
+      if(clickedElem.nodeType === 1) {
+        interactionDiv.append(el("div", {"class": "keyvalue"},
+          [el("form", {}, [
+             el("input", {"type": "text", placeholder: "name", value: "", name:"name"}, [], {onkeyup: highlightsubmit}),
+             el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit}),
+             el("input", {"type": "submit", value: "Add"}, [], {disabled: true})],
+               {onsubmit: function() {
+                 clickedElem.setAttribute(
+                   this.querySelector("[name=name]").value,
+                   this.querySelector("[name=value]").value);
+                 updateInteractionDiv(clickedElem);
+               }})]));
+      }
+      if(clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE") {
+        interactionDiv.append(el("hr"));
+        interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
+                clickedElem.innerText, {
+                  onkeyup: function () { clickedElem.innerText = this.value; }
+                }));
+      }
+      
+      // What to put in context menu?
+      contextMenu.innerHTML = "";
+      let numButtons = 0;
+      let addButton = function(innerHTML, attributes, properties) {
+        let button = el("div", attributes, [], properties);
+        button.classList.add("context-menu-button");
+        button.innerHTML = innerHTML;
+        contextMenu.append(button);
+        numButtons++;
+      }
+      let reorderCompatible = (node1, node2) => {
+        let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
+        return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
+          topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
+          ; 
+      }
+      if(link) {
+        addButton(`<a id="livelink" href="${link}"><svg class="context-menu-icon fill" width="40" height="30">
+          <path d="M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z" /></svg></a>`,
+          {title: "Go to " + link, "class": "inert"});
+      }
+      if(clickedElem.parentElement) {
+        let parent = selectionRange ? clickedElem : clickedElem.parentElement;
+        if(parent.tagName === "TBODY" && parent.parentElement && parent.parentElement.tagName === "TABLE") parent = parent.parentElement;
+        addButton(`<svg class="context-menu-icon" width="40" height="30">
+            <path d="M 8,19 8,22 11,22 M 12,18 8,22 M 8,10 8,7 11,7 M 12,10 8,7 M 27,7 30,7 30,10 M 26,10 30,7 M 31,19 31,22 28,22 M 26,18 31,22 M 12,12 12,10 M 12,16 12,14 M 14,18 12,18 M 18,18 16,18 M 22,18 20,18 M 26,18 24,18 M 26,14 26,16 M 26,10 26,12 M 22,10 24,10 M 18,10 20,10 M 14,10 16,10 M 5,5 35,5 35,25 5,25 Z"/></svg>`,
+              {title: "Select parent (" + summary(parent) + ")", "class": "inert"},
+              {onclick: ((c, parent) => event => {
+                c.removeAttribute("ghost-clicked");
+                parent.setAttribute("ghost-clicked", "true");
+                updateInteractionDiv(parent)})(clickedElem, parent),
+               onmouseenter() { parent.setAttribute("ghost-hovered", "true") },
+               onmouseleave() { parent.removeAttribute("ghost-hovered") }
+              }
+            );
+      }
+      if(!selectionRange && clickedElem.children && clickedElem.children.length > 0) {
+        addButton(`<svg class="context-menu-icon" width="40" height="30">
+            <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
+              {title: "Select first child (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
+              {onclick: (c => event => {
+                let firstChild = c.children[0];
+                if(firstChild.tagName === "TBODY" && firstChild.children && firstChild.children.length > 0) firstChild = firstChild.children[0];
+                c.removeAttribute("ghost-clicked");
+                firstChild.setAttribute("ghost-clicked", "true");
+                updateInteractionDiv(firstChild)})(clickedElem),
+               onmouseenter() { clickedElem.children[0].setAttribute("ghost-hovered", "true") },
+               onmouseleave() { clickedElem.children[0].removeAttribute("ghost-hovered") }
+               }
+            );
+      }
+      if(!selectionRange && clickedElem.previousElementSibling) {
         addButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z" /></svg>`,
-            {title: "Open/close settings tab", "class": "inert"},
-            {onclick: ((c, contextMenu) => event => {
-                document.querySelector("#modify-menu").classList.toggle("visible");
-                // TODO: Open meaningful context menu.
-              })(clickedElem, contextMenu)
-            });
-        if(clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
-          addButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
-          {title: "Move selected element up"},
-          {onclick: ((c, contextMenu) => (event) => {
-              let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
-                 c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
-              // There is whitespace before this element, we try to reinsert
-              c.parentElement.insertBefore(c, c.previousElementSibling);
-              if(wsTxtNode) { // We move the whitespace as well.
-                c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
-              }
-              updateInteractionDiv(c);
+          <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
+        {title: "Select previous sibling (" + summary(clickedElem.previousElementSibling) + ")", class: "inert"},
+        {onclick: ((c, contextMenu) => (event) => {
+            let prev = c.previousElementSibling;
+            c.removeAttribute("ghost-clicked");
+            prev.setAttribute("ghost-clicked", "true");
+            updateInteractionDiv(prev);
+          })(clickedElem, contextMenu),
+         onmouseenter() { clickedElem.previousElementSibling.setAttribute("ghost-hovered", "true") },
+         onmouseleave() { clickedElem.previousElementSibling.removeAttribute("ghost-hovered") }
+        });
+      }
+      if(!selectionRange && clickedElem.nextElementSibling) {
+        addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+          <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
+        {title: "Select next sibling (" + summary(clickedElem.nextElementSibling) + ")", class: "inert"},
+        {onclick: ((c, contextMenu) => (event) => {
+            let next = c.nextElementSibling;
+            c.removeAttribute("ghost-clicked");
+            next.setAttribute("ghost-clicked", "true");
+            updateInteractionDiv(next);
+          })(clickedElem, contextMenu),
+         onmouseenter() { clickedElem.nextElementSibling.setAttribute("ghost-hovered", "true") },
+         onmouseleave() { clickedElem.nextElementSibling.removeAttribute("ghost-hovered") }
+        });
+      }
+      addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+          <path d="M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z" /></svg>`,
+          {title: "Open/close settings tab", "class": "inert"},
+          {onclick: ((c, contextMenu) => event => {
+              document.querySelector("#modify-menu").classList.toggle("visible");
+              // TODO: Open meaningful context menu.
             })(clickedElem, contextMenu)
           });
-        }
-        if(clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
-          addButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
-          {title: "Move selected element down"},
-          {onclick: ((c, contextMenu) => (event) => {
-              let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
-                c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
-              let nodeToInsertAfter = c.nextElementSibling;
-              nodeToInsertAfter.insertAdjacentElement("afterend", c);
-              if(wsTxtNode) { // We move the whitespace as well
-                nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
-              }
-              updateInteractionDiv(c);
-            })(clickedElem, contextMenu)
-          });
-        }
+      if(clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+        addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+          <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
+        {title: "Move selected element up"},
+        {onclick: ((c, contextMenu) => (event) => {
+            let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
+               c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
+            // There is whitespace before this element, we try to reinsert
+            c.parentElement.insertBefore(c, c.previousElementSibling);
+            if(wsTxtNode) { // We move the whitespace as well.
+              c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
+            }
+            updateInteractionDiv(c);
+          })(clickedElem, contextMenu)
+        });
+      }
+      if(clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+        addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+          <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
+        {title: "Move selected element down"},
+        {onclick: ((c, contextMenu) => (event) => {
+            let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
+              c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
+            let nodeToInsertAfter = c.nextElementSibling;
+            nodeToInsertAfter.insertAdjacentElement("afterend", c);
+            if(wsTxtNode) { // We move the whitespace as well
+              nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
+            }
+            updateInteractionDiv(c);
+          })(clickedElem, contextMenu)
+        });
+      }
+      if(clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
         addButton(`<svg class="context-menu-icon" width="40" height="30">
             <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
             <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
@@ -1617,46 +1626,46 @@ editionscript = """
               else contextMenu.classList.remove("visible");
             })(clickedElem, contextMenu)
           });
-        if(clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
-          addButton(wasteBasketSVG,
-            {title: "Delete selected element"},
-            {onclick: ((c, contextMenu) => (event) => {
-                c.remove();
-                contextMenu.classList.remove("visible");
-              })(clickedElem, contextMenu)
-            });
-        }
-        
-        let baseElem = clickedElem;
-        while(baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE") {
-          baseElem = baseElem.nextElementSibling;
-        }
-        baseElem = baseElem || clickedElem;
-        // Find out where to place context menu.
-        let clickedElemLeft = window.scrollX + baseElem.getBoundingClientRect().left;
-        let clickedElemTop = window.scrollY + baseElem.getBoundingClientRect().top;
-        let clickedElemBottom = window.scrollY + baseElem.getBoundingClientRect().bottom;
-        let clickedElemRight = window.scrollX + baseElem.getBoundingClientRect().right;
-        let buttonHeight = window.matchMedia("(pointer: coarse)").matches ? 48 : 30;
-        let buttonWidth  = window.matchMedia("(pointer: coarse)").matches ? 48 : 40;
-        let desiredWidth = numButtons * buttonWidth;
-        let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
-        if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
-        let desiredTop = clickedElemTop - buttonHeight; 
-        if(desiredTop - window.scrollY < 9) {
-          desiredTop = clickedElemBottom;
-          if(desiredTop + buttonHeight > window.innerHeight) {
-            desiredTop = window.innerHeight - buttonHeight; 
-          }
-        }
-        if(desiredLeft < 0) desiredLeft = 0;
-        if(desiredTop < 0) desiredTop = 0;
-        contextMenu.style.left = desiredLeft + "px";
-        contextMenu.style.top = desiredTop + "px";
-        contextMenu.style.width = desiredWidth + "px";
-        contextMenu.classList.add("visible");
-        return true;
+        addButton(wasteBasketSVG,
+          {title: "Delete selected element"},
+          {onclick: ((c, contextMenu) => (event) => {
+              c.remove();
+              contextMenu.classList.remove("visible");
+            })(clickedElem, contextMenu)
+          });
       }
+      
+      let baseElem = clickedElem;
+      while(baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE") {
+        baseElem = baseElem.nextElementSibling;
+      }
+      baseElem = selectionRange || baseElem || clickedElem;
+      
+      let clientRect = baseElem.getBoundingClientRect();
+      // Find out where to place context menu.
+      let clickedElemLeft = window.scrollX + clientRect.left;
+      let clickedElemTop = window.scrollY + clientRect.top;
+      let clickedElemBottom = window.scrollY + clientRect.bottom;
+      let clickedElemRight = window.scrollX + clientRect.right;
+      let buttonHeight = window.matchMedia("(pointer: coarse)").matches ? 48 : 30;
+      let buttonWidth  = window.matchMedia("(pointer: coarse)").matches ? 48 : 40;
+      let desiredWidth = numButtons * buttonWidth;
+      let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
+      if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
+      let desiredTop = clickedElemTop - buttonHeight; 
+      if(desiredTop - window.scrollY < 9) {
+        desiredTop = clickedElemBottom;
+        if(desiredTop + buttonHeight > window.innerHeight) {
+          desiredTop = window.innerHeight - buttonHeight; 
+        }
+      }
+      if(desiredLeft < 0) desiredLeft = 0;
+      if(desiredTop < 0) desiredTop = 0;
+      contextMenu.style.left = desiredLeft + "px";
+      contextMenu.style.top = desiredTop + "px";
+      contextMenu.style.width = desiredWidth + "px";
+      contextMenu.classList.add("visible");
+      return true;
     }
     
     // Links edition - Might be empty.
