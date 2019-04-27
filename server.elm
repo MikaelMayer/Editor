@@ -1415,7 +1415,10 @@ editionscript = """
     
     var wasteBasketSVG = `<svg class="context-menu-icon" width="40" height="30">
           <path d="m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0" /></svg>`;
-    
+    var plusSVG = `<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z" /></svg>`;
+    var liveLinkSVG = link => `<a class="livelink" href="${link}"><svg class="context-menu-icon fill" width="40" height="30">
+          <path d="M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z" /></svg></a>`
     function updateInteractionDiv(clickedElem, link) {
       var contextMenu = document.querySelector("#context-menu");
       var interactionDiv = document.querySelector("#modify-menu > .information");
@@ -1468,6 +1471,7 @@ editionscript = """
           // Do something special for styles.
         } else {
           let isHref = name === "href" && clickedElem.tagName === "A";
+          let link = value;
           keyvalues.append(
             el("div", {"class": "keyvalue"}, [
               el("span", {}, name + ": "),
@@ -1477,15 +1481,15 @@ editionscript = """
                       clickedElem.setAttribute(name, this.value);
                       if(isHref) {
                         this.nextSibling.setAttribute("href", this.value);
-                        let livelink = document.querySelector("#livelink");
-                        if(livelink) {
+                        let livelinks = document.querySelectorAll(".livelink");
+                        for(let i of livelinks) {
                           livelink.setAttribute("href", this.value);
                         }
                       }
                     })(name, isHref)
                 }
               ),
-              isHref ? el("a", {href: value}, "Open"): undefined,
+              isHref ? el("span", {title: "Go to " + link, "class": "modify-menu-icon inert"}, [], {innerHTML: liveLinkSVG(link)}): undefined,
               el("div", {"class":"modify-menu-icon"}, [], {
                 innerHTML: wasteBasketSVG,
                 onclick: ((name) => function() {
@@ -1497,27 +1501,29 @@ editionscript = """
             ));
         }
       }
-      interactionDiv.append(keyvalues);
-      interactionDiv.append(el("hr"));
-      interactionDiv.append(el("div", {}, "Add an attribute:"));
       let highlightsubmit = function() {
-        let attrName = this.parentElement.querySelector("[name=name]").value;
-        this.parentElement.querySelector("[type=submit]").disabled =
+        let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
+        this.parentElement.parentElement.querySelector("button").disabled =
           attrName === "" || attrName.trim() !== attrName
       }
       if(clickedElem.nodeType === 1) {
-        interactionDiv.append(el("div", {"class": "keyvalue"},
-          [el("form", {}, [
-             el("input", {"type": "text", placeholder: "name", value: "", name:"name"}, [], {onkeyup: highlightsubmit}),
-             el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit}),
-             el("input", {"type": "submit", value: "Add"}, [], {disabled: true})],
-               {onsubmit: function() {
+        //      interactionDiv.append(el("div", {}, "Add an attribute:"));
+        keyvalues.append(
+          el("div", {"class": "keyvalue"}, [
+             el("span", {}, el("input", {"type": "text", placeholder: "name", value: "", name:"name"}, [], {onkeyup: highlightsubmit})),
+             el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit})),
+             el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+               disabled: true,
+               onclick() {
                  clickedElem.setAttribute(
-                   this.querySelector("[name=name]").value,
-                   this.querySelector("[name=value]").value);
+                   this.parentElement.querySelector("[name=name]").value,
+                   this.parentElement.querySelector("[name=value]").value);
                  updateInteractionDiv(clickedElem);
-               }})]));
+             }})]));
       }
+      interactionDiv.append(keyvalues);
+      //interactionDiv.append(el("hr"));
+
       if(clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE") {
         interactionDiv.append(el("hr"));
         interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
@@ -1543,8 +1549,7 @@ editionscript = """
           ; 
       }
       if(link) {
-        addButton(`<a id="livelink" href="${link}"><svg class="context-menu-icon fill" width="40" height="30">
-          <path d="M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z" /></svg></a>`,
+        addButton(liveLinkSVG(link),
           {title: "Go to " + link, "class": "inert"});
       }
       if(clickedElem.parentElement) {
@@ -1665,8 +1670,7 @@ editionscript = """
           });
       }
       if(selectionRange && (selectionRange.startContainer === selectionRange.endContainer || selectionRange.startContainer.parentElement === selectionRange.commonAncestorContainer && selectionRange.endContainer.parentElement === selectionRange.commonAncestorContainer)) {
-        addButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z" /></svg>`,
+        addButton(plusSVG,
             {title: "Wrap selection"},
             {onclick: (s => event => {
               let elements = [];
