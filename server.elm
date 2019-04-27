@@ -524,7 +524,8 @@ div#modify-menu div.keyvalues > div.keyvalue > * {
   padding: 4px;
 }
 :root {
-  --context-color: rgba(0, 128, 128, 0.8); 
+  --context-color: rgba(0, 128, 128, 0.8);
+  --context-color-next: rgba(0, 158, 158, 0.8); 
   --context-button-color: rgba(0, 192, 192, 0.8);
   --context-button-color-hover: rgba(0, 212, 212, 0.8);
   --context-button-color-inert: rgba(128, 128, 128, 0.8);
@@ -533,7 +534,7 @@ div#modify-menu div.keyvalues > div.keyvalue > * {
   --context-menu-button-width: 40px;
 }
 [ghost-hovered=true] {
-  outline: 2px solid var(--context-color);
+  outline: 2px dashed var(--context-color-next);
 }
 [ghost-clicked=true] {
   outline: 2px solid var(--context-color);
@@ -1381,10 +1382,11 @@ editionscript = """
         }
         tmp = tmp.parentElement;
       }
+      document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
       if(ancestorIsModifyBox || ancestorIsContextMenu || ancestors[ancestors.length - 1].tagName != "HTML") return;
       //console.log("not modify box", ancestors)
       document.querySelector("#context-menu").classList.remove("visible");
-      document.querySelectorAll("[ghost-clicked=true]").forEach((elem) => elem.removeAttribute("ghost-clicked"));
+      document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
       currentlySelectedElement = undefined;
       if(clickedElem.setAttribute) {
         currentlySelectedElement = clickedElem;
@@ -1405,7 +1407,7 @@ editionscript = """
       var contextMenu = document.querySelector("#context-menu");
       var interactionDiv = document.querySelector("#modify-menu > .information");
       if(clickedElem && interactionDiv && contextMenu) {
-        /*function summary(element) {
+        function summary(element) {
           var summary = element.tagName.toLowerCase();
           if(element.getAttribute("id")) {
             summary += "#" + element.getAttribute("id");
@@ -1414,7 +1416,7 @@ editionscript = """
             summary += "." + element.getAttribute("class").split(".");
           }
           return summary;
-        }*/
+        }
         interactionDiv.innerHTML = "";
         interactionDiv.append(el("h3", {"class":"elementName"}, clickedElem.tagName.toLowerCase()));
         let keyvalues = el("div", {"class":"keyvalues"});
@@ -1509,49 +1511,59 @@ editionscript = """
         if(clickedElem.parentElement) {
           addButton(`<svg class="context-menu-icon" width="40" height="30">
               <path d="M 8,19 8,22 11,22 M 12,18 8,22 M 8,10 8,7 11,7 M 12,10 8,7 M 27,7 30,7 30,10 M 26,10 30,7 M 31,19 31,22 28,22 M 26,18 31,22 M 12,12 12,10 M 12,16 12,14 M 14,18 12,18 M 18,18 16,18 M 22,18 20,18 M 26,18 24,18 M 26,14 26,16 M 26,10 26,12 M 22,10 24,10 M 18,10 20,10 M 14,10 16,10 M 5,5 35,5 35,25 5,25 Z"/></svg>`,
-                {title: "Select parent", "class": "inert"},
+                {title: "Select parent (" + summary(clickedElem.parentElement) + ")", "class": "inert"},
                 {onclick: (c => event => {
                   let parent = c.parentElement;
                   if(parent.tagName === "TBODY" && parent.parentElement && parent.parentElement.tagName === "TABLE") parent = parent.parentElement;
                   c.removeAttribute("ghost-clicked");
                   parent.setAttribute("ghost-clicked", "true");
-                  updateInteractionDiv(parent)})(clickedElem) }
+                  updateInteractionDiv(parent)})(clickedElem),
+                 onmouseenter() { clickedElem.parentElement.setAttribute("ghost-hovered", "true") },
+                 onmouseleave() { clickedElem.parentElement.removeAttribute("ghost-hovered") }
+                }
               );
         }
         if(clickedElem.children && clickedElem.children.length > 0) {
           addButton(`<svg class="context-menu-icon" width="40" height="30">
               <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
-                {title: "Select first child", "class": "inert"},
+                {title: "Select first child (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
                 {onclick: (c => event => {
                   let firstChild = c.children[0];
                   if(firstChild.tagName === "TBODY" && firstChild.children && firstChild.children.length > 0) firstChild = firstChild.children[0];
                   c.removeAttribute("ghost-clicked");
                   firstChild.setAttribute("ghost-clicked", "true");
-                  updateInteractionDiv(firstChild)})(clickedElem) }
+                  updateInteractionDiv(firstChild)})(clickedElem),
+                 onmouseenter() { clickedElem.children[0].setAttribute("ghost-hovered", "true") },
+                 onmouseleave() { clickedElem.children[0].removeAttribute("ghost-hovered") }
+                 }
               );
         }
         if(clickedElem.previousElementSibling) {
           addButton(`<svg class="context-menu-icon fill" width="40" height="30">
             <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
-          {title: "Select previous sibling", class: "inert"},
+          {title: "Select previous sibling (" + summary(clickedElem.previousElementSibling) + ")", class: "inert"},
           {onclick: ((c, contextMenu) => (event) => {
               let prev = c.previousElementSibling;
               c.removeAttribute("ghost-clicked");
               prev.setAttribute("ghost-clicked", "true");
               updateInteractionDiv(prev);
-            })(clickedElem, contextMenu)
+            })(clickedElem, contextMenu),
+           onmouseenter() { clickedElem.previousElementSibling.setAttribute("ghost-hovered", "true") },
+           onmouseleave() { clickedElem.previousElementSibling.removeAttribute("ghost-hovered") }
           });
         }
         if(clickedElem.nextElementSibling) {
           addButton(`<svg class="context-menu-icon fill" width="40" height="30">
             <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
-          {title: "Select next sibling", class: "inert"},
+          {title: "Select next sibling (" + summary(clickedElem.nextElementSibling) + ")", class: "inert"},
           {onclick: ((c, contextMenu) => (event) => {
               let next = c.nextElementSibling;
               c.removeAttribute("ghost-clicked");
               next.setAttribute("ghost-clicked", "true");
               updateInteractionDiv(next);
-            })(clickedElem, contextMenu)
+            })(clickedElem, contextMenu),
+           onmouseenter() { clickedElem.nextElementSibling.setAttribute("ghost-hovered", "true") },
+           onmouseleave() { clickedElem.nextElementSibling.removeAttribute("ghost-hovered") }
           });
         }
         addButton(`<svg class="context-menu-icon fill" width="40" height="30">
