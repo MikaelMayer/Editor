@@ -506,6 +506,13 @@ div#modify-menu {
   transition-duration: 0.5s;
   z-index: 100000;
 }
+.modify-menu-icon {
+  vertical-align: middle;
+  cursor: pointer;
+}
+.modify-menu-icon:hover {
+  background-color: var(--context-button-color-hover);
+}
 div#modify-menu.visible {
   transform: translate(0%, 0%);
 }
@@ -579,6 +586,12 @@ div#context-menu .context-menu-button:hover {
 }
 div#context-menu .context-menu-button.inert:hover {
   background: var(--context-button-color-inert-hover)
+}
+#applyNewTagName {
+  display: none;
+}
+#applyNewTagName.visible {
+  display: inline-block;
 }
 @@media (pointer: coarse) {
   div#modify-menu {
@@ -1410,9 +1423,10 @@ editionscript = """
       let selectionRange = (() => {
         let selection = window.getSelection();
         if(!selection) return;
-        let firstRange = selection.getRangeAt(0); 
-        if(!firstRange || !firstRange.getBoundingClientRect || firstRange.startOffset === firstRange.endOffset) return;
-        return firstRange;
+        let f = selection.getRangeAt(0); 
+        if(!f || !f.getBoundingClientRect ||
+            f.startOffset === f.endOffset && f.startContainer === f.endContainer) return;
+        return f;
       })();
       
       function summary(element) {
@@ -1426,11 +1440,28 @@ editionscript = """
         return summary;
       }
       interactionDiv.innerHTML = "";
-      interactionDiv.append(el("h3", {"class":"elementName"}, clickedElem.tagName.toLowerCase()));
+      interactionDiv.append(
+        el("input", {"id":"newTagName", "type":"text", value: clickedElem.tagName.toLowerCase()}, [], { onkeyup() {
+          document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+        }}));
+      interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
+            let newel = el(document.querySelector("#newTagName").value);
+            let elements = clickedElem.childNodes;
+            while(elements.length) {
+              newel.append(elements[0]);
+            }
+            for(let i = 0; i < clickedElem.attributes.length; i++) {
+              newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+            }
+            clickedElem.parentElement.insertBefore(newel, clickedElem);
+            clickedElem.remove();
+            newel.setAttribute("ghost-clicked", "true");
+            updateInteractionDiv(newel);
+          }}));
       let keyvalues = el("div", {"class":"keyvalues"});
       for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
         let name = clickedElem.attributes[i].name;
-        if(name === "ghost-clicked") continue;
+        if(name === "ghost-clicked" || name === "ghost-hovered") continue;
         let value = clickedElem.attributes[i].value;
         let nv = el("div", {"class": "keyvalue"});
         if(false /*name == "style"*/) {
@@ -1579,10 +1610,9 @@ editionscript = """
           {title: "Open/close settings tab", "class": "inert"},
           {onclick: ((c, contextMenu) => event => {
               document.querySelector("#modify-menu").classList.toggle("visible");
-              // TODO: Open meaningful context menu.
             })(clickedElem, contextMenu)
           });
-      if(clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+      if(!selectionRange && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
         addButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
         {title: "Move selected element up"},
@@ -1598,7 +1628,7 @@ editionscript = """
           })(clickedElem, contextMenu)
         });
       }
-      if(clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+      if(!selectionRange && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
         addButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
         {title: "Move selected element down"},
@@ -1614,7 +1644,7 @@ editionscript = """
           })(clickedElem, contextMenu)
         });
       }
-      if(clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
+      if(!selectionRange && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
         addButton(`<svg class="context-menu-icon" width="40" height="30">
             <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
             <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
@@ -1633,6 +1663,57 @@ editionscript = """
               contextMenu.classList.remove("visible");
             })(clickedElem, contextMenu)
           });
+      }
+      if(selectionRange && (selectionRange.startContainer === selectionRange.endContainer || selectionRange.startContainer.parentElement === selectionRange.commonAncestorContainer && selectionRange.endContainer.parentElement === selectionRange.commonAncestorContainer)) {
+        addButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z" /></svg>`,
+            {title: "Wrap selection"},
+            {onclick: (s => event => {
+              let elements = [];
+              let tmp = s.startContainer;
+              let nodeToInsertAfter = s.startContainer;
+              let parent = nodeToInsertAfter.parentElement;
+              while(tmp && tmp !== s.endContainer.nextSibling) {
+                if(tmp.nodeType === 3) {
+                  elements.push(tmp === s.startContainer ? tmp === s.endContainer ? tmp.textContent.substring(s.startOffset, s.endOffset) : tmp.textContent.substring(s.startOffset) :
+                    tmp === s.endContainer ? tmp.textContent.substring(0, s.endOffset) :
+                    tmp.textContent);
+                  if(tmp === s.startContainer) {
+                    if(tmp === s.endContainer && tmp.textContent.length > s.endOffset) {
+                      // Need to split the text node.
+                      tmp.parentElement.insertBefore(document.createTextNode(tmp.textContent.substring(s.endOffset)), tmp.nextSibling);
+                    }
+                    if(s.startOffset === 0) {
+                      nodeToInsertAfter = nodeToInsertAfter.previousSibling;
+                      tmp.remove();
+                    } else {
+                      tmp.textContent = tmp.textContent.substring(0, s.startOffset);
+                    }
+                  } else if(tmp === s.endContainer) {
+                    if(s.endOffset === s.endContainer.textContent.length) {
+                      tmp.remove();
+                    } else {
+                      tmp.textContent = tmp.textContent.substring(s.endOffset);
+                    }
+                  } else {
+                    tmp.remove();
+                  }
+                } else {
+                  elements.push(tmp);
+                  tmp.remove();
+                }
+                tmp = tmp.nextSibling;
+              }
+              let insertedNode = el("span", {"ghost-clicked": "true"});
+              for(let k of elements) {
+                insertedNode.append(k);
+              }
+              let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
+              parent.insertBefore(insertedNode, nodeToInsertBefore);
+              document.querySelector("#modify-menu").classList.toggle("visible", true);
+              updateInteractionDiv(insertedNode);
+            })(selectionRange)}
+            )
       }
       
       let baseElem = clickedElem;
