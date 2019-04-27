@@ -537,6 +537,7 @@ div#modify-menu div.keyvalues > div.keyvalue > * {
 div#modify-menu input {
   padding: 4px;
   width: 100%;
+  font-size: 1em;
 }
 .inline-input {
   background: transparent;
@@ -553,6 +554,8 @@ div#modify-menu input {
   --context-button-color-inert-hover: rgba(150, 150, 150, 0.8);
   --context-menu-height: 30px;
   --context-menu-button-width: 40px;
+  --context-menu-padding-top: 0px;
+  --context-menu-padding-left: 0px;
 }
 [ghost-hovered=true] {
   outline: 2px dashed var(--context-color-next);
@@ -579,6 +582,12 @@ div#context-menu .context-menu-button {
   height: var(--context-menu-height);
   width: var(--context-menu-button-width);
   cursor: pointer;
+}
+div#context-menu .context-menu-button > svg {
+  padding-left: var(--context-menu-padding-left);
+  padding-right: var(--context-menu-padding-left);
+  padding-top: var(--context-menu-padding-top);
+  padding-bottom: var(--context-menu-padding-top);
 }
 div#context-menu .context-menu-button.inert {
   background: var(--context-button-color-inert)
@@ -626,6 +635,8 @@ div#context-menu .context-menu-button.inert:hover {
   :root {
     --context-menu-height: 48px;
     --context-menu-button-width: 48px;
+    --context-menu-padding-top: 9px;
+    --context-menu-padding-left: 4px;
   }
 }
 
@@ -1541,8 +1552,9 @@ editionscript = """
       if(clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE") {
         interactionDiv.append(el("hr"));
         interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
-                clickedElem.innerText, {
-                  onkeyup: function () { clickedElem.innerText = this.value; }
+                [], {
+                  value: clickedElem.childNodes[0].textContent,
+                  onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; }
                 }));
       }
       
