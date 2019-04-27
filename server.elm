@@ -509,6 +509,7 @@ div#modify-menu {
 .modify-menu-icon {
   vertical-align: middle;
   cursor: pointer;
+  width: var(--context-menu-button-width);
 }
 .modify-menu-icon:hover {
   background-color: var(--context-button-color-hover);
@@ -522,6 +523,8 @@ div#modify-menu h3 {
 }
 div#modify-menu div.keyvalues {
   display: table;
+  width: 100%;
+  table-layout: fixed;
 }
 div#modify-menu div.keyvalues > div.keyvalue {
   display: table-row;
@@ -529,7 +532,18 @@ div#modify-menu div.keyvalues > div.keyvalue {
 div#modify-menu div.keyvalues > div.keyvalue > * {
   display: table-cell;
   padding: 4px;
+  vertical-align: middle;
 }
+div#modify-menu input {
+  padding: 4px;
+  width: 100%;
+}
+.inline-input {
+  background: transparent;
+  color: white;
+  border: none;
+}
+
 :root {
   --context-color: rgba(0, 128, 128, 0.8);
   --context-color-next: rgba(0, 158, 158, 0.8); 
@@ -1444,7 +1458,7 @@ editionscript = """
       }
       interactionDiv.innerHTML = "";
       interactionDiv.append(
-        el("input", {"id":"newTagName", "type":"text", value: clickedElem.tagName.toLowerCase()}, [], { onkeyup() {
+        el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
           document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
         }}));
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
@@ -1466,7 +1480,6 @@ editionscript = """
         let name = clickedElem.attributes[i].name;
         if(name === "ghost-clicked" || name === "ghost-hovered") continue;
         let value = clickedElem.attributes[i].value;
-        let nv = el("div", {"class": "keyvalue"});
         if(false /*name == "style"*/) {
           // Do something special for styles.
         } else {
@@ -1474,23 +1487,24 @@ editionscript = """
           let link = value;
           keyvalues.append(
             el("div", {"class": "keyvalue"}, [
-              el("span", {}, name + ": "),
-              el("input", {"type": "text", value: value},
-                [], {
-                  onkeyup: ((name, isHref) => function () {
-                      clickedElem.setAttribute(name, this.value);
-                      if(isHref) {
-                        this.nextSibling.setAttribute("href", this.value);
-                        let livelinks = document.querySelectorAll(".livelink");
-                        for(let i of livelinks) {
-                          livelink.setAttribute("href", this.value);
+              el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
+              el("span", {},
+                el("input", {"type": "text", value: value},
+                  [], {
+                    onkeyup: ((name, isHref) => function () {
+                        clickedElem.setAttribute(name, this.value);
+                        if(isHref) {
+                          this.nextSibling.setAttribute("href", this.value);
+                          let livelinks = document.querySelectorAll(".livelink");
+                          for(let i of livelinks) {
+                            livelink.setAttribute("href", this.value);
+                          }
                         }
-                      }
-                    })(name, isHref)
-                }
+                      })(name, isHref)
+                  })
               ),
               isHref ? el("span", {title: "Go to " + link, "class": "modify-menu-icon inert"}, [], {innerHTML: liveLinkSVG(link)}): undefined,
-              el("div", {"class":"modify-menu-icon"}, [], {
+              el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
                 innerHTML: wasteBasketSVG,
                 onclick: ((name) => function() {
                   clickedElem.removeAttribute(name);
