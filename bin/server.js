@@ -331,9 +331,11 @@ if(protocol == "http") {
 }
 
 const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
-  var urlParts = url.parse(request.url, parseQueryString=true);
+  var requestURL = request.headers["url"] ? request.headers["url"] : request.url; // Possibility to override the URL.
+  var urlParts = url.parse(requestURL, parseQueryString=true);
   var query = toLeoQuery(urlParts.query);
-  var path = decodeURIComponent(urlParts.pathname.substring(1)); // Without the slash.
+  var pn = urlParts.pathname;
+  var path = decodeURIComponent(pn.length && pn[0] == "/" ? pn.substring(1) : pn); // Without the slash.
   var accessResult = sns.objEnv.string.evaluate({path:path,method:request.method})(readHtAccessFile());
   var access = sns.process(accessResult)(sns.valToNative);
   var header = 'text/html; charset=utf-8';
@@ -448,6 +450,9 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
           if(htmlContent.ctor == "Err") {
             response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
           } else {
+            if(typeof request.headers["url"] === "string") {
+              response.setHeader("New-Local-URL", request.headers["url"]);
+            }
             response.setHeader('New-Query', JSON.stringify(newQuery));
             if(ambiguityKey != null && typeof ambiguityKey != "undefined" &&
                !path.endsWith(".html") && canAskQuestion &&

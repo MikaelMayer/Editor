@@ -50,6 +50,7 @@ boolVar name resDefault =
 
 varadmin = boolVar "admin" False
 varedit = boolVar "edit" True
+defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
 
@@ -1041,6 +1042,7 @@ editionscript = """
           replaceContent(xmlhttp.responseText);
           applyGhostAttributes(saved);
           
+          var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
           var newQueryStr = xmlhttp.getResponseHeader("New-Query");
           var ambiguityKey = xmlhttp.getResponseHeader("Ambiguity-Key");
           var ambiguityNumber = xmlhttp.getResponseHeader("Ambiguity-Number");
@@ -1082,17 +1084,32 @@ editionscript = """
                 newMenu.onclick = ((n) => () => clearTimeout(n))(newmenutimeout);
             }
           }
+          var strQuery = "";
           if(newQueryStr !== null) {
             var newQuery = JSON.parse(newQueryStr);
-            var strQuery = "";
             for(var i = 0; i < newQuery.length; i++) {
               var {_1: key, _2: value} = newQuery[i];
               strQuery = strQuery + (i == 0 ? "?" : "&") + key + (value === "" && key == "edit" ? "" : "=" + value)
             }
+          }
+          if(newLocalURL) { // Overrides query parameters
+            console.log("replaceState", xmlhttp.replaceState ? "replaceState" : "pushState");
+            console.log("state", {localURL: newLocalURL})
+            window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+          } else if(strQuery) {
             window.history.replaceState({}, "Current page", strQuery);
           }
         }
     }
+    
+    window.onpopstate = function(e){
+        console.log("onpopstate", e);
+        if(e.state && e.state.localURL) {
+          navigateLocal(location, true);
+        } else {
+          navigateLocal(location.pathname + location.search, true);
+        }
+    };
     
     notifyServer = callback => {
       var xmlhttp = new XHRequest();
@@ -1114,6 +1131,15 @@ editionscript = """
       notifyServer(xmlhttp => {
         xmlhttp.setRequestHeader("reload", "true");
       })
+    }
+    
+    function navigateLocal(url, replaceState) {
+      notifyServer(xmlhttp => {
+        xmlhttp.setRequestHeader("reload", "true");
+        xmlhttp.setRequestHeader("url", url);
+        console.log("setting url to ", url);
+        xmlhttp.replaceState = replaceState;
+      });
     }
     
     function selectAmbiguity(key, num) {
@@ -1457,8 +1483,12 @@ editionscript = """
           <path d="m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0" /></svg>`;
     var plusSVG = `<svg class="context-menu-icon fill" width="40" height="30">
             <path d="M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z" /></svg>`;
-    var liveLinkSVG = link => `<a class="livelink" href="${link}"><svg class="context-menu-icon fill" width="40" height="30">
+    var liveLinkSVG = link => `<a class="livelink" href="javascript:navigateLocal('${link}')"><svg class="context-menu-icon fill" width="40" height="30">
           <path d="M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z" /></svg></a>`;
+    var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
+    var linkToEdit = @(if defaultVarEdit then "link => link" else 
+     """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
+    
     function updateInteractionDiv(clickedElem, options) {
       options = options || {};
       var contextMenu = document.querySelector("#context-menu");
@@ -1685,7 +1715,6 @@ editionscript = """
           // Do something special for styles.
         } else {
           let isHref = name === "href" && clickedElem.tagName === "A";
-          let link = value;
           keyvalues.append(
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
@@ -1695,16 +1724,19 @@ editionscript = """
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
                         if(isHref) {
-                          this.nextSibling.setAttribute("href", this.value);
                           let livelinks = document.querySelectorAll(".livelink");
-                          for(let i of livelinks) {
-                            livelink.setAttribute("href", this.value);
+                          for(let livelink of livelinks) {
+                            let finalLink = livelink.matches("#context-menu *") ?
+                              `javascript:navigateLocal('${linkToEdit(this.value)}')` : this.value;
+                            livelink.setAttribute("href", finalLink);
+                            livelink.setAttribute("title", "Go to " + this.value);
                           }
                         }
                       })(name, isHref)
                   })
               ),
-              isHref ? el("span", {title: "Go to " + options.link, "class": "modify-menu-icon inert"}, [], {innerHTML: liveLinkSVG(options.link)}): undefined,
+              isHref ? el("span", {title: "Go to " + options.link, "class": "modify-menu-icon inert"}, [],
+                        {innerHTML: liveLinkSVG(options.link)}): undefined,
               el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
                 innerHTML: wasteBasketSVG,
                 onclick: ((name) => function() {
@@ -1765,7 +1797,7 @@ editionscript = """
           ; 
       }
       if(options.link) {
-        addContextMenuButton(liveLinkSVG(options.link),
+        addContextMenuButton(liveLinkSVG(linkToEdit(options.link)),
           {title: "Go to " + options.link, "class": "inert"});
       }
       addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
