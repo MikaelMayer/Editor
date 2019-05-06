@@ -921,6 +921,9 @@ codepreview sourcecontent =
 </div>
     
 editionscript = """
+  var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
+  var buttonHeight = () => onMobile() ? 48 : 30;
+  var buttonWidth  = () => onMobile() ? 48 : 40;
   
   // Save / Load ghost attributes after a page is reloaded.
   // Same for some attributes
@@ -1494,6 +1497,8 @@ editionscript = """
             <path d="M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z" /></svg>`;
     var liveLinkSVG = link => `<a class="livelink" href="javascript:navigateLocal('${link}')"><svg class="context-menu-icon fill" width="40" height="30">
           <path d="M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z" /></svg></a>`;
+    var gearSVG = `<svg class="context-menu-icon fill" width="40" height="30">
+          <path d="M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z" /></svg>`;
     var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
@@ -1540,6 +1545,13 @@ editionscript = """
         interactionDiv.append(button);
       }
       interactionDiv.innerHTML = "";
+      addInteractionDivButton(gearSVG,
+        {title: "Open/close settings tab", "class": "inert", style: "position: absolute;" +
+          (onMobile() ? "top:-"+buttonHeight()+"px;" : "left:-"+buttonWidth()+"px;") },
+        {onclick: ((c, contextMenu) => event => {
+            document.querySelector("#modify-menu").classList.toggle("visible");
+          })(clickedElem, contextMenu)
+        });
       if(options.insertElement) {
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
@@ -1811,13 +1823,6 @@ editionscript = """
         addContextMenuButton(liveLinkSVG(linkToEdit(options.link)),
           {title: "Go to " + options.link, "class": "inert"});
       }
-      addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z" /></svg>`,
-          {title: "Open/close settings tab", "class": "inert"},
-          {onclick: ((c, contextMenu) => event => {
-              document.querySelector("#modify-menu").classList.toggle("visible");
-            })(clickedElem, contextMenu)
-          });
       if(!selectionRange && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
@@ -1948,16 +1953,14 @@ editionscript = """
       let clickedElemTop = window.scrollY + clientRect.top;
       let clickedElemBottom = window.scrollY + clientRect.bottom;
       let clickedElemRight = window.scrollX + clientRect.right;
-      let buttonHeight = window.matchMedia("(pointer: coarse)").matches ? 48 : 30;
-      let buttonWidth  = window.matchMedia("(pointer: coarse)").matches ? 48 : 40;
-      let desiredWidth = numButtons * buttonWidth;
+      let desiredWidth = numButtons * buttonWidth();
       let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
       if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
-      let desiredTop = clickedElemTop - buttonHeight; 
+      let desiredTop = clickedElemTop - buttonHeight(); 
       if(desiredTop - window.scrollY < 9) {
         desiredTop = clickedElemBottom;
-        if(desiredTop + buttonHeight > window.innerHeight) {
-          desiredTop = window.innerHeight - buttonHeight; 
+        if(desiredTop + buttonHeight() > window.innerHeight) {
+          desiredTop = window.innerHeight - buttonHeight(); 
         }
       }
       if(desiredLeft < 0) desiredLeft = 0;
