@@ -1296,6 +1296,8 @@ editionscript = """
               else """
               if(filetype.indexOf("image") == 0) {
                 pasteHtmlAtCaret(`<img src="${path}" alt="${name}">`);
+              } else {
+                pasteHtmlAtCaret(`<a href="${path}">${path}</a>`); 
               }""")
             } else {
               console.log("Error while uploading picture", xhr);
@@ -1521,7 +1523,7 @@ editionscript = """
             while(parent && !parent.classList.contains("tagName")) parent = parent.parentElement;
             let model = parent.querySelector(".templateengine");
             if(typeof model.innerHTMLCreate === "string") return model.innerHTMLCreate;
-            return el(model.tagCreate, model.attrCreate, model.childCreate, model.propsCreate);
+            return el(model.tag, model.attrs, model.children, model.props);
           })();
           let insertionStyle = (() => {
             let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
@@ -1578,37 +1580,23 @@ editionscript = """
             updateInteractionDiv(clickedElem);
           }
         }
+        let addElem = function(name, createParams) {
+          interactionDiv.append(el("div", {"class": "tagName"},
+            el("span", { "class": "templateengine"}, name, createParams), {onclick: insertTag}));
+        }
         if(clickedElem.tagName === "HEAD") {
-          interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine"}, "Title",
-              {tagCreate:"title", childCreate: "Page_title"}), {onclick: insertTag}));
-          interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine" }, "Style",
-              {tagCreate:"style", childCreate: "/*Your CSS below*/"}), {onclick: insertTag}));
-          interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine"}, "Script",
-              {tagCreate:"script", childCreate: "/*Your CSS below*/"}), {onclick: insertTag}));
+          addElem("Title", {tag:"title", children: "Page_title"});
+          addElem("Style", {tag:"style", children: "/*Your CSS there*/"});
+          addElem("Script", {tag:"script", children: "/*Your CSS below*/"});
         } else {
           // TODO: Filter and sort which one we can add
-          interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine"}, "Link",
-              {tagCreate:"a", childCreate: "Name_your_link"}), {onclick: insertTag}));
-          interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine" }, "Paragraph",
-              {tagCreate:"p", childCreate: "Inserted paragraph"}), {onclick: insertTag}));
-          interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine"}, "Bulleted list",
-              {tagCreate:"ul", propsCreate: { innerHTML: "\n  <li><br></li>\n"}}), {onclick: insertTag}));
-          interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine"}, "Numbered list",
-              {tagCreate:"ol", propsCreate: { innerHTML: "\n  <li><br></li>\n"}}), {onclick: insertTag}));
-          interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine"}, "List item",
-              {tagCreate:"li", propsCreate: { innerHTML: "<br>"}}), {onclick: insertTag}));
+          addElem("List item", {tag:"li", props: { innerHTML: "<br>"}});
+          addElem("New bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n  <li><br></li>\n</ul>"}});
+          addElem("New numbered list", {tag:"ol", props: { innerHTML: "<ol>\n  <li><br></li>\n</ol>"}});
+          addElem("Link", {tag:"a", childCreate: "Name_your_link"});
+          addElem("Paragraph", {tag:"p", childCreate: "Inserted paragraph"});
           for(let i = 1; i <= 6; i++) {
-            interactionDiv.append(el("div", {"class": "tagName"},
-              el("span", { "class": "templateengine"}, "Header " + i,
-                {tagCreate:"h" + i, propsCreate: { innerHTML: "Title" + i}}), {onclick: insertTag}));
+            addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i}});
           }
         }
         interactionDiv.append(el("div", {"class": "tagName"},
