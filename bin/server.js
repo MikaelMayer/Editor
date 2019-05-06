@@ -330,6 +330,10 @@ if(protocol == "http") {
   console.log(`${defaultOptions.key} (--key) and/or ${defaultOptions.cert} (--cert) files missing. Starting http server instead of https.`);
 }
 
+function combinePath(prefix, path) {
+  return (prefix == "" ? "." : prefix) + "/" + (path && path.length && path[0] === "/" ? path.substring(1) : path);
+}
+
 const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
   var requestURL = request.headers["url"] ? request.headers["url"] : request.url; // Possibility to override the URL.
   var urlParts = url.parse(requestURL, parseQueryString=true);
@@ -367,7 +371,7 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
         }
       } else {
         response.setHeader('Content-Type', header);
-        let expectedFilePath = (defaultOptions.path == "" ? "." : defaultOptions.path) + "/" + path;
+        let expectedFilePath = combinePath(defaultOptions.path, path);
         if(fs.existsSync(expectedFilePath)) {
           var content = fs.readFileSync(expectedFilePath);
           response.statusCode = 200;
@@ -391,7 +395,7 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
           console.log("going to write file");
           // Just a file that we write on disk.
           var imageType = request.headers["write-file"];
-          var imageLocation = path;
+          var imageLocation = combinePath(defaultOptions.path, path);
           console.log("going to write image file to ", imageLocation);
           fs.writeFileSync(imageLocation, allChunks);
           response.statusCode = 201;

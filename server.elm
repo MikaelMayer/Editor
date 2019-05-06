@@ -538,6 +538,12 @@ div#modify-menu div.keyvalues > div.keyvalue > * {
   padding: 4px;
   vertical-align: middle;
 }
+div#modify-menu div.keyvalues > div.keyvalueadder {
+  opacity: 0.5;
+}
+div#modify-menu div.keyvalues > div.keyvalueadder:hover {
+  opacity: 1;
+}
 div#modify-menu input {
   padding: 4px;
   width: 100%;
@@ -1298,15 +1304,18 @@ editionscript = """
           document.selection.createRange().pasteHTML(html);
       }
     }
-     
+    
     function handleFileSelect(evt) {
       evt.stopPropagation();
       evt.preventDefault();
 
-      var insertRelative = true;
-      
       var files = evt.dataTransfer.files; // FileList object.
+      uploadFilesAtCursor(files);
+    }
+      
+    function uploadFilesAtCursor(files) {
       // files is a FileList of File objects. List some properties.
+      var insertRelative = true;
       var output = [];
       for (var i = 0, f; f = files[i]; i++) {
         var xhr = new XMLHttpRequest();
@@ -1317,7 +1326,7 @@ editionscript = """
         //if(f.size < 30000000)
         xhr.onreadystatechange = ((xhr, filetype, path, name) => () => {
           if (xhr.readyState == XMLHttpRequest.DONE) {
-            if (xhr.status == 200) {@(if folderView then """
+            if (xhr.status == 200 || xhr.status == 201) {@(if folderView then """
               reloadPage();"""
               else """
               if(filetype.indexOf("image") == 0) {
@@ -1619,6 +1628,8 @@ editionscript = """
           addElem("Style", {tag:"style", children: "/*Your CSS there*/"});
           addElem("Script", {tag:"script", children: "/*Your CSS below*/"});
         } else {
+          interactionDiv.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
+            onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }}));
           // TODO: Filter and sort which one we can add
           addElem("List item", {tag:"li", props: { innerHTML: "<br>"}});
           addElem("New bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n  <li><br></li>\n</ul>"}});
@@ -1756,7 +1767,7 @@ editionscript = """
       if(clickedElem.nodeType === 1) {
         //      interactionDiv.append(el("div", {}, "Add an attribute:"));
         keyvalues.append(
-          el("div", {"class": "keyvalue"}, [
+          el("div", {"class": "keyvalue keyvalueadder"}, [
              el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name:"name"}, [], {onkeyup: highlightsubmit})),
              el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit})),
              el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
@@ -1860,6 +1871,8 @@ editionscript = """
           });
       }
       if(selectionRange && (selectionRange.startContainer === selectionRange.endContainer || selectionRange.startContainer.parentElement === selectionRange.commonAncestorContainer && selectionRange.endContainer.parentElement === selectionRange.commonAncestorContainer)) {
+        // There should be different ways to wrap the selection:
+        // a href, span, div.
         addContextMenuButton(plusSVG,
             {title: "Wrap selection"},
             {onclick: (s => event => {
@@ -1914,6 +1927,12 @@ editionscript = """
             {title: "Insert element", contenteditable: false},
             {onclick: (caretPosition => event => {
               updateInteractionDiv(clickedElem, {insertElement: true, caretPosition: caretPosition});
+              var sel = window.getSelection();
+              sel.removeAllRanges();
+              var range = document.createRange();
+              range.setStart(caretPosition.startContainer, caretPosition.startOffset);
+              range.setEnd(caretPosition.endContainer, caretPosition.endOffset);
+              sel.addRange(range);
             })(caretPosition)});
       }
       
