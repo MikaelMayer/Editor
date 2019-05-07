@@ -625,6 +625,7 @@ svg.context-menu-icon > path {
 }
 svg.context-menu-icon.fill > path {
   fill:#FFFFFF;
+  fill-rule:evenodd;
   stroke-width:1px;
 }
 div#context-menu .context-menu-button:hover, div#modify-menu .modify-menu-button:hover {
@@ -1490,15 +1491,19 @@ editionscript = """
       updateInteractionDiv(clickedElem, {link: link});
       // Check if the event.target matches some selector, and do things...
     }
-    
-    var wasteBasketSVG = `<svg class="context-menu-icon" width="40" height="30">
-          <path d="m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0" /></svg>`;
-    var plusSVG = `<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z" /></svg>`;
-    var liveLinkSVG = link => `<a class="livelink" href="javascript:navigateLocal('${link}')"><svg class="context-menu-icon fill" width="40" height="30">
-          <path d="M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z" /></svg></a>`;
-    var gearSVG = `<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z" /></svg>`;
+    function mkSvg(path, fill) {
+      return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
+            <path d="${path}" /></svg>`
+    }
+    var saveSVG = mkSvg("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
+    var openLeftSVG = mkSvg("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
+    var closeRightSVG = mkSvg("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
+    var openTopSVG = mkSvg("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
+    var closeBottomSVG = mkSvg("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
+    var wasteBasketSVG = mkSvg("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
+    var plusSVG = mkSvg("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
+    var liveLinkSVG = link => `<a class="livelink" href="javascript:navigateLocal('${link}')">${mkSvg("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
+    var gearSVG = mkSvg("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
     var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
@@ -1545,11 +1550,18 @@ editionscript = """
         interactionDiv.append(button);
       }
       interactionDiv.innerHTML = "";
-      addInteractionDivButton(gearSVG,
+      var panelOpenCloseIcon = function() {
+        return document.querySelector("#modify-menu").classList.contains("visible") ?
+            onMobile() ? closeBottomSVG : closeRightSVG
+          : onMobile() ? openTopSVG : openLeftSVG;
+      }
+      addInteractionDivButton(
+        panelOpenCloseIcon(),
         {title: "Open/close settings tab", "class": "inert", style: "position: absolute;" +
           (onMobile() ? "top:-"+buttonHeight()+"px;" : "left:-"+buttonWidth()+"px;") },
-        {onclick: ((c, contextMenu) => event => {
+        {onclick: ((c, contextMenu) => function(event) {
             document.querySelector("#modify-menu").classList.toggle("visible");
+            this.innerHTML = panelOpenCloseIcon();
           })(clickedElem, contextMenu)
         });
       if(options.insertElement) {
@@ -1711,6 +1723,13 @@ editionscript = """
                }
             );
       }
+      addInteractionDivButton(saveSVG,
+      {title: "Save", "class": "saveButton", style: "float:right"},
+        {onclick: (c => event => {
+            // TODO
+          })(clickedElem)
+        }
+      )
       interactionDiv.append(el("br"));
       interactionDiv.append(
         el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
