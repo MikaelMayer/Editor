@@ -1829,7 +1829,7 @@ editionscript = """
             updateInteractionDiv();
           }}));
       let keyvalues = el("div", {"class":"keyvalues"});
-      for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
+      for(let i = 0; clickedElem && clickedElem.attributes && i < clickedElem.attributes.length; i++) {
         let name = clickedElem.attributes[i].name;
         if(name === "ghost-clicked" || name === "ghost-hovered") continue;
         let value = clickedElem.attributes[i].value;
@@ -1895,7 +1895,7 @@ editionscript = """
       interactionDiv.append(keyvalues);
       //interactionDiv.append(el("hr"));
 
-      if(clickedElem && clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE" || clickedElem.tagName === "TITLE") {
+      if(clickedElem && (clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE" || clickedElem.tagName === "TITLE")) {
         interactionDiv.append(el("hr"));
         interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
                 [], {
@@ -1924,7 +1924,7 @@ editionscript = """
         addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
           {title: "Go to " + model.link, "class": "inert"});
       }
-      if(!selectionRange && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+      if(!selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
         {title: "Move selected element up"},
@@ -1941,7 +1941,7 @@ editionscript = """
           })(clickedElem, contextMenu)
         });
       }
-      if(!selectionRange && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+      if(!selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
         {title: "Move selected element down"},
@@ -1958,7 +1958,7 @@ editionscript = """
           })(clickedElem, contextMenu)
         });
       }
-      if(!selectionRange && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
+      if(!selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
         addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
             <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
             <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
@@ -2051,33 +2051,35 @@ editionscript = """
       }
       
       let baseElem = clickedElem;
-      while(baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE") {
+      while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
         baseElem = baseElem.nextElementSibling;
       }
       baseElem = selectionRange || baseElem || clickedElem;
       
-      let clientRect = baseElem.getBoundingClientRect();
-      // Find out where to place context menu.
-      let clickedElemLeft = window.scrollX + clientRect.left;
-      let clickedElemTop = window.scrollY + clientRect.top;
-      let clickedElemBottom = window.scrollY + clientRect.bottom;
-      let clickedElemRight = window.scrollX + clientRect.right;
-      let desiredWidth = numButtons * buttonWidth();
-      let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
-      if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
-      let desiredTop = clickedElemTop - buttonHeight(); 
-      if(desiredTop - window.scrollY < 9) {
-        desiredTop = clickedElemBottom;
-        if(desiredTop + buttonHeight() > window.innerHeight) {
-          desiredTop = window.innerHeight - buttonHeight(); 
+      if(baseElem) {
+        let clientRect = baseElem.getBoundingClientRect();
+        // Find out where to place context menu.
+        let clickedElemLeft = window.scrollX + clientRect.left;
+        let clickedElemTop = window.scrollY + clientRect.top;
+        let clickedElemBottom = window.scrollY + clientRect.bottom;
+        let clickedElemRight = window.scrollX + clientRect.right;
+        let desiredWidth = numButtons * buttonWidth();
+        let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
+        if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
+        let desiredTop = clickedElemTop - buttonHeight(); 
+        if(desiredTop - window.scrollY < 9) {
+          desiredTop = clickedElemBottom;
+          if(desiredTop + buttonHeight() > window.innerHeight) {
+            desiredTop = window.innerHeight - buttonHeight(); 
+          }
         }
+        if(desiredLeft < 0) desiredLeft = 0;
+        if(desiredTop < 0) desiredTop = 0;
+        contextMenu.style.left = desiredLeft + "px";
+        contextMenu.style.top = desiredTop + "px";
+        contextMenu.style.width = desiredWidth + "px";
+        contextMenu.classList.add("visible");
       }
-      if(desiredLeft < 0) desiredLeft = 0;
-      if(desiredTop < 0) desiredTop = 0;
-      contextMenu.style.left = desiredLeft + "px";
-      contextMenu.style.top = desiredTop + "px";
-      contextMenu.style.width = desiredWidth + "px";
-      contextMenu.classList.add("visible");
       return true;
     }
     
