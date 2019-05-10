@@ -1,0 +1,65 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+       "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <title>Tharzen: Domesticating software solutions</title>
+  <!--meta http-equiv="Refresh"
+content="0;url=defaultsite" /-->
+  <!-- US -->
+<style>
+html {
+  font-size: 16px;
+  font-family: "Bookman", sans-serif;
+}
+body > h1 {
+  font-family: "Impact", sans-serif;
+  font-size: 250%;
+}
+body{
+  font-size:250%;
+} 
+@media(min-width:60em){
+  html{font-size: 80%}
+}
+a[list-ghost-attributes="href"] {
+  text-decoration: underline;
+  color: blue;
+}
+input, button {
+  font-size: 1em;
+}</style>
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-3440943-5"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-3440943-5');
+</script>
+</head>
+<body>
+<h1><img src= "Tharzen_logo.png" alt= "Tharzen_logo.png" style="float:right"></h1>
+<h2>Domesticating Software Solutions</h2>(website coming soon...)<br><p>Software is like a wild animal.
+Developing software by only coding is like
+forcing an animal with strict rules.
+</p>
+<p>At Tharzen, we believe that there is a
+better way to treat (animals and) software.
+All software should be visually editable
+even as it runs. Our solutions simply turn any website to a content management system by making them editable for their owners.
+That's how we help you domesticate your software.</p>
+<span>Have a look at our 
+<a href=
+                  "http://bit.ly/editor-server">early demo</a
+            ></span>. Or edit this page by appending ?edit to its URL (e.g. <a href= "https://tharzen.com?edit">tharzen.com?edit</a>) - you won't be able to save your changes of course!<br><br>
+Edit your website by entering its url here:
+<input type= "text"
+   placeholder= "https://...."
+   id= "proxyurl">
+<input type="button" onclick="location.href = location.protocol + '//' + location.host + '/proxy.elm?url=' + encodeURIComponent(document.getElementById('proxyurl').value)+'&edit'" value="Live edit this website"><br><br>
+<a list-ghost-attributes="href"
+   onmouseenter="this.setAttribute('href', 'mailto:sal'+'es@thar'+'zen.com')">
+  Contact us</a> for licensing options.
+</body>
+</html>

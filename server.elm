@@ -197,6 +197,14 @@ evaluatedPage =
           Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
   else if Regex.matchIn """\.(elm|leo)$""" path || fs.isdir path then
     __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent
+  else if Regex.matchIn """\.txt$""" path then
+    Ok <html><head></head><body>
+      <textarea id="thetext" style="width:100%;height:100%" initdata=@sourcecontent
+        onkeyup="if(this.getAttribute('initdata') !== this.value) this.setAttribute('initdata', this.value)"></textarea>
+      <script>
+        document.getElementById('thetext').value = document.getElementById('thetext').getAttribute('initdata')
+      </script>
+    </body></html>
   else Err """Serving only .html, .md and .elm files. Got @path"""
 
 {---------------------------------------------------------------------------
@@ -293,8 +301,8 @@ closeEditBox = switchEditBox False
 boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false")
 
 -- Everything inside the modify menu is generated and is not visible to Editor
-editionmenu sourcecontent = [
-<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@sourcecontent contenteditable="false">
+editionmenu thesource = [
+<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false">
 <div class="information" children-are-ghosts="true"></div>
 </div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
@@ -501,7 +509,7 @@ div#modify-menu {
   transform: translate(100%, 0px);
   transition-property: transform;
   transition-duration: 0.5s;
-  z-index: 100000;
+  z-index: 100001;
 }
 .modify-menu-icon {
   vertical-align: middle;
@@ -917,10 +925,10 @@ function remove(node) {
 </script>
 ]
 
-codepreview sourcecontent = 
+codepreview thesource = 
 <div class="codepreview" id="editor_codepreview">
   <textarea id="editor_codepreview_textarea" save-properties="scrollTop"
-     v=sourcecontent @(if boolVar "autosave" True then [] else [["onkeyup", "this.setAttribute('v', this.value)"]]) onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" sourcecontent then "\n" + sourcecontent else sourcecontent))</textarea>
+     v=thesource @(if boolVar "autosave" True then [] else [["onkeyup", "this.setAttribute('v', this.value)"]]) onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" thesource then "\n" + thesource else thesource))</textarea>
 </div>
     
 editionscript = """
@@ -1620,9 +1628,13 @@ editionscript = """
         // TODO: Source code (expandable - can use Ace Editor)
         // TODO: Options: Ask questions, Autosave.
         // TODO: Report issue. About.
-        addInteractionDivButton("Source",
+        addInteractionDivButton("src",
           {"class": "tagName", title: model.displaySource ? "Hide source" : "Show Source"},
             {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv() } }
+        );
+        addInteractionDivButton("reload",
+          {"class": "tagName", title: "Reload the current page"},
+            {onclick: function(event) { reloadPage() } }
         );
         if(model.displaySource) {
           let source = document.querySelector("#modify-menu").getAttribute("sourcecontent");
