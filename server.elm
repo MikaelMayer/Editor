@@ -302,9 +302,7 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu thesource = [
-<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false">
-<div class="information" children-are-ghosts="true"></div>
-</div>,
+<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
 <menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
 @(if iscloseable then [] else closeEditBox)
@@ -519,8 +517,14 @@ div#modify-menu {
 .modify-menu-icon:hover {
   background-color: var(--context-button-color-hover);
 }
-div#modify-menu {
-  overflow-y: scroll;
+div#modify-menu > div.modify-menu-icons {
+  height: var(--context-menu-height);
+  width: 100%;
+  overflow-x: auto;
+}
+div#modify-menu > div.information {
+  overflow-y: auto;
+  max-height: calc(100% - var(--context-menu-height));
 }
 div#modify-menu.visible {
   transform: translate(0%, 0%);
@@ -550,8 +554,18 @@ div#modify-menu div.keyvalues > div.keyvalueadder:hover {
 }
 div#modify-menu input {
   padding: 4px;
-  width: 100%;
-  font-size: 1em;
+}
+div#modify-menu #newTagName {
+  width: 50%;
+  font-size: 1em;  
+}
+div#modify-menu .tagname-info {
+  color: #d4d4d4;
+  display: inline-block;
+  width: 50%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 div#modify-menu input[type=radio] {
   width: initial;
@@ -663,6 +677,7 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
     right: initial;
     height: 30%;
     width: 100%;
+    min-height: 350px;
     transform: translate(0px, 100%);
   }
   div.bottom-placeholder {
@@ -1549,8 +1564,8 @@ editionscript = """
       let model = editor_model;
       var clickedElem = model.clickedElem;
       var contextMenu = document.querySelector("#context-menu");
-      var interactionDiv = document.querySelector("#modify-menu > .information");
-      if(!interactionDiv || !contextMenu) return;
+      var modifyMenuDiv = document.querySelector("#modify-menu");
+      if(!modifyMenuDiv || !contextMenu) return;
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
       if(clickedElem && clickedElem.nodeType === 1) {
         clickedElem.setAttribute("ghost-clicked", "true");
@@ -1570,24 +1585,39 @@ editionscript = """
         if(!f || f.startOffset !== f.endOffset && f.startContainer !== f.endContainer) return;
         return f;
       })();
-      
-      function summary(element) {
+      function textPreview(element, maxLength) {
+        let x = element.innerText;
+        let result = "'" + x + "'";
+        if(typeof maxLength !== "undefined" && result.length > maxLength) {
+          return result.substring(0, maxLength) + "...'";
+        }
+        return result;
+      }
+      function summary(element, idAndClasses, maxLength) {
         var summary = element.tagName.toLowerCase();
-        if(element.getAttribute("id")) {
+        if(idAndClasses && element.getAttribute("id")) {
           summary += "#" + element.getAttribute("id");
         }
-        if(element.getAttribute("class") && element.getAttribute("class").trim().length) {
-          summary += "." + element.getAttribute("class").split(".");
+        var elemClass = element.getAttribute("class");
+        if(idAndClasses && elemClass && elemClass.trim().length) {
+          summary += "." + elemClass.split(/\s+/g).join(".");
         }
+        summary += " " + textPreview(element);
+        maxLength = maxLength || 80;
+        summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
         return summary;
       }
-      let addInteractionDivButton = function(innerHTML, attributes, properties) {
+      modifyMenuDiv.innerHTML = "";
+      let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"});
+      let interactionDiv = el("div", {"class": "information"});
+      modifyMenuDiv.append(modifyMenuIconsDiv);
+      modifyMenuDiv.append(interactionDiv);
+      let addModifyMenuIcon = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
         button.classList.add("modify-menu-button");
         button.innerHTML = innerHTML;
-        interactionDiv.append(button);
+        modifyMenuIconsDiv.append(button);
       }
-      interactionDiv.innerHTML = "";
       var panelOpenCloseIcon = function() {
         return document.querySelector("#modify-menu").classList.contains("visible") ?
             onMobile() ? closeBottomSVG : closeRightSVG
@@ -1601,7 +1631,7 @@ editionscript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      addInteractionDivButton(
+      addModifyMenuIcon(
         panelOpenCloseIcon(),
         {title: "Open/close settings tab", "class": "inert", style: nextVisibleBarButtonPosStyle() },
         {onclick: (contextMenu => function(event) {
@@ -1609,7 +1639,7 @@ editionscript = """
             this.innerHTML = panelOpenCloseIcon();
           })(contextMenu)
         });
-      addInteractionDivButton(
+      addModifyMenuIcon(
         gearSVG,
         {title: "Advanced", "class": "inert" + (editor_model.advanced ? " active": ""),
          style: nextVisibleBarButtonPosStyle()
@@ -1620,7 +1650,7 @@ editionscript = """
           updateInteractionDiv();
         })(clickedElem)}
       )
-      addInteractionDivButton(saveSVG,
+      addModifyMenuIcon(saveSVG,
       {title: "Save", "class": "saveButton" + (editor_model.canSave ? "" : " disabled"),
           style: nextVisibleBarButtonPosStyle()
       },
@@ -1638,15 +1668,15 @@ editionscript = """
         // TODO: Source code (expandable - can use Ace Editor)
         // TODO: Options: Ask questions, Autosave.
         // TODO: Report issue. About.
-        addInteractionDivButton(sourceSVG,
+        addModifyMenuIcon(sourceSVG,
           {"class": "tagName", title: model.displaySource ? "Hide source" : "Show Source"},
             {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv() } }
         );
-        addInteractionDivButton(reloadSVG,
+        addModifyMenuIcon(reloadSVG,
           {"class": "tagName", title: "Reload the current page"},
             {onclick: function(event) { reloadPage() } }
         );
-        addInteractionDivButton(folderSVG,
+        addModifyMenuIcon(folderSVG,
           {"class": "tagName", title: "List files in current directory"},
             {onclick: function(event) {
               let u =  new URL(location.href);
@@ -1784,7 +1814,7 @@ editionscript = """
       if(clickedElem && clickedElem.parentElement) {
         let parent = selectionRange ? clickedElem : clickedElem.parentElement;
         if(parent.tagName === "TBODY" && parent.parentElement && parent.parentElement.tagName === "TABLE") parent = parent.parentElement;
-        addInteractionDivButton(`<svg class="context-menu-icon" width="40" height="30">
+        addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
             <path d="M 8,19 8,22 11,22 M 12,18 8,22 M 8,10 8,7 11,7 M 12,10 8,7 M 27,7 30,7 30,10 M 26,10 30,7 M 31,19 31,22 28,22 M 26,18 31,22 M 12,12 12,10 M 12,16 12,14 M 14,18 12,18 M 18,18 16,18 M 22,18 20,18 M 26,18 24,18 M 26,14 26,16 M 26,10 26,12 M 22,10 24,10 M 18,10 20,10 M 14,10 16,10 M 5,5 35,5 35,25 5,25 Z"/></svg>`,
               {title: "Select parent (" + summary(parent) + ")", "class": "inert"},
               {onclick: ((c, parent) => event => {
@@ -1798,7 +1828,7 @@ editionscript = """
             );
       }
       if(!selectionRange && clickedElem && clickedElem.previousElementSibling) {
-        addInteractionDivButton(`<svg class="context-menu-icon fill" width="40" height="30">
+        addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
         {title: "Select previous sibling (" + summary(clickedElem.previousElementSibling) + ")", class: "inert"},
         {onclick: ((c, contextMenu) => (event) => {
@@ -1811,7 +1841,7 @@ editionscript = """
         });
       }
       if(!selectionRange && clickedElem && clickedElem.nextElementSibling) {
-        addInteractionDivButton(`<svg class="context-menu-icon fill" width="40" height="30">
+        addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
         {title: "Select next sibling (" + summary(clickedElem.nextElementSibling) + ")", class: "inert"},
         {onclick: ((c, contextMenu) => (event) => {
@@ -1824,7 +1854,7 @@ editionscript = """
         });
       }
       if(!selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
-        addInteractionDivButton(`<svg class="context-menu-icon" width="40" height="30">
+        addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
             <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
               {title: "Select first child (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
               {onclick: (c => event => {
@@ -1840,10 +1870,12 @@ editionscript = """
       }
       interactionDiv.append(el("br"));
       if(clickedElem) {
-        interactionDiv.append(
+        interactionDiv.append(el("div", {"class": "tagname-summary"}, [
           el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
             document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
-          }}));
+          }}),
+          el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50))
+          ]));
       }
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
             let newel = el(document.querySelector("#newTagName").value);
