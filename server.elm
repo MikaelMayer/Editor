@@ -519,6 +519,9 @@ div#modify-menu {
 .modify-menu-icon:hover {
   background-color: var(--context-button-color-hover);
 }
+div#modify-menu {
+  overflow-y: scroll;
+}
 div#modify-menu.visible {
   transform: translate(0%, 0%);
 }
@@ -1527,6 +1530,7 @@ editionscript = """
     var gearSVG = mkSvg("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
     var folderSVG = mkSvg("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
     var reloadSVG = mkSvg("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
+    var sourceSVG = mkSvg("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
     var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
@@ -1634,7 +1638,7 @@ editionscript = """
         // TODO: Source code (expandable - can use Ace Editor)
         // TODO: Options: Ask questions, Autosave.
         // TODO: Report issue. About.
-        addInteractionDivButton("src",
+        addInteractionDivButton(sourceSVG,
           {"class": "tagName", title: model.displaySource ? "Hide source" : "Show Source"},
             {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv() } }
         );
