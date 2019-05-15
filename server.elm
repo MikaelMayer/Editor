@@ -729,13 +729,25 @@ initialScript = [
 var XHRequest = @(if listDict.get "browserSide" defaultOptions == Just True then "ProxiedServerRequest" else "XMLHttpRequest");
 
 function el(tag, attributes, children, properties) {
-  let x = document.createElement(tag);
+  let tagClassIds = tag.split(/(?=#|\.)/g);
+  let x;
+  for(let attr of tagClassIds) {
+    if(x && attr.startsWith(".")) {
+      x.classList.toggle(attr.substring(0), true);
+    } else if(x && attr.startsWith("#")) {
+      x.setAttribute("id", attr.substring(0));
+    } else if(!x) {
+      x = document.createElement(attr);
+    }
+  }
   if(typeof attributes == "object")
     for(let k in attributes)
       x.setAttribute(k, attributes[k]);
   if(Array.isArray(children)) {
     for(let child of children) {
-      if(typeof child !== "undefined")
+      if(typeof child === "string") {
+        x.append(child)
+      } else if(typeof child !== "undefined")
         x.appendChild(child);
     }
   } else if(typeof children !== "undefined") {
@@ -1075,6 +1087,7 @@ editionscript = """
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+          editor_model.isSaving = false;
           //console.log("Received new content. Replacing the page.");
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
           var saved = saveGhostAttributes();
@@ -1095,32 +1108,41 @@ editionscript = """
             var n = JSON.parse(ambiguityNumber);
             var selected = JSON.parse(ambiguitySelected);
             var summaries = JSON.parse(ambiguitySummaries);
-            var newMenu = el("menuitem", {isghost: "true"});
-            var disambiguationMenu = `<span style="color:red" id="ambiguity-id" v="${ambiguityKey}">Ambiguity.</span> Solutions `;
+            
+            var disambiguationMenuContent = [];
+            disambiguationMenuContent.push(el("span#ambiguity-id", {style: "color:red", v: ambiguityKey}, "Ambiguity."));
+            disambiguationMenuContent.push(" Solutions ");
             for(var i = 1; i <= n; i++) {
               var summary = summaries[i-1].replace(/"/g,'&quot;');
               if(i == selected) {
-                disambiguationMenu += ` <span class="solution selected" title="${summary}">#${i}</span>`
+                disambiguationMenuContent.push(el("span.solution.selected", {title: summary}, "#" + i));
               } else {
-                disambiguationMenu += ` <span class="solution${i == n && ambiguityEnd != 'true' ? ' notfinal' : ''}" title="${summary}" onclick="this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})">#${i}</span>`
+                disambiguationMenuContent.push(" ");
+                disambiguationMenuContent.push(el("span.solution" + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
+                title: summary, onclick:`this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})`}, "#" + i));
               }
             }
-            disambiguationMenu += ` <button id="saveambiguity" onclick='acceptAmbiguity("${ambiguityKey}", ${selected})'>Save</button>`;
-            disambiguationMenu += ` <button id="cancelAmbiguity" onclick='cancelAmbiguity("${ambiguityKey}", ${selected})'>Cancel</button>`;
-            newMenu.innerHTML = disambiguationMenu;
-            if(document.getElementById("themenu"))
-              document.getElementById("themenu").append(newMenu);
+            disambiguationMenuContent.push(" ");
+            disambiguationMenuContent.push(el("button#saveambiguity", {onclick: `acceptAmbiguity("${ambiguityKey}", ${selected})`}, "Save"));
+            disambiguationMenuContent.push(el("button#cancelAmbiguity", {onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
+            editor_model.disambiguationMenu = el("div.disambiguationMenu", {}, disambiguationMenuContent);
+            editor_model.clickedElem = undefined;
+            editor_model.notextselection= false;
+            editor_model.caretPosition= undefined;
+            editor_model.link= undefined;
+            editor_model.advanced= true; // Opens advanced mode.
+            //editor_model.displaySource: false, // Keep source opened or closed
+            // TODO: Disable click or change in DOM until ambiguity is resolved.
           } else {
+            editor_model.disambiguationMenu = undefined;
             var opSummaryEncoded = xmlhttp.getResponseHeader("Operations-Summary");
             if(opSummaryEncoded) {
               var opSummary = decodeURI(opSummaryEncoded);
-              var newMenu =
-                el("menuitem", {id: "lastaction", isghost: "true"},
-                  el("span", {"class": "summary"}, "Last action: " + opSummary));
-              if(document.getElementById("themenu"))
-                document.getElementById("themenu").append(newMenu);
-                var newmenutimeout = setTimeout(function() { newMenu.remove(); }, 2000);
-                newMenu.onclick = ((n) => () => clearTimeout(n))(newmenutimeout);
+              let newMenu = el("menuitem#lastaction", {},
+                  el("span.summary", {}, "Last action: " + opSummary));
+              editor_model.feedback = newMenu;
+              var newmenutimeout = setTimeout(function() { editor_model.feedback = undefined; newMenu.remove(); }, 2000);
+              newMenu.onclick = ((n) => () => clearTimeout(n))(newmenutimeout);
             }
           }
           var strQuery = "";
@@ -1132,12 +1154,11 @@ editionscript = """
             }
           }
           if(newLocalURL) { // Overrides query parameters
-            console.log("replaceState", xmlhttp.replaceState ? "replaceState" : "pushState");
-            console.log("state", {localURL: newLocalURL})
             window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
           } else if(strQuery) {
             window.history.replaceState({}, "Current page", strQuery);
           }
+          updateInteractionDiv();
         }
     }
     
@@ -1171,7 +1192,11 @@ editionscript = """
         xmlhttp.setRequestHeader("reload", "true");
       })
     }
-    
+    function relativeToAbsolute(url) {
+      if(isAbsolute(url) || url && url.length && url[0] == "/") return url;
+      let u =  new URL(location.href);
+      return u.pathname.replace(/[^\/]*$/, "") + url;
+    }
     function navigateLocal(url, replaceState) {
       notifyServer(xmlhttp => {
         xmlhttp.setRequestHeader("reload", "true");
@@ -1206,11 +1231,11 @@ editionscript = """
     function sendModificationsToServer() {
       if(document.getElementById("notification-menu") != null) {
         //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
+        // TODO: Listen and gather subsequent modifications when it is loading
         return;
       }
-      var newMenu = el("menuitem",
-        {isghost: true, id: "notification-menu", class:"to-be-selected"},
-        `Updating the source files...`);
+      editor_model.isSaving = true;
+      var newMenu = el("menuitem#notification-menu.to-be-selected", {isghost: true});
       if(document.getElementById('lastaction')) {
         document.getElementById('lastaction').remove();
       }
@@ -1218,10 +1243,13 @@ editionscript = """
         document.getElementById("themenu").append(newMenu);
         document.getElementById("manualsync-menuitem").setAttribute("ghost-visible", "false");
       }
-      notifyServer(xmlhttp => {
-        xmlhttp.setRequestHeader("question", document.getElementById("input-question") && document.getElementById("input-question").checked ? "true" : "false");
-        return JSON.stringify(domNodeToNativeValue(document.body.parentElement));
-      })
+      updateInteractionDiv();
+      setTimeout( () => {
+        notifyServer(xmlhttp => {
+          xmlhttp.setRequestHeader("question", document.getElementById("input-question") && document.getElementById("input-question").checked ? "true" : "false");
+          return JSON.stringify(domNodeToNativeValue(document.body.parentElement));
+        })
+      }, 0);
     }
     
     function handleMutations(mutations) {
@@ -1541,7 +1569,7 @@ editionscript = """
     var closeBottomSVG = mkSvg("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
     var wasteBasketSVG = mkSvg("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
     var plusSVG = mkSvg("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
-    var liveLinkSVG = link => `<a class="livelink" href="javascript:navigateLocal('${link}')">${mkSvg("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
+    var liveLinkSVG = link => `<a class="livelink" href="javascript:navigateLocal(relativeToAbsolute('${link}'))">${mkSvg("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
     var gearSVG = mkSvg("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
     var folderSVG = mkSvg("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
     var reloadSVG = mkSvg("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
@@ -1556,7 +1584,9 @@ editionscript = """
       caretPosition: undefined,
       link: undefined,
       advanced: false,
-      displaySource: false
+      displaySource: false,
+      disambiguationMenu: undefined,
+      isSaving: false
     }
     updateInteractionDiv();
     
@@ -1651,7 +1681,7 @@ editionscript = """
         })(clickedElem)}
       )
       addModifyMenuIcon(saveSVG,
-      {title: "Save", "class": "saveButton" + (editor_model.canSave ? "" : " disabled"),
+      {title: "Save", "class": "saveButton" + (editor_model.canSave ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           style: nextVisibleBarButtonPosStyle()
       },
         {onclick: function(event) {
@@ -1661,7 +1691,10 @@ editionscript = """
           }
         }
       )
-      if(model.advanced) {
+      if(model.advanced || model.disambiguationMenu) {
+        if(model.disambiguationMenu) {
+          document.querySelector("#modify-menu").classList.toggle("visible", true)
+        }
         // TODO: Ambiguity interaction (should be stored in the model)
         // TODO: Current URL (can be changed) + reload button (double circular arrow) + list files button (folder icon)
         // TODO: Stage/create draft (clone and save icon)
@@ -1685,6 +1718,12 @@ editionscript = """
               navigateLocal(u.href);
             } }
         )
+        if(editor_model.disambiguationMenu) {
+          interactionDiv.append(editor_model.disambiguationMenu);
+        }
+        if(editor_model.feedback) {
+          interactionDiv.append(editor_model.feedback);
+        }
         if(model.displaySource) {
           let source = document.querySelector("#modify-menu").getAttribute("sourcecontent");
           interactionDiv.append(el("div", {"class": "tagName"},
@@ -1912,7 +1951,7 @@ editionscript = """
                           let livelinks = document.querySelectorAll(".livelink");
                           for(let livelink of livelinks) {
                             let finalLink = livelink.matches("#context-menu *") ?
-                              `javascript:navigateLocal('${linkToEdit(this.value)}')` : this.value;
+                              `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
                             livelink.setAttribute("href", finalLink);
                             livelink.setAttribute("title", "Go to " + this.value);
                           }
