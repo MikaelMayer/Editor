@@ -792,6 +792,9 @@ globalGhostAttributeKeysFromNode = [];
 (globalGhostAttributeKeysFromNode || []).push(n =>
   n && n.tagName == "BODY" ? ["data-gr-c-s-loaded"] : []
 );
+// attribute of some chrome extensions
+(globalGhostAttributeKeysFromNode || []).push(n => ["bis_skin_checked"]);
+
 
 function isSpecificGhostAttributeKeyFromNode(n) {
   var additionalGhostAttributes = [];
