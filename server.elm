@@ -305,6 +305,73 @@ editionmenu thesource = [
 <div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
 if iscloseable then <span dummy=""></span> else closeEditBox,
+<style id="booleanswitch">
+  /* The switch - the box around the slider */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 17px;
+  vertical-align: middle;
+}
+
+/* Hide default HTML checkbox */
+.switch input {display:none;}
+
+/* The slider */
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 13px;
+  width: 13px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #2196F3;
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .slider:before {
+  -webkit-transform: translateX(13px);
+  -ms-transform: translateX(13px);
+  transform: translateX(13px);
+}
+
+/* Rounded sliders */
+.slider.round {
+  border-radius: 17px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+.switch + label {
+  cursor: pointer;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+</style>,
 <style>
 .filename {
   color: #FFF;
@@ -1630,7 +1697,7 @@ editionscript = """
           document.querySelector("#modify-menu").classList.toggle("visible", true)
         }
         modifyMenuDiv.append(
-          el("a", { class:"troubleshooter", href:  "https://github.com/MikaelMayer/Editor/issues"}, "Trouble?"));
+          el("a", { class:"troubleshooter", href:  "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
         modifyMenuIconsDiv.append(
           el("span", { class:'filename', title:"the path of the file you are currently viewing"}, 
             editor_model.path ? editor_model.path : "[root folder]"));
@@ -1678,18 +1745,23 @@ editionscript = """
                })]));
         }
         modifyMenuDiv.append(
-          el("label", {title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
+          el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
             [el("input", {class: "global-setting", id: "input-question", type: "checkbox"}, [], {
               onchange: function() { editor_model.askQuestions = this.checked; },
               checked: editor_model.askQuestions}),
-             el("span", {class: "label-checkbox"}, "Ask questions")]));
+             el("span", {class:"slider round"})]));
         modifyMenuDiv.append(
-          el("label", {title: "If on, changes are automatically propagated 1 second after the last edit"}, [
+          el("label", {"for": "input-question", class: "label-checkbox"}, "Ask questions"));
+        modifyMenuDiv.append(el("br"));
+        modifyMenuDiv.append(
+          el("label", {class:"switch", title: "If on, changes are automatically propagated 1 second after the last edit"}, [
             el("input", {class: "global-setting", id: "input-autosave", type:"checkbox"}, [], {
               onchange: function() { editor_model.autosave = this.checked; },
             checked: editor_model.autosave}),
-            el("span", {class: "label-checkbox"}, "Auto-save")])
+             el("span", {class:"slider round"})])
         )
+        modifyMenuDiv.append(
+          el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
         return;
       }
       if(model.insertElement) {
