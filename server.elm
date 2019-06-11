@@ -237,7 +237,7 @@ main = case recoveredEvaluatedPage of
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
            bodyattrs,
-          (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent ++ Update.sizeFreeze [(serverOwned "code preview box" codepreview) sourcecontent]) else
+          (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
            if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
            serverOwned "edit prelude when not in edit mode" []) ++
            serverOwned "initial script" initialScript ++
@@ -304,18 +304,17 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 editionmenu thesource = [
 <div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
-<menu id="themenu" ignore-modifications="true" class="edittoolbar" contenteditable="false">
-@(if iscloseable then [] else closeEditBox)
+if iscloseable then <span dummy=""></span> else closeEditBox,
 <style>
-menu .editor-logo {
-  display: inline-block;
-  margin-right: 5px;
-  font-weight: bold;
-}
-
-menuitem.filename {
-  color: #777;
+.filename {
+  color: #FFF;
   padding-left: 3px;
+  vertical-align: top;
+}
+a.troubleshooter {
+  position: absolute;
+  top: calc(100% - 3em);
+  display: inline-block; 
 }
 .editor-menu {
   display: initial !important;
@@ -323,63 +322,25 @@ menuitem.filename {
 #menumargin {
   padding-top: 2em;
 }
-menu {
-  position: fixed;
-  margin-top: 0px;
-  z-index: 100000;
-  min-height: 1.5em;
-  font-family: sans-serif;
-  border: 1px solid #888;
-}
-menu.edittoolbar {
-  display: block;
-  color: black;
-  background-color: #d5daff;
-  padding: 3px;
-  border-radius: 10px;
-}
-menuitem.disabled {
+.disabled {
   color: #BBB;
 }
-menu input[type=checkbox] {
+input.global-setting[type=checkbox] {
   display: none;
 }
-menu input[type=checkbox] + .label-checkbox {
-}
-menu input[type=checkbox]:checked + .label-checkbox {
+input.global-setting[type=checkbox]:checked + span.label-checkbox {
   background: #bcbbff;
 }
-/*
-menu input[type=checkbox]:not(:checked) + .label-checkbox::after {
-  content: ": off";
-}
-menu input[type=checkbox]:checked + .label-checkbox::after {
-  content: ": on";
-}
-*/
-.label-checkbox {
+span.label-checkbox {
   padding: 2px;
   border-radius: 10px;
 }
-.label-checkbox:hover {
+span.label-checkbox:hover {
   background-color: rgba(0,0,0,0.06);
   cursor: pointer;
 }
-.menu-separator {
-  display: inline-block;
-  border-left: 1px solid #828282;
-  margin: 0 3px;
-  height: 1.5em;
-  padding: 0;
-  vertical-align: top;
-  line-height: normal;
-  outline: none;
-  overflow: hidden;
-  text-decoration: none;
-  width: 0;
-}
 
-menuitem > .solution.selected {
+.solution.selected {
   outline: black 2px solid;
 }
 .to-be-selected {
@@ -400,11 +361,11 @@ menuitem > .solution.selected {
     outline-color: #FAA;
   }	
 }
-menuitem > .solution:not(.selected):hover {
+.solution:not(.selected):hover {
   outline: #999 2px solid;
   cursor: pointer;
 }
-menuitem > .solution.notfinal {
+.solution.notfinal {
   color: #666;
 }
 #editor_codepreview, #manualsync-menuitem {
@@ -443,13 +404,6 @@ menuitem > .solution.notfinal {
 #editor_codepreview {
   width: 100%;
   height: 600px;
-}
-#editor_codepreview > textarea {
-  width: 100%;
-  height: 600px;
-  -webkit-box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
-  -moz-box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
-  box-shadow: 10px 10px 5px 0px rgba(0,0,0,0.75);
 }
 @@media screen and (pointer: coarse) {
   body {
@@ -581,7 +535,7 @@ div#modify-menu input[type=radio] {
   --context-color: rgba(0, 128, 128, 0.8);
   --context-color-next: rgba(0, 158, 158, 0.8); 
   --context-button-color: rgba(0, 192, 192, 0.8);
-  --context-button-color-hover: rgba(0, 212, 212, 0.8);
+  --context-button-color-hover: rgba(0, 232, 232, 0.8);
   --context-button-color-inert: rgba(128, 128, 128, 0.8);
   --context-button-color-inert-hover: rgba(150, 150, 150, 0.8);
   --context-button-color-inert-active: rgba(182, 182, 182, 0.8);
@@ -589,6 +543,7 @@ div#modify-menu input[type=radio] {
   --context-menu-button-width: 40px;
   --context-menu-padding-top: 0px;
   --context-menu-padding-left: 0px;
+  --context-button-selected: rgba(0, 212, 212, 0.8);
 }
 div.tagName {
   padding: 4px;
@@ -625,6 +580,9 @@ div#context-menu .context-menu-button, div#modify-menu .modify-menu-button {
   height: var(--context-menu-height);
   width: var(--context-menu-button-width);
   cursor: pointer;
+}
+div#context-menu .context-menu-button.selected, div#modify-menu .modify-menu-button.selected {
+  background: var(--context-button-selected);
 }
 
 div#modify-menu .modify-menu-button.inert.active {
@@ -692,36 +650,7 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
     --context-menu-padding-left: 4px;
   }
 }
-
-</style>
-<div class="editor-logo">Editor <a href= "https://github.com/MikaelMayer/Editor/issues">(report issue)</a></div>
-<div class="menu-separator"></div>
-<menuitem class= "filename" title= "the path of the file you are currently viewing">@(if path == "" then serverOwned "empty path" "[root folder]" else path)</menuitem>
-<div class="menu-separator"></div><menuitem>
-<label title="Display the source code of this pagge below"><input id="input-showsource" type="checkbox" save-properties="checked"
-  onchange="""
-var cp = document.getElementById("editor_codepreview");
-if(cp !== null) {
-   cp.setAttribute("ghost-visible", this.checked ? "true": "false")
-}"""><span class= "label-checkbox">Source</span></label>
-</menuitem><div class="menu-separator"></div>
-<menuitem id="question-menuitem">
-<label title="If off, ambiguities are resolved automatically. Does not apply for HTML pages"><input id="input-question" type="checkbox" save-properties="checked" @(case listDict.get "question" vars of
-                       Just questionattr -> boolToCheck questionattr
-                       _ -> serverOwned "initial checked attribute (use &question=false in query parameters to modify it)" (
-                              if boolVar "question" True then [["checked", ""]] else []))><span class= "label-checkbox">Ask questions</span></label>
-</menuitem>
-<div class="menu-separator"></div>
-<menuitem id="autosave-menuitem">
-<label title="If on, changes are automatically propagated 1 second after the last edit"><input id="input-autosave" type="checkbox" save-properties="checked" onchange="document.getElementById('manualsync-menuitem').setAttribute('ghost-visible', this.checked ? 'false' : 'true')" @(case listDict.get "autosave" vars of
-                      Just autosaveattr -> boolToCheck autosaveattr
-                      _ -> serverOwned "initial checked attribute (use &autosave=true or false in query parameters to modify it)"  (
-                             if boolVar "autosave" True then [["checked", ""]] else []))><span class= "label-checkbox">Auto-save</span></label>
-</menuitem>
-<menuitem id="manualsync-menuitem" @(if boolVar "autosave" True then [] else [["force-visible", "true"]])>
-<button onclick="sendModificationsToServer()" title= "Sends modifications to the server">Save</button>
-</menuitem>
-</menu>,
+</style>,
 <div id="menumargin"></div>]
 
 initialScript = [
@@ -733,9 +662,9 @@ function el(tag, attributes, children, properties) {
   let x;
   for(let attr of tagClassIds) {
     if(x && attr.startsWith(".")) {
-      x.classList.toggle(attr.substring(0), true);
+      x.classList.toggle(attr.substring(1), true);
     } else if(x && attr.startsWith("#")) {
-      x.setAttribute("id", attr.substring(0));
+      x.setAttribute("id", attr.substring(1));
     } else if(!x) {
       x = document.createElement(attr);
     }
@@ -955,12 +884,6 @@ function remove(node) {
 }
 </script>
 ]
-
-codepreview thesource = 
-<div class="codepreview" id="editor_codepreview">
-  <textarea id="editor_codepreview_textarea" save-properties="scrollTop"
-     v=thesource @(if boolVar "autosave" True then [] else [["onkeyup", "this.setAttribute('v', this.value)"]]) onchange="this.setAttribute('v', this.value)">@(Update.softFreeze (if Regex.matchIn "^\r?\n" thesource then "\n" + thesource else thesource))</textarea>
-</div>
     
 editionscript = """
   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
@@ -1246,7 +1169,7 @@ editionscript = """
       updateInteractionDiv();
       setTimeout( () => {
         notifyServer(xmlhttp => {
-          xmlhttp.setRequestHeader("question", document.getElementById("input-question") && document.getElementById("input-question").checked ? "true" : "false");
+          xmlhttp.setRequestHeader("question", editor_model.askQuestions ? "true" : "false");
           return JSON.stringify(domNodeToNativeValue(document.body.parentElement));
         })
       }, 0);
@@ -1578,6 +1501,8 @@ editionscript = """
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     
+    var ifAlreadyRunning = typeof editor_model === "object";
+    
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
       clickedElem: undefined,
       notextselection: false,
@@ -1586,7 +1511,16 @@ editionscript = """
       advanced: false,
       displaySource: false,
       disambiguationMenu: undefined,
-      isSaving: false
+      isSaving: false,
+      askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
+                    @(case listDict.get "question" vars of
+                       Just questionattr -> "true"
+                       _ -> if boolVar "question" True then "true" else 'false'),
+      autosave: ifAlreadyRunning ? editor_model.autosave :
+                    @(case listDict.get "autosave" vars of
+                      Just autosaveattr -> "true"
+                      _ -> if boolVar "autosave" True then "true" else "false"),
+      path: ifAlreadyRunning ? editor_model.path : @(path |> jsCode.stringOf)
     }
     updateInteractionDiv();
     
@@ -1695,6 +1629,12 @@ editionscript = """
         if(model.disambiguationMenu) {
           document.querySelector("#modify-menu").classList.toggle("visible", true)
         }
+        modifyMenuDiv.append(
+          el("a", { class:"troubleshooter", href:  "https://github.com/MikaelMayer/Editor/issues"}, "Trouble?"));
+        modifyMenuIconsDiv.append(
+          el("span", { class:'filename', title:"the path of the file you are currently viewing"}, 
+            editor_model.path ? editor_model.path : "[root folder]"));
+        
         // TODO: Ambiguity interaction (should be stored in the model)
         // TODO: Current URL (can be changed) + reload button (double circular arrow) + list files button (folder icon)
         // TODO: Stage/create draft (clone and save icon)
@@ -1702,7 +1642,7 @@ editionscript = """
         // TODO: Options: Ask questions, Autosave.
         // TODO: Report issue. About.
         addModifyMenuIcon(sourceSVG,
-          {"class": "tagName", title: model.displaySource ? "Hide source" : "Show Source"},
+          {"class": "tagName" + (model.displaySource ? " selected" : ""), title: model.displaySource ? "Hide source" : "Show Source"},
             {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv() } }
         );
         addModifyMenuIcon(reloadSVG,
@@ -1737,6 +1677,19 @@ editionscript = """
                 value: source
                })]));
         }
+        modifyMenuDiv.append(
+          el("label", {title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
+            [el("input", {class: "global-setting", id: "input-question", type: "checkbox"}, [], {
+              onchange: function() { editor_model.askQuestions = this.checked; },
+              checked: editor_model.askQuestions}),
+             el("span", {class: "label-checkbox"}, "Ask questions")]));
+        modifyMenuDiv.append(
+          el("label", {title: "If on, changes are automatically propagated 1 second after the last edit"}, [
+            el("input", {class: "global-setting", id: "input-autosave", type:"checkbox"}, [], {
+              onchange: function() { editor_model.autosave = this.checked; },
+            checked: editor_model.autosave}),
+            el("span", {class: "label-checkbox"}, "Auto-save")])
+        )
         return;
       }
       if(model.insertElement) {
