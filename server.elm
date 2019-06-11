@@ -12,12 +12,14 @@
 ---------------------------------------------------------}
 listGetOrElse key listDict default = listDict.get key listDict |> Maybe.withDefault default
 
+{-
 updatecheckpoint name x = {
   apply x = x
   update {input, outputNew, diffs} =
     let _ = Debug.log """Checkpoint @name""" () in  
     Ok (InputsWithDiffs [(outputNew, Just diffs)])
 }.apply x
+-}
 
 preludeEnv = let _ = googlesigninbutton in -- Forces googlesigninbutton to be evaluated before preludeEnv
   __CurrentEnv__
@@ -100,7 +102,8 @@ path =
 ----------------------------------------------------------------------------}
 
 (sourcecontent, folderView): (String, Boolean)
-(sourcecontent, folderView) = updatecheckpoint "sourcecontent" <| Tuple.mapFirst String.newlines.toUnix <|
+(sourcecontent, folderView) = --updatecheckpoint "sourcecontent" <|
+  Tuple.mapFirst String.newlines.toUnix <|
   if path == "server.elm" then
     ("""<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""", False)
   else
@@ -218,7 +221,7 @@ evaluatedPage = Update.debug "evaluatedPage" <|
  Recovers from evaluation errors
 ----------------------------------------------------------------------------}
 recoveredEvaluatedPage: Html
-recoveredEvaluatedPage = updatecheckpoint "recoveredEvaluatedPage" <|
+recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
   case evaluatedPage of
   Err msg -> serverOwned "Error Report" <|
     <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
@@ -236,7 +239,7 @@ recoveredEvaluatedPage = updatecheckpoint "recoveredEvaluatedPage" <|
 ----------------------------------------------------------------------------}
 main: Html
 main = 
-  updatecheckpoint "main" <|
+  --updatecheckpoint "main" <|
   case recoveredEvaluatedPage of
   ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
     List.filter (case of [_, _] -> False; _ -> True) |>
