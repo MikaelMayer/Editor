@@ -142,7 +142,7 @@ path =
  - Directly evaluate sources from elm/leo pages or folders
 ----------------------------------------------------------------------------}
 evaluatedPage: Result String Html
-evaluatedPage = Update.debug "evaluatedPage" <|
+evaluatedPage = 
   if canEvaluate /= "true" then
     Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
   else
@@ -1894,8 +1894,8 @@ editionscript = """
                 editor_model.notextselection = true;
                 updateInteractionDiv()
                 })(clickedElem, parent),
-               onmouseenter() { parent.setAttribute("ghost-hovered", "true") },
-               onmouseleave() { parent.removeAttribute("ghost-hovered") }
+               onmouseenter: (p => () => { p.setAttribute("ghost-hovered", "true") })(parent),
+               onmouseleave: (p => () => { p.removeAttribute("ghost-hovered") })(parent)
               }
             );
       }
@@ -1904,12 +1904,12 @@ editionscript = """
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
         {title: "Select previous sibling (" + summary(clickedElem.previousElementSibling) + ")", class: "inert"},
         {onclick: ((c, contextMenu) => (event) => {
-            editor_model.clickedElem = c.previousElementSibling;
+            editor_model.clickedElem = c;
             editor_model.notextselection = true;
             updateInteractionDiv();
-          })(clickedElem, contextMenu),
-         onmouseenter() { clickedElem.previousElementSibling.setAttribute("ghost-hovered", "true") },
-         onmouseleave() { clickedElem.previousElementSibling.removeAttribute("ghost-hovered") }
+          })(clickedElem.previousElementSibling, contextMenu),
+         onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.previousElementSibling),
+         onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.previousElementSibling)
         });
       }
       if(!selectionRange && clickedElem && clickedElem.nextElementSibling) {
@@ -1917,12 +1917,12 @@ editionscript = """
           <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
         {title: "Select next sibling (" + summary(clickedElem.nextElementSibling) + ")", class: "inert"},
         {onclick: ((c, contextMenu) => (event) => {
-            editor_model.clickedElem = c.nextElementSibling;
+            editor_model.clickedElem = c;
             editor_model.notextselection = true;
             updateInteractionDiv();
-          })(clickedElem, contextMenu),
-         onmouseenter() { clickedElem.nextElementSibling.setAttribute("ghost-hovered", "true") },
-         onmouseleave() { clickedElem.nextElementSibling.removeAttribute("ghost-hovered") }
+          })(clickedElem.nextElementSibling, contextMenu),
+         onmouseenter: (c => () =>  { c.setAttribute("ghost-hovered", "true") })(clickedElem.nextElementSibling),
+         onmouseleave: (c => () =>  { c.removeAttribute("ghost-hovered") })(clickedElem.nextElementSibling)
         });
       }
       if(!selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
@@ -1930,13 +1930,13 @@ editionscript = """
             <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
               {title: "Select first child (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
               {onclick: (c => event => {
-                let firstChild = c.children[0];
+                let firstChild = c;
                 if(firstChild.tagName === "TBODY" && firstChild.children && firstChild.children.length > 0) firstChild = firstChild.children[0];
                 editor_model.clickedElem = firstChild;
                 editor_model.notextselection = true;
-                updateInteractionDiv()})(clickedElem),
-               onmouseenter() { clickedElem.children[0].setAttribute("ghost-hovered", "true") },
-               onmouseleave() { clickedElem.children[0].removeAttribute("ghost-hovered") }
+                updateInteractionDiv()})(clickedElem.children[0]),
+               onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.children[0]),
+               onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.children[0])
                }
             );
       }
