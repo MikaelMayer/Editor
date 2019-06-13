@@ -12,14 +12,14 @@
 ---------------------------------------------------------}
 listGetOrElse key listDict default = listDict.get key listDict |> Maybe.withDefault default
 
-{-
+{--
 updatecheckpoint name x = {
   apply x = x
   update {input, outputNew, diffs} =
     let _ = Debug.log """Checkpoint @name""" () in  
     Ok (InputsWithDiffs [(outputNew, Just diffs)])
 }.apply x
--}
+--}
 
 preludeEnv = let _ = googlesigninbutton in -- Forces googlesigninbutton to be evaluated before preludeEnv
   __CurrentEnv__
@@ -101,9 +101,20 @@ path =
  Retrieves the string content of the path. For folders, creates a custom page
 ----------------------------------------------------------------------------}
 
+applyDotEditor source = 
+  let prefix = Regex.extract "^(.*/)[^/]*$" path |> Maybe.map (\[prefix] -> prefix) |> Maybe.withDefault "" in
+  let dotEditor = prefix +  ".editor" in
+  case fs.read dotEditor of
+    Nothing -> source
+    Just modifier ->
+      case __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::("content", source)::preludeEnv) modifier of
+        Err msg -> let _ = Debug.log ("Error while executing " + dotEditor + " : " + msg) () in
+          source
+        Ok newSource -> newSource
+
 (sourcecontent, folderView): (String, Boolean)
 (sourcecontent, folderView) = --updatecheckpoint "sourcecontent" <|
-  Tuple.mapFirst String.newlines.toUnix <|
+  Tuple.mapFirst String.newlines.toUnix <| --updatecheckpoint "newlines restored" <|
   if path == "server.elm" then
     ("""<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""", False)
   else
@@ -129,6 +140,7 @@ path =
         """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
       else
         fs.read path
+      |> Maybe.map applyDotEditor
       |> Maybe.withDefaultReplace (
         serverOwned "404 page" """<html><head></head><body>@(
             if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
@@ -256,6 +268,8 @@ main =
            serverOwned "initial script" initialScript ++
            bodychildren ++
            (serverOwned "synchronization script and placeholder" [<script>@editionscript</script>, <div class="bottom-placeholder"> </div>])]
+      ["head", headattrs, headChildren] ->
+        ["head", headattrs, <meta name="viewport" content="width=device-width"> :: headChildren]
       x -> x -- head
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -936,8 +950,10 @@ function duplicate(node, options) {
   if(typeof options == "undefined") options = {}
   if(typeof options.onBeforeInsert != "function") options.onBeforeInsert = e => e;
   if(node != null && node.parentNode != null) {
-    var insertBeforeNode = options.after ? node.nextSibling : node;
-    if(node.nextSibling != null) {
+    var parentInsertion = options.target ? options.target.parentElement : node.parentElement;
+    var insertBeforeNode = options.after ? options.target ? options.target.nextSibling : node.nextSibling :
+                                           options.target ? options.target             : node;
+    if(node.nextSibling != null && !options.target) {
       var next = node.nextSibling;
       if(next.nodeType == 3 && next.nextSibling != null &&
          next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
@@ -951,7 +967,7 @@ function duplicate(node, options) {
       }
     }
     var cloned = options.onBeforeInsert(node.cloneNode(true));
-    insertBefore(node.parentNode, cloned, insertBeforeNode);
+    insertBefore(parentInsertion, cloned, insertBeforeNode);
     return cloned;
   }
 }
@@ -1446,7 +1462,7 @@ editionscript = """
             s = s ? s.anchorNode : s;
             s = s ? s.parentNode : s;
             lastclick = new Date().valueOf();
-            onClickOnLink({target: s, modify: true});
+            onClickGlobal({target: s, modify: true});
           }
           // Open link.
         }
@@ -1514,10 +1530,27 @@ editionscript = """
       return href;
     }
     
-    var currentlySelectedElement = undefined;
-    
-    onClickOnLink = function (event) {
+    onClickGlobal = function (event) {
       var clickedElem = event.target;
+      
+      var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
+      var matchOptions = function(clickedElem) {
+        var result = true;
+        for(let i = 0; i < editorSelectOptions.length; i++) {
+          let negativeSelector = editorSelectOptions[i].getAttribute("editor-noselect"),
+              positiveSelector = editorSelectOptions[i].getAttribute("editor-doselect");
+          if(result && negativeSelector) {
+            result = !clickedElem.matches(negativeSelector);
+          }
+          if(!result && positiveSelector) {
+            result = clickedElem.matches(positiveSelector);
+          }
+        }
+        return result;
+      }
+      while(clickedElem && editorSelectOptions && !matchOptions(clickedElem)) {
+        clickedElem = clickedElem.parentElement;
+      }
       var ancestors = [];
       var tmp = clickedElem;
       var aElement;
@@ -1532,8 +1565,8 @@ editionscript = """
         if(tmp.getAttribute && tmp.getAttribute("id") == "context-menu") {
           ancestorIsContextMenu = true;
         }
-        if(!aElement && clickedElem.tagName === "A") { // First link.
-          aElement = clickedElem;
+        if(!aElement && tmp.tagName === "A") { // First link.
+          aElement = tmp;
           link = aElement.getAttribute("href");
         }
         tmp = tmp.parentElement;
@@ -1543,14 +1576,9 @@ editionscript = """
       //console.log("not modify box", ancestors)
       document.querySelector("#context-menu").classList.remove("visible");
       
-      currentlySelectedElement = undefined;
-      if(clickedElem.setAttribute) {
-        currentlySelectedElement = clickedElem;
-      } else if(clickedElem.parentNode.setAttribute) {
-        currentlySelectedElement = clickedElem.parentNode;
-      }
       editor_model.clickedElem = clickedElem;
       editor_model.link = link;
+      editor_model.link_href_source = aElement; // So that we can modify it
       editor_model.insertElement = false;
       editor_model.advanced = false;
       updateInteractionDiv();
@@ -2237,7 +2265,7 @@ editionscript = """
           }
         }"""
     else if varedit then
-      """document.addEventListener('click', onClickOnLink, false);"""
+      """document.addEventListener('click', onClickGlobal, false);"""
     else "")
 @(if iscloseable then """
 window.onbeforeunload = function (e) {

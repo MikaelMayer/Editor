@@ -179,9 +179,18 @@ Editor re-writes the whole page each time a update is back-propagated. It is how
 * Any node with an `id` and a `save-ghost-attributes` DOM attribute will have all its attributes, whose name are encoded in the value of `save-ghost-attributes` separated with spaces, restored. Attributes in `save-ghost-attributes` are automatically considered as ghost attributes, so no `list-ghost-attributes` is necessary;
 * Any node with a `save-ghost` attribute set to `true`, that is a child of `head` or whose parent has an `id`, will be reinserted back as a child to the `head` or the parent, if it does not yet exists.
 
-#### Add edition capabilities to your webpage
+#### Add/Customize edition capabilities on your webpage
 
-When Editor is in Edit mode, the following style is injected to the page:
+**Selectability**: If you want some elements not to be selectable when clicking on them,
+but their parents should be selected instead, insert the following statement in the header:
+
+    <meta editor-noselect=[CSS Selector 1] editor-doselect=[CSS Selector 2]>
+
+Whatever clicked element matching `[CSS Selector 1]` will pass the click to its parent, unless it also satisfies the selector `[CSS Selector 2]`.
+For example, `<meta editor-noselect="td, tr, tbody">` has the effect that clicking on a cell will select the entire table.  
+You can add as many such statements as needed, the last one has precedence over the previous ones.
+
+**Custom edition buttons**: When Editor is in Edit mode, the following style is injected to the page:
 
     .editor-menu { display: initial !important; }
 
@@ -189,7 +198,7 @@ This means that whatever had the class `editor-menu` will be displayed in this e
 For example, `<button style="display:none" class="editor-menu">Click me</button>` is a button that will only appear when the page is opened with Editor in edit mode.
 You can use this mechanism to define your own scripts that self-modify the page.
 
-Here is a couple of function helpers that Editor provides globally to simplify your button's callbacks:
+**JavaScript helpers**: Here is a couple of function helpers that Editor provides globally to simplify your button's callbacks:
 
     // Recursively deletes all text nodes of the HtmlNode
     emptyTextContent(node: HtmlNode)
@@ -207,7 +216,9 @@ Here is a couple of function helpers that Editor provides globally to simplify y
     // All options have default values.
     // options: {
     //   // If `after` is true, then the cloned node is inserted *after* the original node instead of before (default);
-    //   after: Bool, 
+    //   after: Bool,
+    //   // If set, will insert the cloned node after or before this target.
+    //   target: HtmlNode,
     //   // `onBeforeInsert` transforms the cloned node just before it is inserted.
     //   onBeforeInsert: HtmlNode -> HtmlNode
     // }
@@ -215,6 +226,22 @@ Here is a couple of function helpers that Editor provides globally to simplify y
     
     // Removes a node. If the node is a <tr>, <th>, <td> or <li>, removes the whitespace before as well.
     remove(node: HtmlNode)
+
+**Externalize edition features**: Instead of adding advanced editing capabilities directly to the files you want to edit,
+you can also describe how to add edition features as a separate file.
+Add a file `.editor` in the folder containing the files to modify. The content is Elm code taking `path` and `content` as input,
+and it should the modified content. For example, here is a `.editor` file that adds a button at the end of the body for all html files:
+
+    if Regex.matchIn "\\.html$" path then
+      content |>
+      Regex.replace "(?=</body>)" (\m ->
+        String.update.freezeLeft <| String.update.freezeRight <|
+          """<button onclick="this.insertAdjacentHTML('beforebegin', '\n<p>Paragraph</p>')"
+               >Add paragraph</button>"""
+    else
+      content
+
+`String.update.freezeLeft` prevents the inserted paragraph to appear in this `.editor` file.
 
 ### Security
 
