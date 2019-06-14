@@ -1503,11 +1503,8 @@ editionscript = """
       document.onkeydown = function(e) {
         var key = e.which || e.keyCode;
         if (e.which == 83 && (e.ctrlKey || e.metaKey)) { // CTRL+S or CMD+S: Save
-          closeLinkWindow();
-          if(document.getElementById("saveambiguity")) {
-            eval(document.getElementById("saveambiguity").getAttribute("onclick") || "console.log('no onclick for saveambiguity')")
-          } else {
-            sendModificationsToServer();
+          if(document.getElementById("savebutton") && document.getElementById("savebutton").onclick) {
+            document.getElementById("savebutton").onclick();
           }
           e.preventDefault();
         }
@@ -1524,7 +1521,6 @@ editionscript = """
           // Open link.
         }
       };
-      document.onkeyup = document.onkeydown
       
       var bodyeditable = document.querySelector("body[contenteditable=true]");
       var onKeypress = e => {
@@ -1776,7 +1772,8 @@ editionscript = """
       )
       addModifyMenuIcon(saveSVG,
       {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
-          style: nextVisibleBarButtonPosStyle()
+          style: nextVisibleBarButtonPosStyle(),
+          id: "savebutton"
       },
         {onclick: editor_model.disambiguationMenu ? 
           ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
