@@ -404,6 +404,7 @@ input:checked + .slider:before {
   color: #FFF;
   padding-left: 3px;
   vertical-align: top;
+  display: block;
 }
 a.troubleshooter {
   position: absolute;
@@ -434,13 +435,6 @@ span.label-checkbox:hover {
   cursor: pointer;
 }
 
-.solution.selected {
-  outline: black 2px solid;
-}
-.to-be-selected {
-  outline: #FCC 2px solid;
-  animation:spin 1s linear infinite;
-}
 @@keyframes spin{
 	from {
     outline-color: #FAA;
@@ -455,12 +449,64 @@ span.label-checkbox:hover {
     outline-color: #FAA;
   }	
 }
+
+span#ambiguity-id {
+  color: #9dff00;
+  display: block;
+}
+.solution {
+  display: block;
+  padding: 3px;
+}
+.solution.selected {
+  background: rgba(255,255,255,0.2);
+}
+.to-be-selected {
+  outline: #FCC 2px solid;
+  animation:spin 1s linear infinite;
+}
 .solution:not(.selected):hover {
-  outline: #999 2px solid;
+  background: rgba(255,255,255,0.1);
   cursor: pointer;
 }
 .solution.notfinal {
-  color: #666;
+  color: #f6f6aa;
+}
+.add {
+  background: lightgreen
+}
+.remove {
+  background: #f8a7a7;
+  text-decoration: line-through
+}
+div.disambiguationMenu {
+  padding-left: 0.3em;
+  padding-top: 0.3em;
+  padding-bottom: 0.3em;
+  border: 2px solid #f6f6aa;
+}
+.codepreview {
+  font-family: monospace;
+  padding: 3px;
+  background: white;
+  color: black;
+  margin-left: 0.1em;
+}
+.solution:not(.selected) .codepreview {
+  background: rgba(255,255,255,0.8);
+}
+#modify-menu button.modifyMenuButton {
+  background-color: var(--context-button-color);
+  min-height: var(--context-button-width);
+  color: white;
+  border-style: none;
+  margin-top: 5px;
+  padding: 0.4em;
+  font-weight: bold;
+  cursor: pointer;
+}
+#modify-menu button.modifyMenuButton:hover {
+  background-color: var(--context-button-color-hover);
 }
 #editor_codepreview, #manualsync-menuitem {
   display: none;
@@ -566,7 +612,6 @@ div#modify-menu {
   background-color: var(--context-button-color-hover);
 }
 div#modify-menu > div.modify-menu-icons {
-  height: var(--context-menu-height);
   width: 100%;
   overflow-x: auto;
 }
@@ -1132,22 +1177,34 @@ editionscript = """
             var summaries = JSON.parse(ambiguitySummaries);
             
             var disambiguationMenuContent = [];
-            disambiguationMenuContent.push(el("span#ambiguity-id", {style: "color:red", v: ambiguityKey}, "Ambiguity."));
-            disambiguationMenuContent.push(" Solutions ");
+            disambiguationMenuContent.push(el("span#ambiguity-id", {v: ambiguityKey}, "Choose the update you prefer, and click the save button:"));
+            // Find the common path of all files so that we don't need to repeat its name or path.
+            var fileOf = x => x.replace(/^(.*): *\n[\s\S]*$/, "$1")
+            var commonPrefix = fileOf(summaries[1]);
             for(var i = 1; i <= n; i++) {
-              var summary = summaries[i-1].replace(/"/g,'&quot;');
-              if(i == selected) {
-                disambiguationMenuContent.push(el("span.solution.selected", {title: summary}, "#" + i));
-              } else {
-                disambiguationMenuContent.push(" ");
-                disambiguationMenuContent.push(el("span.solution" + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
-                title: summary, onclick:`this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})`}, "#" + i));
+              while(!fileOf(summaries[i - 1]).startsWith(commonPrefix)) {
+                let n = commonPrefix.replace(/^(.*)(?:\/|\\).*$/, "$1");
+                commonPrefix = n === commonPrefix ? "" : n;
               }
             }
-            disambiguationMenuContent.push(" ");
-            disambiguationMenuContent.push(el("button#saveambiguity", {onclick: `acceptAmbiguity("${ambiguityKey}", ${selected})`}, "Save"));
-            disambiguationMenuContent.push(el("button#cancelAmbiguity", {onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
+            if(commonPrefix) {
+              disambiguationMenuContent.push(el("span#ambiguity-prefix", {}, commonPrefix + ":"));
+            }
+            for(var i = 1; i <= n; i++) {
+              var summary = summaries[i-1].substring(commonPrefix.length).
+                    replace(/"/g,'&quot;').
+                    replace(/</g, "&lt;").
+                    replace(/---\)|\+\+\+\)/g, "</span>").
+                    replace(/\(---/g, "<span class='remove'>").
+                    replace(/\(\+\+\+/g, "<span class='add'>").
+                    replace(/(\nL\d+C\d+:)(.*)/, "$1<span class='codepreview'>$2</span>");
+              disambiguationMenuContent.push(el("span.solution" + (i == selected ? ".selected" : "") + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
+              title: i == selected ? "Currently displaying this solution" : "Select this solution" + (i == n && ambiguityEnd != 'true' ? " (compute further solutions after if any)" : ""), onclick: i == selected ? `` : `this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})`}, "", {innerHTML: "#" + i + " " + summary}));
+            }
+            disambiguationMenuContent.push(el("button.modifyMenuButton#cancelAmbiguity", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
             editor_model.disambiguationMenu = el("div.disambiguationMenu", {}, disambiguationMenuContent);
+            editor_model.disambiguationMenu.ambiguityKey = ambiguityKey;
+            editor_model.disambiguationMenu.selected = selected;
             editor_model.clickedElem = undefined;
             editor_model.notextselection= false;
             editor_model.caretPosition= undefined;
@@ -1421,7 +1478,7 @@ editionscript = """
           }
         })(xhr, f.type, insertRelative ? f.name : storageLocation, f.name);
         @(if listDict.get "browserSide" defaultOptions == Just True then """
-        xhr.open("POST", "/editor.php?location=" + encodeURIComponent(storageLocation), true);
+        xhr.open("POST", "/editor/editor.php?location=" + encodeURIComponent(storageLocation), true);
         """ else """
         xhr.open("POST", storageLocation, true);
         """);
@@ -1718,10 +1775,13 @@ editionscript = """
         })(clickedElem)}
       )
       addModifyMenuIcon(saveSVG,
-      {title: "Save", "class": "saveButton" + (editor_model.canSave ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
+      {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           style: nextVisibleBarButtonPosStyle()
       },
-        {onclick: function(event) {
+        {onclick: editor_model.disambiguationMenu ? 
+          ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
+            editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
+          : function(event) {
             if(!this.classList.contains("disabled")) {
               sendModificationsToServer();
             }

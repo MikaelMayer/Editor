@@ -209,28 +209,41 @@ function applyOperations(operations) {
 }
 
 function stringDiffSummary(oldString, newString, stringDiffs) {
-  if(stringDiffs["$d_ctor"] == "Nothing") return "";
+  if(stringDiffs["$d_ctor"] == "Nothing") return "[No change observed]";
   if(stringDiffs["$d_ctor"] == "Just") stringDiffs = stringDiffs.args._1;
   var listStringDiffs = stringDiffs.args._1; // It's a VStringDiffs
   var offset = 0;
   var summary = "";
+  var lastLineNumber = -1;
+  var lastEnd = -1;
+  var lastLine = "";
+  var lastLineAfterRemoved = "";
   for(var i = 0; i < listStringDiffs.length; i++) {
     var {args: {_1: start, _2: end, _3: replaced}} = listStringDiffs[i];
     var removed = oldString.substring(start, end);
     var inserted = newString.substring(start + offset, start + offset + replaced);
     var beforeRemoved = oldString.substring(0, start);
-    var linesBeforeRemoved = beforeRemoved.split(/\r\n|\r|\n/);
+    var afterRemoved = oldString.substring(end);
+    var linesBeforeRemoved = beforeRemoved.split(/\r?\n/);
     var lineNumber = linesBeforeRemoved.length;
     var charNumber = linesBeforeRemoved[linesBeforeRemoved.length - 1].length + 1;
-    summary += "L" + lineNumber + "C" + charNumber + ", "
-    if(removed == "")
-      summary += "inserted '" + inserted + "'";
-    else if(inserted == "")
-      summary += "removed '" + removed + "'";
-    else
-      summary += "removed '" + removed + "', inserted '"+ inserted +"'";
+    var lineBeforeRemoved = linesBeforeRemoved[linesBeforeRemoved.length - 1];
+    var lineAfterRemoved = afterRemoved.split(/\r?\n/)[0];
+    if(lineNumber === lastLineNumber) {
+      summary += oldString.substring(lastEnd, start);
+    } else {
+      summary += lastLineAfterRemoved + "\nL" + lineNumber + "C" + charNumber + ":" +
+        lineBeforeRemoved;
+    }
+    summary +=
+          (removed === "" ? "" : "(---" + removed + "---)") +
+          (inserted === "" ? "" : "(+++" + inserted + "+++)");
+    lastEnd = end;
+    lastLineAfterRemoved = lineAfterRemoved;
     offset += replaced - (end - start);
+    lastLineNumber = lineNumber;
   }
+  summary += lastLineAfterRemoved;
   return summary;
 }
 
@@ -245,7 +258,7 @@ function fileOperationSummary(operations) {
     var {_1: filepath, _2: action} = operations[i];
     if(summary != "") summary += "\n";
     if(action["$d_ctor"] == "Write") {
-      summary += "Modify " + relativePath(filepath) + ", " + stringDiffSummary(action.args._1, action.args._2, action.args._3);
+      summary += relativePath(filepath) + ": " + stringDiffSummary(action.args._1, action.args._2, action.args._3);
     } else if(action["$d_ctor"] == "Create") {
       summary += "Created " + relativePath(filepath);
     } else if(action["$d_ctor"] == "Rename") {
