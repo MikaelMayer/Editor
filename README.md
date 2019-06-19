@@ -113,9 +113,15 @@ Editor can be run with some commands to change its default behavior.
 #### Uploading media files.
 
 When Editor displays a webpage in edit mode, place the caret anywhere and drop an image from your file system.
-Images are automatically uploaded at the current relative location, and an &lt;img&gt; is inserted. See how this works:
+Images are automatically uploaded at the same location the first image of the page is fetched from, or the current relative location if no image exists yet. After the image is uploaded, an &lt;img&gt; is inserted. See how this works:
 
   ![Demo of image drop](/drop-image.gif?raw=true)
+
+To customize where to save the image (e.g. in the top-level folder `media/images`), add the following to you document's header:
+
+    <meta editor-storagefolder="media/images" file-type="image">
+
+Instead of adding this line directly to the &lt;head&gt;, you might want to add it as an editor plug-in (look for **Externalize edition features** in this document).
 
 #### Edit links
 

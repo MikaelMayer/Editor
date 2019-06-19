@@ -1050,9 +1050,37 @@ editor.uploadFile = function(targetPathName, file, onOk, onError) {
   """);
   xhr.send(file);
 }
+// Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
+editor.getStorageFolder = function(file) {
+  var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
+  for(let s of storageOptions) {
+    if(file.type.startsWith(s.getAttribute("file-type") || "")) {
+      let sf = storageOptions.getAttribute("editor-storagefolder") || "";
+      if(!sf.endsWith("/")) sf = sf + "/";
+      return sf;
+    }
+  }
+  let extension = "";
+  if(file && file.type.startsWith("image")) {
+    var otherImages = document.querySelectorAll("img[src]");
+    for(let i of otherImages) {
+       extension = (i.getAttribute("src") || "").replace(/[^\/]*$/, "");
+       break;
+    }
+    if(extension[0] == "/") { // Absolute URL
+      return extension;
+    }
+  }
+  // extension ends with a / or is empty
+  var tmp = location.pathname.split("/");
+  tmp = tmp.slice(0, tmp.length - 1);
+  storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
+  return storageFolder;
+}
 </script>
 ]
-    
+
+-- Script added to the end of the page
 editionscript = """
   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
@@ -1481,13 +1509,8 @@ editionscript = """
     
     function uploadFilesAtCursor(files) {
       // files is a FileList of File objects. List some properties.
-      var insertRelative = true;
-      var output = [];
-      var tmp = location.pathname.split("/");
-      tmp = tmp.slice(0, tmp.length - 1);
-      var storageFolder = tmp.join("/");
       for (var i = 0, f; f = files[i]; i++) {
-        var targetPathName =  storageFolder + "/" + f.name;
+        var targetPathName =  editor.getStorageFolder(f) + f.name;
         //if(f.size < 30000000)
         editor.uploadFile(targetPathName, f, (targetPathName, f) => {
           @(    if folderView then """
