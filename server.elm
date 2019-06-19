@@ -119,21 +119,7 @@ applyDotEditor source =
     ("""<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""", False)
   else
     if fs.isdir path then
-      flip (,) True <|
-      let
-        pathprefix = if path == "" then path else path + "/"
-        maybeUp = case Regex.extract "^(.*)/.*$" path of
-          Just [prev] -> """<li><a href="/@prev">..</li> :: """
-          _ -> if path == "" then "" else """<li><a href="/" contenteditable="false">..</li> ::"""
-      in
-      """
-      <html><head></head><body><h1><a href=''>/@path</a></h1>
-      @@(["ul", [], @maybeUp (List.map (\name -> <li><a href=("/@pathprefix" + name)>@@name</li>) (fs.listdir path))])
-      Hint: place a
-      <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,
-      <a href=("/@(pathprefix)index.html?edit=true") contenteditable="false">index.html</a> or
-      <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
-      file to display something else than this page.</body></html>"""
+      ("", True)
     else
       flip (,) False <|
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
@@ -217,8 +203,33 @@ evaluatedPage =
         x -> 
           let markdownstyle = fs.read "markdown.css" |> Maybe.withDefaultReplace defaultMarkdowncss in
           Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
-  else if Regex.matchIn """\.(elm|leo)$""" path || fs.isdir path then
+  else if Regex.matchIn """\.(elm|leo)$""" path then
     __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent
+  else if fs.isdir path then
+    let
+      pathprefix = if path == "" then path else path + "/"
+      getParams = "?ls=true&edit" --TODO Fix reroute to include correct params from previous url
+      maybeUp fileList = case Regex.extract "^(.*)/.*$" path of
+        Just [prev] -> <span><input type="radio" id=".." name="filesBtn" value=".."><a href=("../"+ "?ls=true&edit")>..<br></span> :: fileList
+        _ -> if path == "" then fileList else <li><a href="/" contenteditable="false">..</li> :: fileList
+      getNm name = Regex.replace "//" "/" (name + "/" + getParams)
+    in
+    Ok <html><head></head><body><h1><a href=''>/@path</a></h1>
+    <!--@(["ul", [], maybeUp <| List.map (\name -> <li><a href=("""/@pathprefix""" + name)>@name</li>) (fs.listdir path)])-->
+    <!--@(["ul", [], maybeUp <| List.map (\name -> <li><a href=("/" + pathprefix + name)>@name</li>) (fs.listdir path)])-->
+    <!--@(["div", [], maybeUp <| List.map (\name -> <li><a href=("/" + pathprefix + name)>@name</li>) (fs.listdir path)])-->
+    <!--@(["ul", [], maybeUp <| List.map (\name -> <li><a href=("/" + pathprefix + name)>@name</li>) (fs.listdir path)])-->
+    <!--@(["ul", [], maybeUp <| List.map (\name -> <li><a href=("/" + pathprefix + name)>@name</li>) (fs.listdir path)])-->
+    <!--(maybeUp <| (List.map (\name -> name) (fs.listdir path)))-->
+    @(["div", [], maybeUp <| List.map 
+                             (\name -> <span><input type="radio" id=name name="filesBtn" value=name><a href=@(getNm name)>@name<br></span>) 
+                             (fs.listdir path)])
+    
+    Hint: place a
+    <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,
+    <a href=("/@(pathprefix)index.html?edit=true") contenteditable="false">index.html</a> or
+    <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
+    file to display something else than this page.</body></html>
   else if Regex.matchIn """\.txt$""" path then
     Ok <html><head></head><body>
       <textarea id="thetext" style="width:100%;height:100%" initdata=@sourcecontent
