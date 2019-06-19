@@ -119,7 +119,21 @@ applyDotEditor source =
     ("""<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""", False)
   else
     if fs.isdir path then
-      ("", True)
+      flip (,) True <|
+      let
+        pathprefix = if path == "" then path else path + "/"
+        maybeUp = case Regex.extract "^(.*)/.*$" path of
+          Just [prev] -> """<li><a href="/@prev">..</li> :: """
+          _ -> if path == "" then "" else """<li><a href="/" contenteditable="false">..</li> ::"""
+      in
+      """
+      <html><head></head><body><h1><a href=''>/@path</a></h1>
+      @@(["ul", [], @maybeUp (List.map (\name -> <li><a href=("/@pathprefix" + name)>@@name</li>) (fs.listdir path))])
+      Hint: place a
+      <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,
+      <a href=("/@(pathprefix)index.html?edit=true") contenteditable="false">index.html</a> or
+      <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
+      file to display something else than this page.</body></html>"""
     else
       flip (,) False <|
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
@@ -203,33 +217,8 @@ evaluatedPage =
         x -> 
           let markdownstyle = fs.read "markdown.css" |> Maybe.withDefaultReplace defaultMarkdowncss in
           Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
-  else if Regex.matchIn """\.(elm|leo)$""" path then
+  else if Regex.matchIn """\.(elm|leo)$""" path || fs.isdir path then
     __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent
-  else if fs.isdir path then
-    let
-      pathprefix = if path == "" then path else path + "/"
-      getParams = "?ls=true&edit" --TODO Fix reroute to include correct params from previous url
-      maybeUp fileList = case Regex.extract "^(.*)/.*$" path of
-        Just [prev] -> <span><input type="radio" id=".." name="filesBtn" value=".."><a href=("../"+ "?ls=true&edit")>..<br></span> :: fileList
-        _ -> if path == "" then fileList else <li><a href="/" contenteditable="false">..</li> :: fileList
-      getNm name = Regex.replace "//" "/" (name + "/" + getParams)
-    in
-    Ok <html><head></head><body><h1><a href=''>/@path</a></h1>
-    <!--@(["ul", [], maybeUp <| List.map (\name -> <li><a href=("""/@pathprefix""" + name)>@name</li>) (fs.listdir path)])-->
-    <!--@(["ul", [], maybeUp <| List.map (\name -> <li><a href=("/" + pathprefix + name)>@name</li>) (fs.listdir path)])-->
-    <!--@(["div", [], maybeUp <| List.map (\name -> <li><a href=("/" + pathprefix + name)>@name</li>) (fs.listdir path)])-->
-    <!--@(["ul", [], maybeUp <| List.map (\name -> <li><a href=("/" + pathprefix + name)>@name</li>) (fs.listdir path)])-->
-    <!--@(["ul", [], maybeUp <| List.map (\name -> <li><a href=("/" + pathprefix + name)>@name</li>) (fs.listdir path)])-->
-    <!--(maybeUp <| (List.map (\name -> name) (fs.listdir path)))-->
-    @(["div", [], maybeUp <| List.map 
-                             (\name -> <span><input type="radio" id=name name="filesBtn" value=name><a href=@(getNm name)>@name<br></span>) 
-                             (fs.listdir path)])
-    
-    Hint: place a
-    <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,
-    <a href=("/@(pathprefix)index.html?edit=true") contenteditable="false">index.html</a> or
-    <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
-    file to display something else than this page.</body></html>
   else if Regex.matchIn """\.txt$""" path then
     Ok <html><head></head><body>
       <textarea id="thetext" style="width:100%;height:100%" initdata=@sourcecontent
@@ -1170,14 +1159,8 @@ editionscript = """
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
           var saved = saveGhostAttributes();
           
-          let scrollpos = editor_model.curScrollPos;
-          let isSource = editor_model.displaySource;
-          
           //source of the editing menu disappearing after reloading
           replaceContent(xmlhttp.responseText);
-
-          editor_model.curScrollPos = scrollpos;
-          editor_model.displaySource = isSource;
           
           applyGhostAttributes(saved);
           var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
@@ -1681,17 +1664,17 @@ editionscript = """
     var ifAlreadyRunning = typeof editor_model === "object";
     
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
+      //makes visibility of editor model consistent throughout reloads
       visible: ifAlreadyRunning ? editor_model.visible : false,
       clickedElem: undefined,
       notextselection: false,
       caretPosition: undefined,
       link: undefined,
       advanced: ifAlreadyRunning ? editor_model.advanced : false,
-      displaySource: false,
+      displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
       disambiguationMenu: undefined,
       isSaving: false,
       //new attribute to keep menu state after reload
-      sourceOpened: ifAlreadyRunning ? editor_model.sourceOpened : false,
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
                     @(case listDict.get "question" vars of
@@ -1783,6 +1766,7 @@ editionscript = """
         {title: "Open/close settings tab", "class": "inert", style: nextVisibleBarButtonPosStyle() },
         {onclick: (contextMenu => function(event) {
             document.querySelector("#modify-menu").classList.toggle("visible");
+            editor_model.visible = !editor_model.visible;
             this.innerHTML = panelOpenCloseIcon();
           })(contextMenu)
         });
@@ -1792,7 +1776,13 @@ editionscript = """
          style: nextVisibleBarButtonPosStyle()
         },
         {onclick: (c => function(event) {
-          editor_model.advanced = !editor_model.advanced;
+          //defaults to turning on advanced menu if the editor model is already visible, otherwise toggles advanced menu.
+          if(editor_model.visible) {
+            editor_model.advanced = !editor_model.advanced;
+          }
+          else {
+            editor_model.advanced = true;
+          }
           editor_model.visible = true;
           updateInteractionDiv();
         })(clickedElem)}
@@ -1829,9 +1819,10 @@ editionscript = """
           {"class": "tagName" + (model.displaySource ? " selected" : ""), title: model.displaySource ? "Hide source" : "Show Source"},
             {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv(); } }
         );
+        //when we click reload, it will save the current scroll position as the one it was at the beginning of the run
         addModifyMenuIcon(reloadSVG,
           {"class": "tagName", title: "Reload the current page"},
-            {onclick: function(event) { editor_model.hasReloaded = true; editor_model.curScrollPos = (editor_model.displaySource ? document.getElementById("sourcecontentmodifier").scrollTop : 0);
+            {onclick: function(event) { editor_model.curScrollPos = (editor_model.displaySource ? document.getElementById("sourcecontentmodifier").scrollTop : 0);
               reloadPage(); } }
         );
         addModifyMenuIcon(folderSVG,
@@ -1863,13 +1854,9 @@ editionscript = """
                })])); 
           let sourceEdit = document.getElementById("sourcecontentmodifier")
           //Added by Mark Nie on 6/18-6/19
-          //console.log("Scroll position in this run is:" + sourceEdit.scrollTop);
-          if(model.sourceOpened)
-          {
-              sourceEdit.scrollTop = editor_model.curScrollPos;
-              editor_model.sourceOpened = false;
-          }
-          model.sourceOpened = true;
+          //console.log("Scroll position before is:" + sourceEdit.scrollTop);
+          //console.log("Stored scroll position is:" + editor_model.curPos);
+          sourceEdit.scrollTop = editor_model.curScrollPos;             
         }
         modifyMenuDiv.append(
           el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
