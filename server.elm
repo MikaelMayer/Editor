@@ -1158,9 +1158,19 @@ editionscript = """
           //console.log("Received new content. Replacing the page.");
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
           var saved = saveGhostAttributes();
-          replaceContent(xmlhttp.responseText);
-          applyGhostAttributes(saved);
           
+          let scrollpos = editor_model.curScrollPos;
+          let isReloaded = editor_model.hasReloaded;
+          let isSource = editor_model.displaySource;
+          
+          //source of the editing menu disappearing after reloading
+          replaceContent(xmlhttp.responseText);
+
+          editor_model.hasReloaded = isReloaded;
+          editor_model.curScrollPos = scrollpos;
+          editor_model.displaySource = isSource;
+          
+          applyGhostAttributes(saved);
           var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
           var newQueryStr = xmlhttp.getResponseHeader("New-Query");
           var ambiguityKey = xmlhttp.getResponseHeader("Ambiguity-Key");
@@ -1206,10 +1216,10 @@ editionscript = """
             editor_model.disambiguationMenu.ambiguityKey = ambiguityKey;
             editor_model.disambiguationMenu.selected = selected;
             editor_model.clickedElem = undefined;
-            editor_model.notextselection= false;
-            editor_model.caretPosition= undefined;
-            editor_model.link= undefined;
-            editor_model.advanced= true; // Opens advanced mode.
+            editor_model.notextselection = false;
+            editor_model.caretPosition = undefined;
+            editor_model.link = undefined;
+            editor_model.advanced = true; // Opens advanced mode.
             //editor_model.displaySource: false, // Keep source opened or closed
             // TODO: Disable click or change in DOM until ambiguity is resolved.
           } else {
@@ -1218,26 +1228,27 @@ editionscript = """
             if(opSummaryEncoded) {
               var opSummary = decodeURI(opSummaryEncoded);
               let newMenu = el("menuitem#lastaction", {},
-                  el("span.summary", {}, "Last action: " + opSummary));
+                  el("span.summary", {}, "Last action: " + opSummary)) 
               editor_model.feedback = newMenu;
               var newmenutimeout = setTimeout(function() { editor_model.feedback = undefined; newMenu.remove(); }, 2000);
               newMenu.onclick = ((n) => () => clearTimeout(n))(newmenutimeout);
             }
           }
+          
           var strQuery = "";
           if(newQueryStr !== null) {
             var newQuery = JSON.parse(newQueryStr);
             for(var i = 0; i < newQuery.length; i++) {
               var {_1: key, _2: value} = newQuery[i];
               strQuery = strQuery + (i == 0 ? "?" : "&") + key + (value === "" && key == "edit" ? "" : "=" + value)
-            }
+            } 
           }
           if(newLocalURL) { // Overrides query parameters
             window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
           } else if(strQuery) {
             window.history.replaceState({}, "Current page", strQuery);
           }
-          updateInteractionDiv();
+          updateInteractionDiv(); 
         }
     }
     
@@ -1668,6 +1679,10 @@ editionscript = """
       displaySource: false,
       disambiguationMenu: undefined,
       isSaving: false,
+      //new attribute to keep menu state after reload
+      hasReloaded: false,
+      sourceOpened: false,
+      curScrollPos: 0,
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
                     @(case listDict.get "question" vars of
                        Just questionattr -> "true"
@@ -1685,7 +1700,27 @@ editionscript = """
       var clickedElem = model.clickedElem;
       var contextMenu = document.querySelector("#context-menu");
       var modifyMenuDiv = document.querySelector("#modify-menu");
+      //if both are closed, just return 
       if(!modifyMenuDiv || !contextMenu) return;
+      //added by Mark 6/18/19, to resolve menu-closing issue.
+      if(model.hasReloaded)
+      { 
+        //reopens advanced menu (i.e. what you get when you click the gear)
+        editor_model.advanced = true;
+          document.querySelector("#modify-menu").classList.toggle("visible", true);
+        //sets attribute to false so we don't come to this code if we aren't reloaded
+        editor_model.hasReloaded = false;
+        //allows source code to be opened again if it was already open when reload occured
+        if(editor_model.displaySource)
+        {
+          editor_model.sourceOpened = true;
+        }
+        //allows us to reopen/reset all the menus as desired
+        updateInteractionDiv();
+        //makes sure we don't run through the code again for no reason (if we don't return, the code will reset soure code editor's scroll pos)
+        //not sure if this will accidently break anything.
+        return;
+      }
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
       if(clickedElem && clickedElem.nodeType === 1) {
         clickedElem.setAttribute("ghost-clicked", "true");
@@ -1803,11 +1838,12 @@ editionscript = """
         // TODO: Report issue. About.
         addModifyMenuIcon(sourceSVG,
           {"class": "tagName" + (model.displaySource ? " selected" : ""), title: model.displaySource ? "Hide source" : "Show Source"},
-            {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv() } }
+            {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv(); } }
         );
         addModifyMenuIcon(reloadSVG,
           {"class": "tagName", title: "Reload the current page"},
-            {onclick: function(event) { reloadPage() } }
+            {onclick: function(event) { editor_model.hasReloaded = true; editor_model.curScrollPos = (editor_model.displaySource ? document.getElementById("sourcecontentmodifier").scrollTop : 0);
+              reloadPage(); } }
         );
         addModifyMenuIcon(folderSVG,
           {"class": "tagName", title: "List files in current directory"},
@@ -1835,7 +1871,19 @@ editionscript = """
                     document.querySelector("#modify-menu").setAttribute('sourcecontent', this.value);
                   },
                 value: source
-               })]));
+               })])); 
+          let sourceEdit = document.getElementById("sourcecontentmodifier")
+          //Added by Mark Nie on 6/18-6/19
+          //console.log("Scroll position in this run is:" + sourceEdit.scrollTop);
+          if(model.sourceOpened)
+          {
+              //console.log(sourceEdit);  
+              //console.log("Current scroll position is:" + sourceEdit.scrollTop);
+              //console.log("Stored previous position is:" + editor_model.curScrollPos);
+              sourceEdit.scrollTop = editor_model.curScrollPos;
+              editor_model.sourceOpened = false;
+              //console.log("Scroll position after is:" + sourceEdit.scrollTop);
+          }
         }
         modifyMenuDiv.append(
           el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
@@ -2013,7 +2061,7 @@ editionscript = """
       if(!selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
         addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
             <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
-              {title: "Select first child (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
+              {title: "Select first cFhild (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
               {onclick: (c => event => {
                 let firstChild = c;
                 if(firstChild.tagName === "TBODY" && firstChild.children && firstChild.children.length > 0) firstChild = firstChild.children[0];
@@ -2301,6 +2349,7 @@ editionscript = """
         contextMenu.classList.add("visible");
       }
       return true;
+
     }
     
     // Links edition - Might be empty.
