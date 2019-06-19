@@ -318,7 +318,7 @@ switchEditBox toEdit =
 }
 #editbox:hover {
   opacity: 1;
-}
+  
 </style>@msg
 </div>
 
@@ -942,13 +942,13 @@ function handleScriptInsertion(mutations) {
   }
 }
 
-if (typeof analyticsScriptNeutralizer !== "undefined") {
-  // console.log("analyticsScriptNeutralizer.disconnect()");
-  analyticsScriptNeutralizer.disconnect();
+if (typeof automaticGhostMarker !== "undefined") {
+  // console.log("automaticGhostMarker.disconnect()");
+  automaticGhostMarker.disconnect();
 }
 
-analyticsScriptNeutralizer = new MutationObserver(handleScriptInsertion);
-analyticsScriptNeutralizer.observe
+automaticGhostMarker = new MutationObserver(handleScriptInsertion);
+automaticGhostMarker.observe
  ( document.body.parentElement
  , { attributes: false
    , childList: true
@@ -1025,6 +1025,30 @@ function remove(node) {
     }
   }
   node.remove();
+}
+
+// Editor's API should be stored in the variable editor.
+
+editor = typeof editor === "object" ? editor : {};
+editor.uploadFile = function(targetPathName, file, onOk, onError) {
+  var xhr = new XMLHttpRequest();
+  xhr.onreadystatechange = ((xhr, file) => () => {
+    if (xhr.readyState == XMLHttpRequest.DONE) {
+      if (xhr.status == 200 || xhr.status == 201) {
+        onOk ? onOk(targetPathName, file) : 0;
+      } else {
+        console.log("Error while uploading picture or file", xhr);
+        onError ? onError(targetPathName, file) : 0;
+      }
+    }
+  })(xhr, file);
+  @(if listDict.get "browserSide" defaultOptions == Just True then """
+  xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+  """ else """
+  xhr.open("POST", targetPathName, false);
+  xhr.setRequestHeader("write-file", file.type);
+  """);
+  xhr.send(file);
 }
 </script>
 ]
@@ -1454,40 +1478,28 @@ editionscript = """
       var files = evt.dataTransfer.files; // FileList object.
       uploadFilesAtCursor(files);
     }
-      
+    
     function uploadFilesAtCursor(files) {
       // files is a FileList of File objects. List some properties.
       var insertRelative = true;
       var output = [];
+      var tmp = location.pathname.split("/");
+      tmp = tmp.slice(0, tmp.length - 1);
+      var storageFolder = tmp.join("/");
       for (var i = 0, f; f = files[i]; i++) {
-        var xhr = new XMLHttpRequest();
-        var tmp = location.pathname.split("/");
-        tmp = tmp.slice(0, tmp.length - 1);
-        var storageFolder = tmp.join("/");
-        var storageLocation =  storageFolder + "/" + f.name;
+        var targetPathName =  storageFolder + "/" + f.name;
         //if(f.size < 30000000)
-        xhr.onreadystatechange = ((xhr, filetype, path, name) => () => {
-          if (xhr.readyState == XMLHttpRequest.DONE) {
-            if (xhr.status == 200 || xhr.status == 201) {@(if folderView then """
-              reloadPage();"""
-              else """
-              if(filetype.indexOf("image") == 0) {
-                pasteHtmlAtCaret(`<img src="${path}" alt="${name}">`);
-              } else {
-                pasteHtmlAtCaret(`<a href="${path}">${path}</a>`); 
-              }""")
+        editor.uploadFile(targetPathName, f, (targetPathName, f) => {
+          @(    if folderView then """
+            reloadPage();"""
+                else """
+            if(f.type.indexOf("image") == 0) {
+              pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${f.name}">`);
             } else {
-              console.log("Error while uploading picture", xhr);
-            }
-          }
-        })(xhr, f.type, insertRelative ? f.name : storageLocation, f.name);
-        @(if listDict.get "browserSide" defaultOptions == Just True then """
-        xhr.open("POST", "/editor/editor.php?location=" + encodeURIComponent(storageLocation), true);
-        """ else """
-        xhr.open("POST", storageLocation, true);
-        """);
-        xhr.setRequestHeader("write-file", f.type);
-        xhr.send(f);
+              pasteHtmlAtCaret(`<a href="${path}">${path}</a>`); 
+            }"""
+           )
+        })
       }
     }
 
