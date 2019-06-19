@@ -1160,13 +1160,11 @@ editionscript = """
           var saved = saveGhostAttributes();
           
           let scrollpos = editor_model.curScrollPos;
-          let isReloaded = editor_model.hasReloaded;
           let isSource = editor_model.displaySource;
           
           //source of the editing menu disappearing after reloading
           replaceContent(xmlhttp.responseText);
 
-          editor_model.hasReloaded = isReloaded;
           editor_model.curScrollPos = scrollpos;
           editor_model.displaySource = isSource;
           
@@ -1220,6 +1218,7 @@ editionscript = """
             editor_model.caretPosition = undefined;
             editor_model.link = undefined;
             editor_model.advanced = true; // Opens advanced mode.
+            editor_model.visible = true;
             //editor_model.displaySource: false, // Keep source opened or closed
             // TODO: Disable click or change in DOM until ambiguity is resolved.
           } else {
@@ -1671,18 +1670,18 @@ editionscript = """
     var ifAlreadyRunning = typeof editor_model === "object";
     
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
+      visible: ifAlreadyRunning ? editor_model.visible : false,
       clickedElem: undefined,
       notextselection: false,
       caretPosition: undefined,
       link: undefined,
-      advanced: false,
+      advanced: ifAlreadyRunning ? editor_model.advanced : false,
       displaySource: false,
       disambiguationMenu: undefined,
       isSaving: false,
       //new attribute to keep menu state after reload
-      hasReloaded: false,
-      sourceOpened: false,
-      curScrollPos: 0,
+      sourceOpened: ifAlreadyRunning ? editor_model.sourceOpened : false,
+      curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
                     @(case listDict.get "question" vars of
                        Just questionattr -> "true"
@@ -1702,25 +1701,7 @@ editionscript = """
       var modifyMenuDiv = document.querySelector("#modify-menu");
       //if both are closed, just return 
       if(!modifyMenuDiv || !contextMenu) return;
-      //added by Mark 6/18/19, to resolve menu-closing issue.
-      if(model.hasReloaded)
-      { 
-        //reopens advanced menu (i.e. what you get when you click the gear)
-        editor_model.advanced = true;
-          document.querySelector("#modify-menu").classList.toggle("visible", true);
-        //sets attribute to false so we don't come to this code if we aren't reloaded
-        editor_model.hasReloaded = false;
-        //allows source code to be opened again if it was already open when reload occured
-        if(editor_model.displaySource)
-        {
-          editor_model.sourceOpened = true;
-        }
-        //allows us to reopen/reset all the menus as desired
-        updateInteractionDiv();
-        //makes sure we don't run through the code again for no reason (if we don't return, the code will reset soure code editor's scroll pos)
-        //not sure if this will accidently break anything.
-        return;
-      }
+      modifyMenuDiv.classList.toggle("visible", editor_model.visible);
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
       if(clickedElem && clickedElem.nodeType === 1) {
         clickedElem.setAttribute("ghost-clicked", "true");
@@ -1801,7 +1782,7 @@ editionscript = """
         },
         {onclick: (c => function(event) {
           editor_model.advanced = !editor_model.advanced;
-            document.querySelector("#modify-menu").classList.toggle("visible", true);
+          editor_model.visible = true;
           updateInteractionDiv();
         })(clickedElem)}
       )
@@ -1821,9 +1802,6 @@ editionscript = """
         }
       )
       if(model.advanced || model.disambiguationMenu) {
-        if(model.disambiguationMenu) {
-          document.querySelector("#modify-menu").classList.toggle("visible", true)
-        }
         modifyMenuDiv.append(
           el("a", { class:"troubleshooter", href:  "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
         modifyMenuIconsDiv.append(
@@ -1877,13 +1855,10 @@ editionscript = """
           //console.log("Scroll position in this run is:" + sourceEdit.scrollTop);
           if(model.sourceOpened)
           {
-              //console.log(sourceEdit);  
-              //console.log("Current scroll position is:" + sourceEdit.scrollTop);
-              //console.log("Stored previous position is:" + editor_model.curScrollPos);
               sourceEdit.scrollTop = editor_model.curScrollPos;
               editor_model.sourceOpened = false;
-              //console.log("Scroll position after is:" + sourceEdit.scrollTop);
           }
+          model.sourceOpened = true;
         }
         modifyMenuDiv.append(
           el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
