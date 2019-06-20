@@ -1081,7 +1081,7 @@ editor.getStorageFolder = function(file) {
 ]
 
 -- Script added to the end of the page
-editionscript = """
+editionscript = """ 
   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
@@ -1389,6 +1389,9 @@ editionscript = """
         // -- The attribute starts with 'ghost-'
         // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
         // -- It is the modification of a node or an attribute inside a ghost node.
+        /*
+         * Add mutations to undo list if they are not ghosts.
+         */
         var mutation = mutations[i];
         if(hasGhostAncestor(mutation.target)) {
           continue;
@@ -1398,25 +1401,29 @@ editionscript = """
           if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName)) {
           } else {
             onlyGhosts = false;
+            editor_model.undoStack.push(mutation);
             console.log("Attribute is not ghost", mutation);
           }
         } else if(mutation.type == "childList") {
           if(!areChildrenGhosts(mutation.target)) {
-            for(var j = 0; j < mutation.addedNodes.length && onlyGhosts; j++) {
+            for(var j = 0; j < mutation.addedNodes.length&& onlyGhosts; j++) {
               if(!hasGhostAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
+                editor_model.undoStack.push(mutation);
                 console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
               }
             }
             for(var j = 0; j < mutation.removedNodes.length && onlyGhosts; j++) {
               if(!isGhostNode(mutation.removedNodes[j])) {
                 onlyGhosts = false;
+                editor_model.undoStack.push(mutation);
                 console.log(`Removed node ${j} was not a ghost`, mutation);
               }
             }
           }
         } else {
           onlyGhosts = false;
+          editor_model.undoStack.push(mutation);
           console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
         }
       }
@@ -1424,6 +1431,8 @@ editionscript = """
         console.log("mutations are only ghosts, skipping");
         return;
       } // Send in post the new HTML along with the URL
+      
+
       if(!editor_model.autosave) {
         editor_model.canSave = true;
         var saveButtons = document.querySelectorAll(".saveButton");
@@ -1433,6 +1442,7 @@ editionscript = """
         }
         return;
       }
+
       
       if(typeof t !== "undefined") {
         clearTimeout(t);
@@ -1463,6 +1473,106 @@ editionscript = """
          }
        )
      }, 10)
+    
+    function undo() {
+      let undoElem= editor_model.undoStack.pop();
+      if(undoElem == undefined) {
+        return 0;
+      }
+      let mutType = undoElem.type; 
+      let target = undoElem.target;
+      if(mutType == "attribute") {
+        let cur_attr = target.getAttribute(undoElem.attributeName);
+        target.setAttribute(undoElem.attributeName) = undoElem.oldValue;
+        undo.oldValue = cur_attr;
+        editor_model.redoStack.push(undoElem);  
+      }
+      else if(mutType == "characterData") {
+        let cur_data = target.data;
+        target.data = undoElem.oldValue;
+        editor_model.redoStack.push(undoElem);    
+      }
+      else {
+        let undoElem.removedNodes = uRemNodes;
+        let undoElem.addedNodes = uAddNodes;
+        let i = 0;
+        //readding the removed nodes
+        for(i = 0; i < uRemNodes.length; i++) {
+          if(hasGhostAncestor(uRemNodes.item(i))) {
+            continue;
+          }
+          if(target.contains(uRemNodes.item(i))) {
+            alert("Undo of added child was unsuccessful, as the child was already among the child Nodes."); 
+          }
+          else {
+            target.appendChild(uRemNodes.item(i));
+          }
+        }
+        //removing the newly added nodes
+        for(i = 0; i < uAddNodes.length; i++) {
+          if(hasGhostAncestor(uAddNodes.item(i))) {
+            continue;
+          }
+          if(target.removeChild(uAddNodes.item(i)) == null) {
+            alert("Undo of removed child was unsuccessful, as the child did not exist among the child Nodes.");
+          }
+        }
+        //undo.removedNodes.forEach(n => undo.target.appendChild(e));
+        //undo.addedNodes.forEach(n => undo.target.removeChild(e));
+        editor_model.redoStack.push(undoElem);
+      }
+      return 1;
+    }
+
+    function redo() {
+      let redoElem = editor_model.redoStack.pop();
+      if(redoElem == undefined) {
+        return 0;
+      }
+      let mutType = redoElem.type;
+      let target = redoElem.type;
+      if(mutType == "attribute") {
+        let cur_attr = target.getAttribute(redoElem.attributeName);
+        target.setAttribute(redoElem.attributeName);
+        redoElem.oldValue = cur_attr;
+        editor_model.undoStack.push(redoElem);
+      }
+      else if(mutType == "characterData") {
+        let cur_data = target.data;
+        target.data = redo.oldValue;
+        redo.oldValue = cur_data;
+        editor_model.undoStack.push(redoElem);
+      } 
+      else {
+        let redoElem.removedNodes = rRemNodes;
+        let redoElem.addedNodes = rAddNodes;
+        let i = 0;
+        for(i = 0; i < rRemNodes.length; i++) {
+          if(hasGhostAncestor(uRemNodes.item(i))) {
+            continue;
+          }
+          if(target.removeChild(rRemNodes.item(i)) == null) {
+            alert("Redo of removed child was unsuccessful, as the child did not exist among the child Nodes.");
+          }
+        }
+        for(i = 0; i < rAddNodes.length; i++) {
+          if(hasGhostAncestor(uAddNodes.item(i))) {
+            continue;
+          }
+          if(target.contains(rAddNodes.item(i))) {
+            alert("Redo of added child was unsuccessful, as the child was already among the child Nodes."); 
+          }
+          else { 
+            target.appendChild(rAddNodes.item(i));
+          }
+        }
+        //undo.removedNodes.forEach(n => target.removeChild(e));
+        //uRemNodes.forEach(n => target.appendChild(e));
+        editor_model.undoStack.push(redoElem);
+      }
+      return 1;
+    }
+    
     
     function pasteHtmlAtCaret(html) {
       var sel, range;
@@ -1696,6 +1806,13 @@ editionscript = """
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     
+    var undoSVG = <svg height="30" width = "40"> 
+                    <text x="0" y="15" fill = #FFFFFF>Undo</text> 
+                  </svg> 
+    var redoSVG = <svg height = "30", width = "40"> 
+                    <text x="0" y="15" fill = #FFFFFF>Redo</text> 
+                  </svg> 
+
     var ifAlreadyRunning = typeof editor_model === "object";
     
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
@@ -1709,6 +1826,9 @@ editionscript = """
       displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
       disambiguationMenu: undefined,
       isSaving: false,
+      //data structures to represent undo/redo "stack"
+      undoStack = [],
+      redoStack = [],
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
@@ -1869,6 +1989,18 @@ editionscript = """
               navigateLocal(u.href);
             } }
         )
+        addModifyMenuIcon(undoSVG,
+          {"class": "tagName", title: "Undo most recent change"},
+            {onclick: function(event) {
+              if(!undo()) alert("Nothing to undo!");
+            }})
+        addModifyMenuIcon(redoSVG,
+          {title: "Redo recent undo", "class": "tagname"}
+            {onclick: function(event) {
+              if(!redo()) alert("Nothing to redo!");
+            })}
+        )
+  
         if(editor_model.disambiguationMenu) {
           interactionDiv.append(editor_model.disambiguationMenu);
         }
