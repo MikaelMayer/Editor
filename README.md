@@ -117,7 +117,7 @@ Images are automatically uploaded at the same location the first image of the pa
 
   ![Demo of image drop](/drop-image.gif?raw=true)
 
-To customize where to save the image (e.g. in the top-level folder `media/images`), add the following to you document's header:
+To customize where to save the image (e.g. in the top-level folder `media/images`), add any of the following to you document's header. If you omit `file-type`, it will specify the storage location for all files using the API `editor.uploadFile`.
 
     <meta editor-storagefolder="media/images" file-type="image">
 
