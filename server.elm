@@ -1,5 +1,6 @@
 -- input: path            The file to serve.
 -- input: vars:           URL query vars.
+-- input: urlParams:      The URL params plainly
 -- input: defaultOptions  default options (options that vars can override for certain parts).
 --                        If nodefs is set, will use it instead of nodejs.nodeFS
 --                        If browserSide is set, will use a different kind of request. 
@@ -58,7 +59,8 @@ boolVar name resDefault =
     listDict.get name defaultOptions |> Maybe.withDefault resDefault |> freeze)
 
 varadmin = boolVar "admin" False
-varedit = boolVar "edit" True
+varedit = boolVar "edit" False
+varls = boolVar "ls" False
 defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
@@ -68,7 +70,7 @@ permissionToCreate = userpermissions.admin
 permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
 -- List.contains ("sub", "102014571179481340426") user -- That's my Google user ID.
 
-canEditPage = userpermissions.pageowner && varedit
+canEditPage = userpermissions.pageowner && varedit && not varls
 
 {freezeWhen} = Update
 
@@ -208,19 +210,138 @@ evaluatedPage =
   else if fs.isdir path then
     let
       pathprefix = if path == "" then path else path + "/"
-      getParams = "?ls=true&edit" --TODO Fix reroute to include correct params from previous url
       maybeUp fileList = case Regex.extract "^(.*)/.*$" path of
-        Just [prev] -> <span contenteditable="false"><input type="radio" id=".." name="filesBtn" value=".."><a href=("../"+ "?ls=true&edit")>..<br></span> :: fileList
+        Just [prev] -> <span contenteditable="false"><input type="radio" id=".." name="filesBtn" value=".."><a href=("../"+ search_raw)>..<br></span> :: fileList
         _ -> if path == "" then fileList else <li><a href="/" contenteditable="false">..</li> :: fileList
       getNm name = 
-        if fs.isfile name then
-          Regex.replace "//" "/" name
+        if path + name |> fs.isdir then
+          Regex.replace "//" "/" name + "/" + search_raw --fix this whole search query stuff using the functionality in JS way below: JSON.parse(newQueryStr);
         else
-          Regex.replace "//" "/" (name + "/" + getParams)
+          Regex.replace "//" "/" name
     in
-    Ok <html><head></head><body><h1><a href=''>/@path</a></h1>
+    Ok <html><head>
+      <style>
+        #menu_bar {
+          overflow: hidden;
+          background-color: #333;
+        }
+
+        #menu_bar a {
+          float: left;
+          display: block;
+          color: #f2f2f2;
+          text-align: center;
+          padding: 14px 16px;
+          text-decoration: none;
+          font-size: 17px;
+        }
+
+        #menu_bar a:hover {
+          background-color: #ddd;
+          color: black;
+        }
+
+        #menu_bar a.active {
+          background-color: #4CAF50;
+          color: white;
+        }
+        .dropdown {
+          float: left;
+          overflow: hidden;
+        }
+
+        .dropdown .dropbtn {
+          font-size: 16px;  
+          border: none;
+          outline: none;
+          color: white;
+          padding: 14px 16px;
+          background-color: inherit;
+          font-family: inherit;
+          margin: 0;
+        }
+        .dropdown .dropbtn {
+          font-size: 16px;  
+          border: none;
+          outline: none;
+          color: white;
+          padding: 14px 16px;
+          background-color: inherit;
+          font-family: inherit;
+          margin: 0;
+        }
+
+        .menu_bar a:hover, .dropdown:hover .dropbtn {
+          background-color: red;
+        }
+
+        .dropdown-content {
+          display: none;
+          position: absolute;
+          background-color: #f9f9f9;
+          min-width: 160px;
+          box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+          z-index: 1;
+        }
+
+        .dropdown-content a {
+          float: none;
+          color: black;
+          padding: 12px 16px;
+          text-decoration: none;
+          display: block;
+          text-align: left;
+        }
+
+        .dropdown-content a:hover {
+          background-color: #ddd;
+        }
+
+        .dropdown:hover .dropdown-content {
+          display: block;
+        }
+        .content {
+          padding: 16px;
+        }
+
+        .sticky {
+          position: fixed;
+          top: 0;
+          width: 100%;
+        }
+
+        .sticky + .content {
+          padding-top: 60px;
+        }
+
+      </style>
+      <div id="menu_bar">
+        <div class="dropdown">
+          <button class="dropbtn">Dropdown</button>
+          <div class="dropdown-content">
+            <button>one</button><br>
+            <button>two</button><br>
+            <button>three</button>
+          </div>
+      </div>
+      <script>
+      window.onscroll = function() {stickyFun()};
+
+      var menu_bar = document.getElementById("menu_bar");
+      var sticky = menu_bar.offsetTop;
+
+      function stickyFun() {
+        if (window.pageYOffset >= sticky) {
+          menu_bar.classList.add("sticky")
+        } else {
+          menu_bar.classList.remove("sticky");
+        }
+      }
+      </script>
+      </head><body><h1><a href=''>/@path</a></h1>
+    
     @(["form", [], maybeUp <| List.map 
-                             (\name -> <span><input type="radio" id=name name="filesBtn" value=name><label for=name><a href=@(getNm name)>@name</a></label><br></span>) 
+                             (\name -> <span><input type="radio" id=name name="filesBtn" value=name><label for=name><a href=@(getNm name) contextmenu="fileOptions">@name</a></label><br></span>) 
                              (fs.listdir path)])
     
     Hint: place a
@@ -271,6 +392,9 @@ main =
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
            bodyattrs,
+          if not varedit || varls then
+            bodychildren
+          else 
           (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
            if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
            serverOwned "edit prelude when not in edit mode" []) ++
@@ -803,6 +927,7 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
 
 initialScript = [
 <script>
+console.log("initial script running");
 var XHRequest = @(if listDict.get "browserSide" defaultOptions == Just True then "ProxiedServerRequest" else "XMLHttpRequest");
 
 function el(tag, attributes, children, properties) {
@@ -1094,6 +1219,7 @@ editionscript = """
   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
+  console.log("editionscript running");
   
   // Save / Load ghost attributes after a page is reloaded.
   // Same for some attributes
@@ -1516,7 +1642,7 @@ editionscript = """
       uploadFilesAtCursor(files);
     }
     
-    function uploadFilesAtCursor(files) {
+    function uploadFilesAtCursor(files) { 
       // files is a FileList of File objects. List some properties.
       for (var i = 0, f; f = files[i]; i++) {
         var targetPathName =  editor.getStorageFolder(f) + f.name;
