@@ -1425,6 +1425,7 @@ editionscript = """
           onlyGhosts = false;
           editor_model.undoStack.push(mutation);
           console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
+          console.log("new value is:" + mutation.target.data);
         }
       }
       if(onlyGhosts) {
@@ -1434,7 +1435,10 @@ editionscript = """
       
 
       if(!editor_model.autosave) {
-        editor_model.canSave = true;
+        if(!editor_model.undoStack.length)
+        {
+          editor_model.canSave = true;
+        }
         var saveButtons = document.querySelectorAll(".saveButton");
         // TODO: Can we regenerate the whole interface for consistency?
         for(let sb of saveButtons) {
@@ -1442,8 +1446,6 @@ editionscript = """
         }
         return;
       }
-
-      
       if(typeof t !== "undefined") {
         clearTimeout(t);
       }
@@ -1474,27 +1476,50 @@ editionscript = """
        )
      }, 10)
     
+
+    function printstacks() {
+      let i;
+      console.log("UNDO STACK:");
+      for(i = 0; i < editor_model.undoStack.length; i++) {
+        
+        console.log(i + ".");
+        console.log(editor_model.undoStack[i]);
+      }
+      console.log("REDO STACK:");
+      for(i = 0; i < editor_model.redoStack.length; i++) {
+       
+        console.log(i + "."); 
+        console.log(editor_model.redoStack[i]);
+      }
+    }
+
+
     function undo() {
-      let undoElem= editor_model.undoStack.pop();
+      //line 1451
+      printstacks();
+      let undoElem = editor_model.undoStack.pop();
       if(undoElem == undefined) {
         return 0;
       }
+      outputValueObserver.disconnect();
       let mutType = undoElem.type; 
       let target = undoElem.target;
       if(mutType == "attribute") {
         let cur_attr = target.getAttribute(undoElem.attributeName);
         target.setAttribute(undoElem.attributeName) = undoElem.oldValue;
-        undo.oldValue = cur_attr;
+        undoElem.oldValue = cur_attr;
         editor_model.redoStack.push(undoElem);  
       }
       else if(mutType == "characterData") {
+        console.log("data b4:" + target.data);
         let cur_data = target.data;
         target.data = undoElem.oldValue;
+        console.log("data after:" + target.data);
         editor_model.redoStack.push(undoElem);    
       }
       else {
-        let undoElem.removedNodes = uRemNodes;
-        let undoElem.addedNodes = uAddNodes;
+        let uRemNodes = undoElem.removedNodes;
+        let uAddNodes = undoElem.addedNodes;
         let i = 0;
         //readding the removed nodes
         for(i = 0; i < uRemNodes.length; i++) {
@@ -1521,32 +1546,46 @@ editionscript = """
         //undo.addedNodes.forEach(n => undo.target.removeChild(e));
         editor_model.redoStack.push(undoElem);
       }
-      return 1;
+      outputValueObserver.observe
+       ( document.body.parentElement
+       , { attributes: true
+         , childList: true
+         , characterData: true
+         , attributeOldValue: true
+         , characterDataOldValue: true
+         , subtree: true
+         }
+       );
+      console.log("data right before return:" + target.data);
+      printstacks();
+      return target;
     }
 
     function redo() {
+      printstacks();
       let redoElem = editor_model.redoStack.pop();
       if(redoElem == undefined) {
         return 0;
       }
+      outputValueObserver.disconnect();
       let mutType = redoElem.type;
       let target = redoElem.type;
       if(mutType == "attribute") {
         let cur_attr = target.getAttribute(redoElem.attributeName);
-        target.setAttribute(redoElem.attributeName);
+        target.setAttribute(redoElem.attributeName) = redoElem.oldValue;
         redoElem.oldValue = cur_attr;
         editor_model.undoStack.push(redoElem);
       }
       else if(mutType == "characterData") {
         let cur_data = target.data;
-        target.data = redo.oldValue;
-        redo.oldValue = cur_data;
+        target.data = redoElem.oldValue;  
+        redoElem.oldValue = cur_data;
         editor_model.undoStack.push(redoElem);
       } 
       else {
-        let redoElem.removedNodes = rRemNodes;
-        let redoElem.addedNodes = rAddNodes;
-        let i = 0;
+        let rRemNodes = redoElem.removedNodes;
+        let rAddNodes = redoElem.addedNodes;
+        let i;
         for(i = 0; i < rRemNodes.length; i++) {
           if(hasGhostAncestor(uRemNodes.item(i))) {
             continue;
@@ -1570,6 +1609,16 @@ editionscript = """
         //uRemNodes.forEach(n => target.appendChild(e));
         editor_model.undoStack.push(redoElem);
       }
+      outputValueObserver.observe
+       ( document.body.parentElement
+       , { attributes: true
+         , childList: true
+         , characterData: true
+         , attributeOldValue: true
+         , characterDataOldValue: true
+         , subtree: true
+         }
+       );
       return 1;
     }
     
@@ -1668,6 +1717,14 @@ editionscript = """
             onClickGlobal({target: s, modify: true});
           }
           // Open link.
+        }
+        if(e.which == 90 && (e.ctrlKey || e.metaKey)) {
+          curr_target = undo();
+          if(!curr_target) alert("Nothing to undo!");
+          console.log("First thing in target.data is:" + curr_target.data);
+        }
+        if(e.which == 89 && (e.ctrlKey || e.metaKey)) {
+          if(!redo()) alert("Nothing to redo!");
         }
       };
       
@@ -1806,12 +1863,12 @@ editionscript = """
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     
-    var undoSVG = <svg height="30" width = "40"> 
+    var undoSVG = `<svg height = "30" width = "50"> 
                     <text x="0" y="15" fill = #FFFFFF>Undo</text> 
-                  </svg> 
-    var redoSVG = <svg height = "30", width = "40"> 
+                  </svg>`
+    var redoSVG = `<svg height = "30", width = "50"> 
                     <text x="0" y="15" fill = #FFFFFF>Redo</text> 
-                  </svg> 
+                  </svg>` 
 
     var ifAlreadyRunning = typeof editor_model === "object";
     
@@ -1827,8 +1884,8 @@ editionscript = """
       disambiguationMenu: undefined,
       isSaving: false,
       //data structures to represent undo/redo "stack"
-      undoStack = [],
-      redoStack = [],
+      undoStack: [],
+      redoStack: [],
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
@@ -1987,19 +2044,25 @@ editionscript = """
               u.pathname = u.pathname.replace(/[^\/]*$/, "");
               u.searchParams.set("ls", "true");
               navigateLocal(u.href);
-            } }
-        )
-        addModifyMenuIcon(undoSVG,
+            } 
+          }
+        );        
+        addModifyMenuIcon(undoSVG, 
           {"class": "tagName", title: "Undo most recent change"},
             {onclick: function(event) {
+              undoStack[0].target = curr_target;
               if(!undo()) alert("Nothing to undo!");
-            }})
+              console.log("First thing after running is:" + curr_target.data);
+              }
+            }
+        );
         addModifyMenuIcon(redoSVG,
-          {title: "Redo recent undo", "class": "tagname"}
+          {"class": "tagname", title: "Redo recent undo"},
             {onclick: function(event) {
               if(!redo()) alert("Nothing to redo!");
-            })}
-        )
+              }
+            }
+        );
   
         if(editor_model.disambiguationMenu) {
           interactionDiv.append(editor_model.disambiguationMenu);
@@ -2020,9 +2083,6 @@ editionscript = """
                 value: source
                })])); 
           let sourceEdit = document.getElementById("sourcecontentmodifier")
-          //Added by Mark Nie on 6/18-6/19
-          //console.log("Scroll position before is:" + sourceEdit.scrollTop);
-          //console.log("Stored scroll position is:" + editor_model.curPos);
           sourceEdit.scrollTop = editor_model.curScrollPos;             
         }
         modifyMenuDiv.append(
