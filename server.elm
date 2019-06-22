@@ -1381,6 +1381,34 @@ editionscript = """
         })
       }, 0);
     }
+
+    //other possible approaches
+    //add writable property (for oldValue) to mutation object
+    //create array with necessary pro
+    function sendToUndo(m) {
+      Object.defineProperty(m, 'URValue', {value: m.oldValue, writable: true});
+      /*let mutObject = {};
+      Object.defineProperty(mutObject, 'type', {value: m.type});
+      Object.defineProperty(mutObject, 'target', {value: m.target});
+      if(mutObject.type == "attribute")
+      {
+        Object.defineProperty(mutObject, 'attributeName', {value: m.attributeName});
+        Object.defineProperty(mutObject, 'oldValue', {value: m.oldValue, writable: true});   
+      }
+      else if(mutObject.type == "characterData")
+      {
+        Object.defineProperty(mutObject, 'oldValue', {value: m.oldValue, writable: true});
+      }
+      else
+      {
+        Object.defineProperty(mutObject, 'addedNodes', {value: m.addedNodes});
+        Object.defineProperty(mutObject, 'removedNodes', {value: m.removedNodes});
+        Object.defineProperty(mutObject, 'previousSibling', {value: m.previousSibling});
+        Object.defineProperty(mutObject, 'nextSibling', {value: m.nextSibling});
+      }*/
+      editor_model.undoStack.push(m);
+      console.log("SENT TO UNDO:", m);
+    }
     
     function handleMutations(mutations) {
       var onlyGhosts = true;
@@ -1401,31 +1429,30 @@ editionscript = """
           if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName)) {
           } else {
             onlyGhosts = false;
-            editor_model.undoStack.push(mutation);
+            sendToUndo(mutation);
             console.log("Attribute is not ghost", mutation);
           }
         } else if(mutation.type == "childList") {
           if(!areChildrenGhosts(mutation.target)) {
-            for(var j = 0; j < mutation.addedNodes.length&& onlyGhosts; j++) {
+            for(var j = 0; j < mutation.addedNodes.length && onlyGhosts; j++) {
               if(!hasGhostAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
-                editor_model.undoStack.push(mutation);
+                sendToUndo(mutation);
                 console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
               }
             }
             for(var j = 0; j < mutation.removedNodes.length && onlyGhosts; j++) {
               if(!isGhostNode(mutation.removedNodes[j])) {
                 onlyGhosts = false;
-                editor_model.undoStack.push(mutation);
+                sendToUndo(mutation);
                 console.log(`Removed node ${j} was not a ghost`, mutation);
               }
             }
           }
         } else {
           onlyGhosts = false;
-          editor_model.undoStack.push(mutation);
+          sendToUndo(mutation);
           console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
-          console.log("new value is:" + mutation.target.data);
         }
       }
       if(onlyGhosts) {
@@ -1506,15 +1533,18 @@ editionscript = """
       let target = undoElem.target;
       if(mutType == "attribute") {
         let cur_attr = target.getAttribute(undoElem.attributeName);
-        target.setAttribute(undoElem.attributeName) = undoElem.oldValue;
-        undoElem.oldValue = cur_attr;
+        target.setAttribute(undoElem.attributeName, undoElem.URValue);
+        undoElem.URValue = cur_attr;
         editor_model.redoStack.push(undoElem);  
       }
       else if(mutType == "characterData") {
-        console.log("data b4:" + target.data);
+        //console.log("data b4:" + target.data);
         let cur_data = target.data;
-        target.data = undoElem.oldValue;
-        console.log("data after:" + target.data);
+        console.log("cur_data:" + cur_data);
+        target.data = undoElem.URValue;
+        undoElem.URValue = cur_data;
+        console.log("old_value:" + undoElem.URValue);
+        //console.log("data after:" + target.data);
         editor_model.redoStack.push(undoElem);    
       }
       else {
@@ -1530,7 +1560,19 @@ editionscript = """
             alert("Undo of added child was unsuccessful, as the child was already among the child Nodes."); 
           }
           else {
-            target.appendChild(uRemNodes.item(i));
+            let j;
+            let kidNodes = target.childNodes;
+            if(undoElem.nextSibling == null) {
+              target.appendChild(uRemNodes.item(i));
+            }
+            else {
+              for(j = kidNodes.length - 1; j >= 0; j--) {
+               if(undoElem.nextSibling == kidNodes.item(j)) {
+                 target.insertBefore(uRemNodes.item(i), kidNodes.item(j));
+                 break;
+               }
+              }
+            }
           }
         }
         //removing the newly added nodes
@@ -1538,8 +1580,19 @@ editionscript = """
           if(hasGhostAncestor(uAddNodes.item(i))) {
             continue;
           }
-          if(target.removeChild(uAddNodes.item(i)) == null) {
-            alert("Undo of removed child was unsuccessful, as the child did not exist among the child Nodes.");
+          else
+          {
+            let j;
+            let kidNodes = target.childNodes;
+            for(j = 0; j < kidNodes.length; j++) {  
+              if(uAddNodes.item(i) == kidNodes.item(j))
+              {
+                undoElem.nextSibling = kidNodes.item(j).nextSibling;
+                target.removeChild(uAddNodes.item(i));
+                break;
+              }
+            }
+            
           }
         }
         //undo.removedNodes.forEach(n => undo.target.appendChild(e));
@@ -1556,56 +1609,85 @@ editionscript = """
          , subtree: true
          }
        );
-      console.log("data right before return:" + target.data);
+      //console.log("data right before return:" + target.data);
       printstacks();
+      console.log("--------------------------");  
       return target;
     }
 
     function redo() {
       printstacks();
+      
       let redoElem = editor_model.redoStack.pop();
+
+      console.log("Current redo element is:", redoElem);
       if(redoElem == undefined) {
         return 0;
       }
       outputValueObserver.disconnect();
       let mutType = redoElem.type;
-      let target = redoElem.type;
+      let target = redoElem.target;
       if(mutType == "attribute") {
         let cur_attr = target.getAttribute(redoElem.attributeName);
-        target.setAttribute(redoElem.attributeName) = redoElem.oldValue;
-        redoElem.oldValue = cur_attr;
+        target.setAttribute(redoElem.attributeName, redoElem.URValue);
+        redoElem.URValue = cur_attr;
         editor_model.undoStack.push(redoElem);
       }
       else if(mutType == "characterData") {
+        console.log("data b4:" + target.data);
         let cur_data = target.data;
-        target.data = redoElem.oldValue;  
-        redoElem.oldValue = cur_data;
+        target.data = redoElem.URValue;  
+        redoElem.URValue = cur_data;
         editor_model.undoStack.push(redoElem);
+        console.log("data after:" + target.data);
       } 
       else {
         let rRemNodes = redoElem.removedNodes;
         let rAddNodes = redoElem.addedNodes;
         let i;
-        for(i = 0; i < rRemNodes.length; i++) {
-          if(hasGhostAncestor(uRemNodes.item(i))) {
-            continue;
-          }
-          if(target.removeChild(rRemNodes.item(i)) == null) {
-            alert("Redo of removed child was unsuccessful, as the child did not exist among the child Nodes.");
-          }
-        }
         for(i = 0; i < rAddNodes.length; i++) {
           if(hasGhostAncestor(uAddNodes.item(i))) {
             continue;
           }
-          if(target.contains(rAddNodes.item(i))) {
-            alert("Redo of added child was unsuccessful, as the child was already among the child Nodes."); 
+          if(target.contains(uRemNodes.item(i))) {
+            alert("Undo of added child was unsuccessful, as the child was already among the child Nodes."); 
           }
-          else { 
-            target.appendChild(rAddNodes.item(i));
+          else {
+            let j;
+            let kidNodes = target.childNodes;
+            if(redoElem.nextSibling == null) {
+              target.appendChild(rRemNodes.item(i));
+            }
+            else {
+              for(j = kidNodes.length - 1; j >= 0; j--) {
+               if(rediolem.nextSibling == kidNodes.item(j)) {
+                 target.insertBefore(rRemNodes.item(i), kidNodes.item(j));
+                 break;
+               }
+              }
+            }
           }
         }
-        //undo.removedNodes.forEach(n => target.removeChild(e));
+        for(i = 0; i < rRemNodes.length; i++) {
+          if(hasGhostAncestor(uRemNodes.item(i))) {
+            continue;
+          }
+          else
+          {
+            let j;
+            let kidNodes = target.childNodes;
+            for(j = 0; j < kidNodes.length; j++) {  
+              if(rAddNodes.item(i) == kidNodes.item(j))
+              {
+                redoElem.nextSibling = kidNodes.item(j).nextSibling;
+                target.removeChild(rAddNodes.item(i));
+                break;
+              }
+            }
+            
+          }
+        }
+        undo.removedNodes.forEach(n => target.removeChild(e));
         //uRemNodes.forEach(n => target.appendChild(e));
         editor_model.undoStack.push(redoElem);
       }
@@ -1619,6 +1701,7 @@ editionscript = """
          , subtree: true
          }
        );
+      printstacks();    
       return 1;
     }
     
@@ -1719,11 +1802,12 @@ editionscript = """
           // Open link.
         }
         if(e.which == 90 && (e.ctrlKey || e.metaKey)) {
-          curr_target = undo();
-          if(!curr_target) alert("Nothing to undo!");
-          console.log("First thing in target.data is:" + curr_target.data);
+          e.preventDefault();
+          if(!undo()) alert("Nothing to undo!");
         }
         if(e.which == 89 && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          printstacks();
           if(!redo()) alert("Nothing to redo!");
         }
       };
