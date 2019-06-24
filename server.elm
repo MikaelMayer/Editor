@@ -1385,10 +1385,8 @@ editionscript = """
     //other possible approaches
     //add writable property (for oldValue) to mutation object
     //create array with necessary pro
-    function sendToUndo(m) {
-      Object.defineProperty(m, 'URValue', {value: m.oldValue, writable: true});
-      /*let mutObject = {};
-      Object.defineProperty(mutObject, 'type', {value: m.type});
+    function sendToUndo(m) {  
+      /*Object.defineProperty(mutObject, 'type', {value: m.type});
       Object.defineProperty(mutObject, 'target', {value: m.target});
       if(mutObject.type == "attribute")
       {
@@ -1398,14 +1396,16 @@ editionscript = """
       else if(mutObject.type == "characterData")
       {
         Object.defineProperty(mutObject, 'oldValue', {value: m.oldValue, writable: true});
+      }*/
+      if(m.type == "childList")
+      {
+        Object.defineProperty(m, 'previousSib', {value: m.previousSibling, writable: true});
+        Object.defineProperty(m, 'nextSib', {value: m.nextSibling, writable: true});
       }
       else
       {
-        Object.defineProperty(mutObject, 'addedNodes', {value: m.addedNodes});
-        Object.defineProperty(mutObject, 'removedNodes', {value: m.removedNodes});
-        Object.defineProperty(mutObject, 'previousSibling', {value: m.previousSibling});
-        Object.defineProperty(mutObject, 'nextSibling', {value: m.nextSibling});
-      }*/
+        Object.defineProperty(m, 'URValue', {value: m.oldValue, writable: true});
+      }
       editor_model.undoStack.push(m);
       console.log("SENT TO UNDO:", m);
     }
@@ -1566,7 +1566,7 @@ editionscript = """
               target.appendChild(uRemNodes.item(i));
             }
             else {
-              for(j = kidNodes.length - 1; j >= 0; j--) {
+              for(j = 0; j < kidNodes.length; j++) {
                if(undoElem.nextSibling == kidNodes.item(j)) {
                  target.insertBefore(uRemNodes.item(i), kidNodes.item(j));
                  break;
@@ -1595,8 +1595,8 @@ editionscript = """
             
           }
         }
-        //undo.removedNodes.forEach(n => undo.target.appendChild(e));
-        //undo.addedNodes.forEach(n => undo.target.removeChild(e));
+        //uRemNodes.forEach(n => undo.target.appendChild(e));
+        //uAddNodes.forEach(n => undo.target.removeChild(e));
         editor_model.redoStack.push(undoElem);
       }
       outputValueObserver.observe
@@ -1611,7 +1611,7 @@ editionscript = """
        );
       //console.log("data right before return:" + target.data);
       printstacks();
-      console.log("--------------------------");  
+      console.log("*-----------------------------------------*");  
       return target;
     }
 
@@ -1646,10 +1646,10 @@ editionscript = """
         let rAddNodes = redoElem.addedNodes;
         let i;
         for(i = 0; i < rAddNodes.length; i++) {
-          if(hasGhostAncestor(uAddNodes.item(i))) {
+          if(hasGhostAncestor(rAddNodes.item(i))) {
             continue;
           }
-          if(target.contains(uRemNodes.item(i))) {
+          if(target.contains(rRemNodes.item(i))) {
             alert("Undo of added child was unsuccessful, as the child was already among the child Nodes."); 
           }
           else {
@@ -1659,8 +1659,8 @@ editionscript = """
               target.appendChild(rRemNodes.item(i));
             }
             else {
-              for(j = kidNodes.length - 1; j >= 0; j--) {
-               if(rediolem.nextSibling == kidNodes.item(j)) {
+              for(j = 0; j < rRemNodes; j++) {
+               if(redoElem.nextSibling == kidNodes.item(j)) {
                  target.insertBefore(rRemNodes.item(i), kidNodes.item(j));
                  break;
                }
@@ -1669,7 +1669,7 @@ editionscript = """
           }
         }
         for(i = 0; i < rRemNodes.length; i++) {
-          if(hasGhostAncestor(uRemNodes.item(i))) {
+          if(hasGhostAncestor(rRemNodes.item(i))) {
             continue;
           }
           else
@@ -1687,8 +1687,8 @@ editionscript = """
             
           }
         }
-        undo.removedNodes.forEach(n => target.removeChild(e));
-        //uRemNodes.forEach(n => target.appendChild(e));
+        //uRemNodes.forEach(n => target.removeChild(e));
+        //uAddNodes.forEach(n => target.appendChild(e));
         editor_model.undoStack.push(redoElem);
       }
       outputValueObserver.observe
