@@ -1384,7 +1384,11 @@ editionscript = """
 
     //other possible approaches
     //add writable property (for oldValue) to mutation object
-    //create array with necessary pro
+    //create array with necessary properties/attributes
+    /*
+     * adds writiable properties to the MutationRecord objects so the undo/redo functions
+     * will actually function later on
+     */
     function sendToUndo(m) {  
       /*Object.defineProperty(mutObject, 'type', {value: m.type});
       Object.defineProperty(mutObject, 'target', {value: m.target});
@@ -1462,10 +1466,11 @@ editionscript = """
       
 
       if(!editor_model.autosave) {
-        if(!editor_model.undoStack.length)
+        if(editor_model.undoStack.length)
         {
           editor_model.canSave = true;
         }
+        console.log("canSave is:", editor_model.canSave);
         var saveButtons = document.querySelectorAll(".saveButton");
         // TODO: Can we regenerate the whole interface for consistency?
         for(let sb of saveButtons) {
@@ -1503,7 +1508,7 @@ editionscript = """
        )
      }, 10)
     
-
+    //debugging function for printing both teh undo and redo stacks.
     function printstacks() {
       let i;
       console.log("UNDO STACK:");
@@ -1520,13 +1525,17 @@ editionscript = """
       }
     }
 
-
+    //undo function; takes top element from undo stack and 
     function undo() {
       //line 1451
       printstacks();
       let undoElem = editor_model.undoStack.pop();
       if(undoElem == undefined) {
+        editor_model.canSave = false;
         return 0;
+      }
+      else if (!editor_model.undoStack.length) {
+        editor_model.canSave = false
       }
       outputValueObserver.disconnect();
       let mutType = undoElem.type; 
@@ -1557,17 +1566,17 @@ editionscript = """
             continue;
           }
           if(target.contains(uRemNodes.item(i))) {
-            alert("Undo of added child was unsuccessful, as the child was already among the child Nodes."); 
+            alert("Undo of added child was unsuccessful, as the child is already there."); 
           }
           else {
             let j;
             let kidNodes = target.childNodes;
-            if(undoElem.nextSibling == null) {
+            if(undoElem.nextSib == null) {
               target.appendChild(uRemNodes.item(i));
             }
             else {
               for(j = 0; j < kidNodes.length; j++) {
-               if(undoElem.nextSibling == kidNodes.item(j)) {
+               if(undoElem.nextSib == kidNodes.item(j)) {
                  target.insertBefore(uRemNodes.item(i), kidNodes.item(j));
                  break;
                }
@@ -1587,7 +1596,7 @@ editionscript = """
             for(j = 0; j < kidNodes.length; j++) {  
               if(uAddNodes.item(i) == kidNodes.item(j))
               {
-                undoElem.nextSibling = kidNodes.item(j).nextSibling;
+                undoElem.nextSib = kidNodes.item(j).nextSibling;
                 target.removeChild(uAddNodes.item(i));
                 break;
               }
@@ -1649,18 +1658,18 @@ editionscript = """
           if(hasGhostAncestor(rAddNodes.item(i))) {
             continue;
           }
-          if(target.contains(rRemNodes.item(i))) {
-            alert("Undo of added child was unsuccessful, as the child was already among the child Nodes."); 
+          if(target.contains(rAddNodes.item(i))) {
+            alert("Redo of added child was unsuccessful, as the child is already there."); 
           }
           else {
             let j;
             let kidNodes = target.childNodes;
-            if(redoElem.nextSibling == null) {
+            if(redoElem.nextSib == null) {
               target.appendChild(rRemNodes.item(i));
             }
             else {
               for(j = 0; j < rRemNodes; j++) {
-               if(redoElem.nextSibling == kidNodes.item(j)) {
+               if(redoElem.nextSib == kidNodes.item(j)) {
                  target.insertBefore(rRemNodes.item(i), kidNodes.item(j));
                  break;
                }
@@ -1679,7 +1688,7 @@ editionscript = """
             for(j = 0; j < kidNodes.length; j++) {  
               if(rAddNodes.item(i) == kidNodes.item(j))
               {
-                redoElem.nextSibling = kidNodes.item(j).nextSibling;
+                redoElem.nextSib = kidNodes.item(j).nextSibling;
                 target.removeChild(rAddNodes.item(i));
                 break;
               }
@@ -1690,6 +1699,7 @@ editionscript = """
         //uRemNodes.forEach(n => target.removeChild(e));
         //uAddNodes.forEach(n => target.appendChild(e));
         editor_model.undoStack.push(redoElem);
+        editor_model.canSave = true;
       }
       outputValueObserver.observe
        ( document.body.parentElement
@@ -2134,11 +2144,9 @@ editionscript = """
         addModifyMenuIcon(undoSVG, 
           {"class": "tagName", title: "Undo most recent change"},
             {onclick: function(event) {
-              undoStack[0].target = curr_target;
               if(!undo()) alert("Nothing to undo!");
-              console.log("First thing after running is:" + curr_target.data);
               }
-            }
+            }   
         );
         addModifyMenuIcon(redoSVG,
           {"class": "tagname", title: "Redo recent undo"},
