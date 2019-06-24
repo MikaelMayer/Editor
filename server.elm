@@ -1390,22 +1390,13 @@ editionscript = """
      * will actually function later on
      */
     function sendToUndo(m) {  
-      /*Object.defineProperty(mutObject, 'type', {value: m.type});
-      Object.defineProperty(mutObject, 'target', {value: m.target});
-      if(mutObject.type == "attribute")
-      {
-        Object.defineProperty(mutObject, 'attributeName', {value: m.attributeName});
-        Object.defineProperty(mutObject, 'oldValue', {value: m.oldValue, writable: true});   
-      }
-      else if(mutObject.type == "characterData")
-      {
-        Object.defineProperty(mutObject, 'oldValue', {value: m.oldValue, writable: true});
-      }*/
+      //for childLists, add mutable next/previous sibling properties
       if(m.type == "childList")
       {
         Object.defineProperty(m, 'previousSib', {value: m.previousSibling, writable: true});
         Object.defineProperty(m, 'nextSib', {value: m.nextSibling, writable: true});
       }
+      //for attributes/characterData, add alternative mutable oldValue
       else
       {
         Object.defineProperty(m, 'URValue', {value: m.oldValue, writable: true});
@@ -1493,7 +1484,6 @@ editionscript = """
       outputValueObserver.disconnect();
     }
     
-
     setTimeout(function() {
       outputValueObserver = new MutationObserver(handleMutations);
       outputValueObserver.observe
@@ -1525,42 +1515,48 @@ editionscript = """
       }
     }
 
-    //undo function; takes top element from undo stack and 
+    //undo function: handles undo feature
     function undo() {
-      //line 1451
       printstacks();
       let undoElem = editor_model.undoStack.pop();
+      //need to check if undoStack is empty s.t. we can set the "savability" of the document accurately
       if(undoElem == undefined) {
         editor_model.canSave = false;
         return 0;
       }
       else if (!editor_model.undoStack.length) {
-        editor_model.canSave = false
+        editor_model.canSave = false;
       }
+      //need to disconnect the MutationObserver such that our undo does not get recorded as a mutation
       outputValueObserver.disconnect();
       let mutType = undoElem.type; 
       let target = undoElem.target;
+      //in each case, we reverse the change, setting the URValue/oldValue as the current value
+      //at the target, and replacing the URValue/oldValue with the current value present in target
       if(mutType == "attribute") {
         let cur_attr = target.getAttribute(undoElem.attributeName);
         target.setAttribute(undoElem.attributeName, undoElem.URValue);
-        undoElem.URValue = cur_attr;
-        editor_model.redoStack.push(undoElem);  
+        undoElem.URValue = cur_attr; 
       }
       else if(mutType == "characterData") {
-        //console.log("data b4:" + target.data);
         let cur_data = target.data;
-        console.log("cur_data:" + cur_data);
+        //console.log("cur_data:" + cur_data);
         target.data = undoElem.URValue;
         undoElem.URValue = cur_data;
-        console.log("old_value:" + undoElem.URValue);
-        //console.log("data after:" + target.data);
-        editor_model.redoStack.push(undoElem);    
+        //console.log("old_value:" + undoElem.URValue);
       }
       else {
         let uRemNodes = undoElem.removedNodes;
         let uAddNodes = undoElem.addedNodes;
         let i = 0;
         //readding the removed nodes
+        // -in this case, we loop through the childNodes and add them in the appropriate spot 
+        // or remove them 
+        // NOTE: we only change the nextSib property of the undoElem, and alternate between adding/removing from the 
+        //       addedNodes & removedNodes lists depending on whether we are undoing (in which case we will add)
+        // NOTE: Since there is only one nextSibling/prevSibling property, and based off the fact that MutationObserver
+        //       should take into account every mutation, we should only have elements in one of uRemNodes and uAddNodes
+        //       at once
         for(i = 0; i < uRemNodes.length; i++) {
           if(hasGhostAncestor(uRemNodes.item(i))) {
             continue;
@@ -1596,6 +1592,8 @@ editionscript = """
             for(j = 0; j < kidNodes.length; j++) {  
               if(uAddNodes.item(i) == kidNodes.item(j))
               {
+                //when removing, set the nextsibling to be the next sibling of the nodes on the 
+                //AddNodes list.
                 undoElem.nextSib = kidNodes.item(j).nextSibling;
                 target.removeChild(uAddNodes.item(i));
                 break;
@@ -1606,8 +1604,10 @@ editionscript = """
         }
         //uRemNodes.forEach(n => undo.target.appendChild(e));
         //uAddNodes.forEach(n => undo.target.removeChild(e));
-        editor_model.redoStack.push(undoElem);
+        
       }
+      editor_model.redoStack.push(undoElem);
+      //turn mutationObserver back on
       outputValueObserver.observe
        ( document.body.parentElement
        , { attributes: true
@@ -1620,7 +1620,9 @@ editionscript = """
        );
       //console.log("data right before return:" + target.data);
       printstacks();
-      console.log("*-----------------------------------------*");  
+      //console.log("canSave is:", editor_model.canSave); 
+      //make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
+      updateInteractionDiv();
       return target;
     }
 
@@ -1640,15 +1642,13 @@ editionscript = """
         let cur_attr = target.getAttribute(redoElem.attributeName);
         target.setAttribute(redoElem.attributeName, redoElem.URValue);
         redoElem.URValue = cur_attr;
-        editor_model.undoStack.push(redoElem);
       }
       else if(mutType == "characterData") {
-        console.log("data b4:" + target.data);
+        //console.log("data b4:" + target.data);
         let cur_data = target.data;
         target.data = redoElem.URValue;  
         redoElem.URValue = cur_data;
-        editor_model.undoStack.push(redoElem);
-        console.log("data after:" + target.data);
+        //console.log("data after:" + target.data);
       } 
       else {
         let rRemNodes = redoElem.removedNodes;
@@ -1665,12 +1665,12 @@ editionscript = """
             let j;
             let kidNodes = target.childNodes;
             if(redoElem.nextSib == null) {
-              target.appendChild(rRemNodes.item(i));
+              target.appendChild(rAddNodes.item(i));
             }
             else {
-              for(j = 0; j < rRemNodes; j++) {
+              for(j = 0; j < kidNodes.length; j++) {
                if(redoElem.nextSib == kidNodes.item(j)) {
-                 target.insertBefore(rRemNodes.item(i), kidNodes.item(j));
+                 target.insertBefore(rAddNodes.item(i), kidNodes.item(j));
                  break;
                }
               }
@@ -1686,21 +1686,21 @@ editionscript = """
             let j;
             let kidNodes = target.childNodes;
             for(j = 0; j < kidNodes.length; j++) {  
-              if(rAddNodes.item(i) == kidNodes.item(j))
+              if(rRemNodes.item(i) == kidNodes.item(j))
               {
                 redoElem.nextSib = kidNodes.item(j).nextSibling;
-                target.removeChild(rAddNodes.item(i));
+                target.removeChild(rRemNodes.item(i));
                 break;
               }
             }
-            
           }
         }
         //uRemNodes.forEach(n => target.removeChild(e));
         //uAddNodes.forEach(n => target.appendChild(e));
-        editor_model.undoStack.push(redoElem);
-        editor_model.canSave = true;
+        
       }
+      editor_model.undoStack.push(redoElem);
+      editor_model.canSave = true;
       outputValueObserver.observe
        ( document.body.parentElement
        , { attributes: true
@@ -1711,7 +1711,9 @@ editionscript = """
          , subtree: true
          }
        );
-      printstacks();    
+      printstacks();   
+      console.log("canSave is:", editor_model.canSave);
+      updateInteractionDiv();
       return 1;
     }
     
@@ -2093,10 +2095,11 @@ editionscript = """
           updateInteractionDiv();
         })(clickedElem)}
       )
+
       addModifyMenuIcon(saveSVG,
       {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           style: nextVisibleBarButtonPosStyle(),
-          id: "savebutton"
+          id: "savebutton"  
       },
         {onclick: editor_model.disambiguationMenu ? 
           ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
@@ -2108,6 +2111,7 @@ editionscript = """
           }
         }
       )
+
       if(model.advanced || model.disambiguationMenu) {
         modifyMenuDiv.append(
           el("a", { class:"troubleshooter", href:  "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
