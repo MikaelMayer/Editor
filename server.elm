@@ -1382,6 +1382,24 @@ editionscript = """
       }, 0);
     }
 
+
+    //check if nodeLists are the "same", i.e. all their elements contain the same text
+    function nodelistsEqual(list1, list2)
+    { 
+      if(list1.length != list2.length) {
+        return false;
+      }
+      else {
+        let i;
+        for(i = 0; i < list1.length; i++) {
+          if(!(list1[i].innerText === list2[i].innerText)) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+
     //other possible approaches
     //add writable property (for oldValue) to mutation object
     //create array with necessary properties/attributes
@@ -1391,17 +1409,26 @@ editionscript = """
      */
     function sendToUndo(m) {  
       //for childLists, add mutable next/previous sibling properties
-      if(m.type == "childList")
-      {
+      if(m.type == "childList") {
         Object.defineProperty(m, 'previousSib', {value: m.previousSibling, writable: true});
         Object.defineProperty(m, 'nextSib', {value: m.nextSibling, writable: true});
       }
       //for attributes/characterData, add alternative mutable oldValue
-      else
-      {
+      else {
         Object.defineProperty(m, 'URValue', {value: m.oldValue, writable: true});
       }
-      editor_model.undoStack.push(m);
+      //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
+      //and should be combined together when undoing/redoing
+      lastUndo = editor_model.undoStack[undoStack.length-1];
+      if(lastUndo[0].URValue == m.URValue && nodelistsEqual(lastUndo[0].addedNodes, m.addedNodes) && 
+        nodelistsEqual(lastUndo[0].removedNodes, m.removedNodes)) {
+        lastUndo = editor_model.undoStack.pop();
+        lastUndo.push(m);
+        editor_model.undoStack.push(lastUndo);
+      } 
+      else {  
+        editor_model.undoStack.push([m]);
+      }      
       console.log("SENT TO UNDO:", m);
     }
     
@@ -1412,7 +1439,7 @@ editionscript = """
         // -- The attribute starts with 'ghost-'
         // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
         // -- It is the modification of a node or an attribute inside a ghost node.
-        /*
+        /*  
          * Add mutations to undo list if they are not ghosts.
          */
         var mutation = mutations[i];
@@ -1500,18 +1527,20 @@ editionscript = """
     
     //debugging function for printing both teh undo and redo stacks.
     function printstacks() {
-      let i;
+      let i, j;
       console.log("UNDO STACK:");
       for(i = 0; i < editor_model.undoStack.length; i++) {
-        
         console.log(i + ".");
-        console.log(editor_model.undoStack[i]);
+        for(j = 0; j < editor_model.undoStack[i].length; j++) {
+          console.log(editor_model.undoStack[i][j]);
+        }
       }
       console.log("REDO STACK:");
       for(i = 0; i < editor_model.redoStack.length; i++) {
-       
         console.log(i + "."); 
-        console.log(editor_model.redoStack[i]);
+        for(j = 0; j < editor_model.redoStack[i].length; j++) {
+          console.log(editor_model.redoStack[i][j]);
+        }
       }
     }
 
@@ -1529,82 +1558,82 @@ editionscript = """
       }
       //need to disconnect the MutationObserver such that our undo does not get recorded as a mutation
       outputValueObserver.disconnect();
-      let mutType = undoElem.type; 
-      let target = undoElem.target;
-      //in each case, we reverse the change, setting the URValue/oldValue as the current value
-      //at the target, and replacing the URValue/oldValue with the current value present in target
-      if(mutType == "attribute") {
-        let cur_attr = target.getAttribute(undoElem.attributeName);
-        target.setAttribute(undoElem.attributeName, undoElem.URValue);
-        undoElem.URValue = cur_attr; 
-      }
-      else if(mutType == "characterData") {
-        let cur_data = target.data;
-        //console.log("cur_data:" + cur_data);
-        target.data = undoElem.URValue;
-        undoElem.URValue = cur_data;
-        //console.log("old_value:" + undoElem.URValue);
-      }
-      else {
-        let uRemNodes = undoElem.removedNodes;
-        let uAddNodes = undoElem.addedNodes;
-        let i = 0;
-        //readding the removed nodes
-        // -in this case, we loop through the childNodes and add them in the appropriate spot 
-        // or remove them 
-        // NOTE: we only change the nextSib property of the undoElem, and alternate between adding/removing from the 
-        //       addedNodes & removedNodes lists depending on whether we are undoing (in which case we will add)
-        // NOTE: Since there is only one nextSibling/prevSibling property, and based off the fact that MutationObserver
-        //       should take into account every mutation, we should only have elements in one of uRemNodes and uAddNodes
-        //       at once
-        for(i = 0; i < uRemNodes.length; i++) {
-          if(hasGhostAncestor(uRemNodes.item(i))) {
-            continue;
-          }
-          if(target.contains(uRemNodes.item(i))) {
-            alert("Undo of added child was unsuccessful, as the child is already there."); 
-          }
-          else {
-            let j;
-            let kidNodes = target.childNodes;
-            if(undoElem.nextSib == null) {
-              target.appendChild(uRemNodes.item(i));
+      let k;
+      for(k = 0; k < undoElem.length; k++) {
+        let mutType = undoElem[k].type; 
+        let target = undoElem[k].target;
+        //in each case, we reverse the change, setting the URValue/oldValue as the current value
+        //at the target, and replacing the URValue/oldValue with the current value present in target
+        if(mutType == "attribute") {
+          let cur_attr = target.getAttribute(undoElem[k].attributeName);
+          target.setAttribute(undoElem[k].attributeName, undoElem[k].URValue);
+          undoElem[k].URValue = cur_attr; 
+        }
+        else if(mutType == "characterData") {
+          let cur_data = target.data;
+          //console.log("cur_data:" + cur_data);
+          target.data = undoElem[k].URValue;
+          undoElem[k].URValue = cur_data;
+          //console.log("old_value:" + undoElem.URValue);
+        }
+        else {
+          let uRemNodes = undoElem[k].removedNodes;
+          let uAddNodes = undoElem[k].addedNodes;
+          let i;
+          //readding the removed nodes
+          // -in this case, we loop through the childNodes and add them in the appropriate spot 
+          // or remove them 
+          // NOTE: we only change the nextSib property of the undoElem, and alternate between adding/removing from the 
+          //       addedNodes & removedNodes lists depending on whether we are undoing (in which case we will add)
+          // NOTE: Since there is only one nextSibling/prevSibling property, and based off the fact that MutationObserver
+          //       should take into account every mutation, we should only have elements in one of uRemNodes and uAddNodes
+          //       at once.
+          for(i = 0; i < uRemNodes.length; i++) {
+            if(hasGhostAncestor(uRemNodes.item(i))) {
+              continue;
+            }
+            if(target.contains(uRemNodes.item(i))) {
+              alert("Undo of added child was unsuccessful, as the child is already there."); 
             }
             else {
-              for(j = 0; j < kidNodes.length; j++) {
-               if(undoElem.nextSib == kidNodes.item(j)) {
-                 target.insertBefore(uRemNodes.item(i), kidNodes.item(j));
-                 break;
-               }
+              let j;
+              let kidNodes = target.childNodes;
+              if(undoElem[k].nextSib == null) {
+                target.appendChild(uRemNodes.item(i));
+              }
+              else {
+                for(j = 0; j < kidNodes.length; j++) {
+                  if(undoElem[k].nextSib == kidNodes.item(j)) {
+                    target.insertBefore(uRemNodes.item(i), kidNodes.item(j));
+                    break;
+                  }
+                }
               }
             }
           }
-        }
-        //removing the newly added nodes
-        for(i = 0; i < uAddNodes.length; i++) {
-          if(hasGhostAncestor(uAddNodes.item(i))) {
-            continue;
-          }
-          else
-          {
-            let j;
-            let kidNodes = target.childNodes;
-            for(j = 0; j < kidNodes.length; j++) {  
-              if(uAddNodes.item(i) == kidNodes.item(j))
-              {
-                //when removing, set the nextsibling to be the next sibling of the nodes on the 
-                //AddNodes list.
-                undoElem.nextSib = kidNodes.item(j).nextSibling;
-                target.removeChild(uAddNodes.item(i));
-                break;
+          //removing the newly added nodes
+          for(i = 0; i < uAddNodes.length; i++) {
+            if(hasGhostAncestor(uAddNodes.item(i))) {
+              continue;
+            }
+            else {
+              let j;
+              let kidNodes = target.childNodes;
+              for(j = 0; j < kidNodes.length; j++) {  
+                if(uAddNodes.item(i) == kidNodes.item(j))
+                {
+                  //when removing, set the nextsibling to be the next sibling of the nodes on the 
+                  //AddNodes list.
+                  undoElem[k].nextSib = kidNodes.item(j).nextSibling;
+                  target.removeChild(uAddNodes.item(i));
+                  break;
+                }
               }
             }
-            
           }
+          //uRemNodes.forEach(n => undo.target.appendChild(e));
+          //uAddNodes.forEach(n => undo.target.removeChild(e));
         }
-        //uRemNodes.forEach(n => undo.target.appendChild(e));
-        //uAddNodes.forEach(n => undo.target.removeChild(e));
-        
       }
       editor_model.redoStack.push(undoElem);
       //turn mutationObserver back on
@@ -1628,26 +1657,27 @@ editionscript = """
 
     function redo() {
       printstacks();
-      
       let redoElem = editor_model.redoStack.pop();
-
       console.log("Current redo element is:", redoElem);
       if(redoElem == undefined) {
         return 0;
       }
       outputValueObserver.disconnect();
-      let mutType = redoElem.type;
-      let target = redoElem.target;
+     
+      let k;
+      for(k = 0; k < redoElem.length; k++) {
+      let mutType = redoElem[k].type;
+      let target = redoElem[k].target;
       if(mutType == "attribute") {
-        let cur_attr = target.getAttribute(redoElem.attributeName);
-        target.setAttribute(redoElem.attributeName, redoElem.URValue);
-        redoElem.URValue = cur_attr;
+        let cur_attr = target.getAttribute(redoElem[k].attributeName);
+        target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
+        redoElem[k].URValue = cur_attr;
       }
       else if(mutType == "characterData") {
         //console.log("data b4:" + target.data);
         let cur_data = target.data;
-        target.data = redoElem.URValue;  
-        redoElem.URValue = cur_data;
+        target.data = redoElem[k].URValue;  
+        redoElem[k].URValue = cur_data;
         //console.log("data after:" + target.data);
       } 
       else {
@@ -1664,12 +1694,12 @@ editionscript = """
           else {
             let j;
             let kidNodes = target.childNodes;
-            if(redoElem.nextSib == null) {
+            if(redoElem[k].nextSib == null) {
               target.appendChild(rAddNodes.item(i));
             }
             else {
               for(j = 0; j < kidNodes.length; j++) {
-               if(redoElem.nextSib == kidNodes.item(j)) {
+               if(redoElem[k].nextSib == kidNodes.item(j)) {
                  target.insertBefore(rAddNodes.item(i), kidNodes.item(j));
                  break;
                }
@@ -1681,14 +1711,13 @@ editionscript = """
           if(hasGhostAncestor(rRemNodes.item(i))) {
             continue;
           }
-          else
-          {
+          else {
             let j;
             let kidNodes = target.childNodes;
             for(j = 0; j < kidNodes.length; j++) {  
               if(rRemNodes.item(i) == kidNodes.item(j))
               {
-                redoElem.nextSib = kidNodes.item(j).nextSibling;
+                redoElem[k].nextSib = kidNodes.item(j).nextSibling;
                 target.removeChild(rRemNodes.item(i));
                 break;
               }
@@ -1697,7 +1726,8 @@ editionscript = """
         }
         //uRemNodes.forEach(n => target.removeChild(e));
         //uAddNodes.forEach(n => target.appendChild(e));
-        
+      }
+
       }
       editor_model.undoStack.push(redoElem);
       editor_model.canSave = true;
