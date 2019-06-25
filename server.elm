@@ -65,6 +65,8 @@ defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
 
+
+
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
 permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
@@ -211,15 +213,46 @@ evaluatedPage =
     let
       pathprefix = if path == "" then path else path + "/"
       maybeUp fileList = case Regex.extract "^(.*)/.*$" path of
-        Just [prev] -> <span contenteditable="false"><input type="radio" id=".." name="filesBtn" value=".."><a href=("../"+ search_raw)>..<br></span> :: fileList
+        Just [prev] -> <span contenteditable="false"><input type="checkbox" id=".." name="filesBtn" value=".."><a href=("../"+ search_raw)>..<br></span> :: fileList
         _ -> if path == "" then fileList else <li><a href="/" contenteditable="false">..</li> :: fileList
+      ctrlPressed = False
       getNm name = 
-        if path + name |> fs.isdir then
+        if path + name |> fs.isdir then --TODO faster jeez
           Regex.replace "//" "/" name + "/" + search_raw --fix this whole search query stuff using the functionality in JS way below: JSON.parse(newQueryStr);
         else
           Regex.replace "//" "/" name
     in
     Ok <html><head>
+      <script>
+        var ispressed = false;
+        var whichOne = "";
+        //declare bool variable to be false
+        document.onkeydown = function(e) {
+          if (e.ctrlKey){
+              ispressed = true;
+          }
+        };
+        document.onkeyup = function(e) {
+          if (e.keyCode == 17){ //releasing ctrl key. doesn't set e.ctrlKey properly or would use that.
+            ispressed = false;
+          }
+        }
+        function doReadServer(action, name) {
+          if (readServer != "undefined") {
+            console.log("reading server");
+            return readServer(action, name);
+          }
+          //TODO make functionality for standalone editor not just TharzenEditor
+          console.error("need to make the reading server functionality for standalone editor");
+        }
+        function doWriteServer(action, name, content) {
+          if (writeServer != "undefined") {
+            return writeServer(action, name, content);
+          }
+          //TODO make functionality for standalone editor not just TharzenEditor
+          console.error("need to make the writing server functionality for standalone editor");
+        }
+      </script>
       <style>
         #menu_bar {
           overflow: hidden;
@@ -323,7 +356,13 @@ evaluatedPage =
             <button>two</button><br>
             <button>three</button>
           </div>
-      </div>
+        </div>
+        <button id="renamefs" onClick="renameFs()">Rename Files</button>
+        <button id="deletefs" onClick="deleteFs()">Delete Files</button>
+        <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
+        <button id="uploadfs" onClick="uploadFs()">Upload Files</button>
+
+      </div> <!-- menu_bar -->
       <script>
       window.onscroll = function() {stickyFun()};
 
@@ -337,11 +376,56 @@ evaluatedPage =
           menu_bar.classList.remove("sticky");
         }
       }
+      function isPressed(btn){
+        return btn.checked;
+      }
+      function getSelectedFiles(){
+        var btns = document.querySelectorAll("input.filesBtn");
+        return Array.from(btns).filter(isPressed);
+      }
+      function renameFs() {
+        console.log ("in rename fs");
+        var selected = getSelectedFiles();
+        if (selected.length != 1) {
+          window.alert ("Error: can only rename one file at a time");
+          return;
+        }
+        var sel = selected[0];
+        //sel.readonly = false;
+        console.log (sel);
+        var newname = window.prompt("Set new name for file: ", "");
+        
+        var x = doWriteServer("rename", sel.id, newname);
+        console.log ("renamed", sel.id, newname);
+        document.location.reload();
+      }
+      function uploadFs() {
+        console.log ("in upload fs");
+        var selected = getSelectedFiles();
+      }
+      function deleteFs() {
+        console.log ("in delete fs");
+        var selected = getSelectedFiles();
+      }
+      function duplicateFs() {
+        console.log ("in duplicatefs");
+      }
+
+      function radPressed(){
+        var btns = document.querySelectorAll("input.filesBtn");
+        if (!ispressed){
+          for(var i = 0; i < btns.length; i++){
+            if (btns[i].value == whichOne) continue;
+            btns[i].checked = false;
+          }
+        }
+      }
+      
       </script>
-      </head><body><h1><a href=''>/@path</a></h1>
-    
+      </head><body><h1><a href=path>/@path</a></h1>
     @(["form", [], maybeUp <| List.map 
-                             (\name -> <span><input type="radio" id=name name="filesBtn" value=name><label for=name><a href=@(getNm name) contextmenu="fileOptions">@name</a></label><br></span>) 
+                             (\name -> <span><input type="checkbox" id=name class="filesBtn" name="filesBtn" value=name onClick="whichOne=value" onchange="radPressed()">
+                                       <label for=name><a href=@(getNm name) contextmenu="fileOptions">@name</a></label><br></span>) 
                              (fs.listdir path)])
     
     Hint: place a
@@ -1315,7 +1399,7 @@ editionscript = """
           var value = n.attributes[i].value;
           if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key)) {
             if(key == "style") {
-              value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2);
+              value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
             }
             attributes.push([key, value]);
           }
