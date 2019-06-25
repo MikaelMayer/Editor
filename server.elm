@@ -1051,14 +1051,20 @@ editor.uploadFile = function(targetPathName, file, onOk, onError) {
       }
     }
   })(xhr, file);
-  @(if listDict.get "browserSide" defaultOptions == Just True then """
-  xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
-  """ else """
-  xhr.open("POST", targetPathName, false);
-  xhr.setRequestHeader("write-file", file.type);
-  """);
+  @(
+    if listDict.get "browserSide" defaultOptions == Just True then 
+    """
+    xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+    """ 
+    else 
+    """
+    xhr.open("POST", targetPathName, false);
+    xhr.setRequestHeader("write-file", file.type);
+    """
+  );
   xhr.send(file);
 }
+
 // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
 editor.getStorageFolder = function(file) {
   var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
@@ -1478,6 +1484,10 @@ editionscript = """
       if (window.getSelection) {
           // IE9 and non-IE
           sel = window.getSelection();
+          // do not paste html into modify menu
+          if (sel.anchorNode.offsetParent.id === "modify-menu") {
+            return;
+          }
           if (sel.getRangeAt && sel.rangeCount) {
               range = sel.getRangeAt(0);
               range.deleteContents();
@@ -1512,26 +1522,31 @@ editionscript = """
       evt.stopPropagation();
       evt.preventDefault();
 
-      var files = evt.dataTransfer.files; // FileList object.
+      var files = evt.dataTransfer.files; // FileList object
       uploadFilesAtCursor(files);
     }
     
     function uploadFilesAtCursor(files) {
       // files is a FileList of File objects. List some properties.
-      for (var i = 0, f; f = files[i]; i++) {
-        var targetPathName =  editor.getStorageFolder(f) + f.name;
-        //if(f.size < 30000000)
-        editor.uploadFile(targetPathName, f, (targetPathName, f) => {
-          @(    if folderView then """
-            reloadPage();"""
-                else """
-            if(f.type.indexOf("image") == 0) {
-              pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${f.name}">`);
+      for (var i = 0, file; file = files[i]; i++) {
+        var targetPathName =  editor.getStorageFolder(file) + file.name;
+        // if(file.size < 30000000)
+        editor.uploadFile(targetPathName, file, (targetPathName, file) => {
+          @(    
+            if folderView then 
+            """
+            reloadPage();
+            """
+            else
+            """
+            if(file.type.indexOf("image") == 0) {
+              pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${file.name}">`);
             } else {
               pasteHtmlAtCaret(`<a href="${path}">${path}</a>`); 
-            }"""
-           )
-        })
+            }
+            """
+          )
+        });
       }
     }
 
@@ -2075,6 +2090,7 @@ editionscript = """
          onmouseleave: (c => () =>  { c.removeAttribute("ghost-hovered") })(clickedElem.nextElementSibling)
         });
       }
+
       if(!selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
         addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
             <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
@@ -2085,12 +2101,14 @@ editionscript = """
                 editor_model.clickedElem = firstChild;
                 editor_model.notextselection = true;
                 updateInteractionDiv()})(clickedElem.children[0]),
-               onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.children[0]),
-               onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.children[0])
+                onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.children[0]),
+                onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.children[0])
                }
             );
       }
+
       interactionDiv.append(el("br"));
+
       if(clickedElem) {
         interactionDiv.append(el("div", {"class": "tagname-summary"}, [
           el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
@@ -2099,20 +2117,22 @@ editionscript = """
           el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50))
           ]));
       }
+
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
-            let newel = el(document.querySelector("#newTagName").value);
-            let elements = clickedElem.childNodes;
-            while(elements.length) {
-              newel.append(elements[0]);
-            }
-            for(let i = 0; i < clickedElem.attributes.length; i++) {
-              newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-            }
-            clickedElem.parentElement.insertBefore(newel, clickedElem);
-            clickedElem.remove();
-            editor_model.clickedElem = newel;
-            updateInteractionDiv();
-          }}));
+        let newel = el(document.querySelector("#newTagName").value);
+        let elements = clickedElem.childNodes;
+        while(elements.length) {
+          newel.append(elements[0]);
+        }
+        for(let i = 0; i < clickedElem.attributes.length; i++) {
+          newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+        }
+        clickedElem.parentElement.insertBefore(newel, clickedElem);
+        clickedElem.remove();
+        editor_model.clickedElem = newel;
+        updateInteractionDiv();
+      }}));
+        
       let keyvalues = el("div", {"class":"keyvalues"});
       for(let i = 0; clickedElem && clickedElem.attributes && i < clickedElem.attributes.length; i++) {
         let name = clickedElem.attributes[i].name;
@@ -2156,38 +2176,139 @@ editionscript = """
             ));
         }
       }
+
       let highlightsubmit = function() {
         let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
         this.parentElement.parentElement.querySelector("button").disabled =
           attrName === "" || attrName.trim() !== attrName
       }
+
       if(clickedElem && clickedElem.nodeType === 1) {
-        //      interactionDiv.append(el("div", {}, "Add an attribute:"));
+        // interactionDiv.append(el("div", {}, "Add an attribute:"));
         keyvalues.append(
           el("div", {"class": "keyvalue keyvalueadder"}, [
-             el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name:"name"}, [], {onkeyup: highlightsubmit})),
-             el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit})),
-             el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
-               disabled: true,
-               onclick() {
-                 clickedElem.setAttribute(
-                   this.parentElement.querySelector("[name=name]").value,
-                   this.parentElement.querySelector("[name=value]").value);
-                 editor_model.clickedElem = clickedElem;
-                 updateInteractionDiv();
-             }})]));
+            el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
+            el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {onkeyup: highlightsubmit})),
+            el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+              disabled: true,
+              onclick() {
+                clickedElem.setAttribute(
+                  this.parentElement.querySelector("[name=name]").value,
+                  this.parentElement.querySelector("[name=value]").value
+                );
+                editor_model.clickedElem = clickedElem;
+                updateInteractionDiv();
+              }
+            })
+          ])
+        );
       }
+
+      function uploadImagesAtCursor(files, srcName) {
+        for (var i = 0, file; file = files[i]; i++) {
+          var targetPathName =  editor.getStorageFolder(file) + file.name;
+          editor.uploadFile(targetPathName, file, (targetPathName, file) => {
+            document.getElementsByClassName("keyvalue")[0].children[1].children[0].setAttribute("value", file.name);
+            clickedElem.setAttribute("src", targetPathName);
+          });
+        }
+
+        // refresh images list
+        showListsImages(srcName);
+
+        // automatically select upload image
+        let selectedImage = document.querySelectorAll(".imgFolder");
+        for (let i = 0; i < selectedImage.length; ++i) {
+          if (selectedImage[i].getAttribute("src") === files[files.length - 1]) {
+            selectedImage[i].style.outline = "2px solid white";
+          } else {
+            selectedImage[i].style.outline = "none";
+          }
+        }
+      }
+
+      function showListsImages(srcName) {
+        let dir = "";
+        for(let i = 0, arr = srcName.split('\\'); i < arr.length - 1; ++i) {
+          dir += (arr[i] + "/");
+        }
+        files = defaultOptions.nodefs.listdir(dir);
+        
+        images = [];
+        files.forEach(file => {
+          let ext = file.split('.').pop();
+          if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif') {
+            images.push(file);
+          }
+        });
+        
+        // init: clear image list
+        let selectedImage = document.querySelectorAll(".imgFolder");
+        selectedImage.forEach(e => e.remove());
+
+        for (let i = 0; i < images.length; ++i) {
+          keyvalues.append(
+            el("div", { class: "imgFolder", style: "width: 300px; margin: 10%" }, el("img", { style: "width: 100%", "src": dir + images[i], "alt": images[i] },  [], {}), {
+              onclick() {
+                // highlight the selected image
+                let otherImages = document.querySelectorAll(".imgFolder");
+                for (let i = 0; i < otherImages.length; ++i) {
+                  otherImages[i].style.outline = "none";
+                }
+                // replace image
+                clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
+                document.getElementsByClassName("keyvalue")[0].children[1].children[0].setAttribute("value", this.children[0].getAttribute("src"));
+                this.style.outline = "2px solid white";
+              }
+            })
+          );
+        }
+      }
+
+      if (clickedElem && clickedElem.tagName === "IMG") {
+        let srcName = clickedElem.attributes[0].value;
+
+        clickedElem.ondragover = function (e) {
+          e.preventDefault();
+        }
+
+        clickedElem.ondrop = function (e) {
+          // upload and replace the image
+          e.stopPropagation();
+          e.preventDefault();
+          var files = e.dataTransfer.files; // FileList object
+          uploadImagesAtCursor(files, srcName);
+        }
+
+        // upload image button
+        keyvalues.append(
+          el("a", 
+            { style: "margin: 10%; padding: 4px 10px; height: 20px; position: relative; color: #888; background: #fafafa; border-radius: 4px; display: inline-block; height: 20px; width: 280px;" }, 
+            el(
+              "input", {"type": "file", value: "Please upload images...", style: "position: absolute; top: 0; left: 0; width: 100%;"}, 
+              [], 
+              { onchange: function(evt) { uploadImagesAtCursor(evt.target.files, srcName); }}
+            ), 
+            {}
+          )
+        );
+        
+        // show lists of images in selected image's folder
+        showListsImages(srcName);
+      }
+
       interactionDiv.append(keyvalues);
       //interactionDiv.append(el("hr"));
 
       if(clickedElem && (clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE" || clickedElem.tagName === "TITLE")) {
         interactionDiv.append(el("hr"));
         interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
-                [], {
-                  value: clickedElem.childNodes[0].textContent,
-                  onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; }
-                }));
+          [], {
+            value: clickedElem.childNodes[0].textContent,
+            onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; }
+          }));
       }
+      
       
       // What to put in context menu?
       contextMenu.innerHTML = "";
@@ -2199,16 +2320,19 @@ editionscript = """
         contextMenu.append(button);
         numButtons++;
       }
+
       let reorderCompatible = (node1, node2) => {
         let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
         return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
           topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
           ; 
       }
+
       if(model.link) {
         addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
           {title: "Go to " + model.link, "class": "inert"});
       }
+
       if(!selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
@@ -2226,6 +2350,7 @@ editionscript = """
           })(clickedElem, contextMenu)
         });
       }
+
       if(!selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
@@ -2334,7 +2459,7 @@ editionscript = """
               sel.addRange(range);
             })(caretPosition)});
       }
-      
+
       let baseElem = clickedElem;
       while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
         baseElem = baseElem.nextElementSibling;
