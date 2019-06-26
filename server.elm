@@ -973,6 +973,7 @@ function getSelectionStart() {
    var node = document.getSelection().anchorNode;
    return (node != null && node.nodeType == 3 ? node.parentNode : node);
 }
+// Returns the closest ancestor of the selection having the given tagName
 function getEnclosingCaret(tagName) {
   var w = getSelectionStart();
   while(w != null && w.tagName.toLowerCase() != tagName.toLowerCase()) {
@@ -980,6 +981,8 @@ function getEnclosingCaret(tagName) {
   }
   return w;
 }
+
+// Removes all the text from a node (not the text nodes themselves)
 function emptyTextContent(node) {
   if(node != null) {
     if(node.nodeType == 3) {
@@ -1108,7 +1111,6 @@ editionscript = """
       }
     }
     var ghostAttributesModified = document.querySelectorAll("[save-ghost-attributes]");
-    console.log(ghostAttributesModified);
     for(var i = 0; i < ghostAttributesModified.length; i++) {
       var elem = ghostAttributesModified[i];
       var id = elem.getAttribute("id");
@@ -1206,6 +1208,15 @@ editionscript = """
       }
     }
     function replaceContent(NC) {
+      if(editor_model.caretPosition) {
+        editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
+      }
+      if(editor_model.selectionRange) {
+        editor_model.selectionRange = dataToRecoverSelectionRange(editor_model.selectionRange);
+      }
+      if(editor_model.clickedElem) {
+        editor_model.clickedElem = dataToRecoverElement(editor_model.clickedElem);
+      }
       document.open();
       document.write(NC);
       document.close();
@@ -1707,12 +1718,90 @@ editionscript = """
     
     var ifAlreadyRunning = typeof editor_model === "object";
     
+    
+    function dataToRecoverElement(oldNode) {
+      if(!oldNode) return undefined;
+      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
+        return {id: oldNode.getAttribute("id")};
+      }
+      let tentativeSelector = [];
+      let t = oldNode;
+      let isText = false, textIndex = 0;
+      while(t && t.parentNode) {
+        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
+        if(t.nodeType === 1) {
+          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
+        } else {
+          isText = true;
+          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
+        }
+        t = t.parentNode;
+      }
+      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
+    }
+    // Returns the new node that matches the old node the closest.
+    // For text nodes, try to recover the text node, if not, returns the parent node;
+    function recoverElementFromData(data) {
+      if(!data) return undefined;
+      if(typeof data === "object" && data.id) {
+        return document.getElementById(data.id);
+      }
+      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
+        let tentativeSelector = data.tentativeSelector;
+        while(tentativeSelector.length >= 1) {
+          let newNode = document.querySelector(tentativeSelector.join(" "));
+          if(newNode) {
+            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+          }
+          tentativeSelector.shift();
+        }
+        return undefined;
+      }
+    }
+    function setCaretPositionIn(node, position) {
+      position = Math.min(position, node.textContent.length);
+      if (node.nodeType == 3) {
+        let sel  = window.getSelection()
+        sel.collapse(node, position)
+      } else {
+        let p = position
+        let n = node.firstChild
+        while(n != null && p > n.textContent.length) {
+          p = p - n.textContent.length
+          n = n.nextSibling
+        }
+        if(n != null) {
+          setCaretPositionIn(n, p)
+        } else {
+          console.log("Could not find position. Reached node and position ", [n, p])
+        }
+      }
+    }
+    function dataToRecoverCaretPosition(caretPosition) {
+      if(!caretPosition) return undefined;
+      return {target: dataToRecoverElement(caretPosition.startContainer), startOffset: caretPosition.startOffset};
+    }
+    function recoverCaretPositionFromData(data) {
+      if(!data) return;
+      let newTextNodeOrParent = recoverElementFromData(data.target);
+      if(newTextNodeOrParent) setCaretPositionIn(newTextNodeOrParent, data.startOffset)
+    }
+    function dataToRecoverSelectionRange(selectionRange) { // TODO
+      if(!selectionRange) return undefined;
+      return undefined;
+    }
+    function recoverSelectionRangeFromData(data) { // TODO
+      if(!data) return;
+      return undefined;
+    }
+    
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
       //makes visibility of editor model consistent throughout reloads
       visible: ifAlreadyRunning ? editor_model.visible : false,
-      clickedElem: undefined,
+      clickedElem: ifAlreadyRunning ? recoverElementFromData(editor_model.clickedElem) : undefined,
       notextselection: false,
-      caretPosition: undefined,
+      selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
+      caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
       advanced: ifAlreadyRunning ? editor_model.advanced : false,
       displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
@@ -1730,6 +1819,18 @@ editionscript = """
                       _ -> if boolVar "autosave" True then "true" else "false"),
       path: ifAlreadyRunning ? editor_model.path : @(path |> jsCode.stringOf)
     }
+
+    function reorderCompatible (node1, node2){
+      let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
+      return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
+        topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
+        ; 
+    }
+    function preventTextDeselection(e){
+      e = e || window.event;
+      e.preventDefault();
+    }
+
     updateInteractionDiv();
     
     function updateInteractionDiv() {
@@ -1744,7 +1845,7 @@ editionscript = """
       if(clickedElem && clickedElem.nodeType === 1) {
         clickedElem.setAttribute("ghost-clicked", "true");
       }
-      let selectionRange = model.notextselection ? undefined : (() => {
+      model.selectionRange = model.notextselection ? undefined : (() => {
         let selection = window.getSelection();
         if(!selection || !selection.rangeCount) return;
         let f = selection.getRangeAt(0); 
@@ -1752,7 +1853,7 @@ editionscript = """
             f.startOffset === f.endOffset && f.startContainer === f.endContainer) return;
         return f;
       })();
-      let caretPosition = model.notextselection || clickedElem && clickedElem.tagName === "HEAD" ? undefined : (() => {
+      model.caretPosition = model.notextselection || clickedElem && clickedElem.tagName === "HEAD" ? undefined : (() => {
         let selection = window.getSelection();
         if(!selection || !selection.rangeCount) return;
         let f = selection.getRangeAt(0);
@@ -1788,6 +1889,7 @@ editionscript = """
       modifyMenuDiv.append(interactionDiv);
       let addModifyMenuIcon = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
+        button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
         button.classList.add("modify-menu-button");
         button.innerHTML = innerHTML;
         modifyMenuIconsDiv.append(button);
@@ -1808,11 +1910,11 @@ editionscript = """
       addModifyMenuIcon(
         panelOpenCloseIcon(),
         {title: "Open/close settings tab", "class": "inert", style: nextVisibleBarButtonPosStyle() },
-        {onclick: (contextMenu => function(event) {
+        {onclick: function(event) {
             document.querySelector("#modify-menu").classList.toggle("visible");
             editor_model.visible = !editor_model.visible;
             this.innerHTML = panelOpenCloseIcon();
-          })(contextMenu)
+          }
         });
       addModifyMenuIcon(
         gearSVG,
@@ -1920,9 +2022,7 @@ editionscript = """
         )
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
-        return;
-      }
-      if(model.insertElement) {
+      } else if(model.insertElement) {
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
@@ -1932,7 +2032,7 @@ editionscript = """
           clickedElem.tagName === "HTML" ? undefined :
           el("span", {}, [
             el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}),
-            el("label", {"for": "radioInsertAtCaret"}, caretPosition ? "At caret" : "As child")]),
+            el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")]),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
           el("span", {}, [
             el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: true}),
@@ -2031,10 +2131,9 @@ editionscript = """
               onclick: insertTag
             })]));
         document.querySelector("#modify-menu").classList.toggle("visible", true);
-        return;
-      }
+      } else {
       if(clickedElem && clickedElem.parentElement) {
-        let parent = selectionRange ? clickedElem : clickedElem.parentElement;
+        let parent = model.selectionRange ? clickedElem : clickedElem.parentElement;
         if(parent.tagName === "TBODY" && parent.parentElement && parent.parentElement.tagName === "TABLE") parent = parent.parentElement;
         addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
             <path d="M 8,19 8,22 11,22 M 12,18 8,22 M 8,10 8,7 11,7 M 12,10 8,7 M 27,7 30,7 30,10 M 26,10 30,7 M 31,19 31,22 28,22 M 26,18 31,22 M 12,12 12,10 M 12,16 12,14 M 14,18 12,18 M 18,18 16,18 M 22,18 20,18 M 26,18 24,18 M 26,14 26,16 M 26,10 26,12 M 22,10 24,10 M 18,10 20,10 M 14,10 16,10 M 5,5 35,5 35,25 5,25 Z"/></svg>`,
@@ -2049,33 +2148,33 @@ editionscript = """
               }
             );
       }
-      if(!selectionRange && clickedElem && clickedElem.previousElementSibling) {
+      if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling) {
         addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
         {title: "Select previous sibling (" + summary(clickedElem.previousElementSibling) + ")", class: "inert"},
-        {onclick: ((c, contextMenu) => (event) => {
+        {onclick: (c => (event) => {
             editor_model.clickedElem = c;
             editor_model.notextselection = true;
             updateInteractionDiv();
-          })(clickedElem.previousElementSibling, contextMenu),
+          })(clickedElem.previousElementSibling),
          onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.previousElementSibling),
          onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.previousElementSibling)
         });
       }
-      if(!selectionRange && clickedElem && clickedElem.nextElementSibling) {
+      if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling) {
         addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
         {title: "Select next sibling (" + summary(clickedElem.nextElementSibling) + ")", class: "inert"},
-        {onclick: ((c, contextMenu) => (event) => {
+        {onclick: (c => event => {
             editor_model.clickedElem = c;
             editor_model.notextselection = true;
             updateInteractionDiv();
-          })(clickedElem.nextElementSibling, contextMenu),
+          })(clickedElem.nextElementSibling),
          onmouseenter: (c => () =>  { c.setAttribute("ghost-hovered", "true") })(clickedElem.nextElementSibling),
          onmouseleave: (c => () =>  { c.removeAttribute("ghost-hovered") })(clickedElem.nextElementSibling)
         });
       }
-      if(!selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
+      if(!model.selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
         addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
             <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
               {title: "Select first cFhild (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
@@ -2188,32 +2287,28 @@ editionscript = """
                   onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; }
                 }));
       }
+      }
       
       // What to put in context menu?
       contextMenu.innerHTML = "";
       let numButtons = 0;
       let addContextMenuButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
+        button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
         button.classList.add("context-menu-button");
         button.innerHTML = innerHTML;
         contextMenu.append(button);
         numButtons++;
       }
-      let reorderCompatible = (node1, node2) => {
-        let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
-        return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
-          topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
-          ; 
-      }
       if(model.link) {
         addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
           {title: "Go to " + model.link, "class": "inert"});
       }
-      if(!selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+      if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
         {title: "Move selected element up"},
-        {onclick: ((c, contextMenu) => (event) => {
+        {onclick: (c => event => {
             let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
                c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
             // There is whitespace before this element, we try to reinsert
@@ -2223,14 +2318,14 @@ editionscript = """
             }
             editor_model.clickedElem = c;
             updateInteractionDiv();
-          })(clickedElem, contextMenu)
+          })(clickedElem)
         });
       }
-      if(!selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+      if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
         {title: "Move selected element down"},
-        {onclick: ((c, contextMenu) => (event) => {
+        {onclick: (c => (event) => {
             let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
               c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
             let nodeToInsertAfter = c.nextElementSibling;
@@ -2240,15 +2335,15 @@ editionscript = """
             }
             editor_model.clickedElem = c;
             updateInteractionDiv();
-          })(clickedElem, contextMenu)
+          })(clickedElem)
         });
       }
-      if(!selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
+      if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
         addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
             <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
             <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
           {title: "Clone selected element"},
-          {onclick: ((c, contextMenu) => (event) => {
+          {onclick: ((c, contextMenu) => event => {
               c.removeAttribute("ghost-clicked");
               let cloned = duplicate(c);
               if(cloned) {
@@ -2259,13 +2354,14 @@ editionscript = """
           });
         addContextMenuButton(wasteBasketSVG,
           {title: "Delete selected element"},
-          {onclick: ((c, contextMenu) => (event) => {
+          {onclick: (c => event => {
               c.remove();
-              contextMenu.classList.remove("visible");
-            })(clickedElem, contextMenu)
+              editor_model.clickedElem = undefined;
+              updateInteractionDiv();
+            })(clickedElem)
           });
       }
-      if(selectionRange && (selectionRange.startContainer === selectionRange.endContainer || selectionRange.startContainer.parentElement === selectionRange.commonAncestorContainer && selectionRange.endContainer.parentElement === selectionRange.commonAncestorContainer)) {
+      if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer)) {
         // There should be different ways to wrap the selection:
         // a href, span, div.
         addContextMenuButton(plusSVG,
@@ -2315,31 +2411,30 @@ editionscript = """
               document.querySelector("#modify-menu").classList.toggle("visible", true);
               editor_model.clickedElem = insertedNode;
               updateInteractionDiv();
-            })(selectionRange)}
+            })(model.selectionRange)}
             )
       }
-      if(!selectionRange) {
+      if(!model.selectionRange) {
         addContextMenuButton(plusSVG,
             {title: "Insert element", contenteditable: false},
-            {onclick: (caretPosition => event => {
+            {onclick: event => {
               editor_model.clickedElem = clickedElem;
               editor_model.insertElement = true;
-              editor_model.caretPosition = caretPosition;
               updateInteractionDiv();
               var sel = window.getSelection();
               sel.removeAllRanges();
               var range = document.createRange();
-              range.setStart(caretPosition.startContainer, caretPosition.startOffset);
-              range.setEnd(caretPosition.endContainer, caretPosition.endOffset);
+              range.setStart(model.caretPosition.startContainer, model.caretPosition.startOffset);
+              range.setEnd(model.caretPosition.endContainer, model.caretPosition.endOffset);
               sel.addRange(range);
-            })(caretPosition)});
+            }});
       }
       
       let baseElem = clickedElem;
       while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
         baseElem = baseElem.nextElementSibling;
       }
-      baseElem = selectionRange || baseElem || clickedElem;
+      baseElem = model.selectionRange || baseElem || clickedElem;
       
       if(baseElem) {
         let clientRect = baseElem.getBoundingClientRect();
