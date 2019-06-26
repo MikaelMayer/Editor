@@ -247,6 +247,7 @@ evaluatedPage =
         }
         function doWriteServer(action, name, content) {
           if (writeServer != "undefined") {
+            console.log("about to write to server");
             return writeServer(action, name, content);
           }
           //TODO make functionality for standalone editor not just TharzenEditor
@@ -383,10 +384,16 @@ evaluatedPage =
         var btns = document.querySelectorAll("input.filesBtn");
         return Array.from(btns).filter(isPressed);
       }
+      function warnSelectFile() {
+        window.alert ("Error: Please select a file.")
+      }
       function renameFs() {
         console.log ("in rename fs");
         var selected = getSelectedFiles();
-        if (selected.length != 1) {
+        if (selected.length == 0) {
+          warnSelectFile();
+          return;
+        } else if (selected.length != 1) {
           window.alert ("Error: can only rename one file at a time");
           return;
         }
@@ -394,8 +401,16 @@ evaluatedPage =
         //sel.readonly = false;
         console.log (sel);
         var newname = window.prompt("Set new name for file: ", "");
-        
+        if (newname == "") return;
+        //TODO check that we're not overwriting an existing file!
         var x = doWriteServer("rename", sel.id, newname);
+        if (x)
+        {
+          console.log ("rename failed");
+          window.alert("rename failed");
+          return;
+        }
+        //TODO check that rename worked
         console.log ("renamed", sel.id, newname);
         document.location.reload();
       }
@@ -406,6 +421,19 @@ evaluatedPage =
       function deleteFs() {
         console.log ("in delete fs");
         var selected = getSelectedFiles();
+        var warningMsg = "Are you sure you want to delete the following file(s)?"
+        for (i = 0; i < selected.length; i++) {
+          warningMsg = warningMsg + "\n" + selected[i].id;
+        }
+        var conf = window.confirm(warningMsg);
+        console.log (conf);
+        if (conf) {
+          for (i = 0; i < selected.length; i++) {
+            doWriteServer("unlink", selected[i].id);
+          }
+          document.location.reload();
+          return;
+        }
       }
       function duplicateFs() {
         console.log ("in duplicatefs");
@@ -475,7 +503,7 @@ main =
            (if canEditPage then
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
-           bodyattrs,
+           bodyattrs, 
           if not varedit || varls then
             bodychildren
           else 
