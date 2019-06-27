@@ -679,6 +679,27 @@ div#modify-menu input[type=radio] {
   border: none;
 }
 
+#upload-image-btn-a {
+  margin: 10%; 
+  padding: 4px 10px; 
+  height: 20px; 
+  position: relative; 
+  color: #888; 
+  background: #fafafa; 
+  border-radius: 4px; 
+  display: inline-block; 
+  height: 20px; 
+  width: 280px;
+}
+
+#upload-image-btn-input {
+  position: absolute; 
+  top: 0; 
+  left: 0; 
+  width: 100%;
+}
+
+
 :root {
   --context-color: rgba(0, 128, 128, 0.8);
   --context-color-next: rgba(0, 158, 158, 0.8); 
@@ -2146,7 +2167,7 @@ editionscript = """
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
               el("span", {},
-                el("input", {"type": "text", value: value},
+                el("input", {"type": "text", value: value, "id": "keyvalue-input"},
                   [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
@@ -2208,7 +2229,7 @@ editionscript = """
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-            document.getElementsByClassName("keyvalue")[0].children[1].children[0].setAttribute("value", file.name);
+            document.getElementById("keyvalue-input").setAttribute("value", file.name);
             clickedElem.setAttribute("src", targetPathName);
           });
         }
@@ -2283,9 +2304,9 @@ editionscript = """
         // upload image button
         keyvalues.append(
           el("a", 
-            { style: "margin: 10%; padding: 4px 10px; height: 20px; position: relative; color: #888; background: #fafafa; border-radius: 4px; display: inline-block; height: 20px; width: 280px;" }, 
+            { "id": "upload-image-btn-a" }, 
             el(
-              "input", {"type": "file", value: "Please upload images...", style: "position: absolute; top: 0; left: 0; width: 100%;"}, 
+              "input", {"id": "upload-image-btn-input", "type": "file", value: "Please upload images..."}, 
               [], 
               { onchange: function(evt) { uploadImagesAtCursor(evt.target.files, srcName); }}
             ), 
