@@ -24,9 +24,9 @@
   },
   "dependencies": {
     "get-port": "^4.1.0",
-    "google-auth-library": "^2.0.2",
+    "google-auth-library": "^4.2.5",
     "opn": "^5.4.0",
-    "sketch-n-sketch": "^1.2.25"
+    "sketch-n-sketch": "^1.2.27"
   },
   "bin": {
     "http-server-editor": "bin/server-run.js",
