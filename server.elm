@@ -673,10 +673,108 @@ div#modify-menu input[type=radio] {
   width: initial;
   font-size: 1em;
 }
+
+div.keyvalue > span > input {
+  border-radius: 0.3em;
+  -webkit-appearance: none;
+  margin: 2px;
+}
+
 .inline-input {
   background: transparent;
   color: white;
   border: none;
+}
+
+/* dom selector css */
+div.dom-selector {
+  box-shadow: inset 0px 0px 1px 1px #fff;
+  border-radius: 0.4em;
+  padding: 0.4rem;
+  background: rgba(0, 212, 212, 0.3);
+}
+
+div.mainElem {
+  min-height: 90px;
+}
+
+div.childrenElem {
+  display: flex;
+  min-height: 70px;
+}
+
+div.parentSelector {
+  min-height: 100px;
+}
+
+div.parentElemName, div.mainElemName {
+  color: white;
+}
+
+div.parentSelector, div.childrenSelector {
+  position: relative;
+  flex-grow: 1; 
+  text-align: center; 
+  overflow: hidden;
+  padding: 10px;
+  padding-top: 12px;
+  margin: 2px;
+  border: 1px solid whitesmoke;
+  border-radius: 0.3rem;
+}
+
+div.parentSelector:hover, div.childrenSelector:hover {
+  /* opacity: 1; */
+}
+
+div.parentSelector:active, div.childrenSelector:active {
+  box-shadow: inset 1px 0px 1px 1px lightgrey;
+}
+
+div.parentSelector, div.mainElem {
+  position: relative;
+  text-align: center;
+  font-size: 1.6em;
+  color: turquoise;
+  margin-bottom: 0.5em;
+}
+
+div.parentElemInfo, div.mainElemInfo {
+  font-size: 0.6em;
+}
+
+div.childrenSelectorInfo {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  color: turquoise;
+}
+
+div.elementAttr {
+  font-size: 0.6em;
+  color: antiquewhite;
+}
+
+div.elementTag {
+  color: black;
+  top: 2px;
+  position: absolute;
+  background-color: white;
+  font-size: 0.5em;
+  border-radius: 0.1rem;
+  padding: 2px;
+  text-transform: uppercase;
+  top: 0;
+  left: 0;
+  font-weight: bold;
+}
+
+div.selectedElementTag {
+  color: mediumvioletred;
+}
+
+div.childrenSelectorName {
+  padding-top: 4px;
+  white-space: nowrap;
 }
 
 :root {
@@ -1784,8 +1882,13 @@ editionscript = """
       modifyMenuDiv.innerHTML = "";
       let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"});
       let interactionDiv = el("div", {"class": "information"});
+      let domSelector = el("div", {"class": "dom-selector", "style": "margin: 2%;"}); // create dom selector interface
+      
+      modifyMenuDiv.append(domSelector);
       modifyMenuDiv.append(modifyMenuIconsDiv);
       modifyMenuDiv.append(interactionDiv);
+
+      let domSelectorDiv = document.querySelector(".dom-selector");
       let addModifyMenuIcon = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
         button.classList.add("modify-menu-button");
@@ -2090,6 +2193,7 @@ editionscript = """
                }
             );
       }
+
       interactionDiv.append(el("br"));
       if(clickedElem) {
         interactionDiv.append(el("div", {"class": "tagname-summary"}, [
@@ -2098,7 +2202,159 @@ editionscript = """
           }}),
           el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50))
           ]));
+
+        /*
+            Build the DOM node selector:
+            -------------------------
+            |     parent element    |
+            |-----------------------|
+            |     main element      |
+            |-----------------------|
+            |   children/siblings   |
+            -------------------------
+            current clicked element is always displayed in the middle: main element
+            if clicked element is not <html>, show its parent element, otherwise display "no parent element"
+            if current clicked element does not have children (which is the bottom of DOM node tree), display its sibling elements in the children elements
+            all elements in DOM node selector can be clicked
+            DO NOT DISPLAY "#modify-menu" and "#context-menu"
+        */
+        let displayParentElem = function(elem) {
+          domSelectorDiv.append(
+            el("div", {"class": "parentSelector"},
+              [
+                el("div", {"class":"parentElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">"),
+                el("div", {"class": "parentElemInfo"}, textPreview(elem, 50))
+              ],
+              {
+                onclick: (c => event => {
+                  // if user reach the top node of DOM tree, disable click on parent element because there will be no parent element
+                  if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                    return;
+                  }
+                  if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+                  editor_model.clickedElem = c;
+                  editor_model.notextselection = true;
+                  updateInteractionDiv() 
+                })(elem),
+                onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
+                onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
+              }
+            )
+          )
+        }
+
+        let displayMainElem = function(elem) {
+          let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
+          mainElemDiv.append(
+            el("div", {"class":"mainElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">"),
+            el("div", {"class": "mainElemInfo"}, textPreview(elem, 50))
+          )
+        }
+
+        let displayChildrenElem = function(elem) {
+          let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
+          childrenElemDiv.append(
+            el("div", {"class": "childrenSelector"},
+              [
+                el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
+                el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
+              ], 
+              {
+                onclick: (c => event => {
+                    if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+                    editor_model.clickedElem = c;
+                    editor_model.notextselection = true;
+                    updateInteractionDiv() 
+                  })(elem),
+                  onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
+                  onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
+              }
+            )
+          );
+        }
+
+        let displayElemAttr = function(targetDiv, elem) {
+          // show attribute of element on the dom selector
+          for (let i = 0; elem && elem.attributes && i < elem.attributes.length; i++) {
+            let name = elem.attributes[i].name;
+            let value = elem.attributes[i].value;
+            if (name === "ghost-clicked" || name === "ghost-hovered") continue;
+            targetDiv.append(
+              el("div", { "class": "elementAttr" },
+                [
+                  el("span", { title: "This element has attribute name '" + name + "'" }, name + ": "),
+                  el("span", { title: "This element has attribute value '" + value + "'" }, value)
+                ]
+              )
+            );
+          }
+        }
+
+        // firstly, display clicked element's parent element
+        displayParentElem(clickedElem.parentElement);
+        let parentElemDiv = document.querySelector(".dom-selector > .parentSelector");
+        displayElemAttr(parentElemDiv, clickedElem.parentElement);
+        parentElemDiv.append(
+          el("div", {"class": "elementTag"}, "parent")
+        );
+
+        domSelectorDiv.append(
+          el("div", {"class": "mainElem"}, []),
+          el("div", {"class": "childrenElem"}, [])
+        );
+
+        // secondly, display clicked element as main elements
+        displayMainElem(clickedElem);
+        let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
+        displayElemAttr(mainElemDiv, clickedElem);
+        // document.querySelector(".mainElem").append(
+        //    el("div", {"class": "selectedElementTag elementTag"}, "select")
+        // );
+
+        // if clickedElement has children elements
+        if (clickedElem.children.length > 0) {
+          // only display first 3 children elements
+          let childrenElem = clickedElem.children;
+          for (let i = 0, cnt = 0; i < childrenElem.length && cnt < Math.min(3, childrenElem.length); ++i) {
+            // prevent displaying menus
+            if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu") {
+              continue;
+            }
+            displayChildrenElem(childrenElem[i]);
+            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
+              el("div", {"class": "elementTag"}, "child")
+            );
+            cnt++;
+          }
+        } else {
+          let cnt = 0;
+          // only display siblings but including clicked element:
+          // if clickedElement has previous sibling element
+          if (clickedElem.previousElementSibling && (clickedElem.previousElementSibling.id !== "context-menu" || clickedElem.previousElementSibling.id !== "modify-menu")) {
+            cnt++;
+            displayChildrenElem(clickedElem.previousElementSibling);
+            document.querySelectorAll(".childrenElem > .childrenSelector")[0].append(
+              el("div", {"class": "siblingTag elementTag"}, "sibling")
+            );
+          }
+
+          // display clickedElement in the middle 
+          displayChildrenElem(clickedElem);
+          document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
+            el("div", {"class": "selectedElementTag elementTag"}, "select")
+          );
+          cnt++;
+
+          // if clickedElement has next sibling element
+          if (clickedElem.nextElementSibling && (clickedElem.nextElementSibling.id !== "context-menu" || clickedElem.nextElementSibling.id !== "modify-menu")) {
+            displayChildrenElem(clickedElem.nextElementSibling);
+            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
+              el("div", {"class": "siblingTag elementTag"}, "sibling")
+            );
+          }
+        }
       }
+
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
             let newel = el(document.querySelector("#newTagName").value);
             let elements = clickedElem.childNodes;
@@ -2112,7 +2368,10 @@ editionscript = """
             clickedElem.remove();
             editor_model.clickedElem = newel;
             updateInteractionDiv();
-          }}));
+          }
+        }
+      ));
+      
       let keyvalues = el("div", {"class":"keyvalues"});
       for(let i = 0; clickedElem && clickedElem.attributes && i < clickedElem.attributes.length; i++) {
         let name = clickedElem.attributes[i].name;
@@ -2156,6 +2415,7 @@ editionscript = """
             ));
         }
       }
+
       let highlightsubmit = function() {
         let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
         this.parentElement.parentElement.querySelector("button").disabled =
