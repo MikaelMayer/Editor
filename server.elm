@@ -688,10 +688,9 @@ div.keyvalue > span > input {
 
 /* dom selector css */
 div.dom-selector {
-  box-shadow: inset 0px 0px 1px 1px #fff;
   border-radius: 0.4em;
   padding: 0.4rem;
-  background: rgba(0, 212, 212, 0.3);
+  background: rgba(0, 212, 159,0.7);
 }
 
 div.mainElem {
@@ -1830,6 +1829,8 @@ editionscript = """
     }
     updateInteractionDiv();
     
+    let selectorStatus = 1; // DOM node selector status signal
+
     function updateInteractionDiv() {
       let model = editor_model;
       var clickedElem = model.clickedElem;
@@ -2195,6 +2196,7 @@ editionscript = """
       }
 
       interactionDiv.append(el("br"));
+
       if(clickedElem) {
         interactionDiv.append(el("div", {"class": "tagname-summary"}, [
           el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
@@ -2204,51 +2206,112 @@ editionscript = """
           ]));
 
         /*
-            Build the DOM node selector:
-            -------------------------
-            |     parent element    |
-            |-----------------------|
-            |     main element      |
-            |-----------------------|
-            |   children/siblings   |
-            -------------------------
-            current clicked element is always displayed in the middle: main element
-            if clicked element is not <html>, show its parent element, otherwise display "no parent element"
-            if current clicked element does not have children (which is the bottom of DOM node tree), display its sibling elements in the children elements
-            all elements in DOM node selector can be clicked
-            DO NOT DISPLAY "#modify-menu" and "#context-menu"
+          Build the DOM node selector:
+          Two parts:
+          |-----------------------|
+          |      main element     |
+          |-----------------------|
+          |  children / siblings  |
+          |-----------------------|
+
+          Two status:
+          Status 1 (default). if clicked element has children elements:
+          |-----------------------|
+          |    clicked element*   |
+          |-----------------------|
+          |   children elements   |
+          |-----------------------|
+
+          Status 2. if clicked element has no children which is the bottom of the DOM tree:
+          |-----------------------------------------------------|
+          |                  parent element                     |
+          |-----------------------------------------------------|  
+          | previous sibling | clicked element* | next sibling  |
+          |-----------------------------------------------------|
+
+          All the elements in the selector can be clicked.
+
+          Check parent: When the clicked element in status 1 is clicked in selector, the selector switches to status 2 (display its parent as main element in first level).
+          
+          Check children: When the children element in status 1 is clicked in selector, it will become clicked element in status 1.
+          
+          Check children: When the clicked elements in status 2 is clicked in selector, the selector switches to status 1 (only if it has children).
+          
+          Check siblings: When the siblings in status 2 is clicked in selector, the sibling will become 'clicked element' but the selector won't switch status 1. 
+          The siblings will be in the middle of second level of status 2. This is because we want user switching siblings in second level easily.
+
+          When other elements in selector are clicked, change 'clicked element' to it. And it also follow rules above.
         */
-        let displayParentElem = function(elem) {
-          domSelectorDiv.append(
-            el("div", {"class": "parentSelector"},
-              [
-                el("div", {"class":"parentElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">"),
-                el("div", {"class": "parentElemInfo"}, textPreview(elem, 50))
-              ],
-              {
-                onclick: (c => event => {
+        let displayMainElem = function(elem) {
+          let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
+          mainElemDiv.append(
+            el("div", {"class":"mainElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">", {
+              onclick: (c => event => {
                   // if user reach the top node of DOM tree, disable click on parent element because there will be no parent element
                   if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
                     return;
                   }
-                  if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
-                  editor_model.clickedElem = c;
-                  editor_model.notextselection = true;
-                  updateInteractionDiv() 
+                  // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+
+                  if (selectorStatus === 1) {
+                    // change to status 2: first part contains its parent element, second part contains its siblings and itself
+                    displayParentElem(c.parentElement);
+
+                    // clear second part of selector
+                    document.querySelector(".childrenElem").children.forEach(e => e.remove());
+                    
+                    displaySecondPart(c.previousElementSibling);
+                    displaySecondPart(c);
+                    displaySecondPart(c.nextElementSibling);
+
+                    selectorStatus = 2;
+                  } else {
+                    // main element should be its parent, thus change the clicked element to its parent
+                    editor_model.clickedElem = c;
+                    editor_model.notextselection = true;
+                    updateInteractionDiv();
+                  }
                 })(elem),
                 onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
                 onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
-              }
-            )
+            }),
+            el("div", {"class": "mainElemInfo"}, textPreview(elem, 50)) // display its text content
           )
         }
 
-        let displayMainElem = function(elem) {
-          let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
-          mainElemDiv.append(
-            el("div", {"class":"mainElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">"),
-            el("div", {"class": "mainElemInfo"}, textPreview(elem, 50))
-          )
+        let displaySecondPart = function(elem) {
+          let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
+          childrenElemDiv.append(
+            el("div", {"class": "childrenSelector"},
+              [
+                el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
+                el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
+              ], 
+              {
+                onclick: (c => event => {
+                    // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+                    if (selectorStatus === 1) {
+                      // all second part elements are clicked element's children, thus change current clicked element to its child
+                      editor_model.clickedElem = c;
+                      editor_model.notextselection = true;
+                      updateInteractionDiv();
+                    } else {
+                      // except clicked element itself, other elements are siblings
+                      if (c == clickedElem) {
+                        // if it is clicked element itself, click it will let selector switch to status 1
+                        selectorStatus = 1;
+                        updateInteractionDiv();
+                      } else {
+                        // if it is its sibling, change sibling's position
+                        
+                      }
+                    }
+                  })(elem),
+                  onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
+                  onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
+              }
+            )
+          );
         }
 
         let displayChildrenElem = function(elem) {
@@ -2261,10 +2324,10 @@ editionscript = """
               ], 
               {
                 onclick: (c => event => {
-                    if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+                    // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
                     editor_model.clickedElem = c;
                     editor_model.notextselection = true;
-                    updateInteractionDiv() 
+                    updateInteractionDiv();
                   })(elem),
                   onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
                   onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
@@ -2290,32 +2353,24 @@ editionscript = """
           }
         }
 
-        // firstly, display clicked element's parent element
-        displayParentElem(clickedElem.parentElement);
-        let parentElemDiv = document.querySelector(".dom-selector > .parentSelector");
-        displayElemAttr(parentElemDiv, clickedElem.parentElement);
-        parentElemDiv.append(
-          el("div", {"class": "elementTag"}, "parent")
-        );
-
         domSelectorDiv.append(
           el("div", {"class": "mainElem"}, []),
           el("div", {"class": "childrenElem"}, [])
         );
 
-        // secondly, display clicked element as main elements
+        // Display clicked element as main elements
         displayMainElem(clickedElem);
         let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
         displayElemAttr(mainElemDiv, clickedElem);
-        // document.querySelector(".mainElem").append(
-        //    el("div", {"class": "selectedElementTag elementTag"}, "select")
-        // );
+        document.querySelector(".mainElem").append(
+          el("div", {"class": "selectedElementTag elementTag"}, "select")
+        );
 
         // if clickedElement has children elements
         if (clickedElem.children.length > 0) {
           // only display first 3 children elements
           let childrenElem = clickedElem.children;
-          for (let i = 0, cnt = 0; i < childrenElem.length && cnt < Math.min(3, childrenElem.length); ++i) {
+          for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
             // prevent displaying menus
             if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu") {
               continue;
@@ -2327,31 +2382,9 @@ editionscript = """
             cnt++;
           }
         } else {
-          let cnt = 0;
-          // only display siblings but including clicked element:
-          // if clickedElement has previous sibling element
-          if (clickedElem.previousElementSibling && (clickedElem.previousElementSibling.id !== "context-menu" || clickedElem.previousElementSibling.id !== "modify-menu")) {
-            cnt++;
-            displayChildrenElem(clickedElem.previousElementSibling);
-            document.querySelectorAll(".childrenElem > .childrenSelector")[0].append(
-              el("div", {"class": "siblingTag elementTag"}, "sibling")
-            );
-          }
-
-          // display clickedElement in the middle 
-          displayChildrenElem(clickedElem);
           document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
-            el("div", {"class": "selectedElementTag elementTag"}, "select")
+              el("div", {"class": "no-children elementTag"}, "No Children")
           );
-          cnt++;
-
-          // if clickedElement has next sibling element
-          if (clickedElem.nextElementSibling && (clickedElem.nextElementSibling.id !== "context-menu" || clickedElem.nextElementSibling.id !== "modify-menu")) {
-            displayChildrenElem(clickedElem.nextElementSibling);
-            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
-              el("div", {"class": "siblingTag elementTag"}, "sibling")
-            );
-          }
         }
       }
 
