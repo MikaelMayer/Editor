@@ -1978,7 +1978,7 @@ editionscript = """
       return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
             <path d="${path}" /></svg>`
     }
-    var saveSVG = mkSvg("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
+    var saveSVG = mkSvg("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 dropZone", true);
     var openLeftSVG = mkSvg("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
     var closeRightSVG = mkSvg("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
     var openTopSVG = mkSvg("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
@@ -1994,12 +1994,27 @@ editionscript = """
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     
-    var undoSVG = `<svg height = "30" width = "50"> 
-                    <text x="0" y="15" fill = #FFFFFF>Undo</text> 
-                  </svg>`
-    var redoSVG = `<svg height = "30", width = "50"> 
-                    <text x="0" y="15" fill = #FFFFFF>Redo</text> 
-                  </svg>` 
+    /*
+    <div>Icons made by <a href="https://www.freepik.com/" title="Freepik">Freepik</a> from <a href="https://www.flaticon.com/"                 
+    title="Flaticon">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/"                 
+    title="Creative Commons BY 3.0" target="_blank">CC 3.0 BY</a></div>
+    */
+    var undoSVG = `<svg viewBox="0 0 20 50", height = "80", width = "40", xmlns="http://www.w3.org/2000/svg">
+                    <path style="fill:white;" 
+                    d="M0.358,16.978C0.148,16.934,0,16.752,0,16.542c0-7.253,8.61-8.798,10.61-9.059V4.155
+                    c0-0.164,0.09-0.314,0.235-0.393c0.147-0.076,0.321-0.065,0.456,0.024l9.202,6.194c0.121,0.082,0.194,0.218,0.194,0.369
+                    c0,0.147-0.073,0.284-0.194,0.366l-9.197,6.193c-0.137,0.09-0.313,0.1-0.457,0.023c-0.146-0.078-0.236-0.229-0.236-0.394v-3.58
+                    c-1.447,0.009-2.645,0.073-3.642,0.193c-4.785,0.567-6.064,3.44-6.116,3.563l0,0c-0.071,0.165-0.233,0.271-0.41,0.271
+                    C0.415,16.986,0.385,16.984,0.358,16.978z"/>
+                  </svg>`     
+    var redoSVG = `<svg viewBox="0 0 27 50" height = "60", width = "40", xmlns="http://www.w3.org/2000/svg">
+                    <path style="fill:white;" 
+                    d="M26.105,21.891c-0.229,0-0.439-0.131-0.529-0.346l0,0c-0.066-0.156-1.716-3.857-7.885-4.59
+                    c-1.285-0.156-2.824-0.236-4.693-0.25v4.613c0,0.213-0.115,0.406-0.304,0.508c-0.188,0.098-0.413,0.084-0.588-0.033L0.254,13.815
+                    C0.094,13.708,0,13.528,0,13.339c0-0.191,0.094-0.365,0.254-0.477l11.857-7.979c0.175-0.121,0.398-0.129,0.588-0.029
+                    c0.19,0.102,0.303,0.295,0.303,0.502v4.293c2.578,0.336,13.674,2.33,13.674,11.674c0,0.271-0.191,0.508-0.459,0.562
+                    C26.18,21.891,26.141,21.891,26.105,21.891z"/>
+                  </svg>`  
 
     var ifAlreadyRunning = typeof editor_model === "object";
     
@@ -2146,6 +2161,26 @@ editionscript = """
           }
         }
       )
+      addModifyMenuIcon(undoSVG, 
+          {"class": "inert", title: "Undo most recent change",
+            style: nextVisibleBarButtonPosStyle(),
+            id: "undobutton"
+          },
+            {onclick: function(event) {
+              if(!undo()) alert("Nothing to undo!");
+              }
+            }   
+        );
+        addModifyMenuIcon(redoSVG,
+          {"class": "inert", title: "Redo most recent undo",
+            style: nextVisibleBarButtonPosStyle(),
+            id: "redobutton"
+          },
+            {onclick: function(event) {
+              if(!redo()) alert("Nothing to redo!");
+              }
+            }
+        );
 
       if(model.advanced || model.disambiguationMenu) {
         modifyMenuDiv.append(
@@ -2180,7 +2215,7 @@ editionscript = """
             } 
           }
         );        
-        addModifyMenuIcon(undoSVG, 
+        /*addModifyMenuIcon(undoSVG, 
           {"class": "tagName", title: "Undo most recent change"},
             {onclick: function(event) {
               if(!undo()) alert("Nothing to undo!");
@@ -2193,7 +2228,7 @@ editionscript = """
               if(!redo()) alert("Nothing to redo!");
               }
             }
-        );
+        );*/
   
         if(editor_model.disambiguationMenu) {
           interactionDiv.append(editor_model.disambiguationMenu);
