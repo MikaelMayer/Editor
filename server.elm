@@ -1576,9 +1576,15 @@ editionscript = """
         let target = undoElem[k].target;
         //in each case, we reverse the change, setting the URValue/oldValue as the current value
         //at the target, and replacing the URValue/oldValue with the current value present in target
-        if(mutType == "attribute") {
+        if(mutType == "attributes") {
           let cur_attr = target.getAttribute(undoElem[k].attributeName);
-          target.setAttribute(undoElem[k].attributeName, undoElem[k].URValue);
+          console.log(cur_attr);
+          if(undoElem[k].URValue === null) {
+            target.removeAttribute(undoElem[k].attributeName); 
+          }       
+          else { 
+            target.setAttribute(undoElem[k].attributeName, undoElem[k].URValue);
+          }
           undoElem[k].URValue = cur_attr; 
         }
         else if(mutType == "characterData") {
@@ -1631,7 +1637,7 @@ editionscript = """
               continue;
             }
             else if(!target.contains(uAddNodes.item(i))) {
-              alert("The item you are trying to undo doesn't exist in the parent node.");
+              console.log("The item you are trying to undo doesn't exist in the parent node.");
             }
             else {
               console.log("Removing:", uAddNodes.item(i));
@@ -1666,7 +1672,7 @@ editionscript = """
       let redoable = false;
       let redoElem = editor_model.redoStack.pop();
       console.log("Current redo element is:", redoElem);
-      if(redoElem == undefined) {
+      if(redoElem === undefined) {
         return 0;
       }
       outputValueObserver.disconnect();
@@ -1675,9 +1681,14 @@ editionscript = """
       for(k = 0; k < redoElem.length; k++) {
         let mutType = redoElem[k].type;
         let target = redoElem[k].target;
-        if(mutType == "attribute") {
+        if(mutType == "attributes") {
           let cur_attr = target.getAttribute(redoElem[k].attributeName);
-          target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
+          if (redoElem[k].URValue === null) {
+
+          }
+          else { 
+            target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
+          }
           redoElem[k].URValue = cur_attr;
           redoable = true;
         }
@@ -1712,7 +1723,7 @@ editionscript = """
               continue;
             }
             else if(!target.contains(rRemNodes.item(i))) {
-              alert("The item you are trying to redo doesn't exist in the parent node.");
+              console.log("The item you are trying to redo doesn't exist in the parent node.");
             }
             else 
               console.log("Hello!");
@@ -2006,7 +2017,6 @@ editionscript = """
       //data structures to represent undo/redo "stack"
       undoStack: [],
       redoStack: [],
-      actionQ: [],
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
