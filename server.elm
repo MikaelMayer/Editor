@@ -415,6 +415,14 @@ input:checked + .slider:before {
   vertical-align: top;
   display: block;
 }
+div.imgFolder {
+  display: inline-block;
+  margin: 0.2em;
+}
+div.imgFolder > img {
+  max-width: 100%;
+  min-width:2em;
+}
 a.troubleshooter {
   position: absolute;
   top: calc(100% - 3em);
@@ -2369,8 +2377,9 @@ editionscript = """
       }
       
       function showListsImages(srcName) {
+        srcName = relativeToAbsolute(srcName)
         let dir = "";
-        for(let i = 0, arr = srcName.split('\\'); i < arr.length - 1; ++i) {
+        for(let i = 0, arr = srcName.split(/\\|\//); i < arr.length - 1; ++i) {
           dir += (arr[i] + "/");
         }
         files = editor.fs.listdir(dir);
@@ -2387,8 +2396,8 @@ editionscript = """
         selectedImage.forEach(e => e.remove());
 
         for (let i = 0; i < images.length; ++i) {
-          keyvalues.append(
-            el("div", { class: "imgFolder", style: "width: 300px; margin: 10%" }, el("img", { style: "width: 100%", "src": dir + images[i], "alt": images[i] },  [], {}), {
+          interactionDiv.append(
+            el("div", { class: "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
               onclick() {
                 // highlight the selected image
                 let otherImages = document.querySelectorAll(".imgFolder");
@@ -2404,6 +2413,8 @@ editionscript = """
           );
         }
       }
+      
+      interactionDiv.append(keyvalues);
 
       if (clickedElem && clickedElem.tagName === "IMG") {
         let srcName = clickedElem.attributes[0].value;
@@ -2421,7 +2432,7 @@ editionscript = """
         }
 
         // upload image button
-        keyvalues.append(
+        interactionDiv.append(
           el("a", 
             { "id": "upload-image-btn-a" }, 
             el(
@@ -2437,7 +2448,6 @@ editionscript = """
         showListsImages(srcName);
       }
 
-      interactionDiv.append(keyvalues);
       //interactionDiv.append(el("hr"));
 
       if(clickedElem && (clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE" || clickedElem.tagName === "TITLE")) {
