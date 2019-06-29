@@ -26,6 +26,7 @@ function getNonParam() {
 }
 
 const fs = require("fs");
+const fspath = require('path');
 const https = require('https');
 //const http = require('http');
 const url = require('url');
@@ -367,6 +368,40 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
       willkill = undefined;
     }
     if(request.method == "GET") {
+      let $action = request.headers["action"];
+      let $name = request.headers["name"];
+      if(typeof $action != "undefined" && typeof $name != "undefined") { // AJAX requests to read info from the file system
+        if($name.substring(0, 1) === "/") {
+          $name = $name.substring(1);
+        }
+        if($action == "isdir") {
+          response.statusCode = 200;
+          if($name == "") $name = ".";
+          response.end(fs.existsSync($name) && fs.lstatSync($name).isDirectory() || $name == "." || $name == ""  ? "true" : "false");
+          return;
+        } else if($action == "isfile") {
+          response.statusCode = 200;
+          response.end(fs.existsSync($name) && fs.lstatSync($name).isFile() ? "true" : "false");
+          return;
+        } else if($action == "listdir") {
+          response.statusCode = 200;
+          if($name == "") $name = ".";
+          response.end(JSON.stringify((fs.readdirSync($name) || []).filter(i => i != "." && i != "..")));
+          return;
+        } else if($action == "read") {
+          response.statusCode = 200;
+          if(fs.existsSync($name)) {
+            response.end("1" + fs.readFileSync($name));
+          } else {
+            response.end("0");
+          }
+          return;
+        } else {
+          response.statusCode = 500;
+          response.end("Unsupported read action for this user: $action, $userId"); 
+          return;
+        }
+      }
       var header = path.endsWith(".ico") ? "image/ico" : header;
       var header = path.endsWith(".jpg") ? "image/jpg" : header;
       var header = path.endsWith(".gif") ? "image/gif" : header;
@@ -399,6 +434,49 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
       request.on('data', chunk => chunks.push(chunk));
       request.on('end', function () {
         var allChunks = Buffer.concat(chunks);
+        // Start ajax requests to modify the file system.
+        let $action = request.headers["action"];
+        let $name = request.headers["name"];
+        if(typeof $action != "undefined" && typeof $name != "undefined") {
+          $content = allChunks.toString();
+          if($action == "write" || $action == "create") {
+            if (!fs.lstatSync($name).isDirectory(fspath.dirname($name))) {
+              fs.mkdirSync(fspath.dirname($name), { recursive: true });
+            }
+            fs.writeFileSync($name, $content, "utf8");
+            response.statusCode = 200;
+            if($action == "create") {
+              response.end(`Written ${name}`);
+            } else {
+              response.end(`Created ${name}`);
+            }
+            return;
+          } else if($action == "rename") {
+            fs.renameSync($name, $content);
+            response.statusCode = 200;
+            response.end(`Renamed ${name} to ${content}`);
+            return;
+          } else if($action == "delete") {
+            fs.unlinkSync($name);
+            response.statusCode = 200;
+            response.end(`Deleted ${name}`);
+            return;
+          } else {
+            response.statusCode = 500;
+            response.end(`Unsupported write action for this user: ${action}, ${userId}`)
+            return;
+          }
+        } else if(request.headers["location"]) { // File overwriting
+          $location = request.headers["location"];
+          $location = $location.length && $location[0] == "/" ? $location.substring(1) : $location;
+          $content = allChunks.toString();
+          responde.send(`Writing ${location} whatever received on POST data`);
+          fs.writeFileSync($location, $content, "utf8");
+          responde.end(`Finished to write to $location`);
+          return;
+        }
+        // End ajax requests
+
         if(defaultOptions.closeable && request.headers["close"]) {
           willkill = setTimeout(() => process.exit(), timeBeforeExit); // Kills the server after 2 seconds if the webpage is not requested.
           response.statusCode = 200;

@@ -822,9 +822,11 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
 </style>,
 <div id="menumargin"></div>]
 
+browserSide = listDict.get "browserSide" defaultOptions == Just True
+
 initialScript = [
 <script>
-var XHRequest = @(if listDict.get "browserSide" defaultOptions == Just True then "ProxiedServerRequest" else "XMLHttpRequest");
+var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
 
 function el(tag, attributes, children, properties) {
   let tagClassIds = tag.split(/(?=#|\.)/g);
@@ -1088,6 +1090,26 @@ editor.uploadFile = function(targetPathName, file, onOk, onError) {
   );
   xhr.send(file);
 }
+editor.fs = { listdir: 
+  @(if browserSide then """
+    defaultOptions.nodefs.listdir
+  """ else """
+    function(dirname) {
+      var xhr = new XMLHttpRequest();
+      xhr.onreadystatechange = ((xhr, file) => () => {})
+      xhr.open("GET", dirname, false);
+      xhr.setRequestHeader("action", "listdir");
+      xhr.setRequestHeader("name", dirname);
+      xhr.send();
+      if(xhr.status === 200) {
+        return JSON.parse(xhr.responseText);
+      } else {
+        return [];
+      }
+    }
+  """)
+  };
+
 
 // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
 editor.getStorageFolder = function(file) {
@@ -2345,22 +2367,21 @@ editionscript = """
           }
         }
       }
-
+      
       function showListsImages(srcName) {
         let dir = "";
         for(let i = 0, arr = srcName.split('\\'); i < arr.length - 1; ++i) {
           dir += (arr[i] + "/");
         }
-        files = defaultOptions.nodefs.listdir(dir);
+        files = editor.fs.listdir(dir);
         
         images = [];
         files.forEach(file => {
-          let ext = file.split('.').pop();
+          let ext = file.split('.').pop().toLowerCase();
           if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif') {
             images.push(file);
           }
         });
-        
         // init: clear image list
         let selectedImage = document.querySelectorAll(".imgFolder");
         selectedImage.forEach(e => e.remove());
