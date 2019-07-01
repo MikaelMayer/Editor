@@ -915,8 +915,8 @@ editor.ghostAttrs.push(n => ["bis_skin_checked"]);
 
 function isSpecificGhostAttributeKeyFromNode(n) {
   var additionalGhostAttributes = [];
-  for(var k in ghostAttrs) {
-    additionalGhostAttributes = additionalGhostAttributes.concat(ghostAttrs[k](n))
+  for(var k in editor.ghostAttrs) {
+    additionalGhostAttributes = additionalGhostAttributes.concat(editor.ghostAttrs[k](n))
   }
   return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
 }
@@ -979,7 +979,7 @@ function handleScriptInsertion(mutations) {
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
-        if(!hasGhostAncestor(insertedNode) && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && ghostNodes.find(pred => pred(insertedNode))) {
+        if(!hasGhostAncestor(insertedNode) && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode))) {
          if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
          insertedNode.isghost = true;
         }
