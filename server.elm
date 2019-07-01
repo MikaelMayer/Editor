@@ -2242,6 +2242,13 @@ editionscript = """
 
           When other elements in selector are clicked, change 'clicked element' to it. And it also follow rules above.
         */
+        if (selectorStatus === 1) {
+          
+        } else {
+
+        }
+
+
         let displayMainElem = function(elem) {
           let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
           mainElemDiv.append(
