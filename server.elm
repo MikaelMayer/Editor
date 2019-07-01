@@ -136,6 +136,87 @@ applyDotEditor source =
             if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
           )</body></html>"""
       )
+{---------------------------------------------------------------------------
+Utility functions to be inherited by the main body of any
+view of editor (edit / file listing / word processor / etc)
+LUCA stands for "Last Universal Common Ancestor"
+----------------------------------------------------------------------------}
+
+luca = 
+  [<script>
+    function doReadServer(action, name) {
+      if (readServer != "undefined") {
+        console.log("reading server");
+        return readServer(action, name);
+      }
+      //TODO make functionality for standalone editor not just TharzenEditor
+      console.error("need to make the reading server functionality for standalone editor");
+    }
+    function doWriteServer(action, name, content) {
+      if (writeServer != "undefined") {
+        console.log("about to write to server");
+        return writeServer(action, name, content);
+      }
+      //TODO make functionality for standalone editor not just TharzenEditor
+      console.error("need to make the writing server functionality for standalone editor");
+    }
+    function doReloadPage() {
+      document.location.reload();
+      //TODO not full reload bump: Mikael
+    }
+    // Editor's API should be stored in the variable editor.
+
+    editor = typeof editor === "object" ? editor : {};
+    editor.uploadFile = function(targetPathName, file, onOk, onError) {
+      var xhr = new XMLHttpRequest();
+      xhr.onreadystatechange = ((xhr, file) => () => {
+        if (xhr.readyState == XMLHttpRequest.DONE) {
+          if (xhr.status == 200 || xhr.status == 201) {
+            onOk ? onOk(targetPathName, file) : 0;
+          } else {
+            console.log("Error while uploading picture or file", xhr);
+            onError ? onError(targetPathName, file) : 0;
+          }
+        }
+      })(xhr, file);
+      @(if listDict.get "browserSide" defaultOptions == Just True then """
+      xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+      """ else """
+      xhr.open("POST", targetPathName, false);
+      xhr.setRequestHeader("write-file", file.type);
+      """);
+      xhr.send(file);
+    }
+    // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
+    editor.getStorageFolder = function(file) {
+      var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
+      for(let s of storageOptions) {
+        if(file.type.startsWith(s.getAttribute("file-type") || "")) {
+          let sf = storageOptions.getAttribute("editor-storagefolder") || "";
+          if(!sf.endsWith("/")) sf = sf + "/";
+          return sf;
+        }
+      }
+      let extension = "";
+      if(file && file.type.startsWith("image")) {
+        var otherImages = document.querySelectorAll("img[src]");
+        for(let i of otherImages) {
+           extension = (i.getAttribute("src") || "").replace(/[^\/]*$/, "");
+           break;
+        }
+        if(extension[0] == "/") { // Absolute URL
+          return extension;
+        }
+      }
+      // extension ends with a / or is empty
+      var tmp = location.pathname.split("/");
+      tmp = tmp.slice(0, tmp.length - 1);
+      storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
+      return storageFolder;
+    }
+    
+   </script>]
+
 
 {---------------------------------------------------------------------------
  Evaluates the page according to the path extension.
@@ -236,22 +317,6 @@ evaluatedPage =
           if (e.keyCode == 17){ //releasing ctrl key. doesn't set e.ctrlKey properly or would use that.
             ispressed = false;
           }
-        }
-        function doReadServer(action, name) {
-          if (readServer != "undefined") {
-            console.log("reading server");
-            return readServer(action, name);
-          }
-          //TODO make functionality for standalone editor not just TharzenEditor
-          console.error("need to make the reading server functionality for standalone editor");
-        }
-        function doWriteServer(action, name, content) {
-          if (writeServer != "undefined") {
-            console.log("about to write to server");
-            return writeServer(action, name, content);
-          }
-          //TODO make functionality for standalone editor not just TharzenEditor
-          console.error("need to make the writing server functionality for standalone editor");
         }
       </script>
       <style>
@@ -361,8 +426,6 @@ evaluatedPage =
         <button id="renamefs" onClick="renameFs()">Rename Files</button>
         <button id="deletefs" onClick="deleteFs()">Delete Files</button>
         <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
-        <button id="uploadfs" onClick="uploadFs()">Upload Files</button>
-
       </div> <!-- menu_bar -->
       <script>
       window.onscroll = function() {stickyFun()};
@@ -377,46 +440,36 @@ evaluatedPage =
           menu_bar.classList.remove("sticky");
         }
       }
-      function isPressed(btn){
-        return btn.checked;
-      }
-      function getSelectedFiles(){
-        var btns = document.querySelectorAll("input.filesBtn");
-        return Array.from(btns).filter(isPressed);
-      }
-      function warnSelectFile() {
-        window.alert ("Error: Please select a file.")
-      }
-      function renameFs() {
-        console.log ("in rename fs");
+      var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
+      function warnSelectFile() { window.alert ("Error: Please select a file.") }
+      function getOneFile() {
         var selected = getSelectedFiles();
         if (selected.length == 0) {
           warnSelectFile();
-          return;
+          return 0;
         } else if (selected.length != 1) {
           window.alert ("Error: can only rename one file at a time");
-          return;
+          return 0;
         }
-        var sel = selected[0];
+        return selected[0];
+      }
+      function renameFs() {
+        console.log ("in rename fs");
+        var sel = getOneFile();
+        if (! sel) return;
         //sel.readonly = false;
         console.log (sel);
         var newname = window.prompt("Set new name for file: ", "");
         if (newname == "") return;
         //TODO check that we're not overwriting an existing file!
         var x = doWriteServer("rename", sel.id, newname);
-        if (x)
-        {
+        if (x) {
           console.log ("rename failed");
           window.alert("rename failed");
           return;
         }
-        //TODO check that rename worked
         console.log ("renamed", sel.id, newname);
-        document.location.reload();
-      }
-      function uploadFs() {
-        console.log ("in upload fs");
-        var selected = getSelectedFiles();
+        doReloadPage();
       }
       function deleteFs() {
         console.log ("in delete fs");
@@ -431,12 +484,29 @@ evaluatedPage =
           for (i = 0; i < selected.length; i++) {
             doWriteServer("unlink", selected[i].id);
           }
-          document.location.reload();
+          doReloadPage();
           return;
         }
       }
       function duplicateFs() {
         console.log ("in duplicatefs");
+        var sel = getOneFile();
+        if (! sel) return;
+        var lastdot = sel.id.lastIndexOf(".");
+        var nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
+        var newname = window.prompt("Name for duplicate: ", nn);
+        var contents = doReadServer("read", sel.id);
+        if (contents[0] != "1") {
+          console.error ("couldn't read the file for some reason. aborting.");
+          return;
+        }
+        contents = contents.substring(1, contents.length);
+        var resp = doWriteServer("create", newname, contents);
+        console.log (resp);
+        if (resp) {
+          console.error ("Duplicating file failed for some reason: ", resp);
+        } 
+        doReloadPage();
       }
 
       function radPressed(){
@@ -455,11 +525,28 @@ evaluatedPage =
                              (\name -> <span><input type="checkbox" id=name class="filesBtn" name="filesBtn" value=name onClick="whichOne=value" onchange="radPressed()">
                                        <label for=name><a href=@(getNm name) contextmenu="fileOptions">@name</a></label><br></span>) 
                              (fs.listdir path)])
+    <form id="upfs" enctype="multipart/form-data">
+      <input type="file" name="files[]" multiple />
+      <input type="submit" value="Upload File" name="submit" />
+    </form>
+    <script>
+    const form = document.getElementById("upfs");
+
+    form.addEventListener('submit', e => {
+      e.preventDefault()
+      const files = document.querySelector('[type=file]').files
+      for (let i = 0; i < files.length; i++) {
+        let file = files[i]
+        var flpath = "@(path)" + file.name;
+        editor.uploadFile(flpath, file, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
+        console.log ("client side completed upload request");
+      }
+      doReloadPage();
+    })
+    </script>
     
     Hint: place a
-    <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,
-    <a href=("/@(pathprefix)index.html?edit=true") contenteditable="false">index.html</a> or
-    <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
+    <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,   <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
     file to display something else than this page.</body></html>
   else if Regex.matchIn """\.txt$""" path then
     Ok <html><head></head><body>
@@ -503,7 +590,7 @@ main =
            (if canEditPage then
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
-           bodyattrs, 
+           bodyattrs, luca ++
           if not varedit || varls then
             bodychildren
           else 
@@ -1271,57 +1358,6 @@ function remove(node) {
     }
   }
   node.remove();
-}
-
-// Editor's API should be stored in the variable editor.
-
-editor = typeof editor === "object" ? editor : {};
-editor.uploadFile = function(targetPathName, file, onOk, onError) {
-  var xhr = new XMLHttpRequest();
-  xhr.onreadystatechange = ((xhr, file) => () => {
-    if (xhr.readyState == XMLHttpRequest.DONE) {
-      if (xhr.status == 200 || xhr.status == 201) {
-        onOk ? onOk(targetPathName, file) : 0;
-      } else {
-        console.log("Error while uploading picture or file", xhr);
-        onError ? onError(targetPathName, file) : 0;
-      }
-    }
-  })(xhr, file);
-  @(if listDict.get "browserSide" defaultOptions == Just True then """
-  xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
-  """ else """
-  xhr.open("POST", targetPathName, false);
-  xhr.setRequestHeader("write-file", file.type);
-  """);
-  xhr.send(file);
-}
-// Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
-editor.getStorageFolder = function(file) {
-  var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
-  for(let s of storageOptions) {
-    if(file.type.startsWith(s.getAttribute("file-type") || "")) {
-      let sf = storageOptions.getAttribute("editor-storagefolder") || "";
-      if(!sf.endsWith("/")) sf = sf + "/";
-      return sf;
-    }
-  }
-  let extension = "";
-  if(file && file.type.startsWith("image")) {
-    var otherImages = document.querySelectorAll("img[src]");
-    for(let i of otherImages) {
-       extension = (i.getAttribute("src") || "").replace(/[^\/]*$/, "");
-       break;
-    }
-    if(extension[0] == "/") { // Absolute URL
-      return extension;
-    }
-  }
-  // extension ends with a / or is empty
-  var tmp = location.pathname.split("/");
-  tmp = tmp.slice(0, tmp.length - 1);
-  storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
-  return storageFolder;
 }
 </script>
 ]
