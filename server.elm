@@ -2790,7 +2790,7 @@ editionscript = """
                 }
                 // replace image
                 clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
-                document.getElementsByClassName("keyvalue")[0].children[1].children[0].setAttribute("value", this.children[0].getAttribute("src"));
+                document.getElementById("keyvalue-input").setAttribute("value", this.children[0].getAttribute("src"));
                 this.style.outline = "2px solid white";
               }
             })
