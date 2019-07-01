@@ -893,39 +893,45 @@ function isGhostAttributeKey(name) {
   return name.startsWith("ghost-");
 }
 
-globalGhostAttributeKeysFromNode = [];
-(globalGhostAttributeKeysFromNode || []).push(n =>
+// Editor's API is stored in the variable editor.
+
+editor = typeof editor === "object" ? editor : {};
+
+// Array of functions on nodes returning an array of attributes that should be ghosts.
+editor.ghostAttrs = [];
+editor.ghostAttrs.push(n =>
   ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ").concat(
     ((n && n.getAttribute && n.getAttribute("save-ghost-attributes")) || "").split(" ")).filter(a => a != "")
 );
-(globalGhostAttributeKeysFromNode || []).push(n =>
+editor.ghostAttrs.push(n =>
   n && n.tagName == "HTML" ? ["class"] : []
 );
-(globalGhostAttributeKeysFromNode || []).push(n =>
+editor.ghostAttrs.push(n =>
   n && n.tagName == "BODY" ? ["data-gr-c-s-loaded"] : []
 );
 // attribute of some chrome extensions
-(globalGhostAttributeKeysFromNode || []).push(n => ["bis_skin_checked"]);
+editor.ghostAttrs.push(n => ["bis_skin_checked"]);
 
 
 function isSpecificGhostAttributeKeyFromNode(n) {
   var additionalGhostAttributes = [];
-  for(var k in globalGhostAttributeKeysFromNode) {
-    additionalGhostAttributes = additionalGhostAttributes.concat(globalGhostAttributeKeysFromNode[k](n))
+  for(var k in ghostAttrs) {
+    additionalGhostAttributes = additionalGhostAttributes.concat(ghostAttrs[k](n))
   }
   return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
 }
 
-setGhostOnInserted = [];
+// Array of predicates that, if they return true on a node, Editor will mark this node as ghost.
+editor.ghostNodes = [];
 
 // Analytics scripts
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
      insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
 );
 
 // For for ace styles in header
-(setGhostOnInserted || []).push(insertedNode => {
+editor.ghostNodes.push(insertedNode => {
     if(insertedNode.tagName == "STYLE" && typeof insertedNode.getAttribute("id") == "string" &&
      (insertedNode.getAttribute("id").startsWith("ace-") ||
       insertedNode.getAttribute("id").startsWith("ace_"))) {
@@ -937,28 +943,28 @@ setGhostOnInserted = [];
   }
 );
 // For Google sign-in buttons and i-frames
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   (insertedNode.tagName == "DIV" &&
     insertedNode.classList.contains("abcRioButton")) ||
   (insertedNode.tagName == "IFRAME" &&
     insertedNode.getAttribute("id") == "ssIFrame_google")
 );
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
-(setGhostOnInserted || []).push(insertedNode => 
+editor.ghostNodes.push(insertedNode => 
   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null &&
   insertedNode.parentElement.tagName == "HEAD" && (insertedNode.setAttribute("save-ghost", "true") || true)
 );
 // For ace script for syntax highlight
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
      insertedNode.getAttribute("src").startsWith("https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/mode-j")
 );
 // For ace script for syntax highlight
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "ACE_OUTER"
 );
 // For the grammarly extension
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   insertedNode.classList.contains("gr-top-z-index") || insertedNode.classList.contains("gr-top-zero")
 );
 
@@ -973,7 +979,7 @@ function handleScriptInsertion(mutations) {
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
-        if(!hasGhostAncestor(insertedNode) && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && setGhostOnInserted.find(pred => pred(insertedNode))) {
+        if(!hasGhostAncestor(insertedNode) && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && ghostNodes.find(pred => pred(insertedNode))) {
          if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
          insertedNode.isghost = true;
         }
@@ -1070,9 +1076,6 @@ function remove(node) {
   node.remove();
 }
 
-// Editor's API should be stored in the variable editor.
-
-editor = typeof editor === "object" ? editor : {};
 editor.uploadFile = function(targetPathName, file, onOk, onError) {
   var xhr = new XMLHttpRequest();
   xhr.onreadystatechange = ((xhr, file) => () => {
