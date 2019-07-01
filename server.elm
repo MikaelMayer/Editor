@@ -2243,9 +2243,59 @@ editionscript = """
           When other elements in selector are clicked, change 'clicked element' to it. And it also follow rules above.
         */
         if (selectorStatus === 1) {
-          
-        } else {
+          let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
+          mainElemDiv.append(
+            el("div", {"class":"mainElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">", {
+              onclick: (c => event => {
+                  if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                    return;
+                  }
+                  // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
 
+                  // switch to status 2
+                  selectorStatus = 2;
+                  editor_model.clickedElem = c;
+                  editor_model.notextselection = true;
+                  updateInteractionDiv();
+                })(elem),
+                onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
+                onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
+            }),
+            el("div", {"class": "mainElemInfo"}, textPreview(elem, 50)) // display its text content
+          );
+        } else {
+          let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
+          childrenElemDiv.append(
+            el("div", {"class": "childrenSelector"},
+              [
+                el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
+                el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
+              ], 
+              {
+                onclick: (c => event => {
+                    // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+                    if (selectorStatus === 1) {
+                      // all second part elements are clicked element's children, thus change current clicked element to its child
+                      editor_model.clickedElem = c;
+                      editor_model.notextselection = true;
+                      updateInteractionDiv();
+                    } else {
+                      // except clicked element itself, other elements are siblings
+                      if (c == clickedElem) {
+                        // if it is clicked element itself, click it will let selector switch to status 1
+                        selectorStatus = 1;
+                        updateInteractionDiv();
+                      } else {
+                        // if it is its sibling, change sibling's position
+                        
+                      }
+                    }
+                  })(elem),
+                  onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
+                  onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
+              }
+            )
+          );
         }
 
 
