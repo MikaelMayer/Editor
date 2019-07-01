@@ -687,7 +687,8 @@ div.keyvalue > span > input {
 }
 
 /* dom selector css */
-div.dom-selector {
+div.dom-selector-style {
+  margin: 2%;
   border-radius: 0.4em;
   padding: 0.4rem;
   background: rgba(0, 212, 159,0.7);
@@ -702,15 +703,12 @@ div.childrenElem {
   min-height: 70px;
 }
 
-div.parentSelector {
-  min-height: 100px;
-}
-
-div.parentElemName, div.mainElemName {
+ div.mainElemName {
   color: white;
 }
 
-div.parentSelector, div.childrenSelector {
+div.childrenSelector {
+  min-width: 50px;
   position: relative;
   flex-grow: 1; 
   text-align: center; 
@@ -722,15 +720,15 @@ div.parentSelector, div.childrenSelector {
   border-radius: 0.3rem;
 }
 
-div.parentSelector:hover, div.childrenSelector:hover {
+div.childrenSelector:hover {
   /* opacity: 1; */
 }
 
-div.parentSelector:active, div.childrenSelector:active {
+div.childrenSelector:active {
   box-shadow: inset 1px 0px 1px 1px lightgrey;
 }
 
-div.parentSelector, div.mainElem {
+div.mainElem {
   position: relative;
   text-align: center;
   font-size: 1.6em;
@@ -738,7 +736,7 @@ div.parentSelector, div.mainElem {
   margin-bottom: 0.5em;
 }
 
-div.parentElemInfo, div.mainElemInfo {
+div.mainElemInfo {
   font-size: 0.6em;
 }
 
@@ -765,6 +763,34 @@ div.elementTag {
   top: 0;
   left: 0;
   font-weight: bold;
+}
+
+div.no-children {
+  background: white;
+  opacity: 0.8;
+  text-align: center;
+  width: 100%;
+  text-transform: uppercase;
+  color: black;
+  padding: 10px;
+  padding-top: 12px;
+  margin: 2px;
+  border: 1px solid whitesmoke;
+  border-radius: 0.3rem;
+  font-weight: bold;
+  line-height: 50px;
+}
+
+div.no-sibling {
+  background: white;
+  opacity: 0.8;
+  color: black;
+  width: 20%;
+  text-transform: uppercase;
+  font-size: 0.6rem;
+  line-height: 15px;
+  font-weight: bold;
+  min-width: 50px;
 }
 
 div.selectedElementTag {
@@ -1883,7 +1909,7 @@ editionscript = """
       modifyMenuDiv.innerHTML = "";
       let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"});
       let interactionDiv = el("div", {"class": "information"});
-      let domSelector = el("div", {"class": "dom-selector", "style": "margin: 2%;"}); // create dom selector interface
+      let domSelector = el("div", {"class": "dom-selector"}); // create dom selector interface
       
       modifyMenuDiv.append(domSelector);
       modifyMenuDiv.append(modifyMenuIconsDiv);
@@ -2242,133 +2268,21 @@ editionscript = """
 
           When other elements in selector are clicked, change 'clicked element' to it. And it also follow rules above.
         */
-        if (selectorStatus === 1) {
-          let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
-          mainElemDiv.append(
-            el("div", {"class":"mainElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">", {
-              onclick: (c => event => {
-                  if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-                    return;
-                  }
-                  // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
-
-                  // switch to status 2
-                  selectorStatus = 2;
-                  editor_model.clickedElem = c;
-                  editor_model.notextselection = true;
-                  updateInteractionDiv();
-                })(elem),
-                onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
-                onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
-            }),
-            el("div", {"class": "mainElemInfo"}, textPreview(elem, 50)) // display its text content
-          );
-        } else {
-          let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
-          childrenElemDiv.append(
-            el("div", {"class": "childrenSelector"},
-              [
-                el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
-                el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
-              ], 
-              {
-                onclick: (c => event => {
-                    // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
-                    if (selectorStatus === 1) {
-                      // all second part elements are clicked element's children, thus change current clicked element to its child
-                      editor_model.clickedElem = c;
-                      editor_model.notextselection = true;
-                      updateInteractionDiv();
-                    } else {
-                      // except clicked element itself, other elements are siblings
-                      if (c == clickedElem) {
-                        // if it is clicked element itself, click it will let selector switch to status 1
-                        selectorStatus = 1;
-                        updateInteractionDiv();
-                      } else {
-                        // if it is its sibling, change sibling's position
-                        
-                      }
-                    }
-                  })(elem),
-                  onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
-                  onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
-              }
-            )
-          );
-        }
-
+        domSelectorDiv.classList.add("dom-selector-style");
+        domSelectorDiv.append(
+          el("div", {"class": "mainElem"}, []),
+          el("div", {"class": "childrenElem"}, [])
+        );
 
         let displayMainElem = function(elem) {
           let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
           mainElemDiv.append(
             el("div", {"class":"mainElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">", {
-              onclick: (c => event => {
-                  // if user reach the top node of DOM tree, disable click on parent element because there will be no parent element
-                  if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-                    return;
-                  }
-                  // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
-
-                  if (selectorStatus === 1) {
-                    // change to status 2: first part contains its parent element, second part contains its siblings and itself
-                    displayParentElem(c.parentElement);
-
-                    // clear second part of selector
-                    document.querySelector(".childrenElem").children.forEach(e => e.remove());
-                    
-                    displaySecondPart(c.previousElementSibling);
-                    displaySecondPart(c);
-                    displaySecondPart(c.nextElementSibling);
-
-                    selectorStatus = 2;
-                  } else {
-                    // main element should be its parent, thus change the clicked element to its parent
-                    editor_model.clickedElem = c;
-                    editor_model.notextselection = true;
-                    updateInteractionDiv();
-                  }
-                })(elem),
-                onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
-                onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
+              onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
+              onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
             }),
             el("div", {"class": "mainElemInfo"}, textPreview(elem, 50)) // display its text content
           )
-        }
-
-        let displaySecondPart = function(elem) {
-          let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
-          childrenElemDiv.append(
-            el("div", {"class": "childrenSelector"},
-              [
-                el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
-                el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
-              ], 
-              {
-                onclick: (c => event => {
-                    // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
-                    if (selectorStatus === 1) {
-                      // all second part elements are clicked element's children, thus change current clicked element to its child
-                      editor_model.clickedElem = c;
-                      editor_model.notextselection = true;
-                      updateInteractionDiv();
-                    } else {
-                      // except clicked element itself, other elements are siblings
-                      if (c == clickedElem) {
-                        // if it is clicked element itself, click it will let selector switch to status 1
-                        selectorStatus = 1;
-                        updateInteractionDiv();
-                      } else {
-                        // if it is its sibling, change sibling's position
-                        
-                      }
-                    }
-                  })(elem),
-                  onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
-                  onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
-              }
-            )
-          );
         }
 
         let displayChildrenElem = function(elem) {
@@ -2380,14 +2294,8 @@ editionscript = """
                 el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
               ], 
               {
-                onclick: (c => event => {
-                    // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
-                    editor_model.clickedElem = c;
-                    editor_model.notextselection = true;
-                    updateInteractionDiv();
-                  })(elem),
-                  onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
-                  onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
+                onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
+                onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
               }
             )
           );
@@ -2410,38 +2318,151 @@ editionscript = """
           }
         }
 
-        domSelectorDiv.append(
-          el("div", {"class": "mainElem"}, []),
-          el("div", {"class": "childrenElem"}, [])
-        );
-
-        // Display clicked element as main elements
-        displayMainElem(clickedElem);
-        let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
-        displayElemAttr(mainElemDiv, clickedElem);
-        document.querySelector(".mainElem").append(
-          el("div", {"class": "selectedElementTag elementTag"}, "select")
-        );
-
-        // if clickedElement has children elements
-        if (clickedElem.children.length > 0) {
-          // only display first 3 children elements
-          let childrenElem = clickedElem.children;
-          for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
-            // prevent displaying menus
-            if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu") {
-              continue;
+        if (selectorStatus === 1) {
+          // status 1
+          // display clicked element in main part
+          let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
+          displayMainElem(clickedElem);
+          mainElemDiv.addEventListener('click', (c => event => {
+            if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+              return;
             }
-            displayChildrenElem(childrenElem[i]);
+            // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+
+            // switch to status 2
+            selectorStatus = 2;
+            editor_model.clickedElem = c;
+            editor_model.notextselection = true;
+            updateInteractionDiv();
+          })(clickedElem));
+          displayElemAttr(mainElemDiv, clickedElem);
+          document.querySelector(".mainElem").append(
+            el("div", {"class": "selectedElementTag elementTag"}, "selected")
+          );
+
+          // display children elements in second part
+          // if clickedElement has children elements
+          if (clickedElem.children.length > 0) {
+            // only display first 3 children elements
+            let childrenElem = clickedElem.children;
+            for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
+              // prevent displaying menus
+              if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu") {
+                continue;
+              }
+              displayChildrenElem(childrenElem[i]);
+              document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
+                if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                  return;
+                }
+                // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+
+                // still in status 1
+                selectorStatus = 1;
+                editor_model.clickedElem = c;
+                editor_model.notextselection = true;
+                updateInteractionDiv();
+              })(childrenElem[i]));
+              document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
+                el("div", {"class": "elementTag"}, "child")
+              );
+              cnt++;
+            }
+          } else {
+            document.querySelector(".childrenElem").append(
+                el("div", {"class": "no-children"}, "No Children")
+            );
+          }
+        } else {
+          // status 2
+          // display clicked element's parent element in main part
+          let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
+          displayMainElem(clickedElem.parentElement);
+          mainElemDiv.addEventListener('click', (c => event => {
+            if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+              return;
+            }
+            // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+
+            // switch to status 1, current clicked element's parent element becomes clicked element
+            selectorStatus = 1;
+            editor_model.clickedElem = c;
+            editor_model.notextselection = true;
+            updateInteractionDiv();
+          })(clickedElem.parentElement));
+          displayElemAttr(mainElemDiv, clickedElem.parentElement);
+          document.querySelector(".mainElem").append(
+            el("div", {"class": "elementTag"}, "parent")
+          );
+
+          // display clicked element's previous sibling, clicked element, clicked element's next sibling
+          let cnt = 0;
+          if (clickedElem.previousElementSibling) {
+            displayChildrenElem(clickedElem.previousElementSibling);
+            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
+              if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                return;
+              }
+              // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+
+              // still in status 2, but clicked element change to previous sibling
+              selectorStatus = 2;
+              editor_model.clickedElem = c;
+              editor_model.notextselection = true;
+              updateInteractionDiv();
+            })(clickedElem.previousElementSibling));
             document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
               el("div", {"class": "elementTag"}, "child")
             );
-            cnt++;
+          } else {
+            let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
+            childrenElemDiv.append(
+              el("div", {"class": "childrenSelector no-sibling"}, "no previous sibling")
+            );
           }
-        } else {
+          cnt++;
+
+          displayChildrenElem(clickedElem);
+          document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
+            if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+              return;
+            }
+            // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+
+            // switch to status 1
+            selectorStatus = 1;
+            editor_model.clickedElem = c;
+            editor_model.notextselection = true;
+            updateInteractionDiv();
+          })(clickedElem));
           document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
-              el("div", {"class": "no-children elementTag"}, "No Children")
+            el("div", {"class": "selectedElementTag elementTag"}, "selected")
           );
+          cnt++;
+
+          if (clickedElem.nextElementSibling) {
+            displayChildrenElem(clickedElem.nextElementSibling);
+            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
+              if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                return;
+              }
+              // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+
+              // still in status 2, but clicked element change to next sibling
+              selectorStatus = 2;
+              editor_model.clickedElem = c;
+              editor_model.notextselection = true;
+              updateInteractionDiv();
+            })(clickedElem.nextElementSibling));
+            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
+              el("div", {"class": "elementTag"}, "child")
+            );
+          } else {
+            let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
+            childrenElemDiv.append(
+              el("div", {"class": "childrenSelector no-sibling"}, "no next sibling")
+            );
+          }
         }
       }
 
