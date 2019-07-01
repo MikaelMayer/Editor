@@ -1831,7 +1831,7 @@ editionscript = """
       position = Math.min(position, node.textContent.length);
       if (node.nodeType == 3) {
         let sel  = window.getSelection()
-        sel.collapse(node, position)
+        setTimeout( () => sel.collapse(node, position), 0);
       } else {
         let p = position
         let n = node.firstChild
