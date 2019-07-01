@@ -2679,7 +2679,7 @@ editionscript = """
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
               el("span", {},
-                el("input", {"type": "text", value: value, "id": "keyvalue-input"},
+                el("input", {"type": "text", value: value, "id": "image-src-input"},
                   [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
@@ -2741,7 +2741,7 @@ editionscript = """
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-            document.getElementById("keyvalue-input").setAttribute("value", file.name);
+            document.getElementById("image-src-input").setAttribute("value", file.name);
             clickedElem.setAttribute("src", targetPathName);
           });
         }
@@ -2790,7 +2790,7 @@ editionscript = """
                 }
                 // replace image
                 clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
-                document.getElementById("keyvalue-input").setAttribute("value", this.children[0].getAttribute("src"));
+                document.getElementById("image-src-input").setAttribute("value", this.children[0].getAttribute("src"));
                 this.style.outline = "2px solid white";
               }
             })
