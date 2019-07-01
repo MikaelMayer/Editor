@@ -214,7 +214,37 @@ luca =
       storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
       return storageFolder;
     }
-    
+    function el(tag, attributes, children, properties) {
+      let tagClassIds = tag.split(/(?=#|\.)/g);
+      let x;
+      for(let attr of tagClassIds) {
+        if(x && attr.startsWith(".")) {
+          x.classList.toggle(attr.substring(1), true);
+        } else if(x && attr.startsWith("#")) {
+          x.setAttribute("id", attr.substring(1));
+        } else if(!x) {
+          x = document.createElement(attr);
+        }
+      }
+      if(typeof attributes == "object")
+        for(let k in attributes)
+          x.setAttribute(k, attributes[k]);
+      if(Array.isArray(children)) {
+        for(let child of children) {
+          if(typeof child === "string") {
+            x.append(child)
+          } else if(typeof child !== "undefined")
+            x.appendChild(child);
+        }
+      } else if(typeof children !== "undefined") {
+        x.append(children);
+      }
+      if(typeof properties == "object") {
+        for(let k in properties)
+          x[k] = properties[k];
+      }
+      return x;
+    }    
    </script>]
 
 
@@ -426,6 +456,7 @@ evaluatedPage =
         <button id="renamefs" onClick="renameFs()">Rename Files</button>
         <button id="deletefs" onClick="deleteFs()">Delete Files</button>
         <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
+        <button id="createFolder" onClick="createFolder()">Create a Folder</button>
       </div> <!-- menu_bar -->
       <script>
       window.onscroll = function() {stickyFun()};
@@ -441,7 +472,9 @@ evaluatedPage =
         }
       }
       var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
-      function warnSelectFile() { window.alert ("Error: Please select a file.") }
+      var getAllFiles = () => Array.from(document.querySelectorAll("input.filesBtn"));
+      var warnSelectFile = () => window.alert ("Error: please select a file to continue");
+      var warnDeselectFiles = () => window.alert ("Error: please deselect files to continue");
       function getOneFile() {
         var selected = getSelectedFiles();
         if (selected.length == 0) {
@@ -472,8 +505,11 @@ evaluatedPage =
         doReloadPage();
       }
       function deleteFs() {
-        console.log ("in delete fs");
         var selected = getSelectedFiles();
+        if (selected.length == 0) {
+          warnSelectFile(); 
+          return;
+        }
         var warningMsg = "Are you sure you want to delete the following file(s)?"
         for (i = 0; i < selected.length; i++) {
           warningMsg = warningMsg + "\n" + selected[i].id;
@@ -489,7 +525,6 @@ evaluatedPage =
         }
       }
       function duplicateFs() {
-        console.log ("in duplicatefs");
         var sel = getOneFile();
         if (! sel) return;
         var lastdot = sel.id.lastIndexOf(".");
@@ -508,7 +543,26 @@ evaluatedPage =
         } 
         doReloadPage();
       }
-
+      function createFolder() {
+        var btns = getSelectedFiles();
+        if (btns.length != 0) {
+          warnDeselectFiles();
+          return;
+        }
+        var newname = window.prompt("Name for new folder: ", "");
+        if (newname == "") {
+          window.alert("Please set a name for the new folder!");
+          return;
+        }
+        var dups = getAllFiles().filter((fl) => fl.id == newname);
+        if (dups.length != 0) {
+          window.alert("There is already a file / folder with that name. Please try again.");
+          return;
+        }
+        doWriteServer("mkdir", newname, "");
+        doReloadPage();
+      }
+      
       function radPressed(){
         var btns = document.querySelectorAll("input.filesBtn");
         if (!ispressed){
@@ -521,6 +575,15 @@ evaluatedPage =
       
       </script>
       </head><body><h1><a href=path>/@path</a></h1>
+      <!--<form id="fileListing"></form>
+      <script>
+        function loadFiles() {
+          let form = document.getElementById("fileListing");
+          let path = @(jsCode.stringOf path);
+          let files = ...
+          //el("span", )
+        }
+      </script>-->
     @(["form", [], maybeUp <| List.map 
                              (\name -> <span><input type="checkbox" id=name class="filesBtn" name="filesBtn" value=name onClick="whichOne=value" onchange="radPressed()">
                                        <label for=name><a href=@(getNm name) contextmenu="fileOptions">@name</a></label><br></span>) 
@@ -1128,38 +1191,6 @@ initialScript = [
 <script>
 console.log("initial script running");
 var XHRequest = @(if listDict.get "browserSide" defaultOptions == Just True then "ProxiedServerRequest" else "XMLHttpRequest");
-
-function el(tag, attributes, children, properties) {
-  let tagClassIds = tag.split(/(?=#|\.)/g);
-  let x;
-  for(let attr of tagClassIds) {
-    if(x && attr.startsWith(".")) {
-      x.classList.toggle(attr.substring(1), true);
-    } else if(x && attr.startsWith("#")) {
-      x.setAttribute("id", attr.substring(1));
-    } else if(!x) {
-      x = document.createElement(attr);
-    }
-  }
-  if(typeof attributes == "object")
-    for(let k in attributes)
-      x.setAttribute(k, attributes[k]);
-  if(Array.isArray(children)) {
-    for(let child of children) {
-      if(typeof child === "string") {
-        x.append(child)
-      } else if(typeof child !== "undefined")
-        x.appendChild(child);
-    }
-  } else if(typeof children !== "undefined") {
-    x.append(children);
-  }
-  if(typeof properties == "object") {
-    for(let k in properties)
-      x[k] = properties[k];
-  }
-  return x;
-}
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
