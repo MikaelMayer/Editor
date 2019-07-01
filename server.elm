@@ -497,6 +497,8 @@ span#ambiguity-id {
   text-decoration: line-through
 }
 div.disambiguationMenu {
+	height: 40%;
+	overflow-y: auto;
   padding-left: 0.3em;
   padding-top: 0.3em;
   padding-bottom: 0.3em;
@@ -633,7 +635,7 @@ div#modify-menu > div.modify-menu-icons {
   overflow-x: auto;
 }
 div#modify-menu > div.information {
-  overflow-y: auto;
+  //overflow-y: auto;
   max-height: calc(100% - var(--context-menu-height));
 }
 div#modify-menu.visible {
@@ -1335,7 +1337,7 @@ editionscript = """
               disambiguationMenuContent.push(el("span.solution" + (i == selected ? ".selected" : "") + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
               title: i == selected ? "Currently displaying this solution" : "Select this solution" + (i == n && ambiguityEnd != 'true' ? " (compute further solutions after if any)" : ""), onclick: i == selected ? `` : `this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})`}, "", {innerHTML: "#" + i + " " + summary}));
             }
-            disambiguationMenuContent.push(el("button.modifyMenuButton#cancelAmbiguity", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
+            //disambiguationMenuContent.push(el("button.modifyMenuButton#cancelAmbiguity", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
             editor_model.disambiguationMenu = el("div.disambiguationMenu", {}, disambiguationMenuContent);
             editor_model.disambiguationMenu.ambiguityKey = ambiguityKey;
             editor_model.disambiguationMenu.selected = selected;
@@ -2051,6 +2053,9 @@ editionscript = """
         )
         if(editor_model.disambiguationMenu) {
           interactionDiv.append(editor_model.disambiguationMenu);
+        	interactionDiv.append(el("button.modifyMenuButton#cancelAmbiguity", 
+        		{title: "Revert to the original version"}, "Cancel",
+        		{onclick: function(event) {cancelAmbiguity(editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)}}));
         }
         if(editor_model.feedback) {
           interactionDiv.append(editor_model.feedback);
@@ -2584,6 +2589,7 @@ editionscript = """
               let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
               parent.insertBefore(insertedNode, nodeToInsertBefore);
               document.querySelector("#modify-menu").classList.toggle("visible", true);
+              editor_model.visible = true;
               editor_model.clickedElem = insertedNode;
               updateInteractionDiv();
             })(model.selectionRange)}
