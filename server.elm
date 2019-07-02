@@ -1190,6 +1190,10 @@ div#modify-menu input[type=radio] {
   width: 100%;
 }
 
+/* highlight selected image */
+div.highlight-select-image {
+  box-shadow: 2px 2px 3px black;
+}
 
 :root {
   --context-color: rgba(0, 128, 128, 0.8);
@@ -2753,9 +2757,11 @@ editionscript = """
         let selectedImage = document.querySelectorAll(".imgFolder");
         for (let i = 0; i < selectedImage.length; ++i) {
           if (selectedImage[i].getAttribute("src") === files[files.length - 1]) {
-            selectedImage[i].style.outline = "2px solid white";
+            // selectedImage[i].style.outline = "2px solid white";
+            selectedImage[i].classList.add("highlight-select-image");
           } else {
-            selectedImage[i].style.outline = "none";
+            // selectedImage[i].style.outline = "none";
+            selectedImage[i].classList.remove("highlight-select-image");
           }
         }
       }
@@ -2786,12 +2792,14 @@ editionscript = """
                 // highlight the selected image
                 let otherImages = document.querySelectorAll(".imgFolder");
                 for (let i = 0; i < otherImages.length; ++i) {
-                  otherImages[i].style.outline = "none";
+                  otherImages[i].classList.remove("highlight-select-image");
+                  // otherImages[i].style.outline = "none";
                 }
                 // replace image
                 clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
                 document.getElementById("image-src-input").setAttribute("value", this.children[0].getAttribute("src"));
-                this.style.outline = "2px solid white";
+                // this.style.outline = "2px solid white";
+                this.classList.add("highlight-select-image");
               }
             })
           );
