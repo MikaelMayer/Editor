@@ -968,7 +968,7 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
   div.dom-selector-style {
     height: 45%;
     margin: 0.15em;
-    border-radius: 0.2em;
+    border-radius: 0.4em;
     margin: 2%;
   }
 
