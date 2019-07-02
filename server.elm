@@ -379,6 +379,20 @@ if iscloseable then <span dummy=""></span> else closeEditBox,
   transition: .4s;
 }
 
+/* Remove input default border and shadow */
+input {
+  outline-color: invert ;
+	outline-style: none ;
+	outline-width: 0px ;
+	border: none ;
+	border-style: none ;
+	text-shadow: none ;
+	-webkit-appearance: none ;
+	-webkit-user-select: text ;
+	outline-color: transparent ;
+	box-shadow: none;
+}
+
 input:checked + .slider {
   background-color: #2196F3;
 }
@@ -627,7 +641,15 @@ div#modify-menu > div.modify-menu-icons {
 div#modify-menu > div.information {
   overflow-y: auto;
   max-height: calc(100% - var(--context-menu-height));
+  margin: 2%;
+  border-radius: 0.3em;
 }
+
+div.#modify-menu > div.information-style {
+  padding: 0.4rem;
+  /* background: rgba(0, 212, 159, 0.6); */
+}
+
 div#modify-menu.visible {
   transform: translate(0%, 0%);
 }
@@ -636,6 +658,7 @@ div#modify-menu h3 {
   margin-bottom: 2px;
 }
 div#modify-menu div.keyvalues {
+  margin-top: 6px;
   display: table;
   width: 100%;
   table-layout: fixed;
@@ -655,19 +678,23 @@ div#modify-menu div.keyvalues > div.keyvalueadder:hover {
   opacity: 1;
 }
 div#modify-menu input {
-  padding: 4px;
+  padding: 6px;
+  width: 100%;
 }
 div#modify-menu #newTagName {
-  width: 50%;
-  font-size: 1em;  
+  font-size: 1.4em;  
+  background-color: rgb(0, 178, 179);
+  font-family: monospace;
+  padding: 4px;
 }
 div#modify-menu .tagname-info {
-  color: #d4d4d4;
   display: inline-block;
-  width: 50%;
+  border-radius: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: transparent;
+  color: whitesmoke;
 }
 div#modify-menu input[type=radio] {
   width: initial;
@@ -675,9 +702,14 @@ div#modify-menu input[type=radio] {
 }
 
 div.keyvalue > span > input {
-  border-radius: 0.3em;
-  -webkit-appearance: none;
+  border-radius: 4px;
   margin: 2px;
+}
+
+div.tagname-summary {
+  background-color: rgb(0, 178, 179);
+  border-radius: 0.4em;
+  padding: 4px;
 }
 
 .inline-input {
@@ -691,59 +723,67 @@ div.dom-selector-style {
   margin: 2%;
   border-radius: 0.4em;
   padding: 0.4rem;
-  background: rgba(0, 212, 159,0.7);
-}
-
-div.mainElem {
-  min-height: 90px;
+  background: rgba(0, 212, 159, 0.6);
 }
 
 div.childrenElem {
   display: flex;
-  min-height: 70px;
+  height: 80px;
 }
 
- div.mainElemName {
+div.mainElemName {
   color: white;
+  font-family: monospace;
 }
 
+div.childrenSelectorName {
+    font-family: monospace;
+}
+      
 div.childrenSelector {
   min-width: 50px;
   position: relative;
-  flex-grow: 1; 
+  flex: 1; 
   text-align: center; 
   overflow: hidden;
   padding: 10px;
-  padding-top: 12px;
   margin: 2px;
-  border: 1px solid whitesmoke;
+  /* border: 1px solid whitesmoke; */
   border-radius: 0.3rem;
+  background-color: rgba(0, 212, 159);
+  transition: all 0.5s;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 div.childrenSelector:hover {
-  /* opacity: 1; */
-}
-
-div.childrenSelector:active {
-  box-shadow: inset 1px 0px 1px 1px lightgrey;
+   -webkit-filter: contrast(125%); /* Chrome, Opera */
+      -moz-filter: blur(125%);
+      -ms-filter: blur(125%);    
+          filter: blur(125%);
 }
 
 div.mainElem {
+  height: 90px;
+  padding-bottom: 6px;
   position: relative;
   text-align: center;
   font-size: 1.6em;
   color: turquoise;
   margin-bottom: 0.5em;
 }
-
+      
 div.mainElemInfo {
   font-size: 0.6em;
+  color: whitesmoke;
 }
 
 div.childrenSelectorInfo {
   text-overflow: ellipsis;
   overflow: hidden;
-  color: turquoise;
+  color: whitesmoke;
+  height: 38px;
+  font-size: 0.9em;
 }
 
 div.elementAttr {
@@ -766,40 +806,35 @@ div.elementTag {
 }
 
 div.no-children {
-  background: white;
-  opacity: 0.8;
+  background-color: transparent;
+  /* opacity: 0.8; */
   text-align: center;
   width: 100%;
   text-transform: uppercase;
-  color: black;
+  color: darkslategray;
   padding: 10px;
-  padding-top: 12px;
   margin: 2px;
-  border: 1px solid whitesmoke;
   border-radius: 0.3rem;
   font-weight: bold;
   line-height: 50px;
 }
-
+      
 div.no-sibling {
-  background: white;
-  opacity: 0.8;
-  color: black;
+  background-color: transparent;
+  /* opacity: 0.8; */
+  color: darkslategray;
   width: 20%;
   text-transform: uppercase;
   font-size: 0.6rem;
   line-height: 15px;
   font-weight: bold;
   min-width: 50px;
+  padding-top: 20px;
 }
 
-div.selectedElementTag {
-  color: mediumvioletred;
-}
-
-div.childrenSelectorName {
-  padding-top: 4px;
-  white-space: nowrap;
+.selectedDom {
+  background-color: rgb(0, 178, 179) !important;
+  border: none;
 }
 
 :root {
@@ -897,18 +932,26 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
 #applyNewTagName.visible {
   display: inline-block;
 }
+
+
 @@media (pointer: coarse) {
   div#modify-menu {
-    font-size: 48px;
+    -webkit-box-shadow: none;
+    -moz-box-shadow: none;
+    box-shadow: none;
+    /* font-size: 48px; */
     bottom: 0px;
     left: 0px;
     top: initial;
     right: initial;
-    height: 30%;
+    height: 40%;
     width: 100%;
     min-height: 350px;
     transform: translate(0px, 100%);
+    padding: 0;
+    padding-bottom: 80px;
   }
+
   div.bottom-placeholder {
     width: 100%;
     height: 30%;
@@ -919,6 +962,61 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
     --context-menu-button-width: 48px;
     --context-menu-padding-top: 9px;
     --context-menu-padding-left: 4px;
+  }
+
+  /* mobile dom selector */
+  div.dom-selector-style {
+    height: 45%;
+    margin: 0.15em;
+    border-radius: 0.2em;
+    margin: 2%;
+  }
+
+  div.elementAttr {
+    display: none;
+  }
+
+  div.mainElem {
+    margin-bottom: 0;
+    height: 40%;
+  }
+
+  div.childrenSelector {
+    padding: 6px;
+    font-size: 1.2em;
+  }
+
+  div.no-sibling {
+    font-size: 0.6em;
+    padding-top: 20px;
+  }
+
+  /* mobile modify menu */
+  div.tagname-summary {
+    padding-left: 10px;
+  }
+
+  div.information {
+    margin: 2%;
+    margin-top: 0;
+    height: 215px;
+    overflow-y: auto;
+  }
+
+  div.information > textarea {
+    font-size: 0.4em;
+    border-radius: 0.3em;
+    border: none; 
+    padding: 1.5%;
+  }
+
+  div.insert-information-style {
+    max-height: 400px;
+    height: 400px;
+  }
+
+  div.insert-information-style > h1 {
+    margin: 0;
   }
 }
 </style>,
@@ -2053,6 +2151,8 @@ editionscript = """
         return;
       }
       if(model.insertElement) {
+        interactionDiv.classList.add("insert-information-style");
+        interactionDiv.classList.add("information-style");
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
@@ -2163,73 +2263,75 @@ editionscript = """
         document.querySelector("#modify-menu").classList.toggle("visible", true);
         return;
       }
-      if(clickedElem && clickedElem.parentElement) {
-        let parent = selectionRange ? clickedElem : clickedElem.parentElement;
-        if(parent.tagName === "TBODY" && parent.parentElement && parent.parentElement.tagName === "TABLE") parent = parent.parentElement;
-        addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
-            <path d="M 8,19 8,22 11,22 M 12,18 8,22 M 8,10 8,7 11,7 M 12,10 8,7 M 27,7 30,7 30,10 M 26,10 30,7 M 31,19 31,22 28,22 M 26,18 31,22 M 12,12 12,10 M 12,16 12,14 M 14,18 12,18 M 18,18 16,18 M 22,18 20,18 M 26,18 24,18 M 26,14 26,16 M 26,10 26,12 M 22,10 24,10 M 18,10 20,10 M 14,10 16,10 M 5,5 35,5 35,25 5,25 Z"/></svg>`,
-              {title: "Select parent (" + summary(parent) + ")", "class": "inert"},
-              {onclick: ((c, parent) => event => {
-                editor_model.clickedElem = parent;
-                editor_model.notextselection = true;
-                updateInteractionDiv()
-                })(clickedElem, parent),
-               onmouseenter: (p => () => { p.setAttribute("ghost-hovered", "true") })(parent),
-               onmouseleave: (p => () => { p.removeAttribute("ghost-hovered") })(parent)
-              }
-            );
-      }
-      if(!selectionRange && clickedElem && clickedElem.previousElementSibling) {
-        addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
-        {title: "Select previous sibling (" + summary(clickedElem.previousElementSibling) + ")", class: "inert"},
-        {onclick: ((c, contextMenu) => (event) => {
-            editor_model.clickedElem = c;
-            editor_model.notextselection = true;
-            updateInteractionDiv();
-          })(clickedElem.previousElementSibling, contextMenu),
-         onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.previousElementSibling),
-         onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.previousElementSibling)
-        });
-      }
-      if(!selectionRange && clickedElem && clickedElem.nextElementSibling) {
-        addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
-        {title: "Select next sibling (" + summary(clickedElem.nextElementSibling) + ")", class: "inert"},
-        {onclick: ((c, contextMenu) => (event) => {
-            editor_model.clickedElem = c;
-            editor_model.notextselection = true;
-            updateInteractionDiv();
-          })(clickedElem.nextElementSibling, contextMenu),
-         onmouseenter: (c => () =>  { c.setAttribute("ghost-hovered", "true") })(clickedElem.nextElementSibling),
-         onmouseleave: (c => () =>  { c.removeAttribute("ghost-hovered") })(clickedElem.nextElementSibling)
-        });
-      }
-      if(!selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
-        addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
-            <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
-              {title: "Select first cFhild (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
-              {onclick: (c => event => {
-                let firstChild = c;
-                if(firstChild.tagName === "TBODY" && firstChild.children && firstChild.children.length > 0) firstChild = firstChild.children[0];
-                editor_model.clickedElem = firstChild;
-                editor_model.notextselection = true;
-                updateInteractionDiv()})(clickedElem.children[0]),
-               onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.children[0]),
-               onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.children[0])
-               }
-            );
-      }
+      // if(clickedElem && clickedElem.parentElement) {
+      //   let parent = selectionRange ? clickedElem : clickedElem.parentElement;
+      //   if(parent.tagName === "TBODY" && parent.parentElement && parent.parentElement.tagName === "TABLE") parent = parent.parentElement;
+      //   addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
+      //       <path d="M 8,19 8,22 11,22 M 12,18 8,22 M 8,10 8,7 11,7 M 12,10 8,7 M 27,7 30,7 30,10 M 26,10 30,7 M 31,19 31,22 28,22 M 26,18 31,22 M 12,12 12,10 M 12,16 12,14 M 14,18 12,18 M 18,18 16,18 M 22,18 20,18 M 26,18 24,18 M 26,14 26,16 M 26,10 26,12 M 22,10 24,10 M 18,10 20,10 M 14,10 16,10 M 5,5 35,5 35,25 5,25 Z"/></svg>`,
+      //         {title: "Select parent (" + summary(parent) + ")", "class": "inert"},
+      //         {onclick: ((c, parent) => event => {
+      //           editor_model.clickedElem = parent;
+      //           editor_model.notextselection = true;
+      //           updateInteractionDiv()
+      //           })(clickedElem, parent),
+      //          onmouseenter: (p => () => { p.setAttribute("ghost-hovered", "true") })(parent),
+      //          onmouseleave: (p => () => { p.removeAttribute("ghost-hovered") })(parent)
+      //         }
+      //       );
+      // }
+      // if(!selectionRange && clickedElem && clickedElem.previousElementSibling) {
+      //   addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
+      //     <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
+      //   {title: "Select previous sibling (" + summary(clickedElem.previousElementSibling) + ")", class: "inert"},
+      //   {onclick: ((c, contextMenu) => (event) => {
+      //       editor_model.clickedElem = c;
+      //       editor_model.notextselection = true;
+      //       updateInteractionDiv();
+      //     })(clickedElem.previousElementSibling, contextMenu),
+      //    onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.previousElementSibling),
+      //    onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.previousElementSibling)
+      //   });
+      // }
+      // if(!selectionRange && clickedElem && clickedElem.nextElementSibling) {
+      //   addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
+      //     <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
+      //   {title: "Select next sibling (" + summary(clickedElem.nextElementSibling) + ")", class: "inert"},
+      //   {onclick: ((c, contextMenu) => (event) => {
+      //       editor_model.clickedElem = c;
+      //       editor_model.notextselection = true;
+      //       updateInteractionDiv();
+      //     })(clickedElem.nextElementSibling, contextMenu),
+      //    onmouseenter: (c => () =>  { c.setAttribute("ghost-hovered", "true") })(clickedElem.nextElementSibling),
+      //    onmouseleave: (c => () =>  { c.removeAttribute("ghost-hovered") })(clickedElem.nextElementSibling)
+      //   });
+      // }
+      // if(!selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
+      //   addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
+      //       <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
+      //         {title: "Select first cFhild (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
+      //         {onclick: (c => event => {
+      //           let firstChild = c;
+      //           if(firstChild.tagName === "TBODY" && firstChild.children && firstChild.children.length > 0) firstChild = firstChild.children[0];
+      //           editor_model.clickedElem = firstChild;
+      //           editor_model.notextselection = true;
+      //           updateInteractionDiv()})(clickedElem.children[0]),
+      //          onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.children[0]),
+      //          onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.children[0])
+      //          }
+      //       );
+      // }
 
-      interactionDiv.append(el("br"));
+      // interactionDiv.append(el("br"));
 
       if(clickedElem) {
+        interactionDiv.classList.add("information-style");
         interactionDiv.append(el("div", {"class": "tagname-summary"}, [
-          el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
+          el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: "<" + clickedElem.tagName.toLowerCase() + ">", title:"This element's tag name"}, [], { onkeyup() {
             document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
           }}),
-          el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50))
-          ]));
+          el("input", { "class": "tagname-info", "value": textPreview(clickedElem, 50), "readonly": "readonly"})
+          ]
+        ));
 
         /*
           Build the DOM node selector:
@@ -2318,150 +2420,149 @@ editionscript = """
           }
         }
 
-        if (selectorStatus === 1) {
-          // status 1
-          // display clicked element in main part
-          let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
-          displayMainElem(clickedElem);
-          mainElemDiv.addEventListener('click', (c => event => {
-            if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-              return;
-            }
-            // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
-
-            // switch to status 2
-            selectorStatus = 2;
-            editor_model.clickedElem = c;
-            editor_model.notextselection = true;
-            updateInteractionDiv();
-          })(clickedElem));
-          displayElemAttr(mainElemDiv, clickedElem);
-          document.querySelector(".mainElem").append(
-            el("div", {"class": "selectedElementTag elementTag"}, "selected")
-          );
-
-          // display children elements in second part
-          // if clickedElement has children elements
-          if (clickedElem.children.length > 0) {
-            // only display first 3 children elements
-            let childrenElem = clickedElem.children;
-            for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
-              // prevent displaying menus
-              if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu") {
-                continue;
+        if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
+          if (selectorStatus === 1) {
+            // status 1
+            // display clicked element in main part
+            let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
+            displayMainElem(clickedElem);
+            domSelectorDiv.classList.add("selectedDom");
+            mainElemDiv.addEventListener('click', (c => event => {
+              // <html> tag cannot be clicked since it has no parent
+              if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                return;
               }
-              displayChildrenElem(childrenElem[i]);
+
+              // switch to status 2
+              selectorStatus = 2;
+              editor_model.clickedElem = c;
+              editor_model.notextselection = true;
+              updateInteractionDiv();
+            })(clickedElem));
+            displayElemAttr(mainElemDiv, clickedElem);
+            // document.querySelector(".mainElem").append(
+            //   el("div", {"class": "selectedElementTag elementTag"}, "selected")
+            // );
+
+            // display children elements in second part
+            // if clickedElement has children elements
+            if (clickedElem.children.length > 0) {
+              // only display first 3 children elements
+              let childrenElem = clickedElem.children;
+              for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
+                // prevent displaying menus
+                if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu" || childrenElem[i].id === "editbox") {
+                  continue;
+                }
+                displayChildrenElem(childrenElem[i]);
+                document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
+                  if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                    return;
+                  }
+
+                  // still in status 1
+                  selectorStatus = 1;
+                  editor_model.clickedElem = c;
+                  editor_model.notextselection = true;
+                  updateInteractionDiv();
+                })(childrenElem[i]));
+                // document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
+                //   el("div", {"class": "elementTag"}, "child")
+                // );
+                cnt++;
+              }
+            } else {
+              document.querySelector(".childrenElem").append(
+                  el("div", {"class": "no-children"}, "No Children")
+              );
+            }
+          } else {
+            // status 2
+            // display clicked element's parent element in main part
+            let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
+            displayMainElem(clickedElem.parentElement);
+            mainElemDiv.addEventListener('click', (c => event => {
+              if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                return;
+              }
+
+              // switch to status 1, current clicked element's parent element becomes clicked element
+              selectorStatus = 1;
+              editor_model.clickedElem = c;
+              editor_model.notextselection = true;
+              updateInteractionDiv();
+            })(clickedElem.parentElement));
+            displayElemAttr(mainElemDiv, clickedElem.parentElement);
+            // document.querySelector(".mainElem").append(
+            //   el("div", {"class": "elementTag"}, "parent")
+            // );
+
+            // display clicked element's previous sibling, clicked element, clicked element's next sibling
+            let cnt = 0;
+            if (clickedElem.previousElementSibling && (clickedElem.previousElementSibling.id !== "context-menu" || clickedElem.previousElementSibling.id !== "modify-menu" || clickedElem.previousElementSibling.id !== "editbox")) {
+              displayChildrenElem(clickedElem.previousElementSibling);
               document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
                 if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
                   return;
                 }
-                // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
 
-                // still in status 1
-                selectorStatus = 1;
+                // still in status 2, but clicked element change to previous sibling
+                selectorStatus = 2;
                 editor_model.clickedElem = c;
                 editor_model.notextselection = true;
                 updateInteractionDiv();
-              })(childrenElem[i]));
-              document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
-                el("div", {"class": "elementTag"}, "child")
+              })(clickedElem.previousElementSibling));
+              // document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
+              //   el("div", {"class": "elementTag"}, "child")
+              // );
+            } else {
+              let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
+              childrenElemDiv.append(
+                el("div", {"class": "childrenSelector no-sibling"}, "no previous sibling")
               );
-              cnt++;
             }
-          } else {
-            document.querySelector(".childrenElem").append(
-                el("div", {"class": "no-children"}, "No Children")
-            );
-          }
-        } else {
-          // status 2
-          // display clicked element's parent element in main part
-          let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
-          displayMainElem(clickedElem.parentElement);
-          mainElemDiv.addEventListener('click', (c => event => {
-            if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-              return;
-            }
-            // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
+            cnt++;
 
-            // switch to status 1, current clicked element's parent element becomes clicked element
-            selectorStatus = 1;
-            editor_model.clickedElem = c;
-            editor_model.notextselection = true;
-            updateInteractionDiv();
-          })(clickedElem.parentElement));
-          displayElemAttr(mainElemDiv, clickedElem.parentElement);
-          document.querySelector(".mainElem").append(
-            el("div", {"class": "elementTag"}, "parent")
-          );
-
-          // display clicked element's previous sibling, clicked element, clicked element's next sibling
-          let cnt = 0;
-          if (clickedElem.previousElementSibling) {
-            displayChildrenElem(clickedElem.previousElementSibling);
+            displayChildrenElem(clickedElem);
             document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
               if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
                 return;
               }
-              // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
 
-              // still in status 2, but clicked element change to previous sibling
-              selectorStatus = 2;
+              // switch to status 1
+              selectorStatus = 1;
               editor_model.clickedElem = c;
               editor_model.notextselection = true;
               updateInteractionDiv();
-            })(clickedElem.previousElementSibling));
-            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
-              el("div", {"class": "elementTag"}, "child")
-            );
-          } else {
-            let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
-            childrenElemDiv.append(
-              el("div", {"class": "childrenSelector no-sibling"}, "no previous sibling")
-            );
-          }
-          cnt++;
+            })(clickedElem));
+            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].classList.add("selectedDom");
+            // document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
+            //   el("div", {"class": "selectedElementTag elementTag"}, "selected")
+            // );
+            cnt++;
 
-          displayChildrenElem(clickedElem);
-          document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
-            if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-              return;
+            if (clickedElem.nextElementSibling && (clickedElem.nextElementSibling.id !== "context-menu" || clickedElem.nextElementSibling.id !== "modify-menu" || clickedElem.nextElementSibling.id !== "editbox")) {
+              displayChildrenElem(clickedElem.nextElementSibling);
+              document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
+                if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                  return;
+                }
+
+                // still in status 2, but clicked element change to next sibling
+                selectorStatus = 2;
+                editor_model.clickedElem = c;
+                editor_model.notextselection = true;
+                updateInteractionDiv();
+              })(clickedElem.nextElementSibling));
+              // document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
+              //   el("div", {"class": "elementTag"}, "child")
+              // );
+            } else {
+              let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
+              childrenElemDiv.append(
+                el("div", {"class": "childrenSelector no-sibling"}, "no next sibling")
+              );
             }
-            // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
-
-            // switch to status 1
-            selectorStatus = 1;
-            editor_model.clickedElem = c;
-            editor_model.notextselection = true;
-            updateInteractionDiv();
-          })(clickedElem));
-          document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
-            el("div", {"class": "selectedElementTag elementTag"}, "selected")
-          );
-          cnt++;
-
-          if (clickedElem.nextElementSibling) {
-            displayChildrenElem(clickedElem.nextElementSibling);
-            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
-              if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-                return;
-              }
-              // if(c.tagName === "TBODY" && c.children && c.children.length > 0) c = c.children[0];
-
-              // still in status 2, but clicked element change to next sibling
-              selectorStatus = 2;
-              editor_model.clickedElem = c;
-              editor_model.notextselection = true;
-              updateInteractionDiv();
-            })(clickedElem.nextElementSibling));
-            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].append(
-              el("div", {"class": "elementTag"}, "child")
-            );
-          } else {
-            let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
-            childrenElemDiv.append(
-              el("div", {"class": "childrenSelector no-sibling"}, "no next sibling")
-            );
           }
         }
       }
@@ -2552,7 +2653,7 @@ editionscript = """
       //interactionDiv.append(el("hr"));
 
       if(clickedElem && (clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE" || clickedElem.tagName === "TITLE")) {
-        interactionDiv.append(el("hr"));
+        // interactionDiv.append(el("hr"));
         interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
                 [], {
                   value: clickedElem.childNodes[0].textContent,
@@ -2580,40 +2681,40 @@ editionscript = """
         addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
           {title: "Go to " + model.link, "class": "inert"});
       }
-      if(!selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
-        addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
-        {title: "Move selected element up"},
-        {onclick: ((c, contextMenu) => (event) => {
-            let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
-               c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
-            // There is whitespace before this element, we try to reinsert
-            c.parentElement.insertBefore(c, c.previousElementSibling);
-            if(wsTxtNode) { // We move the whitespace as well.
-              c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
-            }
-            editor_model.clickedElem = c;
-            updateInteractionDiv();
-          })(clickedElem, contextMenu)
-        });
-      }
-      if(!selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
-        addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
-        {title: "Move selected element down"},
-        {onclick: ((c, contextMenu) => (event) => {
-            let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
-              c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
-            let nodeToInsertAfter = c.nextElementSibling;
-            nodeToInsertAfter.insertAdjacentElement("afterend", c);
-            if(wsTxtNode) { // We move the whitespace as well
-              nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
-            }
-            editor_model.clickedElem = c;
-            updateInteractionDiv();
-          })(clickedElem, contextMenu)
-        });
-      }
+      // if(!selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+      //   addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
+      //     <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
+      //   {title: "Move selected element up"},
+      //   {onclick: ((c, contextMenu) => (event) => {
+      //       let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
+      //          c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
+      //       // There is whitespace before this element, we try to reinsert
+      //       c.parentElement.insertBefore(c, c.previousElementSibling);
+      //       if(wsTxtNode) { // We move the whitespace as well.
+      //         c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
+      //       }
+      //       editor_model.clickedElem = c;
+      //       updateInteractionDiv();
+      //     })(clickedElem, contextMenu)
+      //   });
+      // }
+      // if(!selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+      //   addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
+      //     <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
+      //   {title: "Move selected element down"},
+      //   {onclick: ((c, contextMenu) => (event) => {
+      //       let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
+      //         c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
+      //       let nodeToInsertAfter = c.nextElementSibling;
+      //       nodeToInsertAfter.insertAdjacentElement("afterend", c);
+      //       if(wsTxtNode) { // We move the whitespace as well
+      //         nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
+      //       }
+      //       editor_model.clickedElem = c;
+      //       updateInteractionDiv();
+      //     })(clickedElem, contextMenu)
+      //   });
+      // }
       if(!selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
         addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
             <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
