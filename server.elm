@@ -352,7 +352,7 @@ evaluatedPage =
       <style>
         #menu_bar {
           overflow: hidden;
-          background-color: #333;
+          background-color: #ffffff;
         }
 
         #menu_bar a {
@@ -445,18 +445,18 @@ evaluatedPage =
 
       </style>
       <div id="menu_bar">
-        <div class="dropdown">
+        <!--<div class="dropdown">
           <button class="dropbtn">Dropdown</button>
           <div class="dropdown-content">
             <button>one</button><br>
             <button>two</button><br>
             <button>three</button>
           </div>
-        </div>
+        </div>-->
         <button id="renamefs" onClick="renameFs()">Rename Files</button>
-        <button id="deletefs" onClick="deleteFs()">Delete Files</button>
         <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
         <button id="createFolder" onClick="createFolder()">Create a Folder</button>
+        <button id="deletefs" onClick="deleteFs()">Delete Files</button>
       </div> <!-- menu_bar -->
       <script>
       window.onscroll = function() {stickyFun()};
@@ -494,8 +494,8 @@ evaluatedPage =
         console.log (sel);
         var newname = window.prompt("Set new name for file: ", "");
         if (newname == "") return;
-        //TODO check that we're not overwriting an existing file!
-        var x = doWriteServer("rename", sel.id, newname);
+        //TODO check that we're not overwriting an existing file / folder!
+        var x = doWriteServer("rename", "@path" + sel.id, "@path" + newname);
         if (x) {
           console.log ("rename failed");
           window.alert("rename failed");
@@ -516,9 +516,10 @@ evaluatedPage =
         }
         var conf = window.confirm(warningMsg);
         console.log (conf);
+        //TODO delete folder using rmdir
         if (conf) {
           for (i = 0; i < selected.length; i++) {
-            doWriteServer("unlink", selected[i].id);
+            doWriteServer("unlink", "@path" + selected[i].id);
           }
           doReloadPage();
           return;
@@ -530,14 +531,13 @@ evaluatedPage =
         var lastdot = sel.id.lastIndexOf(".");
         var nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
         var newname = window.prompt("Name for duplicate: ", nn);
-        var contents = doReadServer("read", sel.id);
+        var contents = doReadServer("read", "@path" + sel.id);
         if (contents[0] != "1") {
           console.error ("couldn't read the file for some reason. aborting.");
           return;
         }
         contents = contents.substring(1, contents.length);
-        var resp = doWriteServer("create", newname, contents);
-        console.log (resp);
+        var resp = doWriteServer("create", "@path" + newname, contents);
         if (resp) {
           console.error ("Duplicating file failed for some reason: ", resp);
         } 
@@ -562,7 +562,7 @@ evaluatedPage =
         doWriteServer("mkdir", newname, "");
         doReloadPage();
       }
-      
+
       function radPressed(){
         var btns = document.querySelectorAll("input.filesBtn");
         if (!ispressed){
@@ -574,20 +574,47 @@ evaluatedPage =
       }
       
       </script>
-      </head><body><h1><a href=path>/@path</a></h1>
-      <!--<form id="fileListing"></form>
+      </head><body><h1><label value=path>@path</label></h1>
+      <form id="fileListing"></form>
       <script>
-        function loadFiles() {
+        function loadFileList() {
           let form = document.getElementById("fileListing");
           let path = @(jsCode.stringOf path);
-          let files = ...
-          //el("span", )
+          let files = JSON.parse(doReadServer("fullListDir", path));
+          function getRecordForCheckbox(file) {
+            var rec = {type:"checkbox",
+                       id:file,
+                       class:"filesBtn",
+                       name:"filesBtn",
+                       value:file,
+                       onClick:"whichOne=value",
+                       onChange:"radPressed()"};
+            return rec;
+          }
+          //el(tag, attributes, children, properties)
+          if (path != "") {
+            var link = "../" + "@(search_raw)";
+            form.append(el("input", getRecordForCheckbox(".."), ""));
+            form.append(el("label", {for:"..", value:".."}, el("a", {href:link}, "..")));
+            form.append(el("br", {}, ""));
+          }
+          for (i = 0; i < files.length; i++) {
+            var file = files[i];
+            var link = path=="" ? file[0] : file[0];
+            if (file[1]) {
+              link = link + "/@(search_raw)";
+            }
+            form.append(el("input", getRecordForCheckbox(file[0]), ""));
+            form.append(el("label", {for:file[0], value:file[0]}, el("a", {href:link}, file[0])));
+            form.append(el("br", {}, ""));
+          }
         }
-      </script>-->
-    @(["form", [], maybeUp <| List.map 
+        loadFileList();
+      </script>
+    <!--@(["form", [], maybeUp <| List.map 
                              (\name -> <span><input type="checkbox" id=name class="filesBtn" name="filesBtn" value=name onClick="whichOne=value" onchange="radPressed()">
                                        <label for=name><a href=@(getNm name) contextmenu="fileOptions">@name</a></label><br></span>) 
-                             (fs.listdir path)])
+                             (fs.listdir path)]) -->
     <form id="upfs" enctype="multipart/form-data">
       <input type="file" name="files[]" multiple />
       <input type="submit" value="Upload File" name="submit" />
@@ -596,15 +623,18 @@ evaluatedPage =
     const form = document.getElementById("upfs");
 
     form.addEventListener('submit', e => {
+      //upload file
       e.preventDefault()
       const files = document.querySelector('[type=file]').files
       for (let i = 0; i < files.length; i++) {
         let file = files[i]
+        console.log (file);
+        console.log ("was file");
         var flpath = "@(path)" + file.name;
         editor.uploadFile(flpath, file, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
         console.log ("client side completed upload request");
       }
-      doReloadPage();
+      if (files.length > 0) doReloadPage();
     })
     </script>
     
