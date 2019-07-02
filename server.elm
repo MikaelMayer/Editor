@@ -1,5 +1,6 @@
 -- input: path            The file to serve.
 -- input: vars:           URL query vars.
+-- input: urlParams:      The URL params plainly
 -- input: defaultOptions  default options (options that vars can override for certain parts).
 --                        If nodefs is set, will use it instead of nodejs.nodeFS
 --                        If browserSide is set, will use a different kind of request. 
@@ -58,17 +59,20 @@ boolVar name resDefault =
     listDict.get name defaultOptions |> Maybe.withDefault resDefault |> freeze)
 
 varadmin = boolVar "admin" False
-varedit = boolVar "edit" True
+varedit = boolVar "edit" False
+varls = boolVar "ls" False
 defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
+
+
 
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
 permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
 -- List.contains ("sub", "102014571179481340426") user -- That's my Google user ID.
 
-canEditPage = userpermissions.pageowner && varedit
+canEditPage = userpermissions.pageowner && varedit && not varls
 
 {freezeWhen} = Update
 
@@ -132,6 +136,136 @@ applyDotEditor source =
             if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
           )</body></html>"""
       )
+{---------------------------------------------------------------------------
+Utility functions to be inherited by the main body of any
+view of editor (edit / file listing / word processor / etc)
+LUCA stands for "Last Universal Common Ancestor"
+----------------------------------------------------------------------------}
+
+luca = 
+  [<script>
+    function doReadServer(action, name) {
+      if (readServer != "undefined") {
+        console.log("reading server");
+        return readServer(action, name);
+      }
+      //TODO make functionality for standalone editor not just TharzenEditor
+      console.error("need to make the reading server functionality for standalone editor");
+    }
+    function doWriteServer(action, name, content) {
+      if (writeServer != "undefined") {
+        console.log("about to write to server");
+        return writeServer(action, name, content);
+      }
+      //TODO make functionality for standalone editor not just TharzenEditor
+      console.error("need to make the writing server functionality for standalone editor");
+    }
+    function doReloadPage() {
+      document.location.reload();
+      //TODO not full reload bump: Mikael
+    }
+    // Editor's API should be stored in the variable editor.
+
+    editor = typeof editor === "object" ? editor : {};
+    editor.uploadFile = function(targetPathName, file, onOk, onError) {
+      var xhr = new XMLHttpRequest();
+      xhr.onreadystatechange = ((xhr, file) => () => {
+        if (xhr.readyState == XMLHttpRequest.DONE) {
+          if (xhr.status == 200 || xhr.status == 201) {
+            onOk ? onOk(targetPathName, file) : 0;
+          } else {
+            console.log("Error while uploading picture or file", xhr);
+            onError ? onError(targetPathName, file) : 0;
+          }
+        }
+      })(xhr, file);
+      @(if listDict.get "browserSide" defaultOptions == Just True then """
+      xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+      """ else """
+      xhr.open("POST", targetPathName, false);
+      xhr.setRequestHeader("write-file", file.type);
+      """);
+      xhr.send(file);
+    }
+    // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
+    editor.getStorageFolder = function(file) {
+      var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
+      for(let s of storageOptions) {
+        if(file.type.startsWith(s.getAttribute("file-type") || "")) {
+          let sf = storageOptions.getAttribute("editor-storagefolder") || "";
+          if(!sf.endsWith("/")) sf = sf + "/";
+          return sf;
+        }
+      }
+      let extension = "";
+      if(file && file.type.startsWith("image")) {
+        var otherImages = document.querySelectorAll("img[src]");
+        for(let i of otherImages) {
+           extension = (i.getAttribute("src") || "").replace(/[^\/]*$/, "");
+           break;
+        }
+        if(extension[0] == "/") { // Absolute URL
+          return extension;
+        }
+      }
+      // extension ends with a / or is empty
+      var tmp = location.pathname.split("/");
+      tmp = tmp.slice(0, tmp.length - 1);
+      storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
+      return storageFolder;
+    }
+	  editor.fs = { listdir: 
+		  @(if browserSide then """
+		    defaultOptions.nodefs.listdir
+		  """ else """
+		    function(dirname) {
+		      var xhr = new XMLHttpRequest();
+		      xhr.onreadystatechange = ((xhr, file) => () => {})
+		      xhr.open("GET", dirname, false);
+		      xhr.setRequestHeader("action", "listdir");
+		      xhr.setRequestHeader("name", dirname);
+		      xhr.send();
+		      if(xhr.status === 200) {
+		        return JSON.parse(xhr.responseText);
+		      } else {
+		        return [];
+		      }
+		    }
+		  """)
+	  };
+    function el(tag, attributes, children, properties) {
+      let tagClassIds = tag.split(/(?=#|\.)/g);
+      let x;
+      for(let attr of tagClassIds) {
+        if(x && attr.startsWith(".")) {
+          x.classList.toggle(attr.substring(1), true);
+        } else if(x && attr.startsWith("#")) {
+          x.setAttribute("id", attr.substring(1));
+        } else if(!x) {
+          x = document.createElement(attr);
+        }
+      }
+      if(typeof attributes == "object")
+        for(let k in attributes)
+          x.setAttribute(k, attributes[k]);
+      if(Array.isArray(children)) {
+        for(let child of children) {
+          if(typeof child === "string") {
+            x.append(child)
+          } else if(typeof child !== "undefined")
+            x.appendChild(child);
+        }
+      } else if(typeof children !== "undefined") {
+        x.append(children);
+      }
+      if(typeof properties == "object") {
+        for(let k in properties)
+          x[k] = properties[k];
+      }
+      return x;
+    }    
+   </script>]
+
 
 {---------------------------------------------------------------------------
  Evaluates the page according to the path extension.
@@ -208,25 +342,323 @@ evaluatedPage =
   else if fs.isdir path then
     let
       pathprefix = if path == "" then path else path + "/"
-      getParams = "?ls=true&edit" --TODO Fix reroute to include correct params from previous url
       maybeUp fileList = case Regex.extract "^(.*)/.*$" path of
-        Just [prev] -> <span contenteditable="false"><input type="radio" id=".." name="filesBtn" value=".."><a href=("../"+ "?ls=true&edit")>..<br></span> :: fileList
+        Just [prev] -> <span contenteditable="false"><input type="checkbox" id=".." name="filesBtn" value=".."><a href=("../"+ search_raw)>..<br></span> :: fileList
         _ -> if path == "" then fileList else <li><a href="/" contenteditable="false">..</li> :: fileList
+      ctrlPressed = False
       getNm name = 
-        if fs.isfile name then
-          Regex.replace "//" "/" name
+        if path + name |> fs.isdir then --TODO faster jeez
+          Regex.replace "//" "/" name + "/" + search_raw --fix this whole search query stuff using the functionality in JS way below: JSON.parse(newQueryStr);
         else
-          Regex.replace "//" "/" (name + "/" + getParams)
+          Regex.replace "//" "/" name
     in
-    Ok <html><head></head><body><h1><a href=''>/@path</a></h1>
-    @(["form", [], maybeUp <| List.map 
-                             (\name -> <span><input type="radio" id=name name="filesBtn" value=name><label for=name><a href=@(getNm name)>@name</a></label><br></span>) 
-                             (fs.listdir path)])
+    Ok <html><head>
+      <script>
+        var ispressed = false;
+        var whichOne = "";
+        //declare bool variable to be false
+        document.onkeydown = function(e) {
+          if (e.ctrlKey){
+              ispressed = true;
+          }
+        };
+        document.onkeyup = function(e) {
+          if (e.keyCode == 17){ //releasing ctrl key. doesn't set e.ctrlKey properly or would use that.
+            ispressed = false;
+          }
+        }
+      </script>
+      <style>
+        #menu_bar {
+          overflow: hidden;
+          background-color: #ffffff;
+        }
+
+        #menu_bar a {
+          float: left;
+          display: block;
+          color: #f2f2f2;
+          text-align: center;
+          padding: 14px 16px;
+          text-decoration: none;
+          font-size: 17px;
+        }
+
+        #menu_bar a:hover {
+          background-color: #ddd;
+          color: black;
+        }
+
+        #menu_bar a.active {
+          background-color: #4CAF50;
+          color: white;
+        }
+        .dropdown {
+          float: left;
+          overflow: hidden;
+        }
+
+        .dropdown .dropbtn {
+          font-size: 16px;  
+          border: none;
+          outline: none;
+          color: white;
+          padding: 14px 16px;
+          background-color: inherit;
+          font-family: inherit;
+          margin: 0;
+        }
+        .dropdown .dropbtn {
+          font-size: 16px;  
+          border: none;
+          outline: none;
+          color: white;
+          padding: 14px 16px;
+          background-color: inherit;
+          font-family: inherit;
+          margin: 0;
+        }
+
+        .menu_bar a:hover, .dropdown:hover .dropbtn {
+          background-color: red;
+        }
+
+        .dropdown-content {
+          display: none;
+          position: absolute;
+          background-color: #f9f9f9;
+          min-width: 160px;
+          box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+          z-index: 1;
+        }
+
+        .dropdown-content a {
+          float: none;
+          color: black;
+          padding: 12px 16px;
+          text-decoration: none;
+          display: block;
+          text-align: left;
+        }
+
+        .dropdown-content a:hover {
+          background-color: #ddd;
+        }
+
+        .dropdown:hover .dropdown-content {
+          display: block;
+        }
+        .content {
+          padding: 16px;
+        }
+
+        .sticky {
+          position: fixed;
+          top: 0;
+          width: 100%;
+        }
+
+        .sticky + .content {
+          padding-top: 60px;
+        }
+
+      </style>
+      <div id="menu_bar">
+        <!--<div class="dropdown">
+          <button class="dropbtn">Dropdown</button>
+          <div class="dropdown-content">
+            <button>one</button><br>
+            <button>two</button><br>
+            <button>three</button>
+          </div>
+        </div>-->
+        <button id="renamefs" onClick="renameFs()">Rename Files</button>
+        <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
+        <button id="createFolder" onClick="createFolder()">Create a Folder</button>
+        <button id="deletefs" onClick="deleteFs()">Delete Files</button>
+      </div> <!-- menu_bar -->
+      <script>
+      window.onscroll = function() {stickyFun()};
+
+      var menu_bar = document.getElementById("menu_bar");
+      var sticky = menu_bar.offsetTop;
+
+      function stickyFun() {
+        if (window.pageYOffset >= sticky) {
+          menu_bar.classList.add("sticky")
+        } else {
+          menu_bar.classList.remove("sticky");
+        }
+      }
+      var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
+      var getAllFiles = () => Array.from(document.querySelectorAll("input.filesBtn"));
+      var warnSelectFile = () => window.alert ("Error: please select a file to continue");
+      var warnDeselectFiles = () => window.alert ("Error: please deselect files to continue");
+      function getOneFile() {
+        var selected = getSelectedFiles();
+        if (selected.length == 0) {
+          warnSelectFile();
+          return 0;
+        } else if (selected.length != 1) {
+          window.alert ("Error: can only rename one file at a time");
+          return 0;
+        }
+        return selected[0];
+      }
+      function renameFs() {
+        console.log ("in rename fs");
+        var sel = getOneFile();
+        if (! sel) return;
+        //sel.readonly = false;
+        console.log (sel);
+        var newname = window.prompt("Set new name for file: ", "");
+        if (newname == "") return;
+        //TODO check that we're not overwriting an existing file / folder!
+        var x = doWriteServer("rename", "@path" + sel.id, "@path" + newname);
+        if (x) {
+          console.log ("rename failed");
+          window.alert("rename failed");
+          return;
+        }
+        console.log ("renamed", sel.id, newname);
+        doReloadPage();
+      }
+      function deleteFs() {
+        var selected = getSelectedFiles();
+        if (selected.length == 0) {
+          warnSelectFile(); 
+          return;
+        }
+        var warningMsg = "Are you sure you want to delete the following file(s)?"
+        for (i = 0; i < selected.length; i++) {
+          warningMsg = warningMsg + "\n" + selected[i].id;
+        }
+        var conf = window.confirm(warningMsg);
+        console.log (conf);
+        //TODO delete folder using rmdir
+        if (conf) {
+          for (i = 0; i < selected.length; i++) {
+            doWriteServer("unlink", "@path" + selected[i].id);
+          }
+          doReloadPage();
+          return;
+        }
+      }
+      function duplicateFs() {
+        var sel = getOneFile();
+        if (! sel) return;
+        var lastdot = sel.id.lastIndexOf(".");
+        var nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
+        var newname = window.prompt("Name for duplicate: ", nn);
+        var contents = doReadServer("read", "@path" + sel.id);
+        if (contents[0] != "1") {
+          console.error ("couldn't read the file for some reason. aborting.");
+          return;
+        }
+        contents = contents.substring(1, contents.length);
+        var resp = doWriteServer("create", "@path" + newname, contents);
+        if (resp) {
+          console.error ("Duplicating file failed for some reason: ", resp);
+        } 
+        doReloadPage();
+      }
+      function createFolder() {
+        var btns = getSelectedFiles();
+        if (btns.length != 0) {
+          warnDeselectFiles();
+          return;
+        }
+        var newname = window.prompt("Name for new folder: ", "");
+        if (newname == "") {
+          window.alert("Please set a name for the new folder!");
+          return;
+        }
+        var dups = getAllFiles().filter((fl) => fl.id == newname);
+        if (dups.length != 0) {
+          window.alert("There is already a file / folder with that name. Please try again.");
+          return;
+        }
+        doWriteServer("mkdir", newname, "");
+        doReloadPage();
+      }
+
+      function radPressed(){
+        var btns = document.querySelectorAll("input.filesBtn");
+        if (!ispressed){
+          for(var i = 0; i < btns.length; i++){
+            if (btns[i].value == whichOne) continue;
+            btns[i].checked = false;
+          }
+        }
+      }
+      
+      </script>
+      </head><body><h1><label value=path>@path</label></h1>
+      <form id="fileListing"></form>
+      <script>
+        function loadFileList() {
+          let form = document.getElementById("fileListing");
+          let path = @(jsCode.stringOf path);
+          let files = JSON.parse(doReadServer("fullListDir", path));
+          function getRecordForCheckbox(file) {
+            var rec = {type:"checkbox",
+                       id:file,
+                       class:"filesBtn",
+                       name:"filesBtn",
+                       value:file,
+                       onClick:"whichOne=value",
+                       onChange:"radPressed()"};
+            return rec;
+          }
+          //el(tag, attributes, children, properties)
+          if (path != "") {
+            var link = "../" + "@(search_raw)";
+            form.append(el("input", getRecordForCheckbox(".."), ""));
+            form.append(el("label", {for:"..", value:".."}, el("a", {href:link}, "..")));
+            form.append(el("br", {}, ""));
+          }
+          for (i = 0; i < files.length; i++) {
+            var file = files[i];
+            var link = path=="" ? file[0] : file[0];
+            if (file[1]) {
+              link = link + "/@(search_raw)";
+            }
+            form.append(el("input", getRecordForCheckbox(file[0]), ""));
+            form.append(el("label", {for:file[0], value:file[0]}, el("a", {href:link}, file[0])));
+            form.append(el("br", {}, ""));
+          }
+        }
+        loadFileList();
+      </script>
+    <!--@(["form", [], maybeUp <| List.map 
+                             (\name -> <span><input type="checkbox" id=name class="filesBtn" name="filesBtn" value=name onClick="whichOne=value" onchange="radPressed()">
+                                       <label for=name><a href=@(getNm name) contextmenu="fileOptions">@name</a></label><br></span>) 
+                             (fs.listdir path)]) -->
+    <form id="upfs" enctype="multipart/form-data">
+      <input type="file" name="files[]" multiple />
+      <input type="submit" value="Upload File" name="submit" />
+    </form>
+    <script>
+    const form = document.getElementById("upfs");
+
+    form.addEventListener('submit', e => {
+      //upload file
+      e.preventDefault()
+      const files = document.querySelector('[type=file]').files
+      for (let i = 0; i < files.length; i++) {
+        let file = files[i]
+        console.log (file);
+        console.log ("was file");
+        var flpath = "@(path)" + file.name;
+        editor.uploadFile(flpath, file, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
+        console.log ("client side completed upload request");
+      }
+      if (files.length > 0) doReloadPage();
+    })
+    </script>
     
     Hint: place a
-    <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,
-    <a href=("/@(pathprefix)index.html?edit=true") contenteditable="false">index.html</a> or
-    <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
+    <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,   <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
     file to display something else than this page.</body></html>
   else if Regex.matchIn """\.txt$""" path then
     Ok <html><head></head><body>
@@ -270,7 +702,10 @@ main =
            (if canEditPage then
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
-           bodyattrs,
+           bodyattrs, luca ++
+          if not varedit || varls then
+            bodychildren
+          else 
           (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
            if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
            serverOwned "edit prelude when not in edit mode" []) ++
@@ -838,38 +1273,6 @@ initialScript = [
 <script>
 var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
 
-function el(tag, attributes, children, properties) {
-  let tagClassIds = tag.split(/(?=#|\.)/g);
-  let x;
-  for(let attr of tagClassIds) {
-    if(x && attr.startsWith(".")) {
-      x.classList.toggle(attr.substring(1), true);
-    } else if(x && attr.startsWith("#")) {
-      x.setAttribute("id", attr.substring(1));
-    } else if(!x) {
-      x = document.createElement(attr);
-    }
-  }
-  if(typeof attributes == "object")
-    for(let k in attributes)
-      x.setAttribute(k, attributes[k]);
-  if(Array.isArray(children)) {
-    for(let child of children) {
-      if(typeof child === "string") {
-        x.append(child)
-      } else if(typeof child !== "undefined")
-        x.appendChild(child);
-    }
-  } else if(typeof children !== "undefined") {
-    x.append(children);
-  }
-  if(typeof properties == "object") {
-    for(let k in properties)
-      x[k] = properties[k];
-  }
-  return x;
-}
-
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
 // https://stackoverflow.com/questions/32902734/how-to-make-google-sign-in-token-valid-for-longer-than-1-hour
@@ -1077,80 +1480,6 @@ function remove(node) {
   }
   node.remove();
 }
-
-editor.uploadFile = function(targetPathName, file, onOk, onError) {
-  var xhr = new XMLHttpRequest();
-  xhr.onreadystatechange = ((xhr, file) => () => {
-    if (xhr.readyState == XMLHttpRequest.DONE) {
-      if (xhr.status == 200 || xhr.status == 201) {
-        onOk ? onOk(targetPathName, file) : 0;
-      } else {
-        console.log("Error while uploading picture or file", xhr);
-        onError ? onError(targetPathName, file) : 0;
-      }
-    }
-  })(xhr, file);
-  @(
-    if listDict.get "browserSide" defaultOptions == Just True then 
-    """
-    xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
-    """ 
-    else 
-    """
-    xhr.open("POST", targetPathName, false);
-    xhr.setRequestHeader("write-file", file.type);
-    """
-  );
-  xhr.send(file);
-}
-editor.fs = { listdir: 
-  @(if browserSide then """
-    defaultOptions.nodefs.listdir
-  """ else """
-    function(dirname) {
-      var xhr = new XMLHttpRequest();
-      xhr.onreadystatechange = ((xhr, file) => () => {})
-      xhr.open("GET", dirname, false);
-      xhr.setRequestHeader("action", "listdir");
-      xhr.setRequestHeader("name", dirname);
-      xhr.send();
-      if(xhr.status === 200) {
-        return JSON.parse(xhr.responseText);
-      } else {
-        return [];
-      }
-    }
-  """)
-  };
-
-
-// Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
-editor.getStorageFolder = function(file) {
-  var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
-  for(let s of storageOptions) {
-    if(file.type.startsWith(s.getAttribute("file-type") || "")) {
-      let sf = storageOptions.getAttribute("editor-storagefolder") || "";
-      if(!sf.endsWith("/")) sf = sf + "/";
-      return sf;
-    }
-  }
-  let extension = "";
-  if(file && file.type.startsWith("image")) {
-    var otherImages = document.querySelectorAll("img[src]");
-    for(let i of otherImages) {
-       extension = (i.getAttribute("src") || "").replace(/[^\/]*$/, "");
-       break;
-    }
-    if(extension[0] == "/") { // Absolute URL
-      return extension;
-    }
-  }
-  // extension ends with a / or is empty
-  var tmp = location.pathname.split("/");
-  tmp = tmp.slice(0, tmp.length - 1);
-  storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
-  return storageFolder;
-}
 </script>
 ]
 
@@ -1159,6 +1488,7 @@ editionscript = """
   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
+  console.log("editionscript running");
   
   // Save / Load ghost attributes after a page is reloaded.
   // Same for some attributes
@@ -1253,7 +1583,7 @@ editionscript = """
           var value = n.attributes[i].value;
           if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key)) {
             if(key == "style") {
-              value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2);
+              value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
             }
             attributes.push([key, value]);
           }
@@ -1593,7 +1923,7 @@ editionscript = """
       uploadFilesAtCursor(files);
     }
     
-    function uploadFilesAtCursor(files) {
+    function uploadFilesAtCursor(files) { 
       // files is a FileList of File objects. List some properties.
       for (var i = 0, file; file = files[i]; i++) {
         var targetPathName =  editor.getStorageFolder(file) + file.name;
