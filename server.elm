@@ -1004,7 +1004,7 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
   }
 
   div.information > textarea {
-    font-size: 0.4em;
+    font-size: 1.2em;
     border-radius: 0.3em;
     border: none; 
     padding: 1.5%;
