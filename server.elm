@@ -454,15 +454,27 @@ evaluatedPage =
         }
 
       </style>
-      <div id="menu_bar">
-        <button id="renamefs" onClick="renameFs()">Rename Files</button>
+      <div id="menu_bar">`
+        <button id="renamefs" onClick="renameFs()">Rename File(s)</button>
         <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
+        <button id="movefs" onClick="moveFs()">Move File(s)</button>
         <button id="createFolder" onClick="createFolder()">Create a Folder</button>
-        <button id="deletefs" onClick="deleteFs()">Delete Files</button>
-      </div> <!-- menu_bar -->
+        <button id="deletefs" onClick="deleteFs()">Delete File(s)</button>
+      </div>
+      </head><body><h1><label value=path>@path</label></h1>
+      <form id="fileListing"></form>
       <script>
-      window.onscroll = function() {stickyFun()};
+      var fullListDir = (path) => JSON.parse(doReadServer("fullListDir", path));
+      var thisListDir = fullListDir ("@path");
+      var folders = thisListDir.filter((i) => i[1] == true);
+      var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
+      var warnSelectFile = () => window.alert ("Error: please select a file to continue");
+      var warnDeselectFiles = () => window.alert ("Error: please deselect files to continue");
+      var isDupInFolder = (folder, name) => folder.filter((i) => i[0] == name).length != 0;
+      var isDuplicateHere = (name) => isDupInFolder(thisListDir, name);
+      var isFolder = (name) => folders.filter((i) => i[0] == name).length != 0;
 
+      window.onscroll = function() {stickyFun()};
       var menu_bar = document.getElementById("menu_bar");
       var sticky = menu_bar.offsetTop;
 
@@ -473,10 +485,6 @@ evaluatedPage =
           menu_bar.classList.remove("sticky");
         }
       }
-      var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
-      var getAllFiles = () => Array.from(document.querySelectorAll("input.filesBtn"));
-      var warnSelectFile = () => window.alert ("Error: please select a file to continue");
-      var warnDeselectFiles = () => window.alert ("Error: please deselect files to continue");
       function getOneFile() {
         var selected = getSelectedFiles();
         if (selected.length == 0) {
@@ -492,11 +500,20 @@ evaluatedPage =
         console.log ("in rename fs");
         var sel = getOneFile();
         if (! sel) return;
-        //sel.readonly = false;
-        console.log (sel);
-        var newname = window.prompt("Set new name for file: ", "");
-        if (newname == "") return;
-        //TODO check that we're not overwriting an existing file / folder!
+        if (sel.id == "..") {
+          window.alert("Can't change the up dir");
+          return;
+        }
+        var newname = window.prompt("Set new name for file: ", sel.id);
+        if (newname == null) return;
+        if (newname == "") {
+          window.alert("Please specify a new name for the file.");
+          return;
+        }
+        if (isDuplicateHere(newname)) {
+          window.alert("Please choose a different name so as to not overwrite an existing file. (or change the name of that file).");
+          return;
+        }
         var x = doWriteServer("rename", "@path" + sel.id, "@path" + newname);
         if (x) {
           console.log ("rename failed");
@@ -512,15 +529,23 @@ evaluatedPage =
           warnSelectFile(); 
           return;
         }
+        if (selected.filter((i) => i.id == "..").length != 0) {
+          window.alert("Can't change the up dir");
+          return;
+        }
         var warningMsg = "Are you sure you want to delete the following file(s)?"
         for (i = 0; i < selected.length; i++) {
           warningMsg = warningMsg + "\n" + selected[i].id;
         }
         var conf = window.confirm(warningMsg);
-        console.log (conf);
-        //TODO delete folder using rmdir
         if (conf) {
           for (i = 0; i < selected.length; i++) {
+            var isfolder = folders.filter((j) => j[0] == selected[i].id);
+            console.log (isfolder);
+            if (isfolder.length != 0) {
+              doWriteServer("rmdir", "@path" + selected[i].id);
+              continue;
+            }
             doWriteServer("unlink", "@path" + selected[i].id);
           }
           doReloadPage();
@@ -530,11 +555,21 @@ evaluatedPage =
       function duplicateFs() {
         var sel = getOneFile();
         if (! sel) return;
+        if (sel.id == "..") {
+          window.alert("Can't change the up dir");
+          return;
+        }
         var lastdot = sel.id.lastIndexOf(".");
-        var nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
+        var nn;
+        if (isFolder(sel.id)) {
+          nn = sel.id + "_(Copy)";
+        } else {
+          nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
+        }
         var newname = window.prompt("Name for duplicate: ", nn);
         var contents = doReadServer("read", "@path" + sel.id);
         if (contents[0] != "1") {
+          window.alert ("Couldn't read the file for some reason. aborting.");
           console.error ("couldn't read the file for some reason. aborting.");
           return;
         }
@@ -552,16 +587,48 @@ evaluatedPage =
           return;
         }
         var newname = window.prompt("Name for new folder: ", "");
+        console.log (newname);
+        if (newname == null) return;
         if (newname == "") {
           window.alert("Please set a name for the new folder!");
           return;
         }
-        var dups = getAllFiles().filter((fl) => fl.id == newname);
-        if (dups.length != 0) {
+        var dups = isDuplicateHere(newname);
+        if (dups) {
           window.alert("There is already a file / folder with that name. Please try again.");
           return;
         }
         doWriteServer("mkdir", newname, "");
+        doReloadPage();
+      }
+      function moveFs() {
+        var btn = getOneFile();
+        if (!btn) return;
+        if (btn.id == "..") {
+          window.alert("Can't change the up dir");
+          return;
+        }
+        var newpath = window.prompt("New path to file (relative to root of server):", "@path");
+        if (newpath == null) return;
+        if (newpath[newpath.length -1] != "/") {
+          newpath = newpath + "/";
+        }
+        try {
+          var nldir = fullListDir(newpath);
+          if (isDupInFolder(nldir, btn.id)) {
+            window.alert("There already exists a file in that folder with this name. Move cancelled.");
+            return;
+          }
+        } catch (e) {
+          window.alert ("The path specified does not exist. Move cancelled.");
+          return;
+        }
+        console.log ("move approved");
+        var oldloc = ("@path" + btn.id);
+        var newloc = newpath == "/" ? btn.id : (newpath + btn.id);
+        console.log ("renamimg\n%s\n%s", ("@path" + btn.id), (newpath + btn.id));
+        doWriteServer("rename", oldloc, newloc); 
+        console.log ("rename successful");
         doReloadPage();
       }
 
@@ -574,49 +641,40 @@ evaluatedPage =
           }
         }
       }
-      
-      </script>
-      </head><body><h1><label value=path>@path</label></h1>
-      <form id="fileListing"></form>
-      <script>
-        function loadFileList() {
-          let form = document.getElementById("fileListing");
-          let path = @(jsCode.stringOf path);
-          let files = JSON.parse(doReadServer("fullListDir", path));
-          function getRecordForCheckbox(file) {
-            var rec = {type:"checkbox",
-                       id:file,
-                       class:"filesBtn",
-                       name:"filesBtn",
-                       value:file,
-                       onClick:"whichOne=value",
-                       onChange:"radPressed()"};
-            return rec;
-          }
-          //el(tag, attributes, children, properties)
-          if (path != "") {
-            var link = "../" + "ls=true&edit";
-            form.append(el("input", getRecordForCheckbox(".."), ""));
-            form.append(el("label", {for:"..", value:".."}, el("a", {href:link}, "..")));
-            form.append(el("br", {}, ""));
-          }
-          for (i = 0; i < files.length; i++) {
-            var file = files[i];
-            var link = path=="" ? file[0] : file[0];
-            if (file[1]) {
-              link = link + "/ls=true&edit";
-            }
-            form.append(el("input", getRecordForCheckbox(file[0]), ""));
-            form.append(el("label", {for:file[0], value:file[0]}, el("a", {href:link}, file[0])));
-            form.append(el("br", {}, ""));
-          }
+      function loadFileList() {
+        let form = document.getElementById("fileListing");
+        let path = @(jsCode.stringOf path);
+        let files = thisListDir;
+        function getRecordForCheckbox(file) {
+          var rec = {type:"checkbox",
+                      id:file,
+                      class:"filesBtn",
+                      name:"filesBtn",
+                      value:file,
+                      onClick:"whichOne=value",
+                      onChange:"radPressed()"};
+          return rec;
         }
-        loadFileList();
+        //el(tag, attributes, children, properties)
+        if (path != "") {
+          var link = "../" + "?ls=true&edit";
+          form.append(el("input", getRecordForCheckbox(".."), ""));
+          form.append(el("label", {for:"..", value:".."}, el("a", {href:link}, "..")));
+          form.append(el("br", {}, ""));
+        }
+        for (i = 0; i < files.length; i++) {
+          var file = files[i];
+          var link = path=="" ? file[0] : file[0];
+          if (file[1]) {
+            link = link + "/?ls=true&edit";
+          }
+          form.append(el("input", getRecordForCheckbox(file[0]), ""));
+          form.append(el("label", {for:file[0], value:file[0]}, el("a", {href:link}, file[0])));
+          form.append(el("br", {}, ""));
+        }
+      }
+      loadFileList();        
       </script>
-    <!--@(["form", [], maybeUp <| List.map 
-                             (\name -> <span><input type="checkbox" id=name class="filesBtn" name="filesBtn" value=name onClick="whichOne=value" onchange="radPressed()">
-                                       <label for=name><a href=@(getNm name) contextmenu="fileOptions">@name</a></label><br></span>) 
-                             (fs.listdir path)]) -->
     <form id="upfs" enctype="multipart/form-data">
       <input type="file" name="files[]" multiple />
       <input type="submit" value="Upload File" name="submit" />
@@ -633,6 +691,11 @@ evaluatedPage =
         console.log (file);
         console.log ("was file");
         var flpath = "@(path)" + file.name;
+        console.log ("flpath %s", flpath);
+        if (isDuplicateHere(file.name)) {
+          window.alert ("File with this name already exists here. Overwriting cancelled.");
+          return;
+        }
         editor.uploadFile(flpath, file, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
         console.log ("client side completed upload request");
       }
