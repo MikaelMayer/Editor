@@ -690,6 +690,7 @@ div#modify-menu #newTagName {
   background-color: rgb(0, 178, 179);
   font-family: monospace;
   padding: 4px;
+  flex: 1;
 }
 div#modify-menu .tagname-info {
   display: inline-block;
@@ -699,6 +700,7 @@ div#modify-menu .tagname-info {
   text-overflow: ellipsis;
   background: transparent;
   color: whitesmoke;
+  flex: 2;
 }
 div#modify-menu input[type=radio] {
   width: initial;
