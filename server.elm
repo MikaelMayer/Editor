@@ -650,6 +650,10 @@ div.#modify-menu > div.information-style {
   /* background: rgba(0, 212, 159, 0.6); */
 }
 
+div.information > textarea {
+  font-size: 1em;
+}
+
 div#modify-menu.visible {
   transform: translate(0%, 0%);
 }
