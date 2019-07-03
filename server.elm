@@ -342,15 +342,6 @@ evaluatedPage =
   else if fs.isdir path then
     let
       pathprefix = if path == "" then path else path + "/"
-      maybeUp fileList = case Regex.extract "^(.*)/.*$" path of
-        Just [prev] -> <span contenteditable="false"><input type="checkbox" id=".." name="filesBtn" value=".."><a href=("../"+ search_raw)>..<br></span> :: fileList
-        _ -> if path == "" then fileList else <li><a href="/" contenteditable="false">..</li> :: fileList
-      ctrlPressed = False
-      getNm name = 
-        if path + name |> fs.isdir then --TODO faster jeez
-          Regex.replace "//" "/" name + "/" + search_raw --fix this whole search query stuff using the functionality in JS way below: JSON.parse(newQueryStr);
-        else
-          Regex.replace "//" "/" name
     in
     Ok <html><head>
       <script>
@@ -464,14 +455,6 @@ evaluatedPage =
 
       </style>
       <div id="menu_bar">
-        <!--<div class="dropdown">
-          <button class="dropbtn">Dropdown</button>
-          <div class="dropdown-content">
-            <button>one</button><br>
-            <button>two</button><br>
-            <button>three</button>
-          </div>
-        </div>-->
         <button id="renamefs" onClick="renameFs()">Rename Files</button>
         <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
         <button id="createFolder" onClick="createFolder()">Create a Folder</button>
@@ -612,7 +595,7 @@ evaluatedPage =
           }
           //el(tag, attributes, children, properties)
           if (path != "") {
-            var link = "../" + "@(search_raw)";
+            var link = "../" + "ls=true&edit";
             form.append(el("input", getRecordForCheckbox(".."), ""));
             form.append(el("label", {for:"..", value:".."}, el("a", {href:link}, "..")));
             form.append(el("br", {}, ""));
@@ -621,7 +604,7 @@ evaluatedPage =
             var file = files[i];
             var link = path=="" ? file[0] : file[0];
             if (file[1]) {
-              link = link + "/@(search_raw)";
+              link = link + "/ls=true&edit";
             }
             form.append(el("input", getRecordForCheckbox(file[0]), ""));
             form.append(el("label", {for:file[0], value:file[0]}, el("a", {href:link}, file[0])));
