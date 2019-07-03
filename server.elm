@@ -1070,7 +1070,7 @@ div#modify-menu > div.modify-menu-icons {
   overflow-x: auto;
 }
 div#modify-menu > div.information {
-  //overflow-y: auto;
+  overflow-y: auto;
   max-height: calc(100% - var(--context-menu-height));
 }
 div#modify-menu.visible {
