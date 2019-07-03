@@ -711,6 +711,7 @@ div.keyvalue > span > input {
 }
 
 div.tagname-summary {
+  display: flex;
   background-color: rgb(0, 178, 179);
   border-radius: 0.4em;
   padding: 4px;
@@ -997,7 +998,6 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
 
   /* mobile modify menu */
   div.tagname-summary {
-    display: flex;
     padding-left: 10px;
   }
 
