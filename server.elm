@@ -380,7 +380,7 @@ if iscloseable then <span dummy=""></span> else closeEditBox,
 }
 
 /* Remove input default border and shadow */
-input {
+input[type=text] {
   outline-color: invert ;
 	outline-style: none ;
 	outline-width: 0px ;
@@ -2329,7 +2329,7 @@ editionscript = """
           el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: "<" + clickedElem.tagName.toLowerCase() + ">", title:"This element's tag name"}, [], { onkeyup() {
             document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
           }}),
-          el("input", { "class": "tagname-info", "value": textPreview(clickedElem, 50), "readonly": "readonly"})
+          el("input", {"type": "text", "class": "tagname-info", "value": textPreview(clickedElem, 50), "readonly": "readonly"})
           ]
         ));
 
