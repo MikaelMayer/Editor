@@ -133,7 +133,7 @@ applyDotEditor source =
       |> Maybe.map applyDotEditor
       |> Maybe.withDefaultReplace (
         serverOwned "404 page" """<html><head></head><body>@(
-            if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
+            if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
           )</body></html>"""
       )
 {---------------------------------------------------------------------------
