@@ -2152,8 +2152,9 @@ editionscript = """
             onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }}));
           // TODO: Filter and sort which one we can add
           addElem("List item", {tag:"li", props: { innerHTML: "<br>"}});
-          addElem("New bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n  <li><br></li>\n</ul>"}});
-          addElem("New numbered list", {tag:"ol", props: { innerHTML: "<ol>\n  <li><br></li>\n</ol>"}});
+          addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n  <li><br></li>\n</ul>"}});
+          addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n  <l i><br></li>\n</ol>"}});
+          addElem("Button", {tag: "button", props: {innerHTML: "button"}});
           addElem("Link", {tag:"a", childCreate: "Name_your_link"});
           addElem("Paragraph", {tag:"p", childCreate: "Inserted paragraph"});
           for(let i = 1; i <= 6; i++) {
