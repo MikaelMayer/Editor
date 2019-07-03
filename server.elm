@@ -991,12 +991,13 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
   }
 
   div.no-sibling {
-    font-size: 0.6em;
+    font-size: 1em;
     padding-top: 20px;
   }
 
   /* mobile modify menu */
   div.tagname-summary {
+    display: flex;
     padding-left: 10px;
   }
 
