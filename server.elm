@@ -133,7 +133,7 @@ applyDotEditor source =
       |> Maybe.map applyDotEditor
       |> Maybe.withDefaultReplace (
         serverOwned "404 page" """<html><head></head><body>@(
-            if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
+            if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
           )</body></html>"""
       )
 {---------------------------------------------------------------------------
@@ -342,15 +342,6 @@ evaluatedPage =
   else if fs.isdir path then
     let
       pathprefix = if path == "" then path else path + "/"
-      maybeUp fileList = case Regex.extract "^(.*)/.*$" path of
-        Just [prev] -> <span contenteditable="false"><input type="checkbox" id=".." name="filesBtn" value=".."><a href=("../"+ search_raw)>..<br></span> :: fileList
-        _ -> if path == "" then fileList else <li><a href="/" contenteditable="false">..</li> :: fileList
-      ctrlPressed = False
-      getNm name = 
-        if path + name |> fs.isdir then --TODO faster jeez
-          Regex.replace "//" "/" name + "/" + search_raw --fix this whole search query stuff using the functionality in JS way below: JSON.parse(newQueryStr);
-        else
-          Regex.replace "//" "/" name
     in
     Ok <html><head>
       <script>
@@ -506,23 +497,27 @@ evaluatedPage =
         }
 
       </style>
-      <div id="menu_bar">
-        <!--<div class="dropdown">
-          <button class="dropbtn">Dropdown</button>
-          <div class="dropdown-content">
-            <button>one</button><br>
-            <button>two</button><br>
-            <button>three</button>
-          </div>
-        </div>-->
-        <button id="renamefs" onClick="renameFs()">Rename Files</button>
+      <div id="menu_bar">`
+        <button id="renamefs" onClick="renameFs()">Rename File(s)</button>
         <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
+        <button id="movefs" onClick="moveFs()">Move File(s)</button>
         <button id="createFolder" onClick="createFolder()">Create a Folder</button>
-        <button id="deletefs" onClick="deleteFs()">Delete Files</button>
-      </div> <!-- menu_bar -->
+        <button id="deletefs" onClick="deleteFs()">Delete File(s)</button>
+      </div>
+      </head><body><h1><label value=path>@path</label></h1>
+      <form id="fileListing"></form>
       <script>
-      window.onscroll = function() {stickyFun()};
+      var fullListDir = (path) => JSON.parse(doReadServer("fullListDir", path));
+      var thisListDir = fullListDir ("@path");
+      var folders = thisListDir.filter((i) => i[1] == true);
+      var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
+      var warnSelectFile = () => window.alert ("Error: please select a file to continue");
+      var warnDeselectFiles = () => window.alert ("Error: please deselect files to continue");
+      var isDupInFolder = (folder, name) => folder.filter((i) => i[0] == name).length != 0;
+      var isDuplicateHere = (name) => isDupInFolder(thisListDir, name);
+      var isFolder = (name) => folders.filter((i) => i[0] == name).length != 0;
 
+      window.onscroll = function() {stickyFun()};
       var menu_bar = document.getElementById("menu_bar");
       var sticky = menu_bar.offsetTop;
 
@@ -533,10 +528,6 @@ evaluatedPage =
           menu_bar.classList.remove("sticky");
         }
       }
-      var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
-      var getAllFiles = () => Array.from(document.querySelectorAll("input.filesBtn"));
-      var warnSelectFile = () => window.alert ("Error: please select a file to continue");
-      var warnDeselectFiles = () => window.alert ("Error: please deselect files to continue");
       function getOneFile() {
         var selected = getSelectedFiles();
         if (selected.length == 0) {
@@ -552,11 +543,20 @@ evaluatedPage =
         console.log ("in rename fs");
         var sel = getOneFile();
         if (! sel) return;
-        //sel.readonly = false;
-        console.log (sel);
-        var newname = window.prompt("Set new name for file: ", "");
-        if (newname == "") return;
-        //TODO check that we're not overwriting an existing file / folder!
+        if (sel.id == "..") {
+          window.alert("Can't change the up dir");
+          return;
+        }
+        var newname = window.prompt("Set new name for file: ", sel.id);
+        if (newname == null) return;
+        if (newname == "") {
+          window.alert("Please specify a new name for the file.");
+          return;
+        }
+        if (isDuplicateHere(newname)) {
+          window.alert("Please choose a different name so as to not overwrite an existing file. (or change the name of that file).");
+          return;
+        }
         var x = doWriteServer("rename", "@path" + sel.id, "@path" + newname);
         if (x) {
           console.log ("rename failed");
@@ -572,15 +572,23 @@ evaluatedPage =
           warnSelectFile(); 
           return;
         }
+        if (selected.filter((i) => i.id == "..").length != 0) {
+          window.alert("Can't change the up dir");
+          return;
+        }
         var warningMsg = "Are you sure you want to delete the following file(s)?"
         for (i = 0; i < selected.length; i++) {
           warningMsg = warningMsg + "\n" + selected[i].id;
         }
         var conf = window.confirm(warningMsg);
-        console.log (conf);
-        //TODO delete folder using rmdir
         if (conf) {
           for (i = 0; i < selected.length; i++) {
+            var isfolder = folders.filter((j) => j[0] == selected[i].id);
+            console.log (isfolder);
+            if (isfolder.length != 0) {
+              doWriteServer("rmdir", "@path" + selected[i].id);
+              continue;
+            }
             doWriteServer("unlink", "@path" + selected[i].id);
           }
           doReloadPage();
@@ -590,11 +598,21 @@ evaluatedPage =
       function duplicateFs() {
         var sel = getOneFile();
         if (! sel) return;
+        if (sel.id == "..") {
+          window.alert("Can't change the up dir");
+          return;
+        }
         var lastdot = sel.id.lastIndexOf(".");
-        var nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
+        var nn;
+        if (isFolder(sel.id)) {
+          nn = sel.id + "_(Copy)";
+        } else {
+          nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
+        }
         var newname = window.prompt("Name for duplicate: ", nn);
         var contents = doReadServer("read", "@path" + sel.id);
         if (contents[0] != "1") {
+          window.alert ("Couldn't read the file for some reason. aborting.");
           console.error ("couldn't read the file for some reason. aborting.");
           return;
         }
@@ -612,16 +630,48 @@ evaluatedPage =
           return;
         }
         var newname = window.prompt("Name for new folder: ", "");
+        console.log (newname);
+        if (newname == null) return;
         if (newname == "") {
           window.alert("Please set a name for the new folder!");
           return;
         }
-        var dups = getAllFiles().filter((fl) => fl.id == newname);
-        if (dups.length != 0) {
+        var dups = isDuplicateHere(newname);
+        if (dups) {
           window.alert("There is already a file / folder with that name. Please try again.");
           return;
         }
         doWriteServer("mkdir", newname, "");
+        doReloadPage();
+      }
+      function moveFs() {
+        var btn = getOneFile();
+        if (!btn) return;
+        if (btn.id == "..") {
+          window.alert("Can't change the up dir");
+          return;
+        }
+        var newpath = window.prompt("New path to file (relative to root of server):", "@path");
+        if (newpath == null) return;
+        if (newpath[newpath.length -1] != "/") {
+          newpath = newpath + "/";
+        }
+        try {
+          var nldir = fullListDir(newpath);
+          if (isDupInFolder(nldir, btn.id)) {
+            window.alert("There already exists a file in that folder with this name. Move cancelled.");
+            return;
+          }
+        } catch (e) {
+          window.alert ("The path specified does not exist. Move cancelled.");
+          return;
+        }
+        console.log ("move approved");
+        var oldloc = ("@path" + btn.id);
+        var newloc = newpath == "/" ? btn.id : (newpath + btn.id);
+        console.log ("renamimg\n%s\n%s", ("@path" + btn.id), (newpath + btn.id));
+        doWriteServer("rename", oldloc, newloc); 
+        console.log ("rename successful");
         doReloadPage();
       }
 
@@ -634,63 +684,56 @@ evaluatedPage =
           }
         }
       }
-      
-      </script>
-      </head><body><h1><label value=path>@path</label></h1>
-      <form id="fileListing"></form>
-      <script>
-        function loadFileList() {
-          let form = document.getElementById("fileListing");
-          let path = @(jsCode.stringOf path);
-          let files = JSON.parse(doReadServer("fullListDir", path));
-          function getRecordForCheckbox(file) {
-            var rec = {type:"checkbox",
-                       id:file,
-                       class:"filesBtn",
-                       name:"filesBtn",
-                       value:file,
-                       onClick:"whichOne=value",
-                       onChange:"radPressed()"};
-            return rec;
-          }
-          var dirIcon = () => {
-            var d = el("div", {}, [], {innerHTML: 
-            `<svg class="file-extension-icon" width="40" height="30">
-              <path d="M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z" /></svg>`});
-            return d.childNodes[0];
-          }
-          var extensionIcon = name => {
-            var d = el("div", {}, [], {innerHTML: 
-            `<svg class="file-extension-icon" width="40" height="30">
-             </svg>`});
-            return d.childNodes[0];
-          }
-
-          var fileItemDisplay = function(link, name, isDir) {
-             return el("div", {class:"file-item"}, [
-                el("input", getRecordForCheckbox(name), ""),
-                el("label", {for:name, value:name}, [
-                  isDir ? dirIcon() : extensionIcon(name),
-                  el("a", {href:link}, name)])]);
-          }
-          //el(tag, attributes, children, properties)
-          if (path != "") {
-            var link = "../" + "?ls&edit"; // TODO: Fix this
-            form.append(fileItemDisplay(link, "..", true));
-          }
-          files.sort(([_1, d1], [_2, d2]) => d1 && !d2 ? -1 : d2 && !d1 ? 1 : _1.toLowerCase() < _2.toLowerCase() ? -1 : 0);
-          for (i = 0; i < files.length; i++) {
-            var [name, isDir] = files[i];
-            var link = isDir =="" ? name + "/?ls&edit" : name;
-            form.append(fileItemDisplay(link, name, isDir));
-          }
+      function loadFileList() {
+        let form = document.getElementById("fileListing");
+        let path = @(jsCode.stringOf path);
+        let files = thisListDir;
+        function getRecordForCheckbox(file) {
+          var rec = {type:"checkbox",
+                      id:file,
+                      class:"filesBtn",
+                      name:"filesBtn",
+                      value:file,
+                      onClick:"whichOne=value",
+                      onChange:"radPressed()"};
+          return rec;
         }
-        loadFileList();
+        var dirIcon = () => {
+          var d = el("div", {}, [], {innerHTML: 
+          `<svg class="file-extension-icon" width="40" height="30">
+            <path d="M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z" /></svg>`});
+          return d.childNodes[0];
+        }
+        var extensionIcon = name => {
+          var d = el("div", {}, [], {innerHTML: 
+          `<svg class="file-extension-icon" width="40" height="30">
+           </svg>`});
+          return d.childNodes[0];
+        }
+
+        var fileItemDisplay = function(link, name, isDir) {
+           return el("div", {class:"file-item"}, [
+              el("input", getRecordForCheckbox(name), ""),
+              el("label", {for:name, value:name}, [
+                isDir ? dirIcon() : extensionIcon(name),
+                el("a", {href:link}, name)])]);
+        }
+        //el(tag, attributes, children, properties)
+        if (path != "") {
+          var link = "../" + "?ls=true&edit";
+          form.append(fileItemDisplay(link, "..", true));
+        }
+        files.sort(([_1, d1], [_2, d2]) => d1 && !d2 ? -1 : d2 && !d1 ? 1 : _1.toLowerCase() < _2.toLowerCase() ? -1 : 0);
+        for (i = 0; i < files.length; i++) {
+          var [name, isDir] = files[i];
+          var link = isDir =="" ? name + "/?ls&edit" : name;
+          form.append(fileItemDisplay(link, name, isDir));
+        }
+
+
+      }
+      loadFileList();        
       </script>
-    <!--@(["form", [], maybeUp <| List.map 
-                             (\name -> <span><input type="checkbox" id=name class="filesBtn" name="filesBtn" value=name onClick="whichOne=value" onchange="radPressed()">
-                                       <label for=name><a href=@(getNm name) contextmenu="fileOptions">@name</a></label><br></span>) 
-                             (fs.listdir path)]) -->
     <form id="upfs" enctype="multipart/form-data">
       <input type="file" name="files[]" multiple />
       <input type="submit" value="Upload File" name="submit" />
@@ -707,6 +750,11 @@ evaluatedPage =
         console.log (file);
         console.log ("was file");
         var flpath = "@(path)" + file.name;
+        console.log ("flpath %s", flpath);
+        if (isDuplicateHere(file.name)) {
+          window.alert ("File with this name already exists here. Overwriting cancelled.");
+          return;
+        }
         editor.uploadFile(flpath, file, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
         console.log ("client side completed upload request");
       }
@@ -1123,7 +1171,7 @@ div#modify-menu > div.modify-menu-icons {
   overflow-x: auto;
 }
 div#modify-menu > div.information {
-  //overflow-y: auto;
+  overflow-y: auto;
   max-height: calc(100% - var(--context-menu-height));
 }
 div#modify-menu.visible {
@@ -1197,6 +1245,10 @@ div#modify-menu input[type=radio] {
   width: 100%;
 }
 
+/* highlight selected image */
+div.highlight-select-image {
+  box-shadow: 2px 2px 3px black;
+}
 
 :root {
   --context-color: rgba(0, 128, 128, 0.8);
@@ -2687,7 +2739,7 @@ editionscript = """
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
               el("span", {},
-                el("input", {"type": "text", value: value, "id": "keyvalue-input"},
+                el("input", {"type": "text", value: value, "id": "image-src-input"},
                   [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
@@ -2749,7 +2801,7 @@ editionscript = """
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-            document.getElementById("keyvalue-input").setAttribute("value", file.name);
+            document.getElementById("image-src-input").setAttribute("value", file.name);
             clickedElem.setAttribute("src", targetPathName);
           });
         }
@@ -2761,9 +2813,11 @@ editionscript = """
         let selectedImage = document.querySelectorAll(".imgFolder");
         for (let i = 0; i < selectedImage.length; ++i) {
           if (selectedImage[i].getAttribute("src") === files[files.length - 1]) {
-            selectedImage[i].style.outline = "2px solid white";
+            // selectedImage[i].style.outline = "2px solid white";
+            selectedImage[i].classList.add("highlight-select-image");
           } else {
-            selectedImage[i].style.outline = "none";
+            // selectedImage[i].style.outline = "none";
+            selectedImage[i].classList.remove("highlight-select-image");
           }
         }
       }
@@ -2794,12 +2848,14 @@ editionscript = """
                 // highlight the selected image
                 let otherImages = document.querySelectorAll(".imgFolder");
                 for (let i = 0; i < otherImages.length; ++i) {
-                  otherImages[i].style.outline = "none";
+                  otherImages[i].classList.remove("highlight-select-image");
+                  // otherImages[i].style.outline = "none";
                 }
                 // replace image
                 clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
-                document.getElementsByClassName("keyvalue")[0].children[1].children[0].setAttribute("value", this.children[0].getAttribute("src"));
-                this.style.outline = "2px solid white";
+                document.getElementById("image-src-input").setAttribute("value", this.children[0].getAttribute("src"));
+                // this.style.outline = "2px solid white";
+                this.classList.add("highlight-select-image");
               }
             })
           );
