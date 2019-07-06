@@ -487,6 +487,9 @@ evaluatedPage =
           vertical-align: middle;
           transform: scale(0.5);
         }
+        #fileListing div.file-item label svg.file-extension-icon {
+          opacity: 0.5;
+        }
         #fileListing div.file-item label svg.file-extension-icon > path {
           stroke:black;
           stroke-width:2px;
@@ -494,6 +497,9 @@ evaluatedPage =
           fill:none;
           -linejoin:miter;
           stroke-opacity:1;
+        }
+        #fileListing div.file-item label svg.file-extension-icon > text {
+          font-size: 2em;
         }
 
       </style>
@@ -511,8 +517,8 @@ evaluatedPage =
       var thisListDir = fullListDir ("@path");
       var folders = thisListDir.filter((i) => i[1] == true);
       var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
-      var warnSelectFile = () => window.alert ("Error: please select a file to continue");
-      var warnDeselectFiles = () => window.alert ("Error: please deselect files to continue");
+      var warnSelectFile = reason => window.alert (reason + ", please select some and click this button again");
+      var warnDeselectFiles = reason => window.alert (reason + ", please deselect all files and folders and click this button again");
       var isDupInFolder = (folder, name) => folder.filter((i) => i[0] == name).length != 0;
       var isDuplicateHere = (name) => isDupInFolder(thisListDir, name);
       var isFolder = (name) => folders.filter((i) => i[0] == name).length != 0;
@@ -528,20 +534,20 @@ evaluatedPage =
           menu_bar.classList.remove("sticky");
         }
       }
-      function getOneFile() {
+      function getOneFile(reason) {
         var selected = getSelectedFiles();
         if (selected.length == 0) {
-          warnSelectFile();
+          warnSelectFile(reason);
           return 0;
         } else if (selected.length != 1) {
-          window.alert ("Error: can only rename one file at a time");
+          window.alert ("Please select only one file to rename");
           return 0;
         }
         return selected[0];
       }
       function renameFs() {
         console.log ("in rename fs");
-        var sel = getOneFile();
+        var sel = getOneFile("To rename files or folders");
         if (! sel) return;
         if (sel.id == "..") {
           window.alert("Can't change the up dir");
@@ -569,7 +575,7 @@ evaluatedPage =
       function deleteFs() {
         var selected = getSelectedFiles();
         if (selected.length == 0) {
-          warnSelectFile(); 
+          warnSelectFile("To delete a file or a folder"); 
           return;
         }
         if (selected.filter((i) => i.id == "..").length != 0) {
@@ -596,7 +602,7 @@ evaluatedPage =
         }
       }
       function duplicateFs() {
-        var sel = getOneFile();
+        var sel = getOneFile("To duplicate files or folders");
         if (! sel) return;
         if (sel.id == "..") {
           window.alert("Can't change the up dir");
@@ -626,7 +632,7 @@ evaluatedPage =
       function createFolder() {
         var btns = getSelectedFiles();
         if (btns.length != 0) {
-          warnDeselectFiles();
+          warnDeselectFiles("To create a folder");
           return;
         }
         var newname = window.prompt("Name for new folder: ", "");
@@ -645,7 +651,7 @@ evaluatedPage =
         doReloadPage();
       }
       function moveFs() {
-        var btn = getOneFile();
+        var btn = getOneFile("To move files or folders");
         if (!btn) return;
         if (btn.id == "..") {
           window.alert("Can't change the up dir");
@@ -700,13 +706,16 @@ evaluatedPage =
         }
         var dirIcon = () => {
           var d = el("div", {}, [], {innerHTML: 
-          `<svg class="file-extension-icon" width="40" height="30">
+          `<svg class="file-extension-icon" width="60" height="30">
             <path d="M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z" /></svg>`});
           return d.childNodes[0];
         }
         var extensionIcon = name => {
+          let extension = name.replace(/^(?:(?!\.(?=[^\.]*$)).)*\.?/, "");
+          if("." + extension == name || extension === "") extension = "-";
           var d = el("div", {}, [], {innerHTML: 
-          `<svg class="file-extension-icon" width="40" height="30">
+          `<svg class="file-extension-icon" width="60" height="30">
+            <text x="0" y="25">${extension}</text>
            </svg>`});
           return d.childNodes[0];
         }
@@ -723,7 +732,10 @@ evaluatedPage =
           var link = "../" + "?ls=true&edit";
           form.append(fileItemDisplay(link, "..", true));
         }
-        files.sort(([_1, d1], [_2, d2]) => d1 && !d2 ? -1 : d2 && !d1 ? 1 : _1.toLowerCase() < _2.toLowerCase() ? -1 : 0);
+        // directories before files, sorted case-insensitive
+        files.sort(([name1, isDir1], [name2, isDir2]) =>
+          isDir1 && !isDir2 ? -1 : isDir2 && !isDir1 ? 1 :
+          name1.toLowerCase() < name2.toLowerCase() ? -1 : 0);
         for (i = 0; i < files.length; i++) {
           var [name, isDir] = files[i];
           var link = isDir =="" ? name + "/?ls&edit" : name;
