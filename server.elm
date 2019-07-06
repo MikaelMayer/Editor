@@ -93,7 +93,7 @@ canEvaluate = listDict.get "evaluate" vars |> Maybe.withDefaultReplace (serverOw
 path: String
 path =
   if fs.isdir path then
-   if listDict.get "ls" vars /= Just "true" then
+   if not varls then
      List.mapFirstSuccess (\test ->
        if fs.isfile <| path + test then Just (path + test) else Nothing)
        ["index.elm" , "/index.elm", "index.html", "/index.html", "README.md" , "/README.md" ]
@@ -461,6 +461,49 @@ evaluatedPage =
         .sticky + .content {
           padding-top: 60px;
         }
+        #fileListing div.file-item {
+          display: block;
+        }
+        #fileListing div.file-item input {
+          display: none;
+        }
+        #fileListing div.file-item {
+          display: table-row;
+        }
+        #fileListing div.file-item label {
+          display: table-cell;
+          vertical-align: middle;
+          padding: 0.3em;
+        }
+        #fileListing div.file-item label:hover {
+          background: rgb(229,243,255);
+        }
+        #fileListing div.file-item input:checked + label {
+          color: white;
+          outline: 1px solid rgb(153,209,255);
+          background: rgb(204,232,255);
+        }
+        #fileListing div.file-item label a {
+          text-decoration: none;
+          color: black;
+          padding: 2px;
+        }
+        #fileListing div.file-item label a:hover {
+          text-decoration: underline;
+          color: blue;
+        }
+        #fileListing div.file-item label svg {
+          vertical-align: middle;
+          transform: scale(0.5);
+        }
+        #fileListing div.file-item label svg.file-extension-icon > path {
+          stroke:black;
+          stroke-width:2px;
+          stroke-linecap:butt;
+          fill:none;
+          -linejoin:miter;
+          stroke-opacity:1;
+        }
 
       </style>
       <div id="menu_bar">
@@ -610,22 +653,36 @@ evaluatedPage =
                        onChange:"radPressed()"};
             return rec;
           }
+          var dirIcon = () => {
+            var d = el("div", {}, [], {innerHTML: 
+            `<svg class="file-extension-icon" width="40" height="30">
+              <path d="M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z" /></svg>`});
+            return d.childNodes[0];
+          }
+          var extensionIcon = name => {
+            var d = el("div", {}, [], {innerHTML: 
+            `<svg class="file-extension-icon" width="40" height="30">
+             </svg>`});
+            return d.childNodes[0];
+          }
+
+          var fileItemDisplay = function(link, name, isDir) {
+             return el("div", {class:"file-item"}, [
+                el("input", getRecordForCheckbox(name), ""),
+                el("label", {for:name, value:name}, [
+                  isDir ? dirIcon() : extensionIcon(name),
+                  el("a", {href:link}, name)])]);
+          }
           //el(tag, attributes, children, properties)
           if (path != "") {
-            var link = "../" + "@(search_raw)";
-            form.append(el("input", getRecordForCheckbox(".."), ""));
-            form.append(el("label", {for:"..", value:".."}, el("a", {href:link}, "..")));
-            form.append(el("br", {}, ""));
+            var link = "../" + "?ls&edit"; // TODO: Fix this
+            form.append(fileItemDisplay(link, "..", true));
           }
+          files.sort(([_1, d1], [_2, d2]) => d1 && !d2 ? -1 : d2 && !d1 ? 1 : _1.toLowerCase() < _2.toLowerCase() ? -1 : 0);
           for (i = 0; i < files.length; i++) {
-            var file = files[i];
-            var link = path=="" ? file[0] : file[0];
-            if (file[1]) {
-              link = link + "/@(search_raw)";
-            }
-            form.append(el("input", getRecordForCheckbox(file[0]), ""));
-            form.append(el("label", {for:file[0], value:file[0]}, el("a", {href:link}, file[0])));
-            form.append(el("br", {}, ""));
+            var [name, isDir] = files[i];
+            var link = isDir =="" ? name + "/?ls&edit" : name;
+            form.append(fileItemDisplay(link, name, isDir));
           }
         }
         loadFileList();
@@ -655,11 +712,7 @@ evaluatedPage =
       }
       if (files.length > 0) doReloadPage();
     })
-    </script>
-    
-    Hint: place a
-    <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,   <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
-    file to display something else than this page.</body></html>
+    </script></body></html>
   else if Regex.matchIn """\.txt$""" path then
     Ok <html><head></head><body>
       <textarea id="thetext" style="width:100%;height:100%" initdata=@sourcecontent
@@ -2101,6 +2154,7 @@ editionscript = """
       return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
             <path d="${path}" /></svg>`
     }
+    
     var saveSVG = mkSvg("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
     var openLeftSVG = mkSvg("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
     var closeRightSVG = mkSvg("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
