@@ -1449,7 +1449,8 @@ editor.ghostNodes = [];
 // Analytics scripts
 editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
-     insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
+     (insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1 ||
+      insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1)
 );
 
 // For for ace styles in header
