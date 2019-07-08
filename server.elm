@@ -37,6 +37,8 @@ directReadFileSystem =
 
 fs = nodejs.delayedFS directReadFileSystem fileOperations
 
+hyde = listDict.get "hyde" defaultOptions
+
 fs = case mbApplyPrefix of
   Nothing -> fs
   Just applyPrefix -> { fs |
@@ -129,7 +131,39 @@ applyDotEditor source =
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
         """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
       else
-        fs.read path
+        (if Debug.log "hyde" hyde == Nothing then fs.read path else
+          case hyde of
+            Just {file} ->
+              let source = fs.read file |> Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@file' not found?!"]""")
+                  source = source + Update.freeze "\n\n let t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t === 'list' then t else [t]\nin t"
+                  fsReadRecord = 
+                      { directReadFileSystem |
+                        read name =
+                          let _ = recordFileRead name in
+                          fs.read name,
+                        listdir name =
+                          let _ = recordFolderList name in
+                          fs.listdir name
+                      }
+                  fsHyde = nodejs.delayedFS fsReadRecord fileOperations
+                  fileDirectory = Regex.replace "^/[^/]*$" "" file
+              in
+              let (generatedFilesDict, errors) =
+                    __evaluate__ (("fs", fsHyde)::preludeEnv) source
+                    |> Result.andThen (case of
+                      Ok writtenContent ->
+                        let _ = commitWriteOutput writtenContent in -- Actual write on disk
+                        let (written, errors) = List.partition (case of Write -> True; _ -> False) writtenContent in
+                        (List.map (case of Write name content -> (fileDirectory + "/" + name, content)) written,
+                         List.map (case of Error msg -> msg) errors |> String.join "\n")
+                      Err msg -> ([], msg))
+                    |> Result.withDefaultMapError (\msg -> ([], msg))
+              in
+              case listDict.get path generatedFilesDict of
+                Nothing -> fs.read path
+                x -> x
+            _ -> fs.read path
+        )
       |> Maybe.map applyDotEditor
       |> Maybe.withDefaultReplace (
         serverOwned "404 page" """<html><head></head><body>@(
