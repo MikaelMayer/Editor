@@ -117,7 +117,7 @@ Images are automatically uploaded at the same location the first image of the pa
 
   ![Demo of image drop](/drop-image.gif?raw=true)
 
-To customize where to save the image (e.g. in the top-level folder `media/images`), add the following to you document's header:
+To customize where to save the image (e.g. in the top-level folder `media/images`), add any of the following to you document's header. If you omit `file-type`, it will specify the storage location for all files using the API `editor.uploadFile`.
 
     <meta editor-storagefolder="media/images" file-type="image">
 
@@ -157,7 +157,7 @@ Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of t
 Some scripts or plugins (such as Google Analytics, Ace editor, Grammarly...) insert nodes or add special attributes. These nodes and attributes should not be back-propagated.  
 Editor offers several mechanisms to prevent this unwanted back-propagation.
 
-If you are the author of dynamically added elements or attributes to the page, Editor provides you a way to mark them as ghosts so that they will not be back-propagated. To do so:
+If you are the author of dynamically added elements or attributes to the page, Editor lets you mark them as "ghosts" so that they are not back-propagated. To do so:
 
 * Attributes starting with "ghost-" are considered as ghost.
   *Never add an attribute starting with "ghost-" on the source program, it would be automatically erased on the first back-propagation.*
@@ -170,11 +170,19 @@ If you are the author of dynamically added elements or attributes to the page, E
   *Never add children at the source level to an element which has this attribute, else they would be automatically erased on the first back-propagation.*
 
 If you are not yourself adding dynamic elements or attributes, Editor also observes insertions and deletions and lets you mark inserted elements as ghosts.
-In a script at the beginning of the body:
+Insert the following in a script at the beginning of the body:
 
-* `(setGhostOnInserted || []).push(insertedNode => /*PREDICATE ON insertedNode*/);`: For any inserted node, if this predicate returns `true`, Editor will mark and consider the `insertedNode` as ghost.  
+* `(typeof editor == "object" ? editor.ghostNodes : []).push(insertedNode => /*PREDICATE ON insertedNode*/);`: For any inserted node, if this predicate returns `true`, Editor will mark and consider the `insertedNode` as ghost.  
   A simple predicate to filter out inserted nodes which have the class "dummy" would look like: `insertedNode.nodeType == 1 && insertedNode.classList && insertedNode.classList.contains("dummy")`.
-* `(globalGhostAttributeKeysFromNode || []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be considered as ghost.
+* `(typeof editor == "object" ? editor.ghostAttrs : []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be considered as ghost.
+
+Instead of putting this code right into your page, you can also create a file `.editor` where your document is located, and insert the following script (in this context, `editor` will surely be defined).
+
+``Regex.replace "<body>" (\m -> m.match + """
+  <script>
+    editor.ghostNodes.push(insertedNode => /*PREDICATE ON insertedNode*/)
+  </script>
+""")`
 
 #### Saving ghost attributes and properties on page rewrite after edits.
 

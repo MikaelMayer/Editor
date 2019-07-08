@@ -1,5 +1,6 @@
 -- input: path            The file to serve.
 -- input: vars:           URL query vars.
+-- input: urlParams:      The URL params plainly
 -- input: defaultOptions  default options (options that vars can override for certain parts).
 --                        If nodefs is set, will use it instead of nodejs.nodeFS
 --                        If browserSide is set, will use a different kind of request. 
@@ -58,17 +59,20 @@ boolVar name resDefault =
     listDict.get name defaultOptions |> Maybe.withDefault resDefault |> freeze)
 
 varadmin = boolVar "admin" False
-varedit = boolVar "edit" True
+varedit = boolVar "edit" False
+varls = boolVar "ls" False
 defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
+
+
 
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
 permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
 -- List.contains ("sub", "102014571179481340426") user -- That's my Google user ID.
 
-canEditPage = userpermissions.pageowner && varedit
+canEditPage = userpermissions.pageowner && varedit && not varls
 
 {freezeWhen} = Update
 
@@ -89,7 +93,7 @@ canEvaluate = listDict.get "evaluate" vars |> Maybe.withDefaultReplace (serverOw
 path: String
 path =
   if fs.isdir path then
-   if listDict.get "ls" vars /= Just "true" then
+   if not varls then
      List.mapFirstSuccess (\test ->
        if fs.isfile <| path + test then Just (path + test) else Nothing)
        ["index.elm" , "/index.elm", "index.html", "/index.html", "README.md" , "/README.md" ]
@@ -119,21 +123,7 @@ applyDotEditor source =
     ("""<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""", False)
   else
     if fs.isdir path then
-      flip (,) True <|
-      let
-        pathprefix = if path == "" then path else path + "/"
-        maybeUp = case Regex.extract "^(.*)/.*$" path of
-          Just [prev] -> """<li><a href="/@prev">..</li> :: """
-          _ -> if path == "" then "" else """<li><a href="/" contenteditable="false">..</li> ::"""
-      in
-      """
-      <html><head></head><body><h1><a href=''>/@path</a></h1>
-      @@(["ul", [], @maybeUp (List.map (\name -> <li><a href=("/@pathprefix" + name)>@@name</li>) (fs.listdir path))])
-      Hint: place a
-      <a href=("/@(pathprefix)README.md?edit=true")  contenteditable="false">README.md</a>,
-      <a href=("/@(pathprefix)index.html?edit=true") contenteditable="false">index.html</a> or
-      <a href=("/@(pathprefix)index.elm?edit=true")  contenteditable="false">index.elm</a>
-      file to display something else than this page.</body></html>"""
+      ("", True)
     else
       flip (,) False <|
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
@@ -143,9 +133,139 @@ applyDotEditor source =
       |> Maybe.map applyDotEditor
       |> Maybe.withDefaultReplace (
         serverOwned "404 page" """<html><head></head><body>@(
-            if permissionToCreate then """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
+            if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
           )</body></html>"""
       )
+{---------------------------------------------------------------------------
+Utility functions to be inherited by the main body of any
+view of editor (edit / file listing / word processor / etc)
+LUCA stands for "Last Universal Common Ancestor"
+----------------------------------------------------------------------------}
+
+luca = 
+  [<script>
+    function doReadServer(action, name) {
+      if (readServer != "undefined") {
+        console.log("reading server");
+        return readServer(action, name);
+      }
+      //TODO make functionality for standalone editor not just TharzenEditor
+      console.error("need to make the reading server functionality for standalone editor");
+    }
+    function doWriteServer(action, name, content) {
+      if (writeServer != "undefined") {
+        console.log("about to write to server");
+        return writeServer(action, name, content);
+      }
+      //TODO make functionality for standalone editor not just TharzenEditor
+      console.error("need to make the writing server functionality for standalone editor");
+    }
+    function doReloadPage() {
+      document.location.reload();
+      //TODO not full reload bump: Mikael
+    }
+    // Editor's API should be stored in the variable editor.
+
+    editor = typeof editor === "object" ? editor : {};
+    editor.uploadFile = function(targetPathName, file, onOk, onError) {
+      var xhr = new XMLHttpRequest();
+      xhr.onreadystatechange = ((xhr, file) => () => {
+        if (xhr.readyState == XMLHttpRequest.DONE) {
+          if (xhr.status == 200 || xhr.status == 201) {
+            onOk ? onOk(targetPathName, file) : 0;
+          } else {
+            console.log("Error while uploading picture or file", xhr);
+            onError ? onError(targetPathName, file) : 0;
+          }
+        }
+      })(xhr, file);
+      @(if listDict.get "browserSide" defaultOptions == Just True then """
+      xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+      """ else """
+      xhr.open("POST", targetPathName, false);
+      xhr.setRequestHeader("write-file", file.type);
+      """);
+      xhr.send(file);
+    }
+    // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
+    editor.getStorageFolder = function(file) {
+      var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
+      for(let s of storageOptions) {
+        if(file.type.startsWith(s.getAttribute("file-type") || "")) {
+          let sf = storageOptions.getAttribute("editor-storagefolder") || "";
+          if(!sf.endsWith("/")) sf = sf + "/";
+          return sf;
+        }
+      }
+      let extension = "";
+      if(file && file.type.startsWith("image")) {
+        var otherImages = document.querySelectorAll("img[src]");
+        for(let i of otherImages) {
+           extension = (i.getAttribute("src") || "").replace(/[^\/]*$/, "");
+           break;
+        }
+        if(extension[0] == "/") { // Absolute URL
+          return extension;
+        }
+      }
+      // extension ends with a / or is empty
+      var tmp = location.pathname.split("/");
+      tmp = tmp.slice(0, tmp.length - 1);
+      storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
+      return storageFolder;
+    }
+	  editor.fs = { listdir: 
+		  @(if browserSide then """
+		    defaultOptions.nodefs.listdir
+		  """ else """
+		    function(dirname) {
+		      var xhr = new XMLHttpRequest();
+		      xhr.onreadystatechange = ((xhr, file) => () => {})
+		      xhr.open("GET", dirname, false);
+		      xhr.setRequestHeader("action", "listdir");
+		      xhr.setRequestHeader("name", dirname);
+		      xhr.send();
+		      if(xhr.status === 200) {
+		        return JSON.parse(xhr.responseText);
+		      } else {
+		        return [];
+		      }
+		    }
+		  """)
+	  };
+    function el(tag, attributes, children, properties) {
+      let tagClassIds = tag.split(/(?=#|\.)/g);
+      let x;
+      for(let attr of tagClassIds) {
+        if(x && attr.startsWith(".")) {
+          x.classList.toggle(attr.substring(1), true);
+        } else if(x && attr.startsWith("#")) {
+          x.setAttribute("id", attr.substring(1));
+        } else if(!x) {
+          x = document.createElement(attr);
+        }
+      }
+      if(typeof attributes == "object")
+        for(let k in attributes)
+          x.setAttribute(k, attributes[k]);
+      if(Array.isArray(children)) {
+        for(let child of children) {
+          if(typeof child === "string") {
+            x.append(child)
+          } else if(typeof child !== "undefined")
+            x.appendChild(child);
+        }
+      } else if(typeof children !== "undefined") {
+        x.append(children);
+      }
+      if(typeof properties == "object") {
+        for(let k in properties)
+          x[k] = properties[k];
+      }
+      return x;
+    }    
+   </script>]
+
 
 {---------------------------------------------------------------------------
  Evaluates the page according to the path extension.
@@ -217,8 +337,442 @@ evaluatedPage =
         x -> 
           let markdownstyle = fs.read "markdown.css" |> Maybe.withDefaultReplace defaultMarkdowncss in
           Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
-  else if Regex.matchIn """\.(elm|leo)$""" path || fs.isdir path then
+  else if Regex.matchIn """\.(elm|leo)$""" path then
     __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent
+  else if fs.isdir path then
+    let
+      pathprefix = if path == "" then path else path + "/"
+    in
+    Ok <html><head>
+      <script>
+        var ispressed = false;
+        var whichOne = "";
+        //declare bool variable to be false
+        document.onkeydown = function(e) {
+          if (e.ctrlKey){
+              ispressed = true;
+          }
+        };
+        document.onkeyup = function(e) {
+          if (e.keyCode == 17){ //releasing ctrl key. doesn't set e.ctrlKey properly or would use that.
+            ispressed = false;
+          }
+        }
+      </script>
+      <style>
+        #menu_bar {
+          overflow: hidden;
+          background-color: #ffffff;
+        }
+
+        #menu_bar a {
+          float: left;
+          display: block;
+          color: #f2f2f2;
+          text-align: center;
+          padding: 14px 16px;
+          text-decoration: none;
+          font-size: 17px;
+        }
+
+        #menu_bar a:hover {
+          background-color: #ddd;
+          color: black;
+        }
+
+        #menu_bar a.active {
+          background-color: #4CAF50;
+          color: white;
+        }
+        .dropdown {
+          float: left;
+          overflow: hidden;
+        }
+
+        .dropdown .dropbtn {
+          font-size: 16px;  
+          border: none;
+          outline: none;
+          color: white;
+          padding: 14px 16px;
+          background-color: inherit;
+          font-family: inherit;
+          margin: 0;
+        }
+        .dropdown .dropbtn {
+          font-size: 16px;  
+          border: none;
+          outline: none;
+          color: white;
+          padding: 14px 16px;
+          background-color: inherit;
+          font-family: inherit;
+          margin: 0;
+        }
+
+        .menu_bar a:hover, .dropdown:hover .dropbtn {
+          background-color: red;
+        }
+
+        .dropdown-content {
+          display: none;
+          position: absolute;
+          background-color: #f9f9f9;
+          min-width: 160px;
+          box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+          z-index: 1;
+        }
+
+        .dropdown-content a {
+          float: none;
+          color: black;
+          padding: 12px 16px;
+          text-decoration: none;
+          display: block;
+          text-align: left;
+        }
+
+        .dropdown-content a:hover {
+          background-color: #ddd;
+        }
+
+        .dropdown:hover .dropdown-content {
+          display: block;
+        }
+        .content {
+          padding: 16px;
+        }
+
+        .sticky {
+          position: fixed;
+          top: 0;
+          width: 100%;
+        }
+
+        .sticky + .content {
+          padding-top: 60px;
+        }
+        #fileListing div.file-item {
+          display: block;
+        }
+        #fileListing div.file-item input {
+          display: none;
+        }
+        #fileListing div.file-item {
+          display: table-row;
+        }
+        #fileListing div.file-item label {
+          display: table-cell;
+          vertical-align: middle;
+          padding: 0.3em;
+        }
+        #fileListing div.file-item label:hover {
+          background: rgb(229,243,255);
+        }
+        #fileListing div.file-item input:checked + label {
+          color: white;
+          outline: 1px solid rgb(153,209,255);
+          background: rgb(204,232,255);
+        }
+        #fileListing div.file-item label a {
+          text-decoration: none;
+          color: black;
+          padding: 2px;
+        }
+        #fileListing div.file-item label a:hover {
+          text-decoration: underline;
+          color: blue;
+        }
+        #fileListing div.file-item label svg {
+          vertical-align: middle;
+          transform: scale(0.5);
+        }
+        #fileListing div.file-item label svg.file-extension-icon {
+          opacity: 0.5;
+        }
+        #fileListing div.file-item label svg.file-extension-icon > path {
+          stroke:black;
+          stroke-width:2px;
+          stroke-linecap:butt;
+          fill:none;
+          -linejoin:miter;
+          stroke-opacity:1;
+        }
+        #fileListing div.file-item label svg.file-extension-icon > text {
+          font-size: 2em;
+        }
+
+      </style>
+      <div id="menu_bar">`
+        <button id="renamefs" onClick="renameFs()">Rename File(s)</button>
+        <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
+        <button id="movefs" onClick="moveFs()">Move File(s)</button>
+        <button id="createFolder" onClick="createFolder()">Create a Folder</button>
+        <button id="deletefs" onClick="deleteFs()">Delete File(s)</button>
+      </div>
+      </head><body><h1><label value=path>@path</label></h1>
+      <form id="fileListing"></form>
+      <script>
+      var fullListDir = (path) => JSON.parse(doReadServer("fullListDir", path));
+      var thisListDir = fullListDir ("@path");
+      var folders = thisListDir.filter((i) => i[1] == true);
+      var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
+      var warnSelectFile = reason => window.alert (reason + ", please select some and click this button again");
+      var warnDeselectFiles = reason => window.alert (reason + ", please deselect all files and folders and click this button again");
+      var isDupInFolder = (folder, name) => folder.filter((i) => i[0] == name).length != 0;
+      var isDuplicateHere = (name) => isDupInFolder(thisListDir, name);
+      var isFolder = (name) => folders.filter((i) => i[0] == name).length != 0;
+
+      window.onscroll = function() {stickyFun()};
+      var menu_bar = document.getElementById("menu_bar");
+      var sticky = menu_bar.offsetTop;
+
+      function stickyFun() {
+        if (window.pageYOffset >= sticky) {
+          menu_bar.classList.add("sticky")
+        } else {
+          menu_bar.classList.remove("sticky");
+        }
+      }
+      function getOneFile(reason) {
+        var selected = getSelectedFiles();
+        if (selected.length == 0) {
+          warnSelectFile(reason);
+          return 0;
+        } else if (selected.length != 1) {
+          window.alert ("Please select only one file to rename");
+          return 0;
+        }
+        return selected[0];
+      }
+      function renameFs() {
+        console.log ("in rename fs");
+        var sel = getOneFile("To rename files or folders");
+        if (! sel) return;
+        if (sel.id == "..") {
+          window.alert("Can't change the up dir");
+          return;
+        }
+        var newname = window.prompt("Set new name for file: ", sel.id);
+        if (newname == null) return;
+        if (newname == "") {
+          window.alert("Please specify a new name for the file.");
+          return;
+        }
+        if (isDuplicateHere(newname)) {
+          window.alert("Please choose a different name so as to not overwrite an existing file. (or change the name of that file).");
+          return;
+        }
+        var x = doWriteServer("rename", "@path" + sel.id, "@path" + newname);
+        if (x) {
+          console.log ("rename failed");
+          window.alert("rename failed");
+          return;
+        }
+        console.log ("renamed", sel.id, newname);
+        doReloadPage();
+      }
+      function deleteFs() {
+        var selected = getSelectedFiles();
+        if (selected.length == 0) {
+          warnSelectFile("To delete a file or a folder"); 
+          return;
+        }
+        if (selected.filter((i) => i.id == "..").length != 0) {
+          window.alert("Can't change the up dir");
+          return;
+        }
+        var warningMsg = "Are you sure you want to delete the following file(s)?"
+        for (i = 0; i < selected.length; i++) {
+          warningMsg = warningMsg + "\n" + selected[i].id;
+        }
+        var conf = window.confirm(warningMsg);
+        if (conf) {
+          for (i = 0; i < selected.length; i++) {
+            var isfolder = folders.filter((j) => j[0] == selected[i].id);
+            console.log (isfolder);
+            if (isfolder.length != 0) {
+              doWriteServer("rmdir", "@path" + selected[i].id);
+              continue;
+            }
+            doWriteServer("unlink", "@path" + selected[i].id);
+          }
+          doReloadPage();
+          return;
+        }
+      }
+      function duplicateFs() {
+        var sel = getOneFile("To duplicate files or folders");
+        if (! sel) return;
+        if (sel.id == "..") {
+          window.alert("Can't change the up dir");
+          return;
+        }
+        var lastdot = sel.id.lastIndexOf(".");
+        var nn;
+        if (isFolder(sel.id)) {
+          nn = sel.id + "_(Copy)";
+        } else {
+          nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
+        }
+        var newname = window.prompt("Name for duplicate: ", nn);
+        var contents = doReadServer("read", "@path" + sel.id);
+        if (contents[0] != "1") {
+          window.alert ("Couldn't read the file for some reason. aborting.");
+          console.error ("couldn't read the file for some reason. aborting.");
+          return;
+        }
+        contents = contents.substring(1, contents.length);
+        var resp = doWriteServer("create", "@path" + newname, contents);
+        if (resp) {
+          console.error ("Duplicating file failed for some reason: ", resp);
+        } 
+        doReloadPage();
+      }
+      function createFolder() {
+        var btns = getSelectedFiles();
+        if (btns.length != 0) {
+          warnDeselectFiles("To create a folder");
+          return;
+        }
+        var newname = window.prompt("Name for new folder: ", "");
+        console.log (newname);
+        if (newname == null) return;
+        if (newname == "") {
+          window.alert("Please set a name for the new folder!");
+          return;
+        }
+        var dups = isDuplicateHere(newname);
+        if (dups) {
+          window.alert("There is already a file / folder with that name. Please try again.");
+          return;
+        }
+        doWriteServer("mkdir", newname, "");
+        doReloadPage();
+      }
+      function moveFs() {
+        var btn = getOneFile("To move files or folders");
+        if (!btn) return;
+        if (btn.id == "..") {
+          window.alert("Can't change the up dir");
+          return;
+        }
+        var newpath = window.prompt("New path to file (relative to root of server):", "@path");
+        if (newpath == null) return;
+        if (newpath[newpath.length -1] != "/") {
+          newpath = newpath + "/";
+        }
+        try {
+          var nldir = fullListDir(newpath);
+          if (isDupInFolder(nldir, btn.id)) {
+            window.alert("There already exists a file in that folder with this name. Move cancelled.");
+            return;
+          }
+        } catch (e) {
+          window.alert ("The path specified does not exist. Move cancelled.");
+          return;
+        }
+        console.log ("move approved");
+        var oldloc = ("@path" + btn.id);
+        var newloc = newpath == "/" ? btn.id : (newpath + btn.id);
+        console.log ("renamimg\n%s\n%s", ("@path" + btn.id), (newpath + btn.id));
+        doWriteServer("rename", oldloc, newloc); 
+        console.log ("rename successful");
+        doReloadPage();
+      }
+
+      function radPressed(){
+        var btns = document.querySelectorAll("input.filesBtn");
+        if (!ispressed){
+          for(var i = 0; i < btns.length; i++){
+            if (btns[i].value == whichOne) continue;
+            btns[i].checked = false;
+          }
+        }
+      }
+      function loadFileList() {
+        let form = document.getElementById("fileListing");
+        let path = @(jsCode.stringOf path);
+        let files = thisListDir;
+        function getRecordForCheckbox(file) {
+          var rec = {type:"checkbox",
+                      id:file,
+                      class:"filesBtn",
+                      name:"filesBtn",
+                      value:file,
+                      onClick:"whichOne=value",
+                      onChange:"radPressed()"};
+          return rec;
+        }
+        var dirIcon = () => {
+          var d = el("div", {}, [], {innerHTML: 
+          `<svg class="file-extension-icon" width="60" height="30">
+            <path d="M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z" /></svg>`});
+          return d.childNodes[0];
+        }
+        var extensionIcon = name => {
+          let extension = name.replace(/^(?:(?!\.(?=[^\.]*$)).)*\.?/, "");
+          if("." + extension == name || extension === "") extension = "-";
+          var d = el("div", {}, [], {innerHTML: 
+          `<svg class="file-extension-icon" width="60" height="30">
+            <text x="0" y="25">${extension}</text>
+           </svg>`});
+          return d.childNodes[0];
+        }
+
+        var fileItemDisplay = function(link, name, isDir) {
+           return el("div", {class:"file-item"}, [
+              el("input", getRecordForCheckbox(name), ""),
+              el("label", {for:name, value:name}, [
+                isDir ? dirIcon() : extensionIcon(name),
+                el("a", {href:link}, name)])]);
+        }
+        //el(tag, attributes, children, properties)
+        if (path != "") {
+          var link = "../" + "?ls=true&edit";
+          form.append(fileItemDisplay(link, "..", true));
+        }
+        // directories before files, sorted case-insensitive
+        files.sort(([name1, isDir1], [name2, isDir2]) =>
+          isDir1 && !isDir2 ? -1 : isDir2 && !isDir1 ? 1 :
+          name1.toLowerCase() < name2.toLowerCase() ? -1 : 0);
+        for (i = 0; i < files.length; i++) {
+          var [name, isDir] = files[i];
+          var link = isDir =="" ? name + "/?ls&edit" : name;
+          form.append(fileItemDisplay(link, name, isDir));
+        }
+
+
+      }
+      loadFileList();        
+      </script>
+    <form id="upfs" enctype="multipart/form-data">
+      <input type="file" name="files[]" multiple />
+      <input type="submit" value="Upload File" name="submit" />
+    </form>
+    <script>
+    const form = document.getElementById("upfs");
+
+    form.addEventListener('submit', e => {
+      //upload file
+      e.preventDefault()
+      const files = document.querySelector('[type=file]').files
+      for (let i = 0; i < files.length; i++) {
+        let file = files[i]
+        console.log (file);
+        console.log ("was file");
+        var flpath = "@(path)" + file.name;
+        console.log ("flpath %s", flpath);
+        if (isDuplicateHere(file.name)) {
+          window.alert ("File with this name already exists here. Overwriting cancelled.");
+          return;
+        }
+        editor.uploadFile(flpath, file, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
+        console.log ("client side completed upload request");
+      }
+      if (files.length > 0) doReloadPage();
+    })
+    </script></body></html>
   else if Regex.matchIn """\.txt$""" path then
     Ok <html><head></head><body>
       <textarea id="thetext" style="width:100%;height:100%" initdata=@sourcecontent
@@ -261,7 +815,10 @@ main =
            (if canEditPage then
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
-           bodyattrs,
+           bodyattrs, luca ++
+          if not varedit || varls then
+            bodychildren
+          else 
           (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
            if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
            serverOwned "edit prelude when not in edit mode" []) ++
@@ -406,6 +963,14 @@ input:checked + .slider:before {
   vertical-align: top;
   display: block;
 }
+div.imgFolder {
+  display: inline-block;
+  margin: 0.2em;
+}
+div.imgFolder > img {
+  max-width: 100%;
+  min-width:2em;
+}
 a.troubleshooter {
   position: absolute;
   top: calc(100% - 3em);
@@ -480,6 +1045,8 @@ span#ambiguity-id {
   text-decoration: line-through
 }
 div.disambiguationMenu {
+	height: 40%;
+	overflow-y: auto;
   padding-left: 0.3em;
   padding-top: 0.3em;
   padding-bottom: 0.3em;
@@ -670,6 +1237,31 @@ div#modify-menu input[type=radio] {
   border: none;
 }
 
+#upload-image-btn-a {
+  margin: 10%; 
+  padding: 4px 10px; 
+  height: 20px; 
+  position: relative; 
+  color: #888; 
+  background: #fafafa; 
+  border-radius: 4px; 
+  display: inline-block; 
+  height: 20px; 
+  width: 280px;
+}
+
+#upload-image-btn-input {
+  position: absolute; 
+  top: 0; 
+  left: 0; 
+  width: 100%;
+}
+
+/* highlight selected image */
+div.highlight-select-image {
+  box-shadow: 2px 2px 3px black;
+}
+
 :root {
   --context-color: rgba(0, 128, 128, 0.8);
   --context-color-next: rgba(0, 158, 158, 0.8); 
@@ -792,41 +1384,11 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
 </style>,
 <div id="menumargin"></div>]
 
+browserSide = listDict.get "browserSide" defaultOptions == Just True
+
 initialScript = [
 <script>
-var XHRequest = @(if listDict.get "browserSide" defaultOptions == Just True then "ProxiedServerRequest" else "XMLHttpRequest");
-
-function el(tag, attributes, children, properties) {
-  let tagClassIds = tag.split(/(?=#|\.)/g);
-  let x;
-  for(let attr of tagClassIds) {
-    if(x && attr.startsWith(".")) {
-      x.classList.toggle(attr.substring(1), true);
-    } else if(x && attr.startsWith("#")) {
-      x.setAttribute("id", attr.substring(1));
-    } else if(!x) {
-      x = document.createElement(attr);
-    }
-  }
-  if(typeof attributes == "object")
-    for(let k in attributes)
-      x.setAttribute(k, attributes[k]);
-  if(Array.isArray(children)) {
-    for(let child of children) {
-      if(typeof child === "string") {
-        x.append(child)
-      } else if(typeof child !== "undefined")
-        x.appendChild(child);
-    }
-  } else if(typeof children !== "undefined") {
-    x.append(children);
-  }
-  if(typeof properties == "object") {
-    for(let k in properties)
-      x[k] = properties[k];
-  }
-  return x;
-}
+var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
@@ -853,39 +1415,46 @@ function isGhostAttributeKey(name) {
   return name.startsWith("ghost-");
 }
 
-globalGhostAttributeKeysFromNode = [];
-(globalGhostAttributeKeysFromNode || []).push(n =>
+// Editor's API is stored in the variable editor.
+
+editor = typeof editor === "object" ? editor : {};
+
+// Array of functions on nodes returning an array of attributes that should be ghosts.
+editor.ghostAttrs = [];
+editor.ghostAttrs.push(n =>
   ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ").concat(
     ((n && n.getAttribute && n.getAttribute("save-ghost-attributes")) || "").split(" ")).filter(a => a != "")
 );
-(globalGhostAttributeKeysFromNode || []).push(n =>
+editor.ghostAttrs.push(n =>
   n && n.tagName == "HTML" ? ["class"] : []
 );
-(globalGhostAttributeKeysFromNode || []).push(n =>
+editor.ghostAttrs.push(n =>
   n && n.tagName == "BODY" ? ["data-gr-c-s-loaded"] : []
 );
 // attribute of some chrome extensions
-(globalGhostAttributeKeysFromNode || []).push(n => ["bis_skin_checked"]);
+editor.ghostAttrs.push(n => ["bis_skin_checked"]);
 
 
 function isSpecificGhostAttributeKeyFromNode(n) {
   var additionalGhostAttributes = [];
-  for(var k in globalGhostAttributeKeysFromNode) {
-    additionalGhostAttributes = additionalGhostAttributes.concat(globalGhostAttributeKeysFromNode[k](n))
+  for(var k in editor.ghostAttrs) {
+    additionalGhostAttributes = additionalGhostAttributes.concat(editor.ghostAttrs[k](n))
   }
   return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
 }
 
-setGhostOnInserted = [];
+// Array of predicates that, if they return true on a node, Editor will mark this node as ghost.
+editor.ghostNodes = [];
 
 // Analytics scripts
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
-     insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1
+     (insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1 ||
+      insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1)
 );
 
 // For for ace styles in header
-(setGhostOnInserted || []).push(insertedNode => {
+editor.ghostNodes.push(insertedNode => {
     if(insertedNode.tagName == "STYLE" && typeof insertedNode.getAttribute("id") == "string" &&
      (insertedNode.getAttribute("id").startsWith("ace-") ||
       insertedNode.getAttribute("id").startsWith("ace_"))) {
@@ -897,28 +1466,28 @@ setGhostOnInserted = [];
   }
 );
 // For Google sign-in buttons and i-frames
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   (insertedNode.tagName == "DIV" &&
     insertedNode.classList.contains("abcRioButton")) ||
   (insertedNode.tagName == "IFRAME" &&
     insertedNode.getAttribute("id") == "ssIFrame_google")
 );
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
-(setGhostOnInserted || []).push(insertedNode => 
+editor.ghostNodes.push(insertedNode => 
   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null &&
   insertedNode.parentElement.tagName == "HEAD" && (insertedNode.setAttribute("save-ghost", "true") || true)
 );
 // For ace script for syntax highlight
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
      insertedNode.getAttribute("src").startsWith("https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/mode-j")
 );
 // For ace script for syntax highlight
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "ACE_OUTER"
 );
 // For the grammarly extension
-(setGhostOnInserted || []).push(insertedNode =>
+editor.ghostNodes.push(insertedNode =>
   insertedNode.classList.contains("gr-top-z-index") || insertedNode.classList.contains("gr-top-zero")
 );
 
@@ -933,7 +1502,7 @@ function handleScriptInsertion(mutations) {
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
-        if(!hasGhostAncestor(insertedNode) && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && setGhostOnInserted.find(pred => pred(insertedNode))) {
+        if(!hasGhostAncestor(insertedNode) && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode))) {
          if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
          insertedNode.isghost = true;
         }
@@ -964,6 +1533,7 @@ function getSelectionStart() {
    var node = document.getSelection().anchorNode;
    return (node != null && node.nodeType == 3 ? node.parentNode : node);
 }
+// Returns the closest ancestor of the selection having the given tagName
 function getEnclosingCaret(tagName) {
   var w = getSelectionStart();
   while(w != null && w.tagName.toLowerCase() != tagName.toLowerCase()) {
@@ -971,6 +1541,8 @@ function getEnclosingCaret(tagName) {
   }
   return w;
 }
+
+// Removes all the text from a node (not the text nodes themselves)
 function emptyTextContent(node) {
   if(node != null) {
     if(node.nodeType == 3) {
@@ -1026,57 +1598,6 @@ function remove(node) {
   }
   node.remove();
 }
-
-// Editor's API should be stored in the variable editor.
-
-editor = typeof editor === "object" ? editor : {};
-editor.uploadFile = function(targetPathName, file, onOk, onError) {
-  var xhr = new XMLHttpRequest();
-  xhr.onreadystatechange = ((xhr, file) => () => {
-    if (xhr.readyState == XMLHttpRequest.DONE) {
-      if (xhr.status == 200 || xhr.status == 201) {
-        onOk ? onOk(targetPathName, file) : 0;
-      } else {
-        console.log("Error while uploading picture or file", xhr);
-        onError ? onError(targetPathName, file) : 0;
-      }
-    }
-  })(xhr, file);
-  @(if listDict.get "browserSide" defaultOptions == Just True then """
-  xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
-  """ else """
-  xhr.open("POST", targetPathName, false);
-  xhr.setRequestHeader("write-file", file.type);
-  """);
-  xhr.send(file);
-}
-// Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
-editor.getStorageFolder = function(file) {
-  var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
-  for(let s of storageOptions) {
-    if(file.type.startsWith(s.getAttribute("file-type") || "")) {
-      let sf = storageOptions.getAttribute("editor-storagefolder") || "";
-      if(!sf.endsWith("/")) sf = sf + "/";
-      return sf;
-    }
-  }
-  let extension = "";
-  if(file && file.type.startsWith("image")) {
-    var otherImages = document.querySelectorAll("img[src]");
-    for(let i of otherImages) {
-       extension = (i.getAttribute("src") || "").replace(/[^\/]*$/, "");
-       break;
-    }
-    if(extension[0] == "/") { // Absolute URL
-      return extension;
-    }
-  }
-  // extension ends with a / or is empty
-  var tmp = location.pathname.split("/");
-  tmp = tmp.slice(0, tmp.length - 1);
-  storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
-  return storageFolder;
-}
 </script>
 ]
 
@@ -1085,6 +1606,7 @@ editionscript = """
   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
+  console.log("editionscript running");
   
   // Save/Load ghost attributes after a page is reloaded.
   // Same for some attributes
@@ -1099,7 +1621,6 @@ editionscript = """
       }
     }
     var ghostAttributesModified = document.querySelectorAll("[save-ghost-attributes]");
-    console.log(ghostAttributesModified);
     for(var i = 0; i < ghostAttributesModified.length; i++) {
       var elem = ghostAttributesModified[i];
       var id = elem.getAttribute("id");
@@ -1180,7 +1701,7 @@ editionscript = """
           var value = n.attributes[i].value;
           if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key)) {
             if(key == "style") {
-              value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2);
+              value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
             }
             attributes.push([key, value]);
           }
@@ -1197,6 +1718,15 @@ editionscript = """
       }
     }
     function replaceContent(NC) {
+      if(editor_model.caretPosition) {
+        editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
+      }
+      if(editor_model.selectionRange) {
+        editor_model.selectionRange = dataToRecoverSelectionRange(editor_model.selectionRange);
+      }
+      if(editor_model.clickedElem) {
+        editor_model.clickedElem = dataToRecoverElement(editor_model.clickedElem);
+      }
       document.open();
       document.write(NC);
       document.close();
@@ -1255,7 +1785,7 @@ editionscript = """
               disambiguationMenuContent.push(el("span.solution" + (i == selected ? ".selected" : "") + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
               title: i == selected ? "Currently displaying this solution" : "Select this solution" + (i == n && ambiguityEnd != 'true' ? " (compute further solutions after if any)" : ""), onclick: i == selected ? `` : `this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})`}, "", {innerHTML: "#" + i + " " + summary}));
             }
-            disambiguationMenuContent.push(el("button.modifyMenuButton#cancelAmbiguity", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
+            //disambiguationMenuContent.push(el("button.modifyMenuButton#cancelAmbiguity", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
             editor_model.disambiguationMenu = el("div.disambiguationMenu", {}, disambiguationMenuContent);
             editor_model.disambiguationMenu.ambiguityKey = ambiguityKey;
             editor_model.disambiguationMenu.selected = selected;
@@ -1746,6 +2276,10 @@ editionscript = """
       if (window.getSelection) {
           // IE9 and non-IE
           sel = window.getSelection();
+          // do not paste html into modify menu
+          if (sel.anchorNode.offsetParent.id === "modify-menu") {
+            return;
+          }
           if (sel.getRangeAt && sel.rangeCount) {
               range = sel.getRangeAt(0);
               range.deleteContents();
@@ -1780,26 +2314,31 @@ editionscript = """
       evt.stopPropagation();
       evt.preventDefault();
 
-      var files = evt.dataTransfer.files; // FileList object.
+      var files = evt.dataTransfer.files; // FileList object
       uploadFilesAtCursor(files);
     }
     
-    function uploadFilesAtCursor(files) {
+    function uploadFilesAtCursor(files) { 
       // files is a FileList of File objects. List some properties.
-      for (var i = 0, f; f = files[i]; i++) {
-        var targetPathName =  editor.getStorageFolder(f) + f.name;
-        //if(f.size < 30000000)
-        editor.uploadFile(targetPathName, f, (targetPathName, f) => {
-          @(    if folderView then """
-            reloadPage();"""
-                else """
-            if(f.type.indexOf("image") == 0) {
-              pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${f.name}">`);
+      for (var i = 0, file; file = files[i]; i++) {
+        var targetPathName =  editor.getStorageFolder(file) + file.name;
+        // if(file.size < 30000000)
+        editor.uploadFile(targetPathName, file, (targetPathName, file) => {
+          @(    
+            if folderView then 
+            """
+            reloadPage();
+            """
+            else
+            """
+            if(file.type.indexOf("image") == 0) {
+              pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${file.name}">`);
             } else {
               pasteHtmlAtCaret(`<a href="${path}">${path}</a>`); 
-            }"""
-           )
-        })
+            }
+            """
+          )
+        });
       }
     }
 
@@ -1965,6 +2504,7 @@ editionscript = """
       return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
             <path d="${path}" /></svg>`
     }
+    
     var saveSVG = mkSvg("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
     var openLeftSVG = mkSvg("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
     var closeRightSVG = mkSvg("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
@@ -1985,12 +2525,90 @@ editionscript = """
 
     var ifAlreadyRunning = typeof editor_model === "object";
     
+    
+    function dataToRecoverElement(oldNode) {
+      if(!oldNode) return undefined;
+      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
+        return {id: oldNode.getAttribute("id")};
+      }
+      let tentativeSelector = [];
+      let t = oldNode;
+      let isText = false, textIndex = 0;
+      while(t && t.parentNode) {
+        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
+        if(t.nodeType === 1) {
+          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
+        } else {
+          isText = true;
+          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
+        }
+        t = t.parentNode;
+      }
+      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
+    }
+    // Returns the new node that matches the old node the closest.
+    // For text nodes, try to recover the text node, if not, returns the parent node;
+    function recoverElementFromData(data) {
+      if(!data) return undefined;
+      if(typeof data === "object" && data.id) {
+        return document.getElementById(data.id);
+      }
+      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
+        let tentativeSelector = data.tentativeSelector;
+        while(tentativeSelector.length >= 1) {
+          let newNode = document.querySelector(tentativeSelector.join(" "));
+          if(newNode) {
+            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+          }
+          tentativeSelector.shift();
+        }
+        return undefined;
+      }
+    }
+    function setCaretPositionIn(node, position) {
+      position = Math.min(position, node.textContent.length);
+      if (node.nodeType == 3) {
+        let sel  = window.getSelection()
+        setTimeout( () => sel.collapse(node, position), 0);
+      } else {
+        let p = position
+        let n = node.firstChild
+        while(n != null && p > n.textContent.length) {
+          p = p - n.textContent.length
+          n = n.nextSibling
+        }
+        if(n != null) {
+          setCaretPositionIn(n, p)
+        } else {
+          console.log("Could not find position. Reached node and position ", [n, p])
+        }
+      }
+    }
+    function dataToRecoverCaretPosition(caretPosition) {
+      if(!caretPosition) return undefined;
+      return {target: dataToRecoverElement(caretPosition.startContainer), startOffset: caretPosition.startOffset};
+    }
+    function recoverCaretPositionFromData(data) {
+      if(!data) return;
+      let newTextNodeOrParent = recoverElementFromData(data.target);
+      if(newTextNodeOrParent) setCaretPositionIn(newTextNodeOrParent, data.startOffset)
+    }
+    function dataToRecoverSelectionRange(selectionRange) { // TODO
+      if(!selectionRange) return undefined;
+      return undefined;
+    }
+    function recoverSelectionRangeFromData(data) { // TODO
+      if(!data) return;
+      return undefined;
+    }
+    
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
       //makes visibility of editor model consistent throughout reloads
       visible: ifAlreadyRunning ? editor_model.visible : false,
-      clickedElem: undefined,
+      clickedElem: ifAlreadyRunning ? recoverElementFromData(editor_model.clickedElem) : undefined,
       notextselection: false,
-      caretPosition: undefined,
+      selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
+      caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
       advanced: ifAlreadyRunning ? editor_model.advanced : false,
       displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
@@ -2011,6 +2629,18 @@ editionscript = """
                       _ -> if boolVar "autosave" True then "true" else "false"),
       path: ifAlreadyRunning ? editor_model.path : @(path |> jsCode.stringOf)
     }
+
+    function reorderCompatible (node1, node2){
+      let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
+      return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
+        topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
+        ; 
+    }
+    function preventTextDeselection(e){
+      e = e || window.event;
+      e.preventDefault();
+    }
+
     updateInteractionDiv();
     
     function updateInteractionDiv() {
@@ -2025,7 +2655,7 @@ editionscript = """
       if(clickedElem && clickedElem.nodeType === 1) {
         clickedElem.setAttribute("ghost-clicked", "true");
       }
-      let selectionRange = model.notextselection ? undefined : (() => {
+      model.selectionRange = model.notextselection ? undefined : (() => {
         let selection = window.getSelection();
         if(!selection || !selection.rangeCount) return;
         let f = selection.getRangeAt(0); 
@@ -2033,7 +2663,7 @@ editionscript = """
             f.startOffset === f.endOffset && f.startContainer === f.endContainer) return;
         return f;
       })();
-      let caretPosition = model.notextselection || clickedElem && clickedElem.tagName === "HEAD" ? undefined : (() => {
+      model.caretPosition = model.notextselection || clickedElem && clickedElem.tagName === "HEAD" ? undefined : (() => {
         let selection = window.getSelection();
         if(!selection || !selection.rangeCount) return;
         let f = selection.getRangeAt(0);
@@ -2069,6 +2699,7 @@ editionscript = """
       modifyMenuDiv.append(interactionDiv);
       let addModifyMenuIcon = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
+        button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
         button.classList.add("modify-menu-button");
         button.innerHTML = innerHTML;
         modifyMenuIconsDiv.append(button);
@@ -2089,11 +2720,11 @@ editionscript = """
       addModifyMenuIcon(
         panelOpenCloseIcon(),
         {title: "Open/close settings tab", "class": "inert", style: nextVisibleBarButtonPosStyle() },
-        {onclick: (contextMenu => function(event) {
+        {onclick: function(event) {
             document.querySelector("#modify-menu").classList.toggle("visible");
             editor_model.visible = !editor_model.visible;
             this.innerHTML = panelOpenCloseIcon();
-          })(contextMenu)
+          }
         });
       addModifyMenuIcon(
         gearSVG,
@@ -2199,6 +2830,9 @@ editionscript = """
   
         if(editor_model.disambiguationMenu) {
           interactionDiv.append(editor_model.disambiguationMenu);
+        	interactionDiv.append(el("button.modifyMenuButton#cancelAmbiguity", 
+        		{title: "Revert to the original version"}, "Cancel",
+        		{onclick: function(event) {cancelAmbiguity(editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)}}));
         }
         if(editor_model.feedback) {
           interactionDiv.append(editor_model.feedback);
@@ -2236,9 +2870,7 @@ editionscript = """
         )
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
-        return;
-      }
-      if(model.insertElement) {
+      } else if(model.insertElement) {
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
@@ -2248,7 +2880,7 @@ editionscript = """
           clickedElem.tagName === "HTML" ? undefined :
           el("span", {}, [
             el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}),
-            el("label", {"for": "radioInsertAtCaret"}, caretPosition ? "At caret" : "As child")]),
+            el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")]),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
           el("span", {}, [
             el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: true}),
@@ -2347,10 +2979,9 @@ editionscript = """
               onclick: insertTag
             })]));
         document.querySelector("#modify-menu").classList.toggle("visible", true);
-        return;
-      }
+      } else {
       if(clickedElem && clickedElem.parentElement) {
-        let parent = selectionRange ? clickedElem : clickedElem.parentElement;
+        let parent = model.selectionRange ? clickedElem : clickedElem.parentElement;
         if(parent.tagName === "TBODY" && parent.parentElement && parent.parentElement.tagName === "TABLE") parent = parent.parentElement;
         addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
             <path d="M 8,19 8,22 11,22 M 12,18 8,22 M 8,10 8,7 11,7 M 12,10 8,7 M 27,7 30,7 30,10 M 26,10 30,7 M 31,19 31,22 28,22 M 26,18 31,22 M 12,12 12,10 M 12,16 12,14 M 14,18 12,18 M 18,18 16,18 M 22,18 20,18 M 26,18 24,18 M 26,14 26,16 M 26,10 26,12 M 22,10 24,10 M 18,10 20,10 M 14,10 16,10 M 5,5 35,5 35,25 5,25 Z"/></svg>`,
@@ -2365,33 +2996,33 @@ editionscript = """
               }
             );
       }
-      if(!selectionRange && clickedElem && clickedElem.previousElementSibling) {
+      if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling) {
         addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
         {title: "Select previous sibling (" + summary(clickedElem.previousElementSibling) + ")", class: "inert"},
-        {onclick: ((c, contextMenu) => (event) => {
+        {onclick: (c => (event) => {
             editor_model.clickedElem = c;
             editor_model.notextselection = true;
             updateInteractionDiv();
-          })(clickedElem.previousElementSibling, contextMenu),
+          })(clickedElem.previousElementSibling),
          onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.previousElementSibling),
          onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.previousElementSibling)
         });
       }
-      if(!selectionRange && clickedElem && clickedElem.nextElementSibling) {
+      if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling) {
         addModifyMenuIcon(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
         {title: "Select next sibling (" + summary(clickedElem.nextElementSibling) + ")", class: "inert"},
-        {onclick: ((c, contextMenu) => (event) => {
+        {onclick: (c => event => {
             editor_model.clickedElem = c;
             editor_model.notextselection = true;
             updateInteractionDiv();
-          })(clickedElem.nextElementSibling, contextMenu),
+          })(clickedElem.nextElementSibling),
          onmouseenter: (c => () =>  { c.setAttribute("ghost-hovered", "true") })(clickedElem.nextElementSibling),
          onmouseleave: (c => () =>  { c.removeAttribute("ghost-hovered") })(clickedElem.nextElementSibling)
         });
       }
-      if(!selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
+      if(!model.selectionRange && clickedElem && clickedElem.children && clickedElem.children.length > 0) {
         addModifyMenuIcon(`<svg class="context-menu-icon" width="40" height="30">
             <path d="M 28,22 27,19 30,19 M 33,23 27,19 M 8,20 11,19 11,22 M 7,24 11,19 M 10,6 11,9 8,10 M 28,6 27,9 30,10 M 33,6 27,9 M 6,6 11,9 M 5,15 5,10 M 5,25 5,20 M 15,25 10,25 M 25,25 20,25 M 35,25 30,25 M 35,15 35,20 M 35,5 35,10 M 25,5 30,5 M 15,5 20,5 M 5,5 10,5 M 12,10 26,10 26,18 12,18 Z"/></svg>`,
               {title: "Select first cFhild (" + summary(clickedElem.children[0]) + ")", "class": "inert"},
@@ -2401,12 +3032,14 @@ editionscript = """
                 editor_model.clickedElem = firstChild;
                 editor_model.notextselection = true;
                 updateInteractionDiv()})(clickedElem.children[0]),
-               onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.children[0]),
-               onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.children[0])
+                onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(clickedElem.children[0]),
+                onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(clickedElem.children[0])
                }
             );
       }
+
       interactionDiv.append(el("br"));
+
       if(clickedElem) {
         interactionDiv.append(el("div", {"class": "tagname-summary"}, [
           el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
@@ -2415,20 +3048,22 @@ editionscript = """
           el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50))
           ]));
       }
+
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
-            let newel = el(document.querySelector("#newTagName").value);
-            let elements = clickedElem.childNodes;
-            while(elements.length) {
-              newel.append(elements[0]);
-            }
-            for(let i = 0; i < clickedElem.attributes.length; i++) {
-              newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-            }
-            clickedElem.parentElement.insertBefore(newel, clickedElem);
-            clickedElem.remove();
-            editor_model.clickedElem = newel;
-            updateInteractionDiv();
-          }}));
+        let newel = el(document.querySelector("#newTagName").value);
+        let elements = clickedElem.childNodes;
+        while(elements.length) {
+          newel.append(elements[0]);
+        }
+        for(let i = 0; i < clickedElem.attributes.length; i++) {
+          newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+        }
+        clickedElem.parentElement.insertBefore(newel, clickedElem);
+        clickedElem.remove();
+        editor_model.clickedElem = newel;
+        updateInteractionDiv();
+      }}));
+        
       let keyvalues = el("div", {"class":"keyvalues"});
       for(let i = 0; clickedElem && clickedElem.attributes && i < clickedElem.attributes.length; i++) {
         let name = clickedElem.attributes[i].name;
@@ -2442,7 +3077,7 @@ editionscript = """
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
               el("span", {},
-                el("input", {"type": "text", value: value},
+                el("input", {"type": "text", value: value, "id": "image-src-input"},
                   [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
@@ -2472,64 +3107,166 @@ editionscript = """
             ));
         }
       }
+
       let highlightsubmit = function() {
         let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
         this.parentElement.parentElement.querySelector("button").disabled =
           attrName === "" || attrName.trim() !== attrName
       }
+
       if(clickedElem && clickedElem.nodeType === 1) {
-        //      interactionDiv.append(el("div", {}, "Add an attribute:"));
+        // interactionDiv.append(el("div", {}, "Add an attribute:"));
         keyvalues.append(
           el("div", {"class": "keyvalue keyvalueadder"}, [
-             el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name:"name"}, [], {onkeyup: highlightsubmit})),
-             el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name:"value"}, [], {onkeyup: highlightsubmit})),
-             el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
-               disabled: true,
-               onclick() {
-                 clickedElem.setAttribute(
-                   this.parentElement.querySelector("[name=name]").value,
-                   this.parentElement.querySelector("[name=value]").value);
-                 editor_model.clickedElem = clickedElem;
-                 updateInteractionDiv();
-             }})]));
+            el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
+            el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {onkeyup: highlightsubmit})),
+            el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+              disabled: true,
+              onclick() {
+                clickedElem.setAttribute(
+                  this.parentElement.querySelector("[name=name]").value,
+                  this.parentElement.querySelector("[name=value]").value
+                );
+                editor_model.clickedElem = clickedElem;
+                updateInteractionDiv();
+              }
+            })
+          ])
+        );
       }
+
+      function uploadImagesAtCursor(files, srcName) {
+        for (var i = 0, file; file = files[i]; i++) {
+          var targetPathName =  editor.getStorageFolder(file) + file.name;
+          editor.uploadFile(targetPathName, file, (targetPathName, file) => {
+            document.getElementById("image-src-input").setAttribute("value", file.name);
+            clickedElem.setAttribute("src", targetPathName);
+          });
+        }
+
+        // refresh images list
+        showListsImages(srcName);
+
+        // automatically select upload image
+        let selectedImage = document.querySelectorAll(".imgFolder");
+        for (let i = 0; i < selectedImage.length; ++i) {
+          if (selectedImage[i].getAttribute("src") === files[files.length - 1]) {
+            // selectedImage[i].style.outline = "2px solid white";
+            selectedImage[i].classList.add("highlight-select-image");
+          } else {
+            // selectedImage[i].style.outline = "none";
+            selectedImage[i].classList.remove("highlight-select-image");
+          }
+        }
+      }
+      
+      function showListsImages(srcName) {
+        srcName = relativeToAbsolute(srcName)
+        let dir = "";
+        for(let i = 0, arr = srcName.split(/\\|\//); i < arr.length - 1; ++i) {
+          dir += (arr[i] + "/");
+        }
+        files = editor.fs.listdir(dir);
+        
+        images = [];
+        files.forEach(file => {
+          let ext = file.split('.').pop().toLowerCase();
+          if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif') {
+            images.push(file);
+          }
+        });
+        // init: clear image list
+        let selectedImage = document.querySelectorAll(".imgFolder");
+        selectedImage.forEach(e => e.remove());
+
+        for (let i = 0; i < images.length; ++i) {
+          interactionDiv.append(
+            el("div", { class: "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
+              onclick() {
+                // highlight the selected image
+                let otherImages = document.querySelectorAll(".imgFolder");
+                for (let i = 0; i < otherImages.length; ++i) {
+                  otherImages[i].classList.remove("highlight-select-image");
+                  // otherImages[i].style.outline = "none";
+                }
+                // replace image
+                clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
+                document.getElementById("image-src-input").setAttribute("value", this.children[0].getAttribute("src"));
+                // this.style.outline = "2px solid white";
+                this.classList.add("highlight-select-image");
+              }
+            })
+          );
+        }
+      }
+      
       interactionDiv.append(keyvalues);
+
+      if (clickedElem && clickedElem.tagName === "IMG") {
+        let srcName = clickedElem.attributes[0].value;
+
+        clickedElem.ondragover = function (e) {
+          e.preventDefault();
+        }
+
+        clickedElem.ondrop = function (e) {
+          // upload and replace the image
+          e.stopPropagation();
+          e.preventDefault();
+          var files = e.dataTransfer.files; // FileList object
+          uploadImagesAtCursor(files, srcName);
+        }
+
+        // upload image button
+        interactionDiv.append(
+          el("a", 
+            { "id": "upload-image-btn-a" }, 
+            el(
+              "input", {"id": "upload-image-btn-input", "type": "file", value: "Please upload images..."}, 
+              [], 
+              { onchange: function(evt) { uploadImagesAtCursor(evt.target.files, srcName); }}
+            ), 
+            {}
+          )
+        );
+        
+        // show lists of images in selected image's folder
+        showListsImages(srcName);
+      }
+
       //interactionDiv.append(el("hr"));
 
       if(clickedElem && (clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE" || clickedElem.tagName === "TITLE")) {
         interactionDiv.append(el("hr"));
         interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
-                [], {
-                  value: clickedElem.childNodes[0].textContent,
-                  onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; }
-                }));
+          [], {
+            value: clickedElem.childNodes[0].textContent,
+            onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; }
+          }));
       }
+      }
+      
       
       // What to put in context menu?
       contextMenu.innerHTML = "";
       let numButtons = 0;
       let addContextMenuButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
+        button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
         button.classList.add("context-menu-button");
         button.innerHTML = innerHTML;
         contextMenu.append(button);
         numButtons++;
       }
-      let reorderCompatible = (node1, node2) => {
-        let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
-        return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
-          topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
-          ; 
-      }
       if(model.link) {
         addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
           {title: "Go to " + model.link, "class": "inert"});
       }
-      if(!selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+      if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
         {title: "Move selected element up"},
-        {onclick: ((c, contextMenu) => (event) => {
+        {onclick: (c => event => {
             let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
                c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
             // There is whitespace before this element, we try to reinsert
@@ -2539,15 +3276,14 @@ editionscript = """
             }
             editor_model.clickedElem = c;
             updateInteractionDiv();
-          })(clickedElem, contextMenu)
+          })(clickedElem)
         });
       }
-      if(!selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+      if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
         {title: "Move selected element down"},
-        {onclick: ((c, contextMenu) => (event) => {
-            console.log("BEFORE:", c.parentNode.childNodes);
+        {onclick: (c => (event) => {
             let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
               c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
             let nodeToInsertAfter = c.nextElementSibling;
@@ -2557,16 +3293,15 @@ editionscript = """
             }
             editor_model.clickedElem = c;
             updateInteractionDiv();
-            console.log("AFTER:", c.parentNode.childNodes);
-          })(clickedElem, contextMenu)
+          })(clickedElem)
         });
       }
-      if(!selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
+      if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
         addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
             <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
             <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
           {title: "Clone selected element"},
-          {onclick: ((c, contextMenu) => (event) => {
+          {onclick: ((c, contextMenu) => event => {
               c.removeAttribute("ghost-clicked");
               let cloned = duplicate(c);
               if(cloned) {
@@ -2577,13 +3312,14 @@ editionscript = """
           });
         addContextMenuButton(wasteBasketSVG,
           {title: "Delete selected element"},
-          {onclick: ((c, contextMenu) => (event) => {
+          {onclick: (c => event => {
               c.remove();
-              contextMenu.classList.remove("visible");
-            })(clickedElem, contextMenu)
+              editor_model.clickedElem = undefined;
+              updateInteractionDiv();
+            })(clickedElem)
           });
       }
-      if(selectionRange && (selectionRange.startContainer === selectionRange.endContainer || selectionRange.startContainer.parentElement === selectionRange.commonAncestorContainer && selectionRange.endContainer.parentElement === selectionRange.commonAncestorContainer)) {
+      if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer)) {
         // There should be different ways to wrap the selection:
         // a href, span, div.
         addContextMenuButton(plusSVG,
@@ -2631,33 +3367,33 @@ editionscript = """
               let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
               parent.insertBefore(insertedNode, nodeToInsertBefore);
               document.querySelector("#modify-menu").classList.toggle("visible", true);
+              editor_model.visible = true;
               editor_model.clickedElem = insertedNode;
               updateInteractionDiv();
-            })(selectionRange)}
+            })(model.selectionRange)}
             )
       }
-      if(!selectionRange) {
+      if(!model.selectionRange) {
         addContextMenuButton(plusSVG,
             {title: "Insert element", contenteditable: false},
-            {onclick: (caretPosition => event => {
+            {onclick: event => {
               editor_model.clickedElem = clickedElem;
               editor_model.insertElement = true;
-              editor_model.caretPosition = caretPosition;
               updateInteractionDiv();
               var sel = window.getSelection();
               sel.removeAllRanges();
               var range = document.createRange();
-              range.setStart(caretPosition.startContainer, caretPosition.startOffset);
-              range.setEnd(caretPosition.endContainer, caretPosition.endOffset);
+              range.setStart(model.caretPosition.startContainer, model.caretPosition.startOffset);
+              range.setEnd(model.caretPosition.endContainer, model.caretPosition.endOffset);
               sel.addRange(range);
-            })(caretPosition)});
+            }});
       }
-      
+
       let baseElem = clickedElem;
       while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
         baseElem = baseElem.nextElementSibling;
       }
-      baseElem = selectionRange || baseElem || clickedElem;
+      baseElem = model.selectionRange || baseElem || clickedElem;
       
       if(baseElem) {
         let clientRect = baseElem.getBoundingClientRect();
