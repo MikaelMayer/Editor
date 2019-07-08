@@ -1121,6 +1121,8 @@ editor.getStorageFolder = function(file) {
 
 -- Script added to the end of the page
 editionscript = """
+  
+
   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
@@ -1661,9 +1663,9 @@ editionscript = """
       }
     }
     
-    observeTargetA = null;
+    var observeTargetA = null;
     
-    addEditEqualToUrl = function(href, what) {
+    var addEditEqualToUrl = function(href, what) {
       if(href.indexOf("://") == -1) { // Instrument the relative link so that it is edit=true
         if(href.indexOf("?") >= 0) {
           if(href.endsWith("?")) {
@@ -1678,9 +1680,9 @@ editionscript = """
       return href;
     }
     
-    onClickGlobal = function (event) {
+    
+    var onClickGlobal = function (event) {
       var clickedElem = event.target;
-      
       var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
       var matchOptions = function(clickedElem) {
         var result = true;
@@ -1732,6 +1734,7 @@ editionscript = """
       updateInteractionDiv();
       // Check if the event.target matches some selector, and do things...
     }
+
     function mkSvg(path, fill) {
       return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
             <path d="${path}" /></svg>`
@@ -2074,6 +2077,7 @@ editionscript = """
             el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: true}),
             el("label", {"for": "radioInsertAfterNode"}, "After node")]),
         ]));
+
         let insertTag = function() {
           let newElement = (() => {
             let parent = this;
@@ -2139,34 +2143,49 @@ editionscript = """
             updateInteractionDiv();
           }
         }
+
         let addElem = function(name, createParams) {
-          interactionDiv.append(el("div", {"class": "tagName"},
-            el("span", { "class": "templateengine"}, name, createParams), {onclick: insertTag}));
+          interactionDiv.append(
+            el("div", {"class": "tagName"},
+              el("span", { "class": "templateengine"}, name, createParams), { onclick: insertTag }
+            )
+          );
         }
+
         if(clickedElem.tagName === "HEAD") {
           addElem("Title", {tag:"title", children: "Page_title"});
           addElem("Style", {tag:"style", children: "/*Your CSS there*/"});
           addElem("Script", {tag:"script", children: "/*Your CSS below*/"});
         } else {
           interactionDiv.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
-            onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }}));
+            onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
+          );
           // TODO: Filter and sort which one we can add
-          addElem("List item", {tag:"li", props: { innerHTML: "<br>"}});
-          addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n  <li><br></li>\n</ul>"}});
-          addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n  <li><br></li>\n</ol>"}});
-          addElem("Button", {tag: "button", props: {innerHTML: "Name_your_button"}});
-          addElem("Link", {tag:"a", childCreate: "Name_your_link"});
-          addElem("Paragraph", {tag:"p", childCreate: "Inserted paragraph"});
+          addElem("List item", {tag:"li", props: { innerHTML: "<br>" }});
+          addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }});
+          addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n<li><br></li>\n</ol>" }});
+          addElem("Button", {tag: "button", props: {innerHTML: "Name_your_button" }});
+
+          // something is wrong with creating link and paragraph using childCreate
+          // addElem("Link", {tag:"a", childCreate: "Name_your_link"});
+          // addElem("Paragraph", {tag:"p", childCreate: "Inserted paragraph"});
+          addElem("Link", {tag: "a", props: { innerHTML: "Name_your_link", href: "" }});
+          addElem("Paragraph", {tag: "p", props: { innerHTML: "Insert_paragraph" }});
           for(let i = 1; i <= 6; i++) {
-            addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i}});
+            addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }});
           }
         }
-        interactionDiv.append(el("div", {"class": "tagName"},
-           [el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
-           el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
-              innerHTML: plusSVG,
-              onclick: insertTag
-            })]));
+
+        interactionDiv.append(
+          el("div", {"class": "tagName"}, [
+            el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
+            el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
+                innerHTML: plusSVG, 
+                onclick: insertTag
+              }
+            )
+          ])
+        );
         document.querySelector("#modify-menu").classList.toggle("visible", true);
       } else {
       if(clickedElem && clickedElem.parentElement) {
@@ -2235,7 +2254,8 @@ editionscript = """
             document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
           }}),
           el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50))
-          ]));
+          ])
+        );
       }
 
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
@@ -2428,12 +2448,25 @@ editionscript = """
             onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; }
           }));
       }
+
+      // let user modify button content
+      if(clickedElem && (clickedElem.tagName === "BUTTON")) {
+        // provide the onclick attribute to users so user can modify it in modify-menu
+        if (!clickedElem.hasAttribute("onclick")) {
+          clickedElem.setAttribute("onclick", "");
+          updateInteractionDiv();
+        }
+        if (!clickedElem.hasAttribute("type")) {
+          clickedElem.setAttribute("type", "");
+          updateInteractionDiv();
+        }
       }
-      
-      
-      // What to put in context menu?
-      contextMenu.innerHTML = "";
-      let numButtons = 0;
+    }
+    
+    
+    // What to put in context menu?
+    contextMenu.innerHTML = "";
+    let numButtons = 0;
       let addContextMenuButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
         button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
