@@ -57,6 +57,23 @@ if(fileToOpen) {
 }
 var timeBeforeExit = 2000; // Number of ms after receiving the closing signal (if file open) to kill the server.
 
+
+leo = {};
+leo.data = function(name) {
+  return function() {
+    let args = {};
+    for(let i = 1; i <= arguments.length; i++) {
+      args["_" + i] = arguments[i - 1];
+    }
+    return {"$d_ctor": name, args: args};
+  }
+}
+leo.Just = leo.data("Just")
+leo.Nothing = leo.data("Nothing")()
+leo.Tuple2 = function(a, b) {
+  return {"$t_ctor": "Tuple2", _1: a, _2: b}
+}
+
 var defaultOptions = {
   edit:     getParam("--edit",     "true") == "true",
   autosave: autosave,
@@ -67,7 +84,8 @@ var defaultOptions = {
   closeable: !(!(fileToOpen)),
   openbrowser: isBoolParamTrue("--openbrowser"),
   key: "localhost-key.pem",
-  cert: "localhost.pem"
+  cert: "localhost.pem",
+  hyde: getParam("--hyde", "true") == "true"
 };
 
 async function start() {
@@ -175,11 +193,10 @@ function getOneSolution(path, serverFileContent, allSolutions) {
         false : false : false : false : false : false;
 
     newEnv.fileOperations.unshift(
-      {"$t_ctor": "Tuple2",
-       _1: serverFile,
-       _2: {"$d_ctor": "Write",
-       args: {_1: serverFileContent, _2: newServerFileContent, _3: diffsServerFileContent}}
-       });
+      leo.Tuple2(
+       serverFile,
+       leo.data("Write")(serverFileContent, newServerFileContent,diffsServerFileContent)
+       ));
   }
   var fo = newEnv.fileOperations;
   var evaluated = evaluateToHtml(path, newEnv, newServerFileContent);
@@ -273,22 +290,88 @@ function fileOperationSummary(operations) {
   return summary;
 }
 
+function detectHydefile($name) {
+  if($name.length > 0 && $name.substring($name.length - 1,  $name.length) === "/") {
+    $name = $name.substring(0, $name.length - 1);
+  }
+  let $hydefile = null, $result;
+  while($name.length > 0) {
+    $namex = $name == "" ? "" : `${$name}/`;
+    if(fs.existsSync($namex+"hydefile.leo")) {
+      $hydefile = $namex+"hydefile.leo"; break;
+    }
+    if(fs.existsSync($namex+"hydefile.elm")) {
+      $hydefile = $namex+"hydefile.elm"; break;
+    }
+    if(fs.existsSync($namex+"hydefile")) {
+      $hydefile = $namex+"hydefile"; break;
+    }
+    $newname = $name.replace(/\/[^\/]*$/,"");
+    if($newname === $name) { // No more slashes
+      $name = "";
+    } else {
+      $name = $newname;
+    }
+  }
+  if($hydefile != null) {
+    $result = {file : $hydefile};
+    if(fs.existsSync($namex+".hydecache")) {
+      $result["cache"] = fs.readFileSync($namex+".hydecache", "utf8");
+      $result["cachefile"] = $namex+".hydecache";
+    }
+  } else {
+    $result = {};
+  }
+  return $result;
+}
+
+function pushResultOn(array) {
+  return name => { array.push(name); return 0 }
+}
+
 // Returns a [Result of string containing the requested page, new overrides]
 // If newvalue is defined, performs an update before returning the page.
 function loadpage(path, vars, user, newvalue) {
   // __dirname = path.resolve(); // If in the REPL
   if(typeof vars != "object") vars = {};
   var serverFileContent = readServerFile();
+  var hydefilecache = defaultOptions.hyde ? detectHydefile(path) : undefined;
+  console.log("hydefilecache", hydefilecache)
+  var filesToWatch = [];
+  var foldersToWatch = [];
+  var generatedFiles = [];
+  var writtenFiles = [];
   var env = {
       googleClientId: googleClientId,
       vars: vars,
       user: toLeoQuery(user || {}),
-      defaultOptions: toLeoQuery(defaultOptions),
+      defaultOptions: toLeoQuery(defaultOptions).concat(
+          hydefilecache ? [leo.Tuple2("hydefilecache", hydefilecache)] : []),
       path: path,
       fileOperations: [] };
-  
+  if(hydefilecache) {
+    env["recordFileRead"] = pushResultOn(filesToWatch);
+    env["recordFolderList"] = pushResultOn(foldersToWatch);
+    env["recordOutputFiles"] = tuplesToWrite => {
+      writtenFiles = tuplesToWrite.map(({_1}) => _1);
+      alwaysWriteAll(tuplesToWrite);
+      return 0;
+    }
+  }
   if(typeof newvalue == "undefined") {
-    return [evaluateToHtml(path, env, serverFileContent), vars];
+    let result = [evaluateToHtml(path, env, serverFileContent), vars];
+    if(hydefilecache.cache) {
+      console.log("overriding cache", [filesToWatch, foldersToWatch, writtenFiles, hydefilecache.cachefile]);
+      let newCacheContent =
+            sns.valToNative(sns.objEnv.string.evaluate(
+              {a: {inputFiles: filesToWatch,
+                   inputFolders: foldersToWatch,
+                   outputFiles: writtenFiles
+               }})("toString a")._0)._0;
+      console.log("set cache to write");
+      alwaysWrite(hydefilecache.cachefile, newCacheContent);
+    }
+    return result;
   } else { // We update the page and re-render it.
     var newVal = sns.nativeToVal(newvalue);
     console.log("Started to update...");
@@ -328,7 +411,7 @@ function loadpage(path, vars, user, newvalue) {
 function toLeoQuery(query) {
   var result = [];
   for(key in query) {
-    result.push({"$t_ctor": "Tuple2", _1: key, _2: query[key]});
+    result.push(leo.Tuple2(key, query[key]));
   }
   return result;
 }
@@ -346,6 +429,20 @@ if(protocol == "http") {
 
 function combinePath(prefix, path) {
   return (prefix == "" ? "." : prefix) + "/" + (path && path.length && path[0] === "/" ? path.substring(1) : path);
+}
+
+function alwaysWrite($name, $content) {
+  if (!fs.lstatSync($name).isDirectory(fspath.dirname($name))) {
+    fs.mkdirSync(fspath.dirname($name), { recursive: true });
+  }
+  fs.writeFileSync($name, $content, "utf8");
+}
+
+function alwaysWriteAll($toWrite, callback) {
+  for(let $nameContent of $toWrite) {
+      alwaysWrite($nameContent._1, $nameContent._2);
+      if(callback) callback($nameContent);
+  }
 }
 
 const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
@@ -395,6 +492,15 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
           } else {
             response.end("0");
           }
+          return;
+        } else if ($action=="fullListDir") {
+          if($name == "") $name = ".";
+          let $result =
+            (fs.readdirSync($name, {withFileTypes: true}) || [])
+            .filter(f => f.name != "." && f.name != "..")
+            .map(f => [f.name, f.isDirectory()]);
+          response.statusCode = 200
+          response.end(JSON.stringify($result));
           return;
         } else {
           response.statusCode = 500;
@@ -446,24 +552,33 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
             fs.writeFileSync($name, $content, "utf8");
             response.statusCode = 200;
             if($action == "create") {
-              response.end(`Written ${name}`);
+              response.end(`Written ${$name}`);
             } else {
-              response.end(`Created ${name}`);
+              response.end(`Created ${$name}`);
             }
             return;
+          } else if($action == "writeall") {
+            let $toWrite = JSON.parse($content);
+            let $i = 0;
+            let msg = "";
+            alwaysWriteAll($toWrite, $nameContent => {
+              msg += "Written " + $nameContent._1 + "\n";
+             $i = $i + 1;
+            });
+            response.end(msg + `\n$i files written`);
           } else if($action == "rename") {
             fs.renameSync($name, $content);
             response.statusCode = 200;
-            response.end(`Renamed ${name} to ${content}`);
+            response.end(`Renamed ${$name} to ${$content}`);
             return;
           } else if($action == "delete") {
             fs.unlinkSync($name);
             response.statusCode = 200;
-            response.end(`Deleted ${name}`);
+            response.end(`Deleted ${$name}`);
             return;
           } else {
             response.statusCode = 500;
-            response.end(`Unsupported write action for this user: ${action}, ${userId}`)
+            response.end(`Unsupported write action for this user: ${$action}, ${userId}`)
             return;
           }
         } else if(request.headers["location"]) { // File overwriting

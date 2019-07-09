@@ -37,7 +37,7 @@ directReadFileSystem =
 
 fs = nodejs.delayedFS directReadFileSystem fileOperations
 
-hyde = listDict.get "hyde" defaultOptions
+hydefilecache = listDict.get "hydefilecache" defaultOptions
 
 fs = case mbApplyPrefix of
   Nothing -> fs
@@ -131,11 +131,11 @@ applyDotEditor source =
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
         """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
       else
-        (if  hyde == Nothing then fs.read path else
-          case hyde of
+        (if hydefilecache == Nothing then fs.read path else
+          case hydefilecache of
             Just {file=hydefile} ->
               let source = fs.read hydefile |>
-                      Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@file' not found?!"]""")
+                      Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@hydefile' not found?!"]""")
                   source = source + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
                   fileDirectory = Regex.replace "^/|/[^/]*$" "" hydefile
                   inDirectory name = if fileDirectory == "" then name else
@@ -202,20 +202,43 @@ LUCA stands for "Last Universal Common Ancestor"
 luca = 
   [<script>
     function doReadServer(action, name) {
-      if (readServer != "undefined") {
+      if (typeof readServer != "undefined") {
         console.log("reading server");
         return readServer(action, name);
+      } else {
+        var request = new XMLHttpRequest();
+        var url = "/";
+        request.open('GET', url, false);  // `false` makes the request synchronous
+        request.setRequestHeader("action", action);
+        request.setRequestHeader("name", name);
+        request.send(null);
+        if(request.status == 200) {
+          return request.responseText || "";
+        } else {
+          console.log("error while reading " + url, request);
+          return "";
+        }
       }
-      //TODO make functionality for standalone editor not just TharzenEditor
-      console.error("need to make the reading server functionality for standalone editor");
     }
     function doWriteServer(action, name, content) {
-      if (writeServer != "undefined") {
+      if (typeof writeServer != "undefined") {
         console.log("about to write to server");
         return writeServer(action, name, content);
+      } else {
+        var request = new XMLHttpRequest();
+        request.open('POST', url, false);  // `false` makes the request synchronous
+        request.setRequestHeader("action", action);
+        request.setRequestHeader("name", name);
+        request.send(content);
+        if(request.status == 200) {
+          return "";
+        } else if(request.status == 500) {
+          return request.responseText;
+        } else {
+          console.log("error while writing " + url, request);
+          return "";
+        }
       }
-      //TODO make functionality for standalone editor not just TharzenEditor
-      console.error("need to make the writing server functionality for standalone editor");
     }
     function doReloadPage() {
       document.location.reload();
@@ -764,7 +787,7 @@ evaluatedPage =
         var dirIcon = () => {
           var d = el("div", {}, [], {innerHTML: 
           `<svg class="file-extension-icon" width="60" height="30">
-            <path d="M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z" /></svg>`});
+            <path d="M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z" />`});
           return d.childNodes[0];
         }
         var extensionIcon = name => {
@@ -772,8 +795,8 @@ evaluatedPage =
           if("." + extension == name || extension === "") extension = "-";
           var d = el("div", {}, [], {innerHTML: 
           `<svg class="file-extension-icon" width="60" height="30">
-            <text x="0" y="25">${extension}</text>
-           </svg>`});
+            <text x="0" y="25">${extension}
+           `});
           return d.childNodes[0];
         }
 
@@ -786,7 +809,7 @@ evaluatedPage =
         }
         //el(tag, attributes, children, properties)
         if (path != "") {
-          var link = "../" + "?ls=true&edit";
+          var link = "../" + "?ls=true&amp;edit";
           form.append(fileItemDisplay(link, "..", true));
         }
         // directories before files, sorted case-insensitive
@@ -795,7 +818,7 @@ evaluatedPage =
           name1.toLowerCase() < name2.toLowerCase() ? -1 : 0);
         for (i = 0; i < files.length; i++) {
           var [name, isDir] = files[i];
-          var link = isDir =="" ? name + "/?ls&edit" : name;
+          var link = isDir =="" ? name + "/?ls&amp;edit" : name;
           form.append(fileItemDisplay(link, name, isDir));
         }
 

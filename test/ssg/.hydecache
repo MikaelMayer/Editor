@@ -1,0 +1,6 @@
+{  inputFiles = [ "test/ssg/src/a.md"
+    ],
+   inputFolders = [],
+   outputFiles = [ "test/ssg/output/b.html"
+    ]
+}
