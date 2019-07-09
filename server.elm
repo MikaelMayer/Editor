@@ -131,36 +131,59 @@ applyDotEditor source =
       if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
         """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
       else
-        (if Debug.log "hyde" hyde == Nothing then fs.read path else
+        (if  hyde == Nothing then fs.read path else
           case hyde of
-            Just {file} ->
-              let source = fs.read file |> Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@file' not found?!"]""")
-                  source = source + Update.freeze "\n\n let t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t === 'list' then t else [t]\nin t"
+            Just {file=hydefile} ->
+              let source = fs.read hydefile |>
+                      Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@file' not found?!"]""")
+                  source = source + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
+                  fileDirectory = Regex.replace "^/|/[^/]*$" "" hydefile
+                  inDirectory name = if fileDirectory == "" then name else
+                    fileDirectory  + "/" + name
                   fsReadRecord = 
                       { directReadFileSystem |
                         read name =
+                          let name = inDirectory name in
                           let _ = recordFileRead name in
                           fs.read name,
                         listdir name =
+                          let name = inDirectory name in
                           let _ = recordFolderList name in
                           fs.listdir name
                       }
-                  fsHyde = nodejs.delayedFS fsReadRecord fileOperations
-                  fileDirectory = Regex.replace "^/[^/]*$" "" file
+                  fsHyde = nodejs.delayedFS fsReadRecord <|
+                    Update.lens {
+                      apply = identity
+                      update {outputNew, diffs} = -- input and outputOld were empty, diffs is valid
+                      -- We just need to change the paths
+                        outputNew |>
+                        List.map (case of
+                          (name, Rename newName) -> (inDirectory name, Rename (inDirectory newName))
+                          (name, x) -> (inDirectory name, x))|>
+                        flip (,) (Just diffs) |>
+                        List.singleton |> InputsWithDiffs |> Ok
+                    } fileOperations
               in
               let (generatedFilesDict, errors) =
                     __evaluate__ (("fs", fsHyde)::preludeEnv) source
-                    |> Result.andThen (case of
-                      Ok writtenContent ->
-                        let _ = commitWriteOutput writtenContent in -- Actual write on disk
+                    |> Result.map (\writtenContent ->
                         let (written, errors) = List.partition (case of Write -> True; _ -> False) writtenContent in
-                        (List.map (case of Write name content -> (fileDirectory + "/" + name, content)) written,
-                         List.map (case of Error msg -> msg) errors |> String.join "\n")
-                      Err msg -> ([], msg))
+                        let tuplesToWrite =
+                              List.map (case of Write name content -> (inDirectory name, content)) written
+                            joinedErrors = 
+                              List.map (case of Error msg -> msg) errors |> String.join "\n"
+                        in
+                        let _ = recordOutputFiles tuplesToWrite in -- Writes on disk and caches the names of written files
+                        (tuplesToWrite, joinedErrors))
                     |> Result.withDefaultMapError (\msg -> ([], msg))
               in
+              let _ = Debug.log "generatedFilesDict" generatedFilesDict in
               case listDict.get path generatedFilesDict of
-                Nothing -> fs.read path
+                Nothing -> if errors == "" then fs.read path else
+                  Just <|
+                  serverOwned "error recovery of hyde build tool" <|
+                  """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
+                  
                 x -> x
             _ -> fs.read path
         )
@@ -1013,9 +1036,6 @@ a.troubleshooter {
 .editor-menu {
   display: initial !important;
 }
-#menumargin {
-  padding-top: 2em;
-}
 .disabled {
   color: #BBB;
 }
@@ -1170,9 +1190,6 @@ div.disambiguationMenu {
   }
   menuitem#autosave-menuitem {
     display: none;
-  }
-  #menumargin {
-    padding-top: 5em;
   }
   #editor_codepreview {
     width: 100%;
@@ -1415,8 +1432,7 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
     --context-menu-padding-left: 4px;
   }
 }
-</style>,
-<div id="menumargin"></div>]
+</style>]
 
 browserSide = listDict.get "browserSide" defaultOptions == Just True
 
