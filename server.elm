@@ -2094,7 +2094,7 @@ editionscript = """
         // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
         // -- It is the modification of a node or an attribute inside a ghost node.
         /*  
-         * Add mutations to undo list if they are not ghosts.
+         * Add mutations to undo list if they are not ghosts and if they are really doing something.
          */
         var mutation = mutations[i];
         if(hasGhostAncestor(mutation.target)) {
@@ -2102,7 +2102,8 @@ editionscript = """
         }
         if(mutation.type == "attributes") {
           var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(mutation.target);
-          if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName)) {
+          if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
+              mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue) {
           } else {
             onlyGhosts = false;
             sendToUndo(mutation, cur_time);
