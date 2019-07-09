@@ -1269,9 +1269,6 @@ div.disambiguationMenu {
   menu.edittoolbar {
     right: 10px;
   }
-  div.editor-logo {
-    display: none;
-  }
   menuitem.filename {
     display: none;
   }
@@ -1290,9 +1287,6 @@ div.disambiguationMenu {
   #editor_codepreview {
     width: 100%;
     height: 600px;
-  }
-  div.menu-separator {
-    display: none;
   }
 }
 .summary {
@@ -1325,9 +1319,14 @@ div#modify-menu {
 .modify-menu-icon:hover {
   background-color: var(--context-button-color-hover);
 }
-div#modify-menu > div.modify-menu-icons {
+div#modify-menu > div.modify-menu-icons:not(.pinned) {
   width: 100%;
   overflow-x: auto;
+}
+div#modify-menu > div.modify-menu-icons.pinned {
+  width: var(--context-menu-button-width);
+  position: absolute;
+  left: calc(0px - var(--context-menu-button-width));
 }
 div#modify-menu > div.information {
   overflow-y: auto;
@@ -1604,9 +1603,17 @@ div#context-menu.visible {
 div#context-menu .context-menu-button, div#modify-menu .modify-menu-button {
   background: var(--context-button-color);
   display: inline-block;
-  height: var(--context-menu-height);
   width: var(--context-menu-button-width);
   cursor: pointer;
+}
+div#context-menu .context-menu-button, div#modify-menu .modify-menu-icons:not(.pinned) .modify-menu-button {
+  height: var(--context-menu-height);
+}
+div#modify-menu .modify-menu-icons.pinned .modify-menu-button {
+  border-bottom: 1px solid black;
+}
+div#modify-menu .modify-menu-icons.pinned .modify-menu-button:last-child {
+  border-bottom: none;
 }
 div#context-menu .context-menu-button.selected, div#modify-menu .modify-menu-button.selected {
   background: var(--context-button-selected);
@@ -1619,13 +1626,19 @@ div#modify-menu .modify-menu-button.disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+div#modify-menu .modify-menu-icon-label {
+  display: block;
+  color: white;
+  font-size: calc(var(--context-menu-button-width) / 3);
+  text-align: center;
+}
 div#context-menu .context-menu-button > svg, div#modify-menu .modify-menu-button > svg {
   padding-left: var(--context-menu-padding-left);
   padding-right: var(--context-menu-padding-left);
   padding-top: var(--context-menu-padding-top);
   padding-bottom: var(--context-menu-padding-top);
 }
-div#context-menu .context-menu-button.inert, div#modify-menu .modify-menu-button.inert {
+div#context-menu .context-menu-button.inert, div#modify-menu .modify-menu-icons.modify-menu-icons .modify-menu-button.inert {
   background: var(--context-button-color-inert)
 }
 svg.context-menu-icon > path {
@@ -1671,6 +1684,16 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
     transform: translate(0px, 100%);
     padding: 0;
     padding-bottom: 80px;
+  }
+  div#modify-menu > div.modify-menu-icons.pinned {
+    width: auto;
+    height: var(--context-menu-height);
+    position: absolute;
+    top: calc(0px - var(--context-menu-height));
+    left: 0px;
+  }
+  div#modify-menu > div.modify-menu-icons.pinned span.modify-menu-icon-label {
+    display: none;
   }
 
   div.bottom-placeholder {
@@ -3055,25 +3078,32 @@ editionscript = """
         return summary;
       }
       modifyMenuDiv.innerHTML = "";
+      let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned"});
       let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"});
       let interactionDiv = el("div", {"class": "information"});
+      modifyMenuDiv.append(modifyMenuPinnedIconsDiv);
       let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
       
       modifyMenuDiv.append(domSelector);
       modifyMenuDiv.append(modifyMenuIconsDiv);
       modifyMenuDiv.append(interactionDiv);
-
-      let addModifyMenuIcon = function(innerHTML, attributes, properties) {
+      let createButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
         button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
         button.classList.add("modify-menu-button");
         button.innerHTML = innerHTML;
-        modifyMenuIconsDiv.append(button);
+        return button;
+      }
+      let addModifyMenuIcon = function(innerHTML, attributes, properties) {
+        modifyMenuIconsDiv.append(createButton(innerHTML, attributes, properties));
+      }
+      let addPinnedModifyMenuIcon = function(innerHTML, attributes, properties) {
+        modifyMenuPinnedIconsDiv.append(createButton(innerHTML, attributes, properties));
       }
       var panelOpenCloseIcon = function() {
         return document.querySelector("#modify-menu").classList.contains("visible") ?
-            onMobile() ? closeBottomSVG : closeRightSVG
-          : onMobile() ? openTopSVG : openLeftSVG;
+            onMobile() ? closeBottomSVG : closeRightSVG + "<span class='modify-menu-icon-label'>Close</span>"
+          : onMobile() ? openTopSVG : openLeftSVG + "<span class='modify-menu-icon-label'>Open</span>";
       }
       var alwaysVisibleButtonIndex = 0;
       function nextVisibleBarButtonPosStyle() {
@@ -3083,19 +3113,18 @@ editionscript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      addModifyMenuIcon(
+      addPinnedModifyMenuIcon(
         panelOpenCloseIcon(),
-        {title: "Open/close settings tab", "class": "inert", style: nextVisibleBarButtonPosStyle() },
+        {title: "Open/close settings tab", "class": "inert" },
         {onclick: function(event) {
             document.querySelector("#modify-menu").classList.toggle("visible");
             editor_model.visible = !editor_model.visible;
             this.innerHTML = panelOpenCloseIcon();
           }
         });
-      addModifyMenuIcon(
-        gearSVG,
-        {title: "Advanced", "class": "inert" + (editor_model.advanced ? " active": ""),
-         style: nextVisibleBarButtonPosStyle()
+      addPinnedModifyMenuIcon(
+        gearSVG + "<span class='modify-menu-icon-label'>Misc.</span>",
+        {title: "Advanced", "class": "inert" + (editor_model.advanced ? " active": "")
         },
         {onclick: (c => function(event) {
           //defaults to turning on advanced menu if the editor model is already visible, otherwise toggles advanced menu.
@@ -3110,9 +3139,8 @@ editionscript = """
         })(clickedElem)}
       )
 
-      addModifyMenuIcon(saveSVG,
+      addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
       {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
-          style: nextVisibleBarButtonPosStyle(),
           id: "savebutton"  
       },
         {onclick: editor_model.disambiguationMenu ? 
@@ -3125,9 +3153,8 @@ editionscript = """
           }
         }
       )
-      addModifyMenuIcon(undoSVG, 
+      addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
         {"class": "inert", title: "Undo most recent change",
-          style: nextVisibleBarButtonPosStyle(),
           id: "undobutton"
         },
         {onclick: function(event) {
@@ -3135,9 +3162,8 @@ editionscript = """
           }
         }   
       );
-      addModifyMenuIcon(redoSVG,
+      addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
         {"class": "inert", title: "Redo most recent undo",
-         	style: nextVisibleBarButtonPosStyle(),
           id: "redobutton"
         },
        	{onclick: function(event) {
