@@ -164,11 +164,41 @@ luca =
       document.location.reload();
       //TODO not full reload bump: Mikael
     }
+
+    //document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
+    let uploadProgress = [];
+
+    function initializeProgress(numFiles) {
+      var progressBar = document.getElementById("progress-bar");
+      if (!progressBar) {
+        console.err ("Warning! Add the progress bar yourself before calling this. We'll add it for you this time.");
+        document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
+      }
+      progressBar.value = 0;
+      progressBar.visible = true;
+      uploadProgress = [];
+
+      for(let i = numFiles; i > 0; i--) {
+        uploadProgress.push(0);
+      }
+    }
+
+    function updateProgress(fileNumber, percent) {
+      uploadProgress[fileNumber] = percent;
+      let total = uploadProgress.reduce((tot, curr) => tot + curr, 0) / uploadProgress.length;
+      console.log ("prog updated");
+      documentgetElementById("progress-bar").value = total;
+    }
+
     // Editor's API should be stored in the variable editor.
 
     editor = typeof editor === "object" ? editor : {};
     editor.uploadFile = function(targetPathName, file, onOk, onError) {
+      
       var xhr = new XMLHttpRequest();
+      xhr.onprogress = (e) => {
+        updateProgress(i, (e.loaded * 100.0 / e.total) || 100)
+      }
       xhr.onreadystatechange = ((xhr, file) => () => {
         if (xhr.readyState == XMLHttpRequest.DONE) {
           if (xhr.status == 200 || xhr.status == 201) {
@@ -178,6 +208,7 @@ luca =
             onError ? onError(targetPathName, file) : 0;
           }
         }
+        var progbar = document.getElementById("progress-bar");
       })(xhr, file);
       @(if listDict.get "browserSide" defaultOptions == Just True then """
       xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
@@ -344,6 +375,7 @@ evaluatedPage =
       pathprefix = if path == "" then path else path + "/"
     in
     Ok <html><head>
+      
       <script>
         var ispressed = false;
         var whichOne = "";
@@ -358,11 +390,16 @@ evaluatedPage =
             ispressed = false;
           }
         }
+        var handleFileSelect = e => {
+          e.preventDefault();
+        }
+        document.addEventListener('drop', handleFileSelect, false);
       </script>
       <style>
         #menu_bar {
           overflow: hidden;
           background-color: #ffffff;
+          opacity:1;
         }
 
         #menu_bar a {
@@ -503,12 +540,13 @@ evaluatedPage =
         }
 
       </style>
-      <div id="menu_bar">`
+      <div id="menu_bar">
         <button id="renamefs" onClick="renameFs()">Rename File(s)</button>
         <button id="duplicatefs" onClick="duplicateFs()">Make a Copy</button>
         <button id="movefs" onClick="moveFs()">Move File(s)</button>
         <button id="createFolder" onClick="createFolder()">Create a Folder</button>
         <button id="deletefs" onClick="deleteFs()">Delete File(s)</button>
+        <div id="forprog"></div>
       </div>
       </head><body><h1><label value=path>@path</label></h1>
       <form id="fileListing"></form>
@@ -570,7 +608,7 @@ evaluatedPage =
           return;
         }
         console.log ("renamed", sel.id, newname);
-        doReloadPage();
+        goodReload();
       }
       function deleteFs() {
         var selected = getSelectedFiles();
@@ -597,7 +635,7 @@ evaluatedPage =
             }
             doWriteServer("unlink", "@path" + selected[i].id);
           }
-          doReloadPage();
+          goodReload();
           return;
         }
       }
@@ -627,7 +665,7 @@ evaluatedPage =
         if (resp) {
           console.error ("Duplicating file failed for some reason: ", resp);
         } 
-        doReloadPage();
+        goodReload();
       }
       function createFolder() {
         var btns = getSelectedFiles();
@@ -648,7 +686,7 @@ evaluatedPage =
           return;
         }
         doWriteServer("mkdir", newname, "");
-        doReloadPage();
+        goodReload();
       }
       function moveFs() {
         var btn = getOneFile("To move files or folders");
@@ -678,7 +716,7 @@ evaluatedPage =
         console.log ("renamimg\n%s\n%s", ("@path" + btn.id), (newpath + btn.id));
         doWriteServer("rename", oldloc, newloc); 
         console.log ("rename successful");
-        doReloadPage();
+        goodReload();
       }
 
       function radPressed(){
@@ -689,6 +727,47 @@ evaluatedPage =
             btns[i].checked = false;
           }
         }
+      }
+      var handleFiles = (files) => {
+        var pgbr = document.getElementById("forprog");
+        var progbar = document.getElementById("progress-bar");
+        if (!progbar) {
+          pgbr.append(el("progress", {id:"progress-bar", max:100, value:0, visible:true}, [], {}));
+          progbar = document.getElementById("progress-bar");
+        } else {
+          progbar.visible = true;
+        }
+        initializeProgress(files.length);
+        var didUp = false;
+        ([...files]).forEach((fl) => {
+          var isgud = true;
+          thisListDir.forEach(([nm, isdir]) => {
+            if (nm == fl.name) {
+              window.alert("File named " + fl.name + " already exists in this folder. Overwrite cancelled.", fl.name);
+              isgud = false;
+            }
+          });
+          if (isgud) {
+            editor.uploadFile("@path" + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
+            didUp = true;
+          }
+        });
+        progbar.value = 100;
+        progbar.visible = false;
+        if (didUp) {
+          goodReload();
+          pgbr.innerHTML = "";
+        }
+      }
+      function preventDefaults (e) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+      function handleDrop(e) {
+        preventDefaults(e);
+        let dt = e.dataTransfer;
+        let files = dt.files;
+        handleFiles(files);
       }
       function loadFileList() {
         let form = document.getElementById("fileListing");
@@ -738,40 +817,21 @@ evaluatedPage =
           name1.toLowerCase() < name2.toLowerCase() ? -1 : 0);
         for (i = 0; i < files.length; i++) {
           var [name, isDir] = files[i];
-          var link = isDir =="" ? name + "/?ls&edit" : name;
+          var link = isDir ==true ? name + "/?ls&edit" : name;
+          console.log ("in hereee");
           form.append(fileItemDisplay(link, name, isDir));
         }
 
-
+        form.append(el("input", {type:"file", id:"fileElem", onchange:"handleFiles(this.files)"}, [], {}));
       }
-      loadFileList();        
-      </script>
-    <form id="upfs" enctype="multipart/form-data">
-      <input type="file" name="files[]" multiple />
-      <input type="submit" value="Upload File" name="submit" />
-    </form>
-    <script>
-    const form = document.getElementById("upfs");
-
-    form.addEventListener('submit', e => {
-      //upload file
-      e.preventDefault()
-      const files = document.querySelector('[type=file]').files
-      for (let i = 0; i < files.length; i++) {
-        let file = files[i]
-        console.log (file);
-        console.log ("was file");
-        var flpath = "@(path)" + file.name;
-        console.log ("flpath %s", flpath);
-        if (isDuplicateHere(file.name)) {
-          window.alert ("File with this name already exists here. Overwriting cancelled.");
-          return;
-        }
-        editor.uploadFile(flpath, file, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
-        console.log ("client side completed upload request");
+      loadFileList();
+      var goodReload = () => {
+        document.getElementById("fileListing").innerHTML = "";
+        thisListDir = fullListDir ("@path");
+        loadFileList();
       }
-      if (files.length > 0) doReloadPage();
-    })
+    window.addEventListener('drop', handleDrop, false);
+    window.addEventListener('dragover', (e) => e.preventDefault(), false);
     </script></body></html>
   else if Regex.matchIn """\.txt$""" path then
     Ok <html><head></head><body>
