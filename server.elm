@@ -685,8 +685,7 @@ div#modify-menu input {
   width: 100%;
 }
 div#modify-menu #newTagName {
-  font-size: 1.4em;  
-  background-color: var(--context-dom-selector-color);
+  font-size: 1.4em;
   font-family: monospace;
   padding: 4px;
   flex: 1;
@@ -794,10 +793,9 @@ div.elementAttr {
   color: var(--context-dom-text-color);
 }
 
-div.no-children {
+div.no-children, div.no-parent {
   background-color: transparent;
   text-align: center;
-  width: 100%;
   text-transform: uppercase;
   color: black;
   padding: 10px;
@@ -806,6 +804,11 @@ div.no-children {
   font-weight: bold;
   line-height: 50px;
   font-size: 0.8rem;
+  pointer-events: none;
+}
+
+div.no-children {
+  width: 100%;
 }
       
 div.no-sibling {
@@ -818,6 +821,7 @@ div.no-sibling {
   font-weight: bold;
   min-width: 50px;
   padding-top: 20px;
+  pointer-events: none;
 }
 
 /* make button's text unselectable for better user experience */
@@ -843,8 +847,8 @@ div.no-sibling {
   --context-button-color-inert: rgba(128, 128, 128, 0.8);
   --context-button-color-inert-hover: rgba(150, 150, 150, 0.8);
   --context-button-color-inert-active: rgba(182, 182, 182, 0.8);
-  --context-dom-selector-color: rgba(0, 178, 179, 0.8);
-  --context-dom-children-selector-color: rgba(0, 212, 159, 0.8);
+  --context-dom-selector-color: rgba(0, 212, 159, 0.8);
+  --context-dom-children-selector-color: rgba(0, 178, 179, 0.8);
   --context-dom-text-color: whitesmoke;
   --context-menu-height: 30px;
   --context-menu-button-width: 40px;
@@ -1935,6 +1939,7 @@ editionscript = """
       visible: ifAlreadyRunning ? editor_model.visible : false,
       clickedElem: undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
+      previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
       notextselection: false,
       caretPosition: undefined,
       link: undefined,
@@ -2284,32 +2289,54 @@ editionscript = """
           |-----------------------|
 
           Two status:
-          Status 1 (default). if clicked element has children elements:
+          editor_model.displayClickedElemAsMainElem = true
+          Status 1 (default). Show current clicked element as main element on the top:
           |-----------------------|
           |    clicked element*   |
           |-----------------------|
           |   children elements   |
           |-----------------------|
 
-          Status 2. if clicked element has no children which is the bottom of the DOM tree:
+          Status 2. Show current clicked element's parent element as main element on the top:
           |-----------------------------------------------------|
           |                  parent element                     |
           |-----------------------------------------------------|  
           | previous sibling | clicked element* | next sibling  |
           |-----------------------------------------------------|
 
-          All the elements in the selector can be clicked.
+          All the HTML elements (except empty parts) in the selector can be clicked.
 
           Check parent: When the clicked element in status 1 is clicked in selector, the selector switches to status 2 (display its parent as main element in first level).
+          Check parent: When the parent element in status 2 is clicked in selector, the selector remains status 2 while the parent element becomes current clicked element.
           
           Check children: When the children element in status 1 is clicked in selector, it will become clicked element in status 1.
-          
           Check children: When the clicked elements in status 2 is clicked in selector, the selector switches to status 1 (only if it has children).
           
           Check siblings: When the siblings in status 2 is clicked in selector, the sibling will become 'clicked element' but the selector won't switch status 1. 
           The siblings will be in the middle of second level of status 2. This is because we want user switching siblings in second level easily.
 
           When other elements in selector are clicked, change 'clicked element' to it. And it also follow rules above.
+
+          Bonus feature (Memoization):
+            When user select DOM nodes along DOM tree from bottom to top continuously, the selector will remember its traverse path.
+            When user tries to traverse back through DOM tree from top to bottom, the selector will show previous visited children element with its parent element.
+            img -> div -> body
+            body -> div -> img
+
+            The main point is to decide which child should be displayed in the middle of second part (children element part) of selector in status 1.
+
+            Implementation:
+              editor_model.previousVisitedElem = [], as a stack storing DOM node path
+              
+              When user tries to visit siblings, clear the stack because previous path is broken, should restart memorizing
+              When user tries to visit parent element:
+                if the stack is empty, store current element and the parent element into stack;
+                if the stack contains sth.: if the top element of stack is the child of the parent element, then stores the parent element, otherwise clear the stack 
+              
+              When user tries to visit children element (traverse back):
+              if the stack is empty, show first 3 children of clicked element
+                if current clicked element is the top element of stack, pop the top element then show the top element of stack as middle children
+                otherwise clear the stack, then follow first rule
         */
         domSelector.classList.add("dom-selector-style");
         domSelector.append(
@@ -2324,8 +2351,8 @@ editionscript = """
               onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
               onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
             }),
-            el("div", {"class": "mainElemInfo"}, textPreview(elem, 50)) // display its text content
-          )
+            el("div", {"class": "mainElemInfo"}, textPreview(elem, 50))
+          );
         }
 
         let displayChildrenElem = function(elem) {
@@ -2344,8 +2371,8 @@ editionscript = """
           );
         }
 
+        // show attributes of element on the dom selector
         let displayElemAttr = function(targetDiv, elem) {
-          // show attribute of element on the dom selector
           for (let i = 0; elem && elem.attributes && i < elem.attributes.length; i++) {
             let name = elem.attributes[i].name;
             let value = elem.attributes[i].value;
@@ -2361,132 +2388,173 @@ editionscript = """
           }
         }
 
+        // display children and siblings in the second part of selector
+        let displayChildrenSiblings = function(middleChild, selectMiddleChild) {
+          // display clicked element's previous sibling, clicked element, clicked element's next sibling
+          let cnt = 0;
+          // display previous sibling
+          if (middleChild.previousElementSibling && 
+              (middleChild.previousElementSibling.id !== "context-menu" || middleChild.previousElementSibling.id !== "modify-menu" || middleChild.previousElementSibling.id !== "editbox")) {
+            displayChildrenElem(middleChild.previousElementSibling);
+            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
+              let c = middleChild.previousElementSibling;
+              if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                return;
+              }
+
+              // still in status 2, but clicked element change to previous sibling
+              editor_model.displayClickedElemAsMainElem = false;
+              editor_model.previousVisitedElem = []; // clear the stack
+              editor_model.clickedElem = c;
+              editor_model.notextselection = true;
+              updateInteractionDiv();
+            }
+          } else {
+            let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
+            childrenElemDiv.append(
+              el("div", {"class": "childrenSelector no-sibling"}, "no previous sibling")
+            );
+          }
+          cnt++;
+
+          // display certain child in the middle
+          displayChildrenElem(middleChild);
+          document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
+            let c = middleChild;
+            if (!c.tagName) {
+              return;
+            }
+
+            // switch to status 1
+            editor_model.displayClickedElemAsMainElem = true;
+            editor_model.clickedElem = c;
+            editor_model.notextselection = true;
+            updateInteractionDiv();
+          }
+          if (selectMiddleChild) {
+            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].classList.add("selectedDom");
+          }
+          cnt++;
+
+          // display next sibling
+          if (middleChild.nextElementSibling && (middleChild.nextElementSibling.id !== "context-menu" || middleChild.nextElementSibling.id !== "modify-menu" || middleChild.nextElementSibling.id !== "editbox")) {
+            displayChildrenElem(middleChild.nextElementSibling);
+            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
+              let c = middleChild.nextElementSibling;
+              if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                return;
+              }
+
+              // still in status 2, but clicked element change to next sibling
+              editor_model.displayClickedElemAsMainElem = false;
+              editor_model.previousVisitedElem = []; // clear the stack
+              editor_model.clickedElem = c;
+              editor_model.notextselection = true;
+              updateInteractionDiv();
+            }
+          } else {
+            let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
+            childrenElemDiv.append(
+              el("div", {"class": "childrenSelector no-sibling"}, "no next sibling")
+            );
+          }
+        }
+
+        // editor itself should be invisible
         if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
+          // status 1. display clicked element in main part
           if (editor_model.displayClickedElemAsMainElem) {
-            // status 1
-            // display clicked element in main part
             let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
             displayMainElem(clickedElem);
             domSelector.classList.add("selectedDom");
             mainElemDiv.onclick = function () {
-              if ((clickedElem.tagName && clickedElem.tagName === "HTML") || !clickedElem.tagName) {
+              if (!clickedElem.tagName) {
                 return;
               }
 
-              // switch to status 2
+              // When the main element in selector is clicked, selector switch to status 2 so that user can see its parent element
               editor_model.displayClickedElemAsMainElem = false;
               editor_model.clickedElem = clickedElem;
               editor_model.notextselection = true;
               updateInteractionDiv();
             }
-
             displayElemAttr(mainElemDiv, clickedElem);
 
-            // display children elements in second part
-            // if clickedElement has children elements
-            if (clickedElem.children.length > 0) {
-              // only display first 3 children elements
-              let childrenElem = clickedElem.children;
-              for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
-                // prevent displaying menus
-                if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu" || childrenElem[i].id === "editbox") {
-                  continue;
-                }
-                displayChildrenElem(childrenElem[i]);
-                document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
-                  if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-                    return;
+            // display children, if no previous selected child, display first 3 children elements in second part of selector
+            if (editor_model.previousVisitedElem.length < 2 ||
+                (editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1] != clickedElem)) {
+              if (editor_model.previousVisitedElem.length !== 0) {
+                editor_model.previousVisitedElem = [];
+              }
+              if (clickedElem.children.length > 0) {
+                // only display first 3 children elements
+                let childrenElem = clickedElem.children;
+                for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
+                  // prevent displaying editor itself
+                  if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu" || childrenElem[i].id === "editbox") {
+                    continue;
                   }
+                  displayChildrenElem(childrenElem[i]);
+                  document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
+                    let c = childrenElem[i];
+                    if (!c.tagName) {
+                      return;
+                    }
 
-                  // still in status 1
-                  editor_model.displayClickedElemAsMainElem = true;
-                  editor_model.clickedElem = c;
-                  editor_model.notextselection = true;
-                  updateInteractionDiv();
-                })(childrenElem[i]));
-                cnt++;
+                    // still in status 1
+                    editor_model.displayClickedElemAsMainElem = true;
+                    editor_model.clickedElem = c;
+                    editor_model.notextselection = true;
+                    updateInteractionDiv();
+                  }
+                  cnt++;
+                }
+              } else {
+                document.querySelector(".childrenElem").append(
+                    el("div", {"class": "no-children"}, "No Children")
+                );
               }
             } else {
-              document.querySelector(".childrenElem").append(
-                  el("div", {"class": "no-children"}, "No Children")
-              );
+              editor_model.previousVisitedElem.pop();
+              let middleChild = editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1];
+              displayChildrenSiblings(middleChild, false);
             }
           } else {
-            // status 2
-            // display clicked element's parent element in main part
+            // status 2. display clicked element's parent element in main part
             let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
-            displayMainElem(clickedElem.parentElement);
-            mainElemDiv.onclick = function () {
-              if ((clickedElem.parentElement.tagName && clickedElem.parentElement.tagName === "HTML") || !clickedElem.parentElement.tagName) {
-                return;
-              }
 
-              // switch to status 1, current clicked element's parent element becomes clicked element
-              editor_model.displayClickedElemAsMainElem = true;
-              editor_model.clickedElem = clickedElem.parentElement;
-              editor_model.notextselection = true;
-              updateInteractionDiv();
-            }
-
-            displayElemAttr(mainElemDiv, clickedElem.parentElement);
-
-            // display clicked element's previous sibling, clicked element, clicked element's next sibling
-            let cnt = 0;
-            if (clickedElem.previousElementSibling && (clickedElem.previousElementSibling.id !== "context-menu" || clickedElem.previousElementSibling.id !== "modify-menu" || clickedElem.previousElementSibling.id !== "editbox")) {
-              displayChildrenElem(clickedElem.previousElementSibling);
-              document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
-                if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+            // <html> has no parent element
+            if (clickedElem.parentElement) {
+              displayMainElem(clickedElem.parentElement);
+              mainElemDiv.onclick = function () {
+                if (!clickedElem.parentElement.tagName) {
                   return;
                 }
 
-                // still in status 2, but clicked element change to previous sibling
+                // still in status 2 while current clicked element's parent element becomes clicked element so that user can see grandparent element
                 editor_model.displayClickedElemAsMainElem = false;
-                editor_model.clickedElem = c;
-                editor_model.notextselection = true;
-                updateInteractionDiv();
-              })(clickedElem.previousElementSibling));
-            } else {
-              let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
-              childrenElemDiv.append(
-                el("div", {"class": "childrenSelector no-sibling"}, "no previous sibling")
-              );
-            }
-            cnt++;
-
-            displayChildrenElem(clickedElem);
-            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
-              if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-                return;
-              }
-
-              // switch to status 1
-              editor_model.displayClickedElemAsMainElem = true;
-              editor_model.clickedElem = c;
-              editor_model.notextselection = true;
-              updateInteractionDiv();
-            })(clickedElem));
-            document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].classList.add("selectedDom");
-            cnt++;
-
-            if (clickedElem.nextElementSibling && (clickedElem.nextElementSibling.id !== "context-menu" || clickedElem.nextElementSibling.id !== "modify-menu" || clickedElem.nextElementSibling.id !== "editbox")) {
-              displayChildrenElem(clickedElem.nextElementSibling);
-              document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].addEventListener("click", (c => event => {
-                if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-                  return;
+                // memoization. when user click parent element:
+                if (editor_model.previousVisitedElem.length === 0) {
+                  editor_model.previousVisitedElem.push(clickedElem);
+                  editor_model.previousVisitedElem.push(clickedElem.parentElement);
+                } else {
+                  if (editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1] == clickedElem) {
+                    editor_model.previousVisitedElem.push(clickedElem.parentElement);   // continuous storing path
+                  } else {
+                    editor_model.previousVisitedElem = []; // clear the stack
+                  }
                 }
-
-                // still in status 2, but clicked element change to next sibling
-                editor_model.displayClickedElemAsMainElem = false;
-                editor_model.clickedElem = c;
+                editor_model.clickedElem = clickedElem.parentElement;
                 editor_model.notextselection = true;
                 updateInteractionDiv();
-              })(clickedElem.nextElementSibling));
+              }
+              displayElemAttr(mainElemDiv, clickedElem.parentElement);
             } else {
-              let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
-              childrenElemDiv.append(
-                el("div", {"class": "childrenSelector no-sibling"}, "no next sibling")
+              document.querySelector(".mainElem").append(
+                  el("div", {"class": "no-parent"}, "No Parent")
               );
             }
+            displayChildrenSiblings(clickedElem, true);
           }
         }
       }
@@ -2558,7 +2626,6 @@ editionscript = """
           attrName === "" || attrName.trim() !== attrName
       }
       if(clickedElem && clickedElem.nodeType === 1) {
-        //      interactionDiv.append(el("div", {}, "Add an attribute:"));
         keyvalues.append(
           el("div", {"class": "keyvalue keyvalueadder"}, [
              el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name:"name"}, [], {onkeyup: highlightsubmit})),
@@ -2686,6 +2753,7 @@ editionscript = """
             {title: "Insert element", contenteditable: false},
             {onclick: (caretPosition => event => {
               editor_model.clickedElem = clickedElem;
+              editor_model.displayClickedElemAsMainElem = true;
               editor_model.insertElement = true;
               editor_model.caretPosition = caretPosition;
               updateInteractionDiv();
