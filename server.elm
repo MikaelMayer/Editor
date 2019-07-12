@@ -1591,7 +1591,7 @@ div#context-menu.visible {
   height: var(--context-menu-height);
   width: 200px;
 }
-div#context-menu .context-menu-button, div#modify-menu .modify-menu-button {
+div#context-menu .context-menu-button, div#modify-menu .modify-menu-button, div#modify-menu .modify-menu-icons .context-menu-button {
   background: var(--context-button-color);
   display: inline-block;
   width: var(--context-menu-button-width);
@@ -3289,7 +3289,8 @@ editionscript = """
         )
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
-      } else if(model.insertElement)  {
+      } else {
+      if(model.insertElement)  {
         interactionDiv.classList.add("insert-information-style");
         interactionDiv.classList.add("information-style");
         interactionDiv.append(el("h1", {}, "Insert"));
@@ -3405,6 +3406,8 @@ editionscript = """
           for(let i = 1; i <= 6; i++) {
             addElem("<h " + i + "> Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }});
           }
+          addElem("<style>", {tag:"style", children: "/*Your CSS there*/", props: {isghost: false}});
+          addElem("<script>", {tag:"script", children: "/*Your CSS below*/", props: {isghost: false} });
         }
 
         interactionDiv.append(
@@ -3418,7 +3421,7 @@ editionscript = """
           ])
         );
         document.querySelector("#modify-menu").classList.toggle("visible", true);
-      } else {
+      }
       if(clickedElem) {
         interactionDiv.classList.add("information-style");
         interactionDiv.append(el("div", {"class": "tagname-summary"}, [
@@ -3921,15 +3924,21 @@ editionscript = """
     }
     
     
-    // What to put in context menu?
-    contextMenu.innerHTML = "";
-    let numButtons = 0;
+      contextMenu.innerHTML = "";
+      var whereToAddContextButtons = contextMenu;
+      var noContextMenu = false;
+      // What to put in context menu?
+      if(onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head *, body"))) {
+        whereToAddContextButtons = modifyMenuIconsDiv;
+        noContextMenu = true;
+      }
+      let numButtons = 0;
       let addContextMenuButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
         button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
         button.classList.add("context-menu-button");
         button.innerHTML = innerHTML;
-        contextMenu.append(button);
+        whereToAddContextButtons.append(button);
         numButtons++;
       }
       if(model.link) {
@@ -4066,7 +4075,7 @@ editionscript = """
       }
       baseElem = model.selectionRange || baseElem || clickedElem;
       
-      if(baseElem) {
+      if(baseElem && !noContextMenu) {
         let clientRect = baseElem.getBoundingClientRect();
         // Find out where to place context menu.
         let clickedElemLeft = window.scrollX + clientRect.left;
@@ -4089,6 +4098,9 @@ editionscript = """
         contextMenu.style.top = desiredTop + "px";
         contextMenu.style.width = desiredWidth + "px";
         contextMenu.classList.add("visible");
+      }
+      if(noContextMenu) {
+        contextMenu.classList.remove("visible");
       }
       return true;
 
