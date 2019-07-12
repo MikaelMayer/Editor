@@ -246,7 +246,7 @@ luca =
     }
 
     //document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
-    let uploadProgress = [];
+    var uploadProgress = [];
 
     function initializeProgress(numFiles) {
       var progressBar = document.getElementById("progress-bar");
@@ -319,30 +319,19 @@ luca =
           return extension;
         }
       }
+      if(extension != "" && extension[extension.length-1] != "/") {
+        extension = extension + "/";
+      }
       // extension ends with a / or is empty
       var tmp = location.pathname.split("/");
       tmp = tmp.slice(0, tmp.length - 1);
-      storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
+      storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "/");
       return storageFolder;
     }
 	  editor.fs = { listdir: 
-		  @(if browserSide then """
-		    defaultOptions.nodefs.listdir
-		  """ else """
 		    function(dirname) {
-		      var xhr = new XMLHttpRequest();
-		      xhr.onreadystatechange = ((xhr, file) => () => {})
-		      xhr.open("GET", dirname, false);
-		      xhr.setRequestHeader("action", "listdir");
-		      xhr.setRequestHeader("name", dirname);
-		      xhr.send();
-		      if(xhr.status === 200) {
-		        return JSON.parse(xhr.responseText);
-		      } else {
-		        return [];
-		      }
+          return JSON.parse(doReadServer("listdir", dirname) || "[]");
 		    }
-		  """)
 	  };
     function el(tag, attributes, children, properties) {
       let tagClassIds = tag.split(/(?=#|\.)/g);
@@ -1989,7 +1978,7 @@ editionscript = """
   var buttonWidth  = () => onMobile() ? 48 : 40;
   console.log("editionscript running");
   
-  // Save/Load ghost attributes after a page is reloaded.
+  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
   // Same for some attributes
   function saveGhostAttributes() {
     var ghostModified = document.querySelectorAll("[ghost-visible]");
@@ -2098,6 +2087,11 @@ editionscript = """
         return [n.tagName.toLowerCase(), attributes, children];
       }
     }
+    function writeDocument(NC) {
+      document.open();
+      document.write(NC);
+      document.close();
+    }
     function replaceContent(NC) {
       if(editor_model.caretPosition) {
         editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
@@ -2108,12 +2102,16 @@ editionscript = """
       if(editor_model.clickedElem) {
         editor_model.clickedElem = dataToRecoverElement(editor_model.clickedElem);
       }
-      document.open();
-      document.write(NC);
-      document.close();
+      writeDocument(NC);
     }
     
     var t = undefined;
+    
+    onResponse = (xmlhttp) => function() {
+      if(xmlhttp.readyState == XMLHttpRequest.DONE) {
+        replaceContent(xmlhttp.responseText);
+      }
+    }
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
@@ -2660,7 +2658,7 @@ editionscript = """
           // IE9 and non-IE
           sel = window.getSelection();
           // do not paste html into modify menu
-          if (sel.anchorNode.offsetParent.id === "modify-menu") {
+          if (sel.anchorNode.offsetParent && sel.anchorNode.offsetParent.id === "modify-menu") {
             return;
           }
           if (sel.getRangeAt && sel.rangeCount) {
