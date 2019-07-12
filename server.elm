@@ -77,13 +77,15 @@ canEditPage = userpermissions.pageowner && varedit && not varls
 
 {freezeWhen} = Update
 
-serverOwned what = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
+serverOwned what obj = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
 
 If you really intended to modify this, add ?admin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
 
 For debugging purposes, below is the new value that was pushed:
 <pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
-""")
+Here is the old value that was computed
+<pre>@(Regex.replace "<" (always "&lt;") """@obj""")</pre>
+""") obj
 
 canEvaluate = listDict.get "evaluate" vars |> Maybe.withDefaultReplace (serverOwned "default value of evaluate" "true")
 
@@ -318,30 +320,19 @@ luca =
           return extension;
         }
       }
+      if(extension != "" && extension[extension.length-1] != "/") {
+        extension = extension + "/";
+      }
       // extension ends with a / or is empty
       var tmp = location.pathname.split("/");
       tmp = tmp.slice(0, tmp.length - 1);
-      storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "");
+      storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "/");
       return storageFolder;
     }
 	  editor.fs = { listdir: 
-		  @(if browserSide then """
-		    defaultOptions.nodefs.listdir
-		  """ else """
 		    function(dirname) {
-		      var xhr = new XMLHttpRequest();
-		      xhr.onreadystatechange = ((xhr, file) => () => {})
-		      xhr.open("GET", dirname, false);
-		      xhr.setRequestHeader("action", "listdir");
-		      xhr.setRequestHeader("name", dirname);
-		      xhr.send();
-		      if(xhr.status === 200) {
-		        return JSON.parse(xhr.responseText);
-		      } else {
-		        return [];
-		      }
+          return JSON.parse(doReadServer("listdir", dirname) || "[]");
 		    }
-		  """)
 	  };
     function el(tag, attributes, children, properties) {
       let tagClassIds = tag.split(/(?=#|\.)/g);
@@ -1988,7 +1979,7 @@ editionscript = """
   var buttonWidth  = () => onMobile() ? 48 : 40;
   console.log("editionscript running");
   
-  // Save/Load ghost attributes after a page is reloaded.
+  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
   // Same for some attributes
   function saveGhostAttributes() {
     var ghostModified = document.querySelectorAll("[ghost-visible]");
@@ -2097,6 +2088,11 @@ editionscript = """
         return [n.tagName.toLowerCase(), attributes, children];
       }
     }
+    function writeDocument(NC) {
+      document.open();
+      document.write(NC);
+      document.close();
+    }
     function replaceContent(NC) {
       if(editor_model.caretPosition) {
         editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
@@ -2107,12 +2103,16 @@ editionscript = """
       if(editor_model.clickedElem) {
         editor_model.clickedElem = dataToRecoverElement(editor_model.clickedElem);
       }
-      document.open();
-      document.write(NC);
-      document.close();
+      writeDocument(NC);
     }
     
     var t = undefined;
+    
+    onResponse = (xmlhttp) => function() {
+      if(xmlhttp.readyState == XMLHttpRequest.DONE) {
+        replaceContent(xmlhttp.responseText);
+      }
+    }
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
       console.log ("hello there");
@@ -2710,7 +2710,7 @@ editionscript = """
           // IE9 and non-IE
           sel = window.getSelection();
           // do not paste html into modify menu
-          if (sel.anchorNode.offsetParent.id === "modify-menu") {
+          if (sel.anchorNode.offsetParent && sel.anchorNode.offsetParent.id === "modify-menu") {
             return;
           }
           if (sel.getRangeAt && sel.rangeCount) {
