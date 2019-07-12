@@ -2829,8 +2829,23 @@ editionscript = """
       return href;
     }
     
+    // Prevent mouse down on modify-menu that end outside modify-menu to trigger onclick
+    var onMouseDownGlobal = function(event) {
+      var tmp = event.target;
+      while(tmp) {
+        if(tmp.getAttribute && tmp.getAttribute("id") == "modify-menu") {
+          editor_model.dismissNextClick = true;
+          return;
+        }
+        tmp = tmp.parentElement;
+      }
+    }
     
     var onClickGlobal = function (event) {
+      if(editor_model.dismissNextClick) {
+        editor_model.dismissNextClick = false;
+        return;
+      }
       var clickedElem = event.target;
       var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
       var matchOptions = function(clickedElem) {
@@ -4094,7 +4109,9 @@ editionscript = """
           }
         }"""
     else if varedit then
-      """document.addEventListener('click', onClickGlobal, false);"""
+      """document.addEventListener('click', onClickGlobal, false);
+         document.addEventListener('mousedown', onMouseDownGlobal, false);
+      """
     else "")
 @(if iscloseable then """
 window.onbeforeunload = function (e) {
