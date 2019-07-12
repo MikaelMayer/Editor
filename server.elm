@@ -1847,7 +1847,7 @@ editor.ghostNodes.push(insertedNode =>
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
 editor.ghostNodes.push(insertedNode => 
   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null &&
-  insertedNode.parentElement.tagName == "HEAD" && (insertedNode.setAttribute("save-ghost", "true") || true)
+  insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined" && (insertedNode.setAttribute("save-ghost", "true") || true)
 );
 // For ace script for syntax highlight
 editor.ghostNodes.push(insertedNode =>
@@ -1874,7 +1874,7 @@ function handleScriptInsertion(mutations) {
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
-        if(!hasGhostAncestor(insertedNode) && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode))) {
+        if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode))) {
          if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
          insertedNode.isghost = true;
         }
@@ -3269,17 +3269,17 @@ editionscript = """
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-          el("span", {}, [
-            el("input", {type: "radio", id: "radioInsertBeforeNode", name: "insertionPlace", value: "before"}),
-            el("label", {"for": "radioInsertBeforeNode"}, "Before node")]),
+            el("span", {}, [
+              el("input", {type: "radio", id: "radioInsertBeforeNode", name: "insertionPlace", value: "before"}),
+              el("label", {"for": "radioInsertBeforeNode"}, "Before node")]),
           clickedElem.tagName === "HTML" ? undefined :
-          el("span", {}, [
-            el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}),
-            el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")]),
+            el("span", {}, [
+              el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
+              el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")]),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-          el("span", {}, [
-            el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: true}),
-            el("label", {"for": "radioInsertAfterNode"}, "After node")]),
+            el("span", {}, [
+              el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD"  }),
+              el("label", {"for": "radioInsertAfterNode"}, "After node")]),
         ]));
 
         let insertTag = function() {
@@ -3288,7 +3288,7 @@ editionscript = """
             while(parent && !parent.classList.contains("tagName")) parent = parent.parentElement;
             let m = parent.querySelector(".templateengine");
             if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
-            return el(m.tag, m.attrs, m.children, m.props);
+            return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
           })();
           let insertionStyle = (() => {
             let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
@@ -3339,6 +3339,7 @@ editionscript = """
               clickedElem.insertBefore(newElement, null);
             }
           }
+          editor_model.insertElement = false;
           if(typeof newElement !== "string") {
             editor_model.clickedElem = newElement;
             updateInteractionDiv();
@@ -3351,15 +3352,15 @@ editionscript = """
         let addElem = function(name, createParams) {
           interactionDiv.append(
             el("div", {"class": "tagName"},
-              el("span", { "class": "templateengine"}, name, createParams), { onclick: insertTag }
+              el("span", { "class": "templateengine"}, name, { createParams: createParams } ), { onclick: insertTag }
             )
           );
         }
 
         if(clickedElem.tagName === "HEAD") {
-          addElem("Title", {tag:"title", children: "Page_title"});
-          addElem("Style", {tag:"style", children: "/*Your CSS there*/"});
-          addElem("Script", {tag:"script", children: "/*Your CSS below*/"});
+          addElem("Title", {tag:"title", children: "Page_title" });
+          addElem("Style", {tag:"style", children: "/*Your CSS there*/", props: {isghost: false}});
+          addElem("Script", {tag:"script", children: "/*Your CSS below*/", props: {isghost: false} });
         } else {
           interactionDiv.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
             onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
@@ -4029,12 +4030,14 @@ editionscript = """
               editor_model.displayClickedElemAsMainElem = true;
               editor_model.insertElement = true;
               updateInteractionDiv();
-              var sel = window.getSelection();
-              sel.removeAllRanges();
-              var range = document.createRange();
-              range.setStart(model.caretPosition.startContainer, model.caretPosition.startOffset);
-              range.setEnd(model.caretPosition.endContainer, model.caretPosition.endOffset);
-              sel.addRange(range);
+              if(typeof model.caretPosition != "undefined") {
+                var sel = window.getSelection();
+                sel.removeAllRanges();
+                var range = document.createRange();
+                range.setStart(model.caretPosition.startContainer, model.caretPosition.startOffset);
+                range.setEnd(model.caretPosition.endContainer, model.caretPosition.endOffset);
+                sel.addRange(range);
+              }
             }});
       }
 
