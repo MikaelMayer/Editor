@@ -3041,6 +3041,17 @@ editionscript = """
       e = e || window.event;
       e.preventDefault();
     }
+    
+    function restoreCaretPosition() {
+      if(typeof editor_model.caretPosition != "undefined") {
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        var range = document.createRange();
+        range.setStart(editor_model.caretPosition.startContainer, editor_model.caretPosition.startOffset);
+        range.setEnd(editor_model.caretPosition.endContainer, editor_model.caretPosition.endOffset);
+        sel.addRange(range);
+      }
+    }
 
     updateInteractionDiv();
 
@@ -3290,7 +3301,7 @@ editionscript = """
           clickedElem.tagName === "HTML" ? undefined :
             el("span", {}, [
               el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
-              el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")]),
+              el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")], {onclick: restoreCaretPosition}),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
             el("span", {}, [
               el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD"  }),
@@ -3355,6 +3366,7 @@ editionscript = """
             }
           }
           editor_model.insertElement = false;
+          editor_model.visible = true;
           if(typeof newElement !== "string") {
             editor_model.clickedElem = newElement;
             updateInteractionDiv();
@@ -3373,26 +3385,25 @@ editionscript = """
         }
 
         if(clickedElem.tagName === "HEAD") {
-          addElem("Title", {tag:"title", children: "Page_title" });
-          addElem("Style", {tag:"style", children: "/*Your CSS there*/", props: {isghost: false}});
-          addElem("Script", {tag:"script", children: "/*Your CSS below*/", props: {isghost: false} });
+          addElem("<title>", {tag:"title", children: "Page_title" });
+          addElem("<style>", {tag:"style", children: "/*Your CSS there*/", props: {isghost: false}});
+          addElem("<script>", {tag:"script", children: "/*Your CSS below*/", props: {isghost: false} });
         } else {
           interactionDiv.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
             onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
           );
           // TODO: Filter and sort which one we can add
-          addElem("List item", {tag:"li", props: { innerHTML: "<br>" }});
-          addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }});
-          addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n<li><br></li>\n</ol>" }});
-          addElem("Button", {tag: "button", props: {innerHTML: "Name_your_button" }});
+          addElem("<li> List item", {tag:"li", props: { innerHTML: "<br>" }});
+          addElem("<ul> Bulleted list", {tag:"ul", props: { innerHTMLCreate: "<ul>\n<li><br></li>\n</ul>" }});
+          addElem("<ol> Numbered list", {tag:"ol", props: { innerHTMLCreate: "<ol>\n<li><br></li>\n</ol>" }});
+          addElem("<button> Button", {tag: "button", props: {innerHTML: "Name_your_button" }});
 
-          // something is wrong with creating link and paragraph using childCreate
-          // addElem("Link", {tag:"a", childCreate: "Name_your_link"});
-          // addElem("Paragraph", {tag:"p", childCreate: "Inserted paragraph"});
-          addElem("Link", {tag: "a", props: { innerHTML: "Name_your_link", href: "" }});
-          addElem("Paragraph", {tag: "p", props: { innerHTML: "Insert_paragraph" }});
+          addElem("<a> Link", {tag: "a", props: { innerHTML: "Link name", href: "" }});
+          addElem("<p> Paragraph", {tag: "p", props: { innerHTML: "Inserted paragraph" }});
+          addElem("<img> Image", {tag: "img", attrs: { src: "", alt: "", title: "" }});
+          
           for(let i = 1; i <= 6; i++) {
-            addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }});
+            addElem("<h " + i + "> Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }});
           }
         }
 
@@ -4045,14 +4056,7 @@ editionscript = """
               editor_model.displayClickedElemAsMainElem = true;
               editor_model.insertElement = true;
               updateInteractionDiv();
-              if(typeof model.caretPosition != "undefined") {
-                var sel = window.getSelection();
-                sel.removeAllRanges();
-                var range = document.createRange();
-                range.setStart(model.caretPosition.startContainer, model.caretPosition.startOffset);
-                range.setEnd(model.caretPosition.endContainer, model.caretPosition.endOffset);
-                sel.addRange(range);
-              }
+              restoreCaretPosition();
             }});
       }
 
