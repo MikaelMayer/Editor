@@ -68,7 +68,6 @@ varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (f
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
 
 
-
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
 permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
@@ -246,7 +245,7 @@ luca =
     }
 
     //document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
-    let uploadProgress = [];
+    var uploadProgress = [];
 
     function initializeProgress(numFiles) {
       var progressBar = document.getElementById("progress-bar");
@@ -2116,6 +2115,7 @@ editionscript = """
     var t = undefined;
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
+      console.log ("hello there");
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           editor_model.isSaving = false;
           //console.log("Received new content. Replacing the page.");
@@ -2207,7 +2207,7 @@ editionscript = """
           }
           updateInteractionDiv(); 
         }
-    }
+    } //handleServerPOSTResponse
     
     window.onpopstate = function(e){
         console.log("onpopstate", e);
@@ -2227,6 +2227,9 @@ editionscript = """
         xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
       }
       var result = callback(xmlhttp);
+      console.log ("IS RESULT: ");
+      console.log (result);
+      console.log ("WAS RESULT");
       xmlhttp.send(result || "{\"a\":1}");
     }
     
@@ -2285,13 +2288,60 @@ editionscript = """
       if(document.getElementById("modify-menu")) {
         document.getElementById("modify-menu").append(newMenu);
       }
+      console.log ("here!!!");
       updateInteractionDiv();
+      
+      /*
+        Spawn new worker thread to 
+          (1) read SERVER_CONTENT. 
+            set up xmlhttp request and in the .then send a message back to this thread.
+          (2) save
+            on message over here needs to handle the incoming SERVER_CONTENT, then send it back
+            to the worker thread with the new action of saving, and with the content to save.
+      */
+
+      
+/*
+      var serverWorker = new Worker("TharzenEditor/editor.js");
+
+      var d = {action:"getServCont"}
+      serverWorker.onmessage = function(e) {
+        //handle incoming server content and post new message to serverWorker with it
+        if (e.data.action == "servCont") {
+          var data = {action:"sendMods", 
+                      toSend:JSON.stringify(domNodeToNativeValue(document.body.parentElement)), 
+                      gaidt:googleAuthIdToken,
+                      aq:editor_model.askQuestions,
+                      serverContent:e.data.servCont,
+                      loc:location.pathname + location.search,};
+          serverWorker.postMessage(data);
+        }
+        else if (e.data.action == "confirmDone") {
+          var xmlhttp = new XHRequest();
+          xmlhttp.response.setHeader("newLocalURL", e.data.newLocalURL);
+          xmlhttp.response.setHeader("newQueryStr", e.data.newQueryStr);
+          xmlhttp.response.setHeader("ambiguityKey", e.data.ambiguityKey);
+          xmlhttp.response.setHeader("ambiguityNumber", e.data.ambiguityNumber);
+          xmlhttp.response.setHeader("ambiguitySelected", e.data.ambiguitySelected);
+          xmlhttp.response.setHeader("ambiguityEnd", e.data.ambiguityEnd);
+          xmlhttp.response.setHeader("ambiguitySummaries", e.data.ambiguitySummaries);
+          xmlhttp.response.setHeader("opSummaryEncoded", e.data.opSummaryEncoded);
+          console.log (e.data.i);
+          //console.log (handleServerPOSTResponse(xmlhttp));
+          console.log ("worker confirmed save finished");
+        }
+      }
+      serverWorker.postMessage(d);
+      */
       setTimeout( () => {
         notifyServer(xmlhttp => {
           xmlhttp.setRequestHeader("question", editor_model.askQuestions ? "true" : "false");
-          return JSON.stringify(domNodeToNativeValue(document.body.parentElement));
-        })
+          var x = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
+          return x;
+        });
+        console.log ("server notified on this thread");
       }, 0);
+      console.log ("finished here!!!! o"); 
     }
 
     //other possible approaches
