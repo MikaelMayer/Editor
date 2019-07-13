@@ -179,7 +179,6 @@ applyDotEditor source =
                         (tuplesToWrite, joinedErrors))
                     |> Result.withDefaultMapError (\msg -> ([], msg))
               in
-              let _ = Debug.log "generatedFilesDict" generatedFilesDict in
               case listDict.get path generatedFilesDict of
                 Nothing -> if errors == "" then fs.read path else
                   Just <|
@@ -1365,11 +1364,17 @@ div#modify-menu input {
   padding: 6px;
   width: 100%;
 }
-div#modify-menu #newTagName {
+div#modify-menu .codefont {
   font-size: 1.4em;
   font-family: monospace;
+}
+div#modify-menu .tagname-input {
   padding: 4px;
   flex: 1;
+}
+div#modify-menu .tagname-input input {
+  display: inline-block;
+  width: 50%;
 }
 div#modify-menu .tagname-info {
   display: inline-block;
@@ -1379,7 +1384,7 @@ div#modify-menu .tagname-info {
   text-overflow: ellipsis;
   background: transparent;
   color: var(--context-dom-text-color);
-  flex: 2;
+  width: 50%;
 }
 div#modify-menu input[type=radio] {
   width: initial;
@@ -1657,7 +1662,10 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
 #applyNewTagName.visible {
   display: inline-block;
 }
-
+textarea#singleChildNodeContent {
+  width: 100%;
+  height: 50%;
+}
 
 @@media (pointer: coarse) {
   div#modify-menu {
@@ -2094,7 +2102,19 @@ editionscript = """
       document.write(NC);
       document.close();
     }
-    function replaceContent(NC) {
+    function saveDisplayProperties() {
+      let singleChildNodeContent = document.querySelector("textarea#singleChildNodeContent");
+      if(singleChildNodeContent) {
+        editor_model.textareaScroll = singleChildNodeContent.scrollTop;
+        editor_model.textareaSelectionStart = singleChildNodeContent.selectionStart;
+        editor_model.textareaSelectionEnd = singleChildNodeContent.selectionEnd;
+      }
+      console.log("saveDisplayProperties")
+      console.log("textareaScroll", editor_model.textareaScroll)
+      console.log("textareaSelectionStart", editor_model.textareaSelectionStart)
+      console.log("textareaSelectionEnd", editor_model.textareaSelectionEnd)
+    }
+    function saveRecoverableProperties() {
       if(editor_model.caretPosition) {
         editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
       }
@@ -2104,6 +2124,10 @@ editionscript = """
       if(editor_model.clickedElem) {
         editor_model.clickedElem = dataToRecoverElement(editor_model.clickedElem);
       }
+    }
+    function replaceContent(NC) {
+      saveDisplayProperties();
+      saveRecoverableProperties();
       writeDocument(NC);
     }
     
@@ -2285,6 +2309,7 @@ editionscript = """
       if(document.getElementById("modify-menu")) {
         document.getElementById("modify-menu").append(newMenu);
       }
+      saveDisplayProperties();
       updateInteractionDiv();
       setTimeout( () => {
         notifyServer(xmlhttp => {
@@ -3020,6 +3045,9 @@ editionscript = """
       redoStack: [],
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
+      textareaScroll: ifAlreadyRunning ? editor_model.textareaScroll : 0,
+      textareaSelectionStart: ifAlreadyRunning ? editor_model.textareaSelectionStart : 0,
+      textareaSelectionEnd: ifAlreadyRunning ? editor_model.textareaSelectionEnd: 0,
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
                     @(case listDict.get "question" vars of
                        Just questionattr -> "true"
@@ -3219,8 +3247,10 @@ editionscript = """
         //when we click reload, it will save the current scroll position as the one it was at the beginning of the run
         addModifyMenuIcon(reloadSVG,
           {"class": "tagName", title: "Reload the current page"},
-            {onclick: function(event) { editor_model.curScrollPos = (editor_model.displaySource ? document.getElementById("sourcecontentmodifier").scrollTop : 0);
-              reloadPage(); } }
+            {onclick: function(event) {
+               editor_model.curScrollPos = (editor_model.displaySource ? document.getElementById("sourcecontentmodifier").scrollTop : 0);
+               reloadPage();
+              } }
         );
         addModifyMenuIcon(folderSVG,
           {"class": "tagName", title: "List files in current directory"},
@@ -3269,7 +3299,7 @@ editionscript = """
                 value: source
                })])); 
           let sourceEdit = document.getElementById("sourcecontentmodifier")
-          sourceEdit.scrollTop = editor_model.curScrollPos;             
+          sourceEdit.scrollTop = editor_model.curScrollPos;
         }
         modifyMenuDiv.append(
           el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
@@ -3307,6 +3337,10 @@ editionscript = """
             el("span", {}, [
               el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD"  }),
               el("label", {"for": "radioInsertAfterNode"}, "After node")]),
+          clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
+            el("span", {}, [
+              el("input", {type: "radio", id: "radioInsertWrapNode", name: "insertionPlace", value: "wrap"}),
+              el("label", {"for": "radioInsertWrapNode"}, "Wrap node")]),
         ]));
 
         let insertTag = function() {
@@ -3338,6 +3372,17 @@ editionscript = """
             } else {
               clickedElem.parentElement.insertBefore(newElement, clickedElem);
             }
+          } else if(insertionStyle === "wrap") {
+            if(typeof newElement === "string") {
+              clickedElem.insertAdjacentHTML("beforebegin", newElement);
+              newElement = clickedElem.previousElementSibling;
+            } else {
+              newElement.innerHTML = "";
+              clickedElem.parentElement.insertBefore(newElement, clickedElem);
+              console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
+            }
+            newElement.appendChild(clickedElem);
+            console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
           } else if(typeof model.caretPosition !== "undefined") {
             let s = model.caretPosition;
             let txt = s.startContainer;
@@ -3425,10 +3470,15 @@ editionscript = """
       if(clickedElem) {
         interactionDiv.classList.add("information-style");
         interactionDiv.append(el("div", {"class": "tagname-summary"}, [
-          el("input", {"id":"newTagName", "class": "inline-input", "type":"text", value: "<" + clickedElem.tagName.toLowerCase() + ">", title:"This element's tag name"}, [], { onkeyup() {
-            document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
-          }}),
-          el("input", {"type": "text", "class": "tagname-info", "value": textPreview(clickedElem, 50), "readonly": "readonly"})
+          el("span", {class: "tagname-input codefont"}, [
+            "<",
+              el("input", {"id":"newTagName", "class": "codefont inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
+              document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+            }}),
+            ">"]
+            ),
+          ,
+          el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50))
           ]
         ));
 
@@ -3775,7 +3825,7 @@ editionscript = """
 
       let highlightsubmit = function() {
         let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
-        this.parentElement.parentElement.querySelector("button").disabled =
+        this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
           attrName === "" || attrName.trim() !== attrName
       }
 
@@ -3899,14 +3949,25 @@ editionscript = """
       }
 
       //interactionDiv.append(el("hr"));
-
-      if(clickedElem && (clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE" || clickedElem.tagName === "TITLE")) {
+      // Nodes only with 1 text child
+      if(clickedElem && clickedElem.childNodes.length === 1 && clickedElem.childNodes[0].nodeType === 3) {
+        
+        console.log("Restored textareaScroll", editor_model.textareaScroll)
+        console.log("Restored textareaSelectionStart", editor_model.textareaSelectionStart)
+        console.log("Restored textareaSelectionEnd", editor_model.textareaSelectionEnd)
         // interactionDiv.append(el("hr"));
-        interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
+        let txt = el("textarea", {id:"singleChildNodeContent"},
           [], {
             value: clickedElem.childNodes[0].textContent,
-            onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; }
-          }));
+            onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; },
+            onscroll: function() { editor_model.textareaScroll = this.scrollTop },
+          });
+        interactionDiv.append(txt);
+        setTimeout((txt => () => {
+          txt.scrollTop = editor_model.textareaScroll;
+          txt.selectionEnd = editor_model.textareaSelectionEnd;
+          txt.selectionStart = editor_model.textareaSelectionStart;
+        })(txt), 0);
       }
 
       // let user modify button content
@@ -3928,7 +3989,7 @@ editionscript = """
       var whereToAddContextButtons = contextMenu;
       var noContextMenu = false;
       // What to put in context menu?
-      if(onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head *, body"))) {
+      if(onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
         whereToAddContextButtons = modifyMenuIconsDiv;
         noContextMenu = true;
       }
