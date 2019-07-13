@@ -1475,7 +1475,11 @@ div.childrenSelectorInfo {
 }
 
 div.elementAttr {
-  font-size: 0.6em;
+  font-size: 0.5em;
+  line-height: 1.02em;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
   color: var(--context-dom-text-color);
 }
 
