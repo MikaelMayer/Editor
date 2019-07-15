@@ -202,6 +202,14 @@ LUCA stands for "Last Universal Common Ancestor"
 
 luca = 
   [<script>
+    var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
+
+    function writeDocument(NC) {
+      document.open();
+      document.write(NC);
+      document.close();
+    }
+    
     function doReadServer(action, name) {
       if (typeof readServer != "undefined") {
         console.log("reading server");
@@ -241,9 +249,19 @@ luca =
         }
       }
     }
-    function doReloadPage() {
-      document.location.reload();
-      //TODO not full reload bump: Mikael
+    function doReloadPage(url) {
+      var xmlhttp = new XHRequest();
+      xmlhttp.onreadystatechange = (xmlhttp => () => {
+        if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+          //source of the editing menu disappearing after reloading
+          writeDocument(xmlhttp.responseText);
+        }
+      })(xmlhttp);
+      xmlhttp.open("POST", location.pathname + location.search);
+      xmlhttp.setRequestHeader("reload", "true");
+      xmlhttp.setRequestHeader("url", url);
+      console.log("setting url to ", url);
+      xmlhttp.send("{\"a\":1}");
     }
 
     //document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
@@ -874,7 +892,11 @@ evaluatedPage =
               el("input", getRecordForCheckbox(name), ""),
               el("label", {for:name, value:name}, [
                 isDir ? dirIcon() : extensionIcon(name),
-                el("a", {href:link}, name)])]);
+                el("a", {href:link}, name, {onclick: function(event) {
+                  event.preventDefault();
+                  let link = this.getAttribute("href");
+                  doReloadPage(link);
+                }})])]);
         }
         //el(tag, attributes, children, properties)
         if (path != "") {
@@ -1774,8 +1796,6 @@ browserSide = listDict.get "browserSide" defaultOptions == Just True
 
 initialScript = [
 <script>
-var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
-
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
 // https://stackoverflow.com/questions/32902734/how-to-make-google-sign-in-token-valid-for-longer-than-1-hour
@@ -2102,11 +2122,6 @@ editionscript = """
         }
         return [n.tagName.toLowerCase(), attributes, children];
       }
-    }
-    function writeDocument(NC) {
-      document.open();
-      document.write(NC);
-      document.close();
     }
     function saveDisplayProperties() {
       let singleChildNodeContent = document.querySelector("textarea#singleChildNodeContent");
