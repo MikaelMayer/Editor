@@ -1374,7 +1374,7 @@ div#modify-menu .tagname-input {
 }
 div#modify-menu .tagname-input input {
   display: inline-block;
-  width: 50%;
+  width: 100%;
 }
 div#modify-menu .tagname-info {
   display: inline-block;
@@ -1385,6 +1385,8 @@ div#modify-menu .tagname-info {
   background: transparent;
   color: var(--context-dom-text-color);
   width: 50%;
+  flex: 2;
+  line-height: 3.5em;
 }
 div#modify-menu input[type=radio] {
   width: initial;
@@ -3475,11 +3477,10 @@ editionscript = """
         interactionDiv.classList.add("information-style");
         interactionDiv.append(el("div", {"class": "tagname-summary"}, [
           el("span", {class: "tagname-input codefont"}, [
-            "<",
               el("input", {"id":"newTagName", "class": "codefont inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
               document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
             }}),
-            ">"]
+            ]
             ),
           ,
           el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50))
@@ -3796,7 +3797,7 @@ editionscript = """
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
               el("span", {},
-                el("input", {"type": "text", value: value, "id": ("image-" + name + "-input")}, 
+                el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, 
                   [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
@@ -3857,7 +3858,7 @@ editionscript = """
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-            document.getElementById("image-src-input").setAttribute("value", file.name);
+            document.getElementById("dom-attr-src").setAttribute("value", file.name);
             clickedElem.setAttribute("src", targetPathName);
           });
         }
@@ -3909,7 +3910,7 @@ editionscript = """
                 }
                 // replace image
                 clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
-                document.getElementById("image-src-input").setAttribute("value", this.children[0].getAttribute("src"));
+                document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
                 // this.style.outline = "2px solid white";
                 this.classList.add("highlight-select-image");
               }
