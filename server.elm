@@ -249,20 +249,33 @@ luca =
         }
       }
     }
-    function doReloadPage(url) {
+    // Page reloading without trying to recover the editor's state.
+    function doReloadPage(url, replaceState) {
       var xmlhttp = new XHRequest();
-      xmlhttp.onreadystatechange = (xmlhttp => () => {
+      xmlhttp.onreadystatechange = ((xmlhttp, replaceState) => () => {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           //source of the editing menu disappearing after reloading
           writeDocument(xmlhttp.responseText);
+          var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
+          if(newLocalURL) {
+            window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+          }
         }
-      })(xmlhttp);
+      })(xmlhttp, replaceState);
       xmlhttp.open("POST", location.pathname + location.search);
       xmlhttp.setRequestHeader("reload", "true");
       xmlhttp.setRequestHeader("url", url);
       console.log("setting url to ", url);
       xmlhttp.send("{\"a\":1}");
     }
+    window.onpopstate = function(e){
+        console.log("onpopstate", e);
+        if(e.state && e.state.localURL) {
+          doReloadPage(location, true);
+        } else {
+          doReloadPage(location.pathname + location.search, true);
+        }
+    };
 
     //document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
     var uploadProgress = [];
