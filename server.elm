@@ -3796,7 +3796,7 @@ editionscript = """
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
               el("span", {},
-                el("input", {"type": "text", value: value, "id": "image-src-input"},
+                el("input", {"type": "text", value: value, "id": ("image-" + name + "-input")}, 
                   [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
