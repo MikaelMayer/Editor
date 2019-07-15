@@ -2113,10 +2113,6 @@ editionscript = """
         editor_model.textareaSelectionStart = singleChildNodeContent.selectionStart;
         editor_model.textareaSelectionEnd = singleChildNodeContent.selectionEnd;
       }
-      console.log("saveDisplayProperties")
-      console.log("textareaScroll", editor_model.textareaScroll)
-      console.log("textareaSelectionStart", editor_model.textareaSelectionStart)
-      console.log("textareaSelectionEnd", editor_model.textareaSelectionEnd)
     }
     function saveRecoverableProperties() {
       if(editor_model.caretPosition) {
@@ -3796,7 +3792,7 @@ editionscript = """
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
               el("span", {},
-                el("input", {"type": "text", value: value, "id": "image-src-input"},
+                el("input", {"type": "text", name: name, value: value, "id": "image-src-input"},
                   [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
@@ -3837,7 +3833,21 @@ editionscript = """
         keyvalues.append(
           el("div", {"class": "keyvalue keyvalueadder"}, [
             el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
-            el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {onkeyup: highlightsubmit})),
+            el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
+              onfocus: function() {
+                let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
+                if(keyInput && keyInput.value != "") {
+                  let name = document.querySelector("div.keyvalueadder input[name=name]").value;
+                  clickedElem.setAttribute(
+                    name,
+                    document.querySelector("div.keyvalueadder input[name=value]").value
+                  );
+                  updateInteractionDiv();
+                  let d=  document.querySelector("div.keyvalue input[name=" + name +"]");
+                  if(d) d.focus();
+                }
+              },
+              onkeyup: highlightsubmit})),
             el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
               disabled: true,
               onclick() {
@@ -3845,7 +3855,6 @@ editionscript = """
                   this.parentElement.querySelector("[name=name]").value,
                   this.parentElement.querySelector("[name=value]").value
                 );
-                editor_model.clickedElem = clickedElem;
                 updateInteractionDiv();
               }
             })
@@ -3951,19 +3960,15 @@ editionscript = """
         // show lists of images in selected image's folder
         showListsImages(srcName);
       }
-
+      let voidTags = {AREA: true, BASE: true, BR: true, COL: true, COMMANd: true, EMBED: true, HR: true, IMG: true, INPUT: true, KEYGEN: true, LINK: true, META: true, PARAM: true, SOURCE: true, TRACK: true, WBR: true};
       //interactionDiv.append(el("hr"));
       // Nodes only with 1 text child
-      if(clickedElem && clickedElem.childNodes.length === 1 && clickedElem.childNodes[0].nodeType === 3) {
-        
-        console.log("Restored textareaScroll", editor_model.textareaScroll)
-        console.log("Restored textareaSelectionStart", editor_model.textareaSelectionStart)
-        console.log("Restored textareaSelectionEnd", editor_model.textareaSelectionEnd)
+      if(clickedElem && clickedElem.children.length === 0 && !voidTags[clickedElem.tagname]) {
         // interactionDiv.append(el("hr"));
         let txt = el("textarea", {id:"singleChildNodeContent"},
           [], {
-            value: clickedElem.childNodes[0].textContent,
-            onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; },
+            value: clickedElem.innerText,
+            onkeyup: function () { clickedElem.textContent = this.value; },
             onscroll: function() { editor_model.textareaScroll = this.scrollTop },
           });
         interactionDiv.append(txt);
