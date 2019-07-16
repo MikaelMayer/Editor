@@ -1283,6 +1283,10 @@ div.disambiguationMenu {
   color: green;
 }
 
+div.escape-button {
+
+}
+
 div#modify-menu {
   -webkit-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
   -moz-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
@@ -1323,6 +1327,7 @@ div#modify-menu > div.information {
   max-height: calc(100% - var(--context-menu-height));
   margin: 2%;
   border-radius: 0.3em;
+  padding-bottom: 100px;
 }
 
 div.#modify-menu > div.information-style {
@@ -1392,7 +1397,9 @@ div#modify-menu input[type=radio] {
   width: initial;
   font-size: 1em;
 }
-
+div#modify-menu span#insertOption{
+  display: block;
+}
 div.keyvalue > span > input {
   border-radius: 4px;
   margin: 2px;
@@ -3045,6 +3052,7 @@ editionscript = """
       //data structures to represent undo/redo "stack"
       undoStack: [],
       redoStack: [],
+      linkSelectMode: false,
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       textareaScroll: ifAlreadyRunning ? editor_model.textareaScroll : 0,
@@ -3170,6 +3178,7 @@ editionscript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
+      if(!editor_model.linkSelectMode) {
       addPinnedModifyMenuIcon(
         panelOpenCloseIcon(),
         {title: "Open/close settings tab", "class": "inert" },
@@ -3195,7 +3204,6 @@ editionscript = """
           updateInteractionDiv();
         })(clickedElem)}
       )
-
       addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
       {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           id: "savebutton"  
@@ -3228,6 +3236,18 @@ editionscript = """
           }
         }
       );
+      }
+      else {
+        addPinnedModifyMenuIcon(folderSVG + "<span class='modify-menu-icon-label'>Escape</span>", 
+          {"class": "escape-button", title: "Go back to original screen",
+            id: "escapebutton"
+          },
+          {onclick: function(event) {
+            editor_model.linkSelectMode = false;
+            updateInteractionDiv();
+            }
+          }
+      }
 
       if(model.advanced || model.disambiguationMenu) {
         modifyMenuDiv.append(
@@ -3328,19 +3348,19 @@ editionscript = """
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {}, [
+            el("span", {id: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertBeforeNode", name: "insertionPlace", value: "before"}),
               el("label", {"for": "radioInsertBeforeNode"}, "Before node")]),
           clickedElem.tagName === "HTML" ? undefined :
-            el("span", {}, [
+            el("span", {id: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
               el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")], {onclick: restoreCaretPosition}),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {}, [
+            el("span", {id: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD"  }),
               el("label", {"for": "radioInsertAfterNode"}, "After node")]),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {}, [
+            el("span", {id: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertWrapNode", name: "insertionPlace", value: "wrap"}),
               el("label", {"for": "radioInsertWrapNode"}, "Wrap node")]),
         ]));
@@ -3763,6 +3783,15 @@ editionscript = """
         }
       }
 
+      function linkselect() {
+        editor_model.visible = false;
+        editor_model.linkSelectMode = true;
+        updateInteractionDiv();
+        popupMessage("Please select an element to link to.");
+        
+      }
+
+
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
             let newel = el(document.querySelector("#newTagName").value);
             let elements = clickedElem.childNodes;
@@ -3818,6 +3847,10 @@ editionscript = """
                   editor_model.clickedElem = clickedElem;
                   updateInteractionDiv();
                 })(name)
+              }),
+              el("div", {"class":"modify-menu-icon", id: "internalLinkMode"}, [] {
+                innerHTML: plusSVG;
+                onclick: linkselect();
               })
               ]
             ));
@@ -3829,6 +3862,7 @@ editionscript = """
         this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
           attrName === "" || attrName.trim() !== attrName
       }
+
 
       if(clickedElem && clickedElem.nodeType === 1) {
         keyvalues.append(
