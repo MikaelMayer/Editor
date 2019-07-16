@@ -1283,13 +1283,6 @@ div.disambiguationMenu {
   color: green;
 }
 
-/*link select stuff */
-.escape-button {
-  color: var(--context-dom-text-color);
-  background-color: #8B0000;
-}
-
-
 div#modify-menu {
   -webkit-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
   -moz-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
@@ -1334,7 +1327,6 @@ div#modify-menu > div.information {
   max-height: calc(100% - var(--context-menu-height));
   margin: 2%;
   border-radius: 0.3em;
-  padding-bottom: 100px;
 }
 
 div.#modify-menu > div.information-style {
@@ -1622,6 +1614,10 @@ div#context-menu .context-menu-button, div#modify-menu .modify-menu-button, div#
   width: var(--context-menu-button-width);
   cursor: pointer;
 }
+/*.link-select-button{
+  color: var(--context-dom-text-color);
+  background-color: #8B0000;
+}*/
 div#context-menu .context-menu-button, div#modify-menu .modify-menu-icons:not(.pinned) .modify-menu-button {
   height: var(--context-menu-height);
 }
@@ -1646,6 +1642,12 @@ div#modify-menu .modify-menu-icon-label {
   display: block;
   color: white;
   font-size: calc(var(--context-menu-button-width) / 3);
+  text-align: center;
+}
+div#modify-menu .modify-menu-icon-label-link {
+  display: block;
+  color: white;
+  font-size: calc(var(--context-menu-button-width) / 4);
   text-align: center;
 }
 div#context-menu .context-menu-button > svg, div#modify-menu .modify-menu-button > svg {
@@ -2807,6 +2809,12 @@ editionscript = """
           e.preventDefault();
           if(!redo()) popupMessage("Nothing to redo!");
         }
+        if(editor_model.linkSelectMode) {
+          if(e.which == 27) {
+            editor_model.linkSelectMode = false;
+            updateInteractionDiv();
+          }
+        }
       };
       
       var bodyeditable = document.querySelector("body[contenteditable=true]");
@@ -3060,6 +3068,8 @@ editionscript = """
       undoStack: [],
       redoStack: [],
       linkSelectMode: false,
+      linkFrom: undefined,
+      idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       textareaScroll: ifAlreadyRunning ? editor_model.textareaScroll : 0,
@@ -3245,12 +3255,42 @@ editionscript = """
         );
       }
       else {
-        addPinnedModifyMenuIcon(folderSVG + "<span class='modify-menu-icon-label'>ESC</span>", 
-          {"class": "escape-button", title: "Go back to original screen",
+        addPinnedModifyMenuIcon(folderSVG + "<span class='modify-menu-icon-label-link'>ESCAPE</span>", 
+          {"class": "link-select-button", title: "Go back to original screen",
             id: "escapebutton"
           },
           {onclick: function(event) {
+            editor_model.clickedElem = editor_model.linkFrom;
             editor_model.linkSelectMode = false;
+            editor_model.linkFrom = undefined;
+            updateInteractionDiv();
+            }
+          }
+        )
+        addPinnedModifyMenuIcon(plusSVG + "<span class='modify-menu-icon-label-link'>SELECT</span>", 
+          {"class": "link-select-button", title: "Select desired local link",
+            id: "selectbutton"
+          },
+          {onclick: function(event) {
+            let linkTo = editor_model.clickedElem,
+                targetID = linkTo.getAttribute("id");
+            console.log("Target ID is:", targetID);
+            if(!targetID) {
+              targetID = "ID" + editor_model.idNum
+              linkTo.setAttribute("id", targetID);
+              editor_model.idNum += 1;
+              console.log("here!");
+            }
+            else if(targetID.length > 100) {
+              targetID = targetID.trim();
+              linkTo.setAttribute("id", targetID);
+            }
+            console.log("TargetID is now:", targetID);  
+            editor_model.linkFrom.setAttribute("href", "#" + targetID);
+
+            editor_model.clickedElem = editor_model.linkFrom;
+            editor_model.linkSelectMode = false;
+            editor_model.linkFrom = undefined;
             updateInteractionDiv();
             }
           }
@@ -3777,17 +3817,22 @@ editionscript = """
         }
       }
 
+      //    |--  |\ |  |--
+      //    |--  | \|  |  | of DOM SELECTOR
+      //    |--  |  |  |--
+
+
       let linkSelect = function() {
         editor_model.visible = false;
         editor_model.linkSelectMode = true;
-        while(!editor_model.clickedElem.parentElement) {
-          editor_model.clickedElem = editor_model.clickedElem.parentElement;
-        }
+        editor_model.linkFrom = editor_model.clickedElem;
+        //"center" clicked element on document body
+        editor_model.clickedElem = document.body;
         //removes all context menu stuff 
         document.querySelector("#context-menu").classList.remove("visible");
         updateInteractionDiv();
         popupMessage("Please select an element to link to.");
-        
+
       }
 
 
