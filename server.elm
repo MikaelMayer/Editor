@@ -1409,7 +1409,6 @@ div#modify-menu .tagname-input {
 }
 div#modify-menu .tagname-input input {
   display: inline-block;
-  width: 100%;
 }
 div#modify-menu .tagname-info {
   display: inline-block;
@@ -1419,7 +1418,6 @@ div#modify-menu .tagname-info {
   text-overflow: ellipsis;
   background: transparent;
   color: var(--context-dom-text-color);
-  width: 50%;
   flex: 2;
   line-height: 3.5em;
 }
@@ -1438,6 +1436,7 @@ div.tagname-summary {
   background-color: var(--context-dom-selector-color);
   border-radius: 0.4em;
   padding: 4px;
+  margin: 2%;
 }
 
 .inline-input {
@@ -1508,7 +1507,7 @@ div.childrenSelectorInfo {
   overflow: hidden;
   color: var(--context-dom-text-color);
   height: 38px;
-  font-size: 0.9em;
+  font-size: 0.8em;
 }
 
 div.elementAttr {
@@ -3168,8 +3167,10 @@ editionscript = """
       let interactionDiv = el("div", {"class": "information"});
       modifyMenuDiv.append(modifyMenuPinnedIconsDiv);
       let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
-      
+      let tagNameSummary = el("div", {"class": "tagname-summary"});
+
       modifyMenuDiv.append(domSelector);
+      modifyMenuDiv.append(tagNameSummary);
       modifyMenuDiv.append(modifyMenuIconsDiv);
       modifyMenuDiv.append(interactionDiv);
       let createButton = function(innerHTML, attributes, properties) {
@@ -3499,17 +3500,13 @@ editionscript = """
       }
       if(clickedElem) {
         interactionDiv.classList.add("information-style");
-        interactionDiv.append(el("div", {"class": "tagname-summary"}, [
-          el("span", {class: "tagname-input codefont"}, [
+        tagNameSummary.append(el("div", {class: "tagname-input codefont"}, [
               el("input", {"id":"newTagName", "class": "codefont inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
               document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
             }}),
             ]
-            ),
-          ,
-          el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50))
-          ]
         ));
+        tagNameSummary.append(el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50)));
 
         /*
           Build the DOM node selector:
