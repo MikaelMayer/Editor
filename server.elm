@@ -1589,7 +1589,7 @@ div.tagName:hover {
   background: var(--context-button-color-hover);
 }
 
-[ghost-hovered=true] {
+[fd=true] {
   outline: 2px dashed var(--context-color-next);
 }
 [ghost-clicked=true] {
@@ -3884,6 +3884,10 @@ editionscript = """
               ),
               isHref ? el("span", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [],
                         {innerHTML: liveLinkSVG(model.link)}): undefined,
+              isHref ? el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Activate internal link mode"}, [], {
+                innerHTML: plusSVG,
+                onclick: linkSelect
+              }): undefined,
               el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
                 innerHTML: wasteBasketSVG,
                 onclick: ((name) => function() {
@@ -3892,12 +3896,8 @@ editionscript = """
                   updateInteractionDiv();
                 })(name)
               }),
-              el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Activate internal link mode"}, [], {
-                innerHTML: plusSVG,
-                onclick: linkSelect
-              })
-              ]
-            ));
+            ]
+          ));
         }
       }
 
