@@ -1242,6 +1242,9 @@ div.disambiguationMenu {
 [ghost-visible=false] {
   display: none !important;
 }
+[ghost-hovered=true] {
+  opacity: 0.2;
+}
 #manualsync-menuitem> button {
   vertical-align: top;
   opacity: 0.5;
@@ -3195,6 +3198,15 @@ editionscript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
+      function escapeLinkMode() {
+        removeEventListener('mouseover', linkModeHover1, true);
+        removeEventListener('mouseout', linkModeHover2, true);
+        console.log("Got here!");
+        editor_model.clickedElem = editor_model.linkFrom;
+        editor_model.linkSelectMode = false;
+        editor_model.linkFrom = undefined;
+        updateInteractionDiv();
+      }
       if(!editor_model.linkSelectMode) {
         addPinnedModifyMenuIcon(
           panelOpenCloseIcon(),
@@ -3260,10 +3272,7 @@ editionscript = """
             id: "escapebutton"
           },
           {onclick: function(event) {
-            editor_model.clickedElem = editor_model.linkFrom;
-            editor_model.linkSelectMode = false;
-            editor_model.linkFrom = undefined;
-            updateInteractionDiv();
+            escapeLinkMode();
             }
           }
         )
@@ -3288,10 +3297,8 @@ editionscript = """
             console.log("TargetID is now:", targetID);  
             editor_model.linkFrom.setAttribute("href", "#" + targetID);
 
-            editor_model.clickedElem = editor_model.linkFrom;
-            editor_model.linkSelectMode = false;
-            editor_model.linkFrom = undefined;
-            updateInteractionDiv();
+
+            escapeLinkMode();
             }
           }
         )
@@ -3822,6 +3829,33 @@ editionscript = """
       //    |--  |  |  |--
 
 
+      function hasModifyMenuParent (node) {
+        if(node.parentNode) {
+          if(node.parentNode.getAttribute("class") === "modify-menu") return true;
+        }
+        else if(!node.parentNode) {
+          return false;
+        }
+        else {
+          return hasModifyMenuParent(node.parentNode);
+        }
+      }
+
+      var linkModeHover1 = function (event) {
+        console.log(event.target.getAttribute("class"));
+        if(event.target && !(hasModifyMenuParent(event.target))) { 
+          event.target.setAttribute("ghost-hovered", true);
+          updateInteractionDiv();
+          console.log("hey!");
+        }
+      }
+      var linkModeHover2 = function(event) {
+        if(event.target && !(hasModifyMenuParent(event.target)) {
+          event.target.removeAttribute("ghost-hovered");
+          updateInteractionDiv();
+        }
+      }
+
       let linkSelect = function() {
         editor_model.visible = false;
         editor_model.linkSelectMode = true;
@@ -3832,6 +3866,9 @@ editionscript = """
         document.querySelector("#context-menu").classList.remove("visible");
         updateInteractionDiv();
         popupMessage("Please select an element to link to.");
+
+        addEventListener('mouseover', linkModeHover1);
+        addEventListener('mouseout', linkModeHover2);
 
       }
 
