@@ -2372,6 +2372,12 @@ editionscript = """
         Object.defineProperty(m, 'URValue', {value: m.oldValue, writable: true});
       }
       Object.defineProperty(m, 'timestamp', {value: time})
+
+      //limit on size of UndoStack, will begin to forget undoable changes after a while (we can investigate exact limit)
+      if(editor_model.undoStack[length] > 200) {
+        editor_model.undoStack.pop();
+      }
+
       //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
       //and should be combined together when undoing/redoing
       lastUndo = editor_model.undoStack[editor_model.undoStack.length-1]; 
@@ -2386,6 +2392,12 @@ editionscript = """
         lastUndo.push(m);
         editor_model.undoStack.push(lastUndo);
       }     
+      //needs more thought, 
+
+      if(editor_model.redoStack.length) {
+        editor_model.redoable = false;
+        editor_model.undoState = editor_model.undoStack.length;
+      }
     }
     
     function handleMutations(mutations) {
@@ -2629,7 +2641,10 @@ editionscript = """
       printstacks();
       let redoElem = editor_model.redoStack.pop();
       //console.log("Current redo element is:", redoElem);
-      if(redoElem === undefined) {
+      if(!redoable) {
+        return false;
+      }
+      else if(redoElem === undefined ) {
         return false;
       }
       outputValueObserver.disconnect();
@@ -3083,6 +3098,7 @@ editionscript = """
       //data structures to represent undo/redo "stack"
       undoStack: [],
       redoStack: [],
+      redoable: true;
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       textareaScroll: ifAlreadyRunning ? editor_model.textareaScroll : 0,
