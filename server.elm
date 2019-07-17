@@ -246,6 +246,16 @@ luca =
       //TODO not full reload bump: Mikael
     }
 
+    function pushNotification(msg) {
+      /*
+      TODO send message to the notifications stack, display a disappearing text box with
+      the notification in it. If this text box is clicked, it expands to show the whole
+      notification stack. 
+
+      Right now this code just calls window.alert() to tell the user of the notification.
+      */
+    }
+
     //document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
     var uploadProgress = [];
 
@@ -274,11 +284,11 @@ luca =
     // Editor's API should be stored in the variable editor.
 
     editor = typeof editor === "object" ? editor : {};
-    editor.uploadFile = function(targetPathName, file, onOk, onError) {
+    editor.uploadFile = function(targetPathName, file, onOk, onError, updateProgFunction) {
       
       var xhr = new XMLHttpRequest();
       xhr.onprogress = (e) => {
-        updateProgress(i, (e.loaded * 100.0 / e.total) || 100)
+        updateProgFunction(i, (e.loaded * 100.0 / e.total) || 100)
       }
       xhr.onreadystatechange = ((xhr, file) => () => {
         if (xhr.readyState == XMLHttpRequest.DONE) {
@@ -818,7 +828,7 @@ evaluatedPage =
             }
           });
           if (isgud) {
-            editor.uploadFile("@path" + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
+            editor.uploadFile("@path" + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
             didUp = true;
           }
         });
@@ -2116,6 +2126,7 @@ editionscript = """
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
       console.log ("hello there");
+      console.log ("rly");
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           editor_model.isSaving = false;
           //console.log("Received new content. Replacing the page.");
@@ -2123,9 +2134,14 @@ editionscript = """
           var saved = saveGhostAttributes();
           
           //source of the editing menu disappearing after reloading
+          console.log ({xmlhttp});
+          console.log ("was xmlhttp");
           replaceContent(xmlhttp.responseText);
           
+          console.log ("content replaced");
+
           applyGhostAttributes(saved);
+
           var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
           var newQueryStr = xmlhttp.getResponseHeader("New-Query");
           var ambiguityKey = xmlhttp.getResponseHeader("Ambiguity-Key");
@@ -2133,10 +2149,11 @@ editionscript = """
           var ambiguitySelected = xmlhttp.getResponseHeader("Ambiguity-Selected");
           var ambiguityEnd = xmlhttp.getResponseHeader("Ambiguity-End");
           var ambiguitySummaries = xmlhttp.getResponseHeader("Ambiguity-Summaries");
+          console.log ({newLocalURL, newQueryStr, ambiguityKey, ambiguityNumber, ambiguitySelected, ambiguityEnd, ambiguitySummaries});
           if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
              ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
              ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
-             
+            console.log ("handleServerPOSTResponse ambiguity");
             var n = JSON.parse(ambiguityNumber);
             var selected = JSON.parse(ambiguitySelected);
             var summaries = JSON.parse(ambiguitySummaries);
@@ -2179,9 +2196,11 @@ editionscript = """
             editor_model.visible = true;
             //editor_model.displaySource: false, // Keep source opened or closed
             // TODO: Disable click or change in DOM until ambiguity is resolved.
-          } else {
+          } else { //no ambiguity
+            console.log ("handleServerPOSTResponse no ambiguity");
+            console.log ({xmlhttp});
             editor_model.disambiguationMenu = undefined;
-            var opSummaryEncoded = xmlhttp.getResponseHeader("Operations-Summary");
+            let opSummaryEncoded = xmlhttp.getResponseHeader("Operations-Summary");
             if(opSummaryEncoded) {
               var opSummary = decodeURI(opSummaryEncoded);
               let newMenu = el("menuitem#lastaction", {},
@@ -2190,10 +2209,10 @@ editionscript = """
               var newmenutimeout = setTimeout(function() { editor_model.feedback = undefined; newMenu.remove(); }, 2000);
               newMenu.onclick = ((n) => () => clearTimeout(n))(newmenutimeout);
             }
-          }
+          } // /noambiguity
           
           var strQuery = "";
-          if(newQueryStr !== null) {
+          if(newQueryStr != null) { //newQueryStr = undefined ==> (newQueryStr !== null) ==> false;
             var newQuery = JSON.parse(newQueryStr);
             for(var i = 0; i < newQuery.length; i++) {
               var {_1: key, _2: value} = newQuery[i];
@@ -2206,7 +2225,7 @@ editionscript = """
             window.history.replaceState({}, "Current page", strQuery);
           }
           updateInteractionDiv(); 
-        }
+        } //xhr.onreadystatechange == done
     } //handleServerPOSTResponse
     
     window.onpopstate = function(e){
@@ -2301,22 +2320,21 @@ editionscript = """
       */
 
       
-/*
+
       var serverWorker = new Worker("TharzenEditor/editor.js");
 
       var d = {action:"getServCont"}
-      serverWorker.onmessage = function(e) {
-        //handle incoming server content and post new message to serverWorker with it
-        if (e.data.action == "servCont") {
-          var data = {action:"sendMods", 
-                      toSend:JSON.stringify(domNodeToNativeValue(document.body.parentElement)), 
+      var tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
+      const undoStackLen = editor_model.undoStack.length;
+      const redoStackLen = editor_model.redoStack.length;
+      var data = {action:"sendMods", 
+                      toSend:tosend,
                       gaidt:googleAuthIdToken,
                       aq:editor_model.askQuestions,
-                      serverContent:e.data.servCont,
                       loc:location.pathname + location.search,};
-          serverWorker.postMessage(data);
-        }
-        else if (e.data.action == "confirmDone") {
+      serverWorker.onmessage = function(e) {
+        //handle confirmDone
+        if (e.data.action == "confirmDone") {
           var xmlhttp = new XHRequest();
           xmlhttp.response.setHeader("newLocalURL", e.data.newLocalURL);
           xmlhttp.response.setHeader("newQueryStr", e.data.newQueryStr);
@@ -2326,13 +2344,80 @@ editionscript = """
           xmlhttp.response.setHeader("ambiguityEnd", e.data.ambiguityEnd);
           xmlhttp.response.setHeader("ambiguitySummaries", e.data.ambiguitySummaries);
           xmlhttp.response.setHeader("opSummaryEncoded", e.data.opSummaryEncoded);
-          console.log (e.data.i);
-          //console.log (handleServerPOSTResponse(xmlhttp));
+          xmlhttp.response.text = e.data.text;
+
+          /*
+            We want to undo everything in the undo stack that has been done since the save began.
+            In the process of vanilla undoing this (using mark's function), the items will be
+            pushed onto the redoStack in the normal way, s.t. we can redo them in a moment.
+            Once we're at the state we were at when we began to save, we re-write the page
+            with the confirmed content that the worker gave us.
+            Once the confirmed content has been rewritten, we have undo/redo stacks that point,
+            as the undo/redo stacks are an array of array of MutationRecords, all of whose target
+            has just been erased and replaced with a new object. 
+            So we need to convert the old UR stacks to be pointing to the right objects.
+            
+            I don't think it'll let us manufacture MutationRecords to populate the UR stacks with.
+            This leads me to think we should run through and actually do the things on the stack
+            to repopulate it, but this may be overkill.
+
+            Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
+            the state pre-update post-save.
+          */
+
+          const ads = editor_model.actionsDuringSave;
+          const adsLen = editor_model.actionsDuringSave.length;
+          console.log ({adsLen});
+          ads.forEach((action) => {
+            if (action == "undo") {
+              console.log ("undoing");
+              undo();
+            } else if (action == "redo") {
+              console.log ("redoing");
+              redo();
+            } else {
+              throw new Error("Unidentified action in restoring post-save state post-save");
+            }
+          });
+          outputValueObserver.disconnect();
+          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {});
+          xmlhttp.readyState = XMLHttpRequest.DONE
+          xmlhttp.onreadystatechange();
+          setTimeout(function() {
+            outputValueObserver.observe
+            ( document.body.parentElement
+            , { attributes: true
+              , childList: true
+              , characterData: true
+              , attributeOldValue: true
+              , characterDataOldValue: true
+              , subtree: true
+              }
+            )
+          }, 10)
+          const newAds = editor_model.actionsDuringSave;
+          const newAdsLen = newAds.length;
+          console.log ({newAdsLen});
+          const rstacklen = editor_model.redoStack.length;
+          
+          console.log ("finn");
+          for (let i = 0; i < adsLen; i++) {
+            if (newAds[i] == "undo") {
+              console.log ("aundoing");
+              undo();
+            } else if (newAds[i] == "redo") {
+              console.log ("aredoing");
+              redo();
+            } else {
+              throw new Error("unidentified action in actionsduringsave");
+            }
+          }
+          console.log ({xmlhttp});
           console.log ("worker confirmed save finished");
         }
       }
-      serverWorker.postMessage(d);
-      */
+      serverWorker.postMessage(data);
+      /*
       setTimeout( () => {
         notifyServer(xmlhttp => {
           xmlhttp.setRequestHeader("question", editor_model.askQuestions ? "true" : "false");
@@ -2340,9 +2425,9 @@ editionscript = """
           return x;
         });
         console.log ("server notified on this thread");
-      }, 0);
+      }, 0);*/
       console.log ("finished here!!!! o"); 
-    }
+    } //sendModificationsToServer
 
     //other possible approaches
     //add writable property (for oldValue) to mutation object
@@ -2351,7 +2436,8 @@ editionscript = """
      * adds writiable properties to the MutationRecord objects so the undo/redo functions
      * will actually function later on
      */
-    function sendToUndo(m, time) {  
+     //sends info over to the undostack
+    function sendToUndo(m, time) {
       //console.log("Undoable mutations:", m);
       //console.log("parent node:", m.removedNodes[0].parentNode);
       //for childLists, add mutable next/previous sibling properties
@@ -2370,11 +2456,20 @@ editionscript = """
       Object.defineProperty(m, 'timestamp', {value: time})
       //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
       //and should be combined together when undoing/redoing
-      lastUndo = editor_model.undoStack[editor_model.undoStack.length-1]; 
-      console.log(lastUndo);
-      if(!lastUndo || (lastUndo[0].timestamp < (time - 10))) { 
+      
+      let lastUndo = editor_model.undoStack[editor_model.undoStack.length-1];
+      let undoStack = editor_model.undoStack;
+      let isSaving = editor_model.isSaving;
+      //makes single actions that are recorded as multiple mutations a single action
+      //true here ==> mutation is separate action
+      if(!lastUndo || (lastUndo[0].timestamp < (time - 10))) {  
+        if (editor_model.isSaving) {
+          editor_model.actionsDuringSave.unshift("undo");
+        }
+        //editor_model.actionsDuringSave = (editor_model.isSaving ? "(undo)" : "") + editor_model.actionsDuringSave;
         editor_model.undoStack.push([m]);
       }
+      //false here ==> mutation is same action as last mutation
       //makes no sense for somethign that is first added then removed for those actions to be grouped together 
       //i.e. if i add text then get rid of it, it makes no sense for undo to revert the removal and addition direclty in sequence
       else {
@@ -2382,9 +2477,9 @@ editionscript = """
         lastUndo.push(m);
         editor_model.undoStack.push(lastUndo);
       }     
-    }
+    } //sendToUndo
     
-    function handleMutations(mutations) {
+    function handleMutations(mutations, observer) {
       var onlyGhosts = true;
       let cur_date = new Date();
       let cur_time = cur_date.getTime();
@@ -2396,12 +2491,12 @@ editionscript = """
         /*  
          * Add mutations to undo list if they are not ghosts and if they are really doing something.
          */
-        var mutation = mutations[i];
+        let mutation = mutations[i];
         if(hasGhostAncestor(mutation.target)) {
           continue;
         }
         if(mutation.type == "attributes") {
-          var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(mutation.target);
+          let isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(mutation.target);
           if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
               mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue) {
           } else {
@@ -2459,7 +2554,7 @@ editionscript = """
         
         sendModificationsToServer();
       }, @editdelay)
-    }
+    } //handleMutations
   
     if (typeof outputValueObserver !== "undefined") {
       // console.log("outputValueObserver.disconnect()");
@@ -2504,11 +2599,21 @@ editionscript = """
     function popupMessage(m) {
     	console.log(m);
     }
-
     //undo function: handles undo feature
     function undo() {
-      printstacks();
-
+      //printstacks();
+      const getPerry = (tg) => tg.parentElement ? tg.parentElement : null;
+      const getBigParent = function(tg) {
+        while (true) {
+          const par = getPerry(tg);
+          if (par) {
+            tg = par;
+            continue;
+          }
+          //par is null ==> tg is big parent
+          return tg;
+        }
+      }
       let undoElem = editor_model.undoStack.pop();
       //need to check if undoStack is empty s.t. we can set the "savability" of the document accurately
       if(undoElem == undefined) {
@@ -2524,11 +2629,18 @@ editionscript = """
       for(k = undoElem.length - 1; k >= 0; k--) {
         let mutType = undoElem[k].type; 
         let target = undoElem[k].target;
+        let u = undoElem[k];
+        let perry = u.target.parentNode;
+        
+        //const bigPar = getBigParent(target);
+        //const find_out = bigPar.ownerDocument.children[0] === document.children[0];
+        //console.log ({find_out, bigPar, u, perry});
+        console.log ({u})
         //in each case, we reverse the change, setting the URValue/oldValue as the current value
         //at the target, and replacing the URValue/oldValue with the current value present in target
         if(mutType == "attributes") {
           let cur_attr = target.getAttribute(undoElem[k].attributeName);
-          console.log(cur_attr);
+          //console.log(cur_attr);
           if(undoElem[k].URValue === null) {
             target.removeAttribute(undoElem[k].attributeName); 
           }       
@@ -2538,9 +2650,13 @@ editionscript = """
           undoElem[k].URValue = cur_attr; 
         }
         else if(mutType == "characterData") {
-          let cur_data = target.data;
+          const cur_data = target.data;
           //console.log("cur_data:" + cur_data);
-          target.data = undoElem[k].URValue;
+          console.log ({cur_data});
+          const chto = undoElem[k].URValue;
+          console.log ({chto});
+          undoElem[k].target.data = chto;
+          target.data = chto;
           undoElem[k].URValue = cur_data;
           //console.log("old_value:" + undoElem.URValue);
         }
@@ -2565,7 +2681,7 @@ editionscript = """
                     continue;
                   }
                   target.appendChild(uRemNodes.item(i)); 
-                  console.log("Added", uRemNodes.item(i));
+                  //console.log("Added", uRemNodes.item(i));
                 }
               }
             }
@@ -2576,7 +2692,7 @@ editionscript = """
                     continue;
                   }
                   target.insertBefore(uRemNodes.item(i), kidNodes.item(j)); 
-                  console.log("Added", uRemNodes.item(i));
+                  //console.log("Added", uRemNodes.item(i));
                 }
 
               }
@@ -2590,14 +2706,18 @@ editionscript = """
               console.log("The item you are trying to undo doesn't exist in the parent node.");
             }
             else {
-              console.log("Removing:", uAddNodes.item(i));
+              //console.log("Removing:", uAddNodes.item(i));
               target.removeChild(uAddNodes.item(i));
               
             }
           }
         }
-      }
+      } //mutation looper
       editor_model.redoStack.push(undoElem);
+      if (editor_model.isSaving) {
+        editor_model.actionsDuringSave.unshift("redo");
+      }
+      //editor_model.actionsDuringSave = (editor_model.isSaving ? "(redo)" : "") + editor_model.actionsDuringSave;
       //turn MutationObserver back on
       outputValueObserver.observe
        ( document.body.parentElement
@@ -2610,18 +2730,30 @@ editionscript = """
          }
        );
       //console.log("data right before return:" + target.data);
-      printstacks();
+      //printstacks();
       //console.log("canSave is:", editor_model.canSave); 
       //make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
       updateInteractionDiv();
       return 1;
-    }
+    } //undo
 
     function redo() {
-      printstacks();
+      //printstacks();
+      const getPerry = (tg) => tg.parentNode ? tg.parentNode : null;
+      const getBigParent = function(tg) {
+        while (true) {
+          const par = getPerry(tg);
+          if (par) {
+            tg = par;
+            continue;
+          }
+          //par is null ==> tg is big parent
+          return tg;
+        }
+      }
       let redoable = false;
       let redoElem = editor_model.redoStack.pop();
-      console.log("Current redo element is:", redoElem);
+      //console.log("Current redo element is:", redoElem);
       if(redoElem === undefined) {
         return 0;
       }
@@ -2629,23 +2761,48 @@ editionscript = """
      
       let k;
       for(k = 0; k < redoElem.length; k++) {
+        const r = redoElem[k];
         let mutType = redoElem[k].type;
         let target = redoElem[k].target;
+        /*const perry = r.target.parentNode;
+        const bigPar = getBigParent(target);
+        const find_out = bigPar.ownerDocument.children[0] === document.children[0];
+        const nval = r.target.nodeValue;
+        const conn = r.target.isConnected;
+        console.log ({nval, conn, find_out, bigPar, r, perry});*/
+        let elly;
+        if (!redoElem[k].target.isConnected) {
+          let pth = dataToRecoverElement(redoElem[k].target);
+          elly = recoverElementFromData(pth);
+          let chto = redoElem[k].URValue;
+          console.log ({pth, elly, chto});
+          console.log (redoElem[k].target);
+          redoElem[k].target = elly;
+          console.log (redoElem[k].target);
+        }
         if(mutType == "attributes") {
           let cur_attr = target.getAttribute(redoElem[k].attributeName);
           if (redoElem[k].URValue === null) {
 
           }
           else { 
-            target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
+            elly ? elly.setAttribute(redoElem[k].attributeName, redoElem[k].URValue) : 
+                   target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
           }
           redoElem[k].URValue = cur_attr;
           redoable = true;
         }
         else if(mutType == "characterData") {
           //console.log("data b4:" + target.data);
-          let cur_data = target.data;
-          target.data = redoElem[k].URValue;  
+          const cur_data = target.data;
+          console.log ({cur_data});
+          const chto = redoElem[k].URValue;
+          console.log ({chto});
+          console.log ((redoElem[k].target === target));
+          console.log ("was thing");
+          redoElem[k].target.data = chto;
+          elly ? elly.data = chto : target.data = chto;
+          target.data = chto;
           redoElem[k].URValue = cur_data;
           redoable = true;
           //console.log("data after:" + target.data);
@@ -2662,12 +2819,13 @@ editionscript = """
                   if(hasGhostAncestor(rAddNodes.item(i))) {
                     continue;
                   }
-                  target.insertBefore(rAddNodes.item(i), kidNodes.item(j));
+                  elly ? elly.insertBefore(rAddNodes.item(i), elly.childNodes.item(j)) :
+                         target.insertBefore(rAddNodes.item(i), kidNodes.item(j));
                 }
               }
             }
           }
-          console.log("hi!", redoElem[k].removedNodes);
+          //console.log("hi!", redoElem[k].removedNodes);
           for(i = 0; i < rRemNodes.length; i++) {
             if(hasGhostAncestor(rRemNodes.item(i))) {
               continue;
@@ -2676,15 +2834,20 @@ editionscript = """
               console.log("The item you are trying to redo doesn't exist in the parent node.");
             }
             else 
-              console.log("Hello!");
+              //console.log("Hello!");
               //redoElem[k].prevSib = rRemNode.item(0).previousSibling;
               //redoElem[k].prevSib = rRemNodes.item(rRemNodes.length - 1).nextSibling;
-              target.removeChild(rRemNodes.item(i));
+              elly ? elly.removeChild(rRemNodes.item(i)) : 
+                     target.removeChild(rRemNodes.item(i));
               //redoable = true;
             }
           }
       }
       editor_model.undoStack.push(redoElem);
+      if (editor_model.isSaving) {
+        editor_model.actionsDuringSave.unshift("undo");
+      }
+      //editor_model.actionsDuringSave = (editor_model.isSaving ? "(undo)" : "") + editor_model.actionsDuringSave;
       editor_model.canSave = true;
       outputValueObserver.observe
        ( document.body.parentElement
@@ -2696,7 +2859,7 @@ editionscript = """
          , subtree: true
          }
        );
-      printstacks();   
+      //printstacks();   
       //console.log("canSave is:", editor_model.canSave);
       updateInteractionDiv();
       
@@ -2980,6 +3143,7 @@ editionscript = """
       }
       return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
     }
+    
     // Returns the new node that matches the old node the closest.
     // For text nodes, try to recover the text node, if not, returns the parent node;
     function recoverElementFromData(data) {
@@ -3051,8 +3215,9 @@ editionscript = """
       disambiguationMenu: undefined,
       isSaving: false,
       //data structures to represent undo/redo "stack"
-      undoStack: [],
-      redoStack: [],
+      undoStack: ifAlreadyRunning ? editor_model.undoStack : [],
+      redoStack: ifAlreadyRunning ? editor_model.redoStack : [],
+      actionsDuringSave: ifAlreadyRunning ? editor_model.actionsDuringSave : [],
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
@@ -3199,7 +3364,11 @@ editionscript = """
             editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
           : function(event) {
             if(!this.classList.contains("disabled")) {
-              sendModificationsToServer();
+              if (editor_model.isSaving) {
+                window.alert("TODO Can't save while saving is being undertaken");
+              } else {
+                sendModificationsToServer();
+              }
             }
           }
         }
