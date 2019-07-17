@@ -1242,7 +1242,7 @@ div.disambiguationMenu {
 [ghost-visible=false] {
   display: none !important;
 }
-[ghost-hovered=true] {
+[ghost-hovered-link=true] {
   opacity: 0.2;
 }
 #manualsync-menuitem> button {
@@ -3199,8 +3199,8 @@ editionscript = """
         return result;
       }
       function escapeLinkMode() {
-        removeEventListener('mouseover', linkModeHover1, true);
-        removeEventListener('mouseout', linkModeHover2, true);
+        //document.body.removeEventListener('mouseover', linkModeHover1, false);
+        //document.body.removeEventListener('mouseout', linkModeHover2, false);
         console.log("Got here!");
         editor_model.clickedElem = editor_model.linkFrom;
         editor_model.linkSelectMode = false;
@@ -3296,8 +3296,6 @@ editionscript = """
             }
             console.log("TargetID is now:", targetID);  
             editor_model.linkFrom.setAttribute("href", "#" + targetID);
-
-
             escapeLinkMode();
             }
           }
@@ -3828,34 +3826,30 @@ editionscript = """
       //    |--  | \|  |  | of DOM SELECTOR
       //    |--  |  |  |--
 
-
-      function hasModifyMenuParent (node) {
-        if(node.parentNode) {
-          if(node.parentNode.getAttribute("class") === "modify-menu") return true;
-        }
-        else if(!node.parentNode) {
+      /*function noGhostHover (node) {
+        curClass = node.getAttribute("class")
+        if(curClass === "modify-menu-icon-label-link" ||
+          curClass === "context-menu-icon" ||
+          curClass === "context-menu-icon fill") {
           return false;
         }
-        else {
-          return hasModifyMenuParent(node.parentNode);
-        }
+        return true;
       }
-
-      var linkModeHover1 = function (event) {
+      function linkModeHover1(event) {
         console.log(event.target.getAttribute("class"));
-        if(event.target && !(hasModifyMenuParent(event.target))) { 
-          event.target.setAttribute("ghost-hovered", true);
+        if(noGhostHover(event.target)) { 
+          event.target.setAttribute("ghost-hovered-link", true);
           updateInteractionDiv();
           console.log("hey!");
         }
       }
-      var linkModeHover2 = function(event) {
-        if(event.target && !(hasModifyMenuParent(event.target)) {
-          event.target.removeAttribute("ghost-hovered");
+      function linkModeHover2(event) {
+        if(noGhostHover(event.target)) {
+          event.target.removeAttribute("ghost-hovered-link");
           updateInteractionDiv();
         }
-      }
-
+      }*/
+      
       let linkSelect = function() {
         editor_model.visible = false;
         editor_model.linkSelectMode = true;
@@ -3867,8 +3861,8 @@ editionscript = """
         updateInteractionDiv();
         popupMessage("Please select an element to link to.");
 
-        addEventListener('mouseover', linkModeHover1);
-        addEventListener('mouseout', linkModeHover2);
+        //document.body.addEventListener('mouseover', linkModeHover1, false);
+        //document.body.addEventListener('mouseout', linkModeHover2, false);
 
       }
 
