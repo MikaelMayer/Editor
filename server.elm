@@ -3325,6 +3325,7 @@ editionscript = """
             }
             //console.log("TargetID is now:", targetID);  
             editor_model.linkFrom.setAttribute("href", "#" + targetID);
+            console.log(editor_model.linkFrom.getAttribute)
             escapeLinkMode();
             }
           }
