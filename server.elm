@@ -2373,30 +2373,36 @@ editionscript = """
       }
       Object.defineProperty(m, 'timestamp', {value: time})
 
-      //limit on size of UndoStack, will begin to forget undoable changes after a while (we can investigate exact limit)
+      //limit on size of UndoStack, will begin to forget undoable changes after a while (we can investigate exact limit of the
+      //"memory")
       if(editor_model.undoStack[length] > 200) {
         editor_model.undoStack.pop();
       }
 
       //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
       //and should be combined together when undoing/redoing
-      lastUndo = editor_model.undoStack[editor_model.undoStack.length-1]; 
+      let lastUndo = editor_model.undoStack[editor_model.undoStack.length-1];
       console.log(lastUndo);
-      if(!lastUndo || (lastUndo[0].timestamp < (time - 10))) { 
+      if(!lastUndo) {
         editor_model.undoStack.push([m]);
       }
-      //makes no sense for somethign that is first added then removed for those actions to be grouped together 
-      //i.e. if i add text then get rid of it, it makes no sense for undo to revert the removal and addition direclty in sequence
       else {
-        lastUndo = editor_model.undoStack.pop();
-        lastUndo.push(m);
-        editor_model.undoStack.push(lastUndo);
-      }     
-      //needs more thought, 
+        let oldestLastUndo = lastUndo[0];
+        //smoothing out undo for text edits ()
+        if((oldestLastUndo.type === "characterData" && m.type === "characterData" && 
+            oldestLastUndo.target === m.target && oldestLastUndo.timestamp >= (time - 1000))
+            || oldestLastUndo.timestamp >= (time - 10)) {
+          lastUndo.push(m);
+        }
+        else { 
+          editor_model.undoStack.push([m]);
+        }
+      }    
 
+      //resets redoStack if new changes are made
+      //E.x. 
       if(editor_model.redoStack.length) {
-        editor_model.redoable = false;
-        editor_model.undoState = editor_model.undoStack.length;
+        editor_model.redoStack = [];
       }
     }
     
@@ -2508,14 +2514,14 @@ editionscript = """
       for(i = 0; i < editor_model.undoStack.length; i++) {
         console.log(i + ".");
         for(j = 0; j < editor_model.undoStack[i].length; j++) {
-          console.log(JSON.parse(JSON.stringify(editor_model.undoStack[i][j])));
+          console.log(editor_model.undoStack[i][j]);
         }
       }
       console.log("REDO STACK:");
       for(i = 0; i < editor_model.redoStack.length; i++) {
         console.log(i + "."); 
         for(j = 0; j < editor_model.redoStack[i].length; j++) {
-          console.log(JSON.parse(JSON.stringify(editor_model.redoStack[i][j])));
+          console.log(editor_model.redoStack[i][j]);
         }
       }
       console.log("-----------------------------");
@@ -2641,10 +2647,7 @@ editionscript = """
       printstacks();
       let redoElem = editor_model.redoStack.pop();
       //console.log("Current redo element is:", redoElem);
-      if(!redoable) {
-        return false;
-      }
-      else if(redoElem === undefined ) {
+      if(redoElem === undefined ) {
         return false;
       }
       outputValueObserver.disconnect();
@@ -3098,7 +3101,6 @@ editionscript = """
       //data structures to represent undo/redo "stack"
       undoStack: [],
       redoStack: [],
-      redoable: true;
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       textareaScroll: ifAlreadyRunning ? editor_model.textareaScroll : 0,
