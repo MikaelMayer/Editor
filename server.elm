@@ -1425,7 +1425,9 @@ div#modify-menu input[type=radio] {
   width: initial;
   font-size: 1em;
 }
-
+div#modify-menu span.insertOption{
+  display: block;
+}
 div.keyvalue > span > input {
   border-radius: 4px;
   margin: 2px;
@@ -1666,6 +1668,12 @@ div#modify-menu .modify-menu-icon-label {
   display: block;
   color: white;
   font-size: calc(var(--context-menu-button-width) / 3);
+  text-align: center;
+}
+div#modify-menu .modify-menu-icon-label-link {
+  display: block;
+  color: white;
+  font-size: calc(var(--context-menu-button-width) / 4);
   text-align: center;
 }
 div#context-menu .context-menu-button > svg, div#modify-menu .modify-menu-button > svg {
@@ -2291,7 +2299,12 @@ editionscript = """
     function relativeToAbsolute(url) {
       if(isAbsolute(url) || url && url.length && url[0] == "/") return url;
       let u =  new URL(location.href);
-      return u.pathname.replace(/[^\/]*$/, "") + url;
+      if(url[0] === "#") {
+        return u.pathname + url; 
+      }
+      else {
+        return u.pathname.replace(/[^\/]*$/, "") + url;
+      }
     }
     function navigateLocal(url, replaceState) {
       notifyServer(xmlhttp => {
@@ -2374,7 +2387,7 @@ editionscript = """
       Object.defineProperty(m, 'timestamp', {value: time})
       //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
       //and should be combined together when undoing/redoing
-      lastUndo = editor_model.undoStack[editor_model.undoStack.length-1]; 
+      let lastUndo = editor_model.undoStack[editor_model.undoStack.length-1]; 
       console.log(lastUndo);
       if(!lastUndo || (lastUndo[0].timestamp < (time - 10))) { 
         editor_model.undoStack.push([m]);
@@ -2820,6 +2833,13 @@ editionscript = """
           e.preventDefault();
           if(!redo()) popupMessage("Nothing to redo!");
         }
+        //in link select mode, escape on the keyboard can be
+        //used to exit the link select mode (same as escape button)
+        if(editor_model.linkSelectMode) {
+          if(e.which == 27) {
+            escapeLinkMode();
+          }
+        }
       };
       
       var bodyeditable = document.querySelector("body[contenteditable=true]");
@@ -2918,7 +2938,7 @@ editionscript = """
       }
       while(clickedElem && editorSelectOptions && !matchOptions(clickedElem)) {
         clickedElem = clickedElem.parentElement;
-      }
+      }                           
       var ancestors = [];
       var tmp = clickedElem;
       var aElement;
@@ -2975,10 +2995,51 @@ editionscript = """
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     var undoSVG = mkSvg("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
     var redoSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
+    var escapeSVG = mkSvg("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z");
+    var linkModeSVG = mkSvg("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
 
     var ifAlreadyRunning = typeof editor_model === "object";
     
-    
+    //hover mode functions for linkSelectMode
+    function escapeLinkMode() {
+      document.body.removeEventListener('mouseover', linkModeHover1, false);
+      document.body.removeEventListener('mouseout', linkModeHover2, false);
+      //removing the hovered element (which is retained if the escape key is hit)
+      document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
+      editor_model.clickedElem = editor_model.linkFrom;
+      editor_model.linkSelectMode = false;
+      editor_model.linkFrom = undefined;
+      updateInteractionDiv();
+    }
+    function noGhostHover (node) {
+      curClass = node.getAttribute("class")
+      if(curClass === "modify-menu-icon-label-link" ||
+        curClass === "context-menu-icon" ||
+        curClass === "context-menu-icon fill") {
+          return false;
+        }
+      else if(node.tagName === "path" || node.tagName === "PATH") {
+        return false;
+      }
+      return true;
+    }
+    function linkModeHover1(event) {
+      //console.log(event.target);
+      //console.log(event.target.tagName);
+      //console.log(event.target.getAttribute("class"));
+      if(noGhostHover(event.target)) { 
+        event.target.setAttribute("ghost-hovered", true);
+        updateInteractionDiv();
+        //console.log("hey!");
+      }
+    }
+    function linkModeHover2(event) {
+      if(noGhostHover(event.target)) {
+        event.target.removeAttribute("ghost-hovered");
+        updateInteractionDiv();
+      }
+    }
+
     function dataToRecoverElement(oldNode) {
       if(!oldNode) return undefined;
       if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
@@ -3072,6 +3133,9 @@ editionscript = """
       //data structures to represent undo/redo "stack"
       undoStack: [],
       redoStack: [],
+      linkSelectMode: false,
+      linkFrom: undefined,
+      idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       textareaScroll: ifAlreadyRunning ? editor_model.textareaScroll : 0,
@@ -3111,6 +3175,8 @@ editionscript = """
     }
 
     updateInteractionDiv();
+
+
 
     function updateInteractionDiv() {
       let model = editor_model;
@@ -3199,68 +3265,105 @@ editionscript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      addPinnedModifyMenuIcon(
-        panelOpenCloseIcon(),
-        {title: "Open/close settings tab", "class": "inert" },
-        {onclick: function(event) {
-            document.querySelector("#modify-menu").classList.toggle("visible");
-            editor_model.visible = !editor_model.visible;
-            this.innerHTML = panelOpenCloseIcon();
-          }
+      if(!editor_model.linkSelectMode) {
+        addPinnedModifyMenuIcon(
+          panelOpenCloseIcon(),
+          {title: "Open/close settings tab", "class": "inert" },
+          {onclick: function(event) {
+              document.querySelector("#modify-menu").classList.toggle("visible");
+              editor_model.visible = !editor_model.visible;
+              this.innerHTML = panelOpenCloseIcon();
+            }
         });
-      addPinnedModifyMenuIcon(
-        gearSVG + "<span class='modify-menu-icon-label'>Misc.</span>",
-        {title: "Advanced", "class": "inert" + (editor_model.advanced ? " active": "")
-        },
-        {onclick: (c => function(event) {
-          //defaults to turning on advanced menu if the editor model is already visible, otherwise toggles advanced menu.
-          if(editor_model.visible) {
-            editor_model.advanced = !editor_model.advanced;
-          }
-          else {
-            editor_model.advanced = true;
-          }
-          editor_model.visible = true;
-          updateInteractionDiv();
-        })(clickedElem)}
-      )
-
-      addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
-      {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
+        addPinnedModifyMenuIcon(
+          gearSVG + "<span class='modify-menu-icon-label'>Misc.</span>",
+          {title: "Advanced", "class": "inert" + (editor_model.advanced ? " active": "")
+          },
+          {onclick: (c => function(event) {
+            //defaults to turning on advanced menu if the editor model is already visible, otherwise toggles advanced menu.
+            if(editor_model.visible) {
+              editor_model.advanced = !editor_model.advanced;
+            }
+            else {
+              editor_model.advanced = true;
+            }
+            editor_model.visible = true;
+            updateInteractionDiv();
+          })(clickedElem)}
+        )
+        addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
+        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           id: "savebutton"  
-      },
-        {onclick: editor_model.disambiguationMenu ? 
-          ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
-            editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
-          : function(event) {
-            if(!this.classList.contains("disabled")) {
-              sendModificationsToServer();
+        },
+          {onclick: editor_model.disambiguationMenu ? 
+            ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
+              editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
+            : function(event) {
+              if(!this.classList.contains("disabled")) {
+                sendModificationsToServer();
+              }
             }
           }
-        }
-      )
-      addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
-        {"class": "inert", title: "Undo most recent change",
-          id: "undobutton"
-        },
-        {onclick: function(event) {
-          if(!undo()) popupMessage("Nothing to undo!");
+        )
+        addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
+          {"class": "inert", title: "Undo most recent change",
+            id: "undobutton"
+          },
+          {onclick: function(event) {
+            if(!undo()) popupMessage("Nothing to undo!");
+            }
+          }   
+        );
+        addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
+          {"class": "inert", title: "Redo most recent undo",
+            id: "redobutton"
+          },
+        	{onclick: function(event) {
+        	 if(!redo()) popupMessage("Nothing to redo!");
+            }
           }
-        }   
-      );
-      addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
-        {"class": "inert", title: "Redo most recent undo",
-          id: "redobutton"
-        },
-       	{onclick: function(event) {
-        	if(!redo()) popupMessage("Nothing to redo!");
+        );
+      }
+      else {
+        addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>ESCAPE</span>", 
+          {"class": "link-select-button", title: "Go back to original screen",
+            id: "escapebutton"
+          },
+          {onclick: function(event) {
+            escapeLinkMode();
+            }
           }
-        }
-      );
+        )
+        addPinnedModifyMenuIcon(plusSVG + "<span class='modify-menu-icon-label-link'>SELECT</span>", 
+          {"class": "link-select-button", title: "Select desired local link",
+            id: "selectbutton"
+          },
+          {onclick: function(event) {
+            let linkTo = editor_model.clickedElem,
+                targetID = linkTo.getAttribute("id");
+            //console.log("Target ID is:", targetID);
+            if(!targetID) {
+              targetID = "ID" + editor_model.idNum
+              linkTo.setAttribute("id", targetID);
+              editor_model.idNum += 1;
+              //console.log("here!");
+            }
+            else if(targetID.length > 100) {
+              targetID = targetID.trim();
+              linkTo.setAttribute("id", targetID);
+            }
+            //console.log("TargetID is now:", targetID);  
+            editor_model.linkFrom.setAttribute("href", "#" + targetID);
+            console.log(editor_model.linkFrom.getAttribute)
+            escapeLinkMode();
+            }
+          }
+        )
+      }
 
       if(model.advanced || model.disambiguationMenu) {
         modifyMenuDiv.append(
-          el("a", { class:"troubleshooter", href:  "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
+          el("a", { class:"troubleshooter", href: "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
         modifyMenuIconsDiv.append(
           el("span", { class:'filename', title:"the path of the file you are currently viewing"}, 
             editor_model.path ? editor_model.path : "[root folder]"));
@@ -3293,20 +3396,6 @@ editionscript = """
             } 
           }
         );        
-        /*addModifyMenuIcon(undoSVG, 
-          {"class": "tagName", title: "Undo most recent change"},
-            {onclick: function(event) {
-              if(!undo()) alert("Nothing to undo!");
-              }
-            }   
-        );
-        addModifyMenuIcon(redoSVG,
-          {"class": "tagname", title: "Redo recent undo"},
-            {onclick: function(event) {
-              if(!redo()) alert("Nothing to redo!");
-              }
-            }
-        );*/
   
         if(editor_model.disambiguationMenu) {
           interactionDiv.append(editor_model.disambiguationMenu);
@@ -3329,7 +3418,7 @@ editionscript = """
                   },
                 value: source
                })])); 
-          let sourceEdit = document.getElementById("sourcecontentmodifier")
+          let sourceEdit = document.getElementById("sourcecontentmodifier");
           sourceEdit.scrollTop = editor_model.curScrollPos;
         }
         modifyMenuDiv.append(
@@ -3357,19 +3446,19 @@ editionscript = """
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertBeforeNode", name: "insertionPlace", value: "before"}),
               el("label", {"for": "radioInsertBeforeNode"}, "Before node")]),
           clickedElem.tagName === "HTML" ? undefined :
-            el("span", {}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
               el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")], {onclick: restoreCaretPosition}),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD"  }),
               el("label", {"for": "radioInsertAfterNode"}, "After node")]),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertWrapNode", name: "insertionPlace", value: "wrap"}),
               el("label", {"for": "radioInsertWrapNode"}, "Wrap node")]),
         ]));
@@ -3788,6 +3877,28 @@ editionscript = """
         }
       }
 
+      //    |--  |\ |  |--
+      //    |--  | \|  |  | of DOM SELECTOR
+      //    |--  |  |  |--
+
+      
+      let linkSelect = function() {
+        editor_model.visible = false;
+        editor_model.linkSelectMode = true;
+        editor_model.linkFrom = editor_model.clickedElem;
+        //"center" clicked element on document body
+        editor_model.clickedElem = document.body;
+        //removes all context menu stuff 
+        document.querySelector("#context-menu").classList.remove("visible");
+        updateInteractionDiv();
+        popupMessage("Please select an element to link to.");
+
+        document.body.addEventListener('mouseover', linkModeHover1, false);
+        document.body.addEventListener('mouseout', linkModeHover2, false);
+
+      }
+
+
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
             let newel = el(document.querySelector("#newTagName").value);
             let elements = clickedElem.childNodes;
@@ -3836,6 +3947,10 @@ editionscript = """
               ),
               isHref ? el("span", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [],
                         {innerHTML: liveLinkSVG(model.link)}): undefined,
+              isHref ? el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Activate internal link mode"}, [], {
+                innerHTML: linkModeSVG,
+                onclick: linkSelect
+              }): undefined,
               el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
                 innerHTML: wasteBasketSVG,
                 onclick: ((name) => function() {
@@ -3843,9 +3958,9 @@ editionscript = """
                   editor_model.clickedElem = clickedElem;
                   updateInteractionDiv();
                 })(name)
-              })
-              ]
-            ));
+              }),
+            ]
+          ));
         }
       }
 
@@ -3854,6 +3969,7 @@ editionscript = """
         this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
           attrName === "" || attrName.trim() !== attrName
       }
+
 
       if(clickedElem && clickedElem.nodeType === 1) {
         keyvalues.append(
@@ -4019,187 +4135,188 @@ editionscript = """
       }
     }
     
-    
-      contextMenu.innerHTML = "";
-      var whereToAddContextButtons = contextMenu;
-      var noContextMenu = false;
-      // What to put in context menu?
-      if(onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
-        whereToAddContextButtons = modifyMenuIconsDiv;
-        noContextMenu = true;
-      }
-      let numButtons = 0;
-      let addContextMenuButton = function(innerHTML, attributes, properties) {
-        let button = el("div", attributes, [], properties);
-        button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
-        button.classList.add("context-menu-button");
-        button.innerHTML = innerHTML;
-        whereToAddContextButtons.append(button);
-        numButtons++;
-      }
-      if(model.link) {
-        addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
-          {title: "Go to " + model.link, "class": "inert"});
-      }
+      if(!editor_model.linkSelectMode) {
+        contextMenu.innerHTML = "";
+        var whereToAddContextButtons = contextMenu;
+        var noContextMenu = false;
+        // What to put in context menu?
+        if(onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
+          whereToAddContextButtons = modifyMenuIconsDiv;
+          noContextMenu = true;
+        }
+        let numButtons = 0;
+        let addContextMenuButton = function(innerHTML, attributes, properties) {
+          let button = el("div", attributes, [], properties);
+          button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
+          button.classList.add("context-menu-button");
+          button.innerHTML = innerHTML;
+          whereToAddContextButtons.append(button);
+          numButtons++;
+        }
+        if(model.link) {
+          addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
+            {title: "Go to " + model.link, "class": "inert"});
+        }
 
-      if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
-        addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
-        {title: "Move selected element up"},
-        {onclick: (c => event => {
-            let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
-               c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
-            // There is whitespace before this element, we try to reinsert
-            c.parentElement.insertBefore(c, c.previousElementSibling);
-            if(wsTxtNode) { // We move the whitespace as well.
-              c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
-            }
-            editor_model.clickedElem = c;
-            updateInteractionDiv();
-          })(clickedElem)
-        });
-      }
-      if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
-        addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
-        {title: "Move selected element down"},
-        {onclick: (c => (event) => {
-            let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
-              c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
-            let nodeToInsertAfter = c.nextElementSibling;
-            nodeToInsertAfter.insertAdjacentElement("afterend", c);
-            if(wsTxtNode) { // We move the whitespace as well
-              nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
-            }
-            editor_model.clickedElem = c;
-            updateInteractionDiv();
-          })(clickedElem)
-        });
-      }
-      if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
-        addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
-            <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
-            <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
-          {title: "Clone selected element"},
-          {onclick: ((c, contextMenu) => event => {
-              c.removeAttribute("ghost-clicked");
-              let cloned = duplicate(c);
-              if(cloned) {
-                editor_model.clickedElem = cloned;
-                updateInteractionDiv();
-              } else contextMenu.classList.remove("visible");
-            })(clickedElem, contextMenu)
-          });
-        addContextMenuButton(wasteBasketSVG,
-          {title: "Delete selected element"},
+        if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+          addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
+          {title: "Move selected element up"},
           {onclick: (c => event => {
-              c.remove();
-              editor_model.clickedElem = undefined;
+              let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
+                c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
+              // There is whitespace before this element, we try to reinsert
+              c.parentElement.insertBefore(c, c.previousElementSibling);
+              if(wsTxtNode) { // We move the whitespace as well.
+                c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
+              }
+              editor_model.clickedElem = c;
               updateInteractionDiv();
             })(clickedElem)
           });
-      }
-      if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer)) {
-        // There should be different ways to wrap the selection:
-        // a href, span, div.
-        addContextMenuButton(plusSVG,
-            {title: "Wrap selection"},
-            {onclick: (s => event => {
-              let elements = [];
-              let tmp = s.startContainer;
-              let nodeToInsertAfter = s.startContainer;
-              let parent = nodeToInsertAfter.parentElement;
-              while(tmp && tmp !== s.endContainer.nextSibling) {
-                if(tmp.nodeType === 3) {
-                  elements.push(tmp === s.startContainer ? tmp === s.endContainer ? tmp.textContent.substring(s.startOffset, s.endOffset) : tmp.textContent.substring(s.startOffset) :
-                    tmp === s.endContainer ? tmp.textContent.substring(0, s.endOffset) :
-                    tmp.textContent);
-                  if(tmp === s.startContainer) {
-                    if(tmp === s.endContainer && tmp.textContent.length > s.endOffset) {
-                      // Need to split the text node.
-                      tmp.parentElement.insertBefore(document.createTextNode(tmp.textContent.substring(s.endOffset)), tmp.nextSibling);
-                    }
-                    if(s.startOffset === 0) {
-                      nodeToInsertAfter = nodeToInsertAfter.previousSibling;
-                      tmp.remove();
+        }
+        if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+          addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
+          {title: "Move selected element down"},
+          {onclick: (c => (event) => {
+              let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 && 
+                c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
+              let nodeToInsertAfter = c.nextElementSibling;
+              nodeToInsertAfter.insertAdjacentElement("afterend", c);
+              if(wsTxtNode) { // We move the whitespace as well
+                nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
+              }
+              editor_model.clickedElem = c;
+              updateInteractionDiv();
+            })(clickedElem)
+          });
+        }
+        if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
+          addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
+              <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
+              <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
+            {title: "Clone selected element"},
+            {onclick: ((c, contextMenu) => event => {
+                c.removeAttribute("ghost-clicked");
+                let cloned = duplicate(c);
+                if(cloned) {
+                  editor_model.clickedElem = cloned;
+                  updateInteractionDiv();
+                } else contextMenu.classList.remove("visible");
+              })(clickedElem, contextMenu)
+            });
+          addContextMenuButton(wasteBasketSVG,
+            {title: "Delete selected element"},
+            {onclick: (c => event => {
+                c.remove();
+                editor_model.clickedElem = undefined;
+                updateInteractionDiv();
+              })(clickedElem)
+            });
+        }
+        if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer)) {
+          // There should be different ways to wrap the selection:
+          // a href, span, div.
+          addContextMenuButton(plusSVG,
+              {title: "Wrap selection"},
+              {onclick: (s => event => {
+                let elements = [];
+                let tmp = s.startContainer;
+                let nodeToInsertAfter = s.startContainer;
+                let parent = nodeToInsertAfter.parentElement;
+                while(tmp && tmp !== s.endContainer.nextSibling) {
+                  if(tmp.nodeType === 3) {
+                    elements.push(tmp === s.startContainer ? tmp === s.endContainer ? tmp.textContent.substring(s.startOffset, s.endOffset) : tmp.textContent.substring(s.startOffset) :
+                      tmp === s.endContainer ? tmp.textContent.substring(0, s.endOffset) :
+                      tmp.textContent);
+                    if(tmp === s.startContainer) {
+                      if(tmp === s.endContainer && tmp.textContent.length > s.endOffset) {
+                        // Need to split the text node.
+                        tmp.parentElement.insertBefore(document.createTextNode(tmp.textContent.substring(s.endOffset)), tmp.nextSibling);
+                      }
+                      if(s.startOffset === 0) {
+                        nodeToInsertAfter = nodeToInsertAfter.previousSibling;
+                        tmp.remove();
+                      } else {
+                        tmp.textContent = tmp.textContent.substring(0, s.startOffset);
+                      }
+                    } else if(tmp === s.endContainer) {
+                      if(s.endOffset === s.endContainer.textContent.length) {
+                        tmp.remove();
+                      } else {
+                        tmp.textContent = tmp.textContent.substring(s.endOffset);
+                      }
                     } else {
-                      tmp.textContent = tmp.textContent.substring(0, s.startOffset);
-                    }
-                  } else if(tmp === s.endContainer) {
-                    if(s.endOffset === s.endContainer.textContent.length) {
                       tmp.remove();
-                    } else {
-                      tmp.textContent = tmp.textContent.substring(s.endOffset);
                     }
                   } else {
+                    elements.push(tmp);
                     tmp.remove();
                   }
-                } else {
-                  elements.push(tmp);
-                  tmp.remove();
+                  tmp = tmp.nextSibling;
                 }
-                tmp = tmp.nextSibling;
-              }
-              let insertedNode = el("span", {"ghost-clicked": "true"});
-              for(let k of elements) {
-                insertedNode.append(k);
-              }
-              let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
-              parent.insertBefore(insertedNode, nodeToInsertBefore);
-              document.querySelector("#modify-menu").classList.toggle("visible", true);
-              editor_model.visible = true;
-              editor_model.clickedElem = insertedNode;
-              updateInteractionDiv();
-            })(model.selectionRange)}
-            )
-      }
-      if(!model.selectionRange) {
-        addContextMenuButton(plusSVG,
-            {title: "Insert element", contenteditable: false},
-            {onclick: event => {
-              editor_model.clickedElem = clickedElem;
-              editor_model.displayClickedElemAsMainElem = true;
-              editor_model.insertElement = true;
-              updateInteractionDiv();
-              restoreCaretPosition();
-            }});
-      }
-
-      let baseElem = clickedElem;
-      while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
-        baseElem = baseElem.nextElementSibling;
-      }
-      baseElem = model.selectionRange || baseElem || clickedElem;
-      
-      if(baseElem && !noContextMenu) {
-        let clientRect = baseElem.getBoundingClientRect();
-        // Find out where to place context menu.
-        let clickedElemLeft = window.scrollX + clientRect.left;
-        let clickedElemTop = window.scrollY + clientRect.top;
-        let clickedElemBottom = window.scrollY + clientRect.bottom;
-        let clickedElemRight = window.scrollX + clientRect.right;
-        let desiredWidth = numButtons * buttonWidth();
-        let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
-        if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
-        let desiredTop = clickedElemTop - buttonHeight(); 
-        if(desiredTop - window.scrollY < 9) {
-          desiredTop = clickedElemBottom;
-          if(desiredTop + buttonHeight() > window.innerHeight) {
-            desiredTop = window.innerHeight - buttonHeight(); 
-          }
+                let insertedNode = el("span", {"ghost-clicked": "true"});
+                for(let k of elements) {
+                  insertedNode.append(k);
+                }
+                let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
+                parent.insertBefore(insertedNode, nodeToInsertBefore);
+                document.querySelector("#modify-menu").classList.toggle("visible", true);
+                editor_model.visible = true;
+                editor_model.clickedElem = insertedNode;
+                updateInteractionDiv();
+              })(model.selectionRange)}
+              )
         }
-        if(desiredLeft < 0) desiredLeft = 0;
-        if(desiredTop < 0) desiredTop = 0;
-        contextMenu.style.left = desiredLeft + "px";
-        contextMenu.style.top = desiredTop + "px";
-        contextMenu.style.width = desiredWidth + "px";
-        contextMenu.classList.add("visible");
-      }
-      if(noContextMenu) {
-        contextMenu.classList.remove("visible");
+        if(!model.selectionRange) {
+          addContextMenuButton(plusSVG,
+              {title: "Insert element", contenteditable: false},
+              {onclick: event => {
+                editor_model.clickedElem = clickedElem;
+                editor_model.displayClickedElemAsMainElem = true;
+                editor_model.insertElement = true;
+                updateInteractionDiv();
+                restoreCaretPosition();
+              }});
+        }
+
+        let baseElem = clickedElem;
+        while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
+          baseElem = baseElem.nextElementSibling;
+        }
+        baseElem = model.selectionRange || baseElem || clickedElem;
+      
+        if(baseElem && !noContextMenu) {
+          console.log("this is rendering the squares");
+          let clientRect = baseElem.getBoundingClientRect();
+          // Find out where to place context menu.
+          let clickedElemLeft = window.scrollX + clientRect.left;
+          let clickedElemTop = window.scrollY + clientRect.top;
+          let clickedElemBottom = window.scrollY + clientRect.bottom;
+          let clickedElemRight = window.scrollX + clientRect.right;
+          let desiredWidth = numButtons * buttonWidth();
+          let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
+          if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
+          let desiredTop = clickedElemTop - buttonHeight(); 
+          if(desiredTop - window.scrollY < 9) {
+            desiredTop = clickedElemBottom;
+            if(desiredTop + buttonHeight() > window.innerHeight) {
+              desiredTop = window.innerHeight - buttonHeight(); 
+            }
+          }
+          if(desiredLeft < 0) desiredLeft = 0;
+          if(desiredTop < 0) desiredTop = 0;
+          contextMenu.style.left = desiredLeft + "px";
+          contextMenu.style.top = desiredTop + "px";
+          contextMenu.style.width = desiredWidth + "px";
+          contextMenu.classList.add("visible");
+        }
+        if(noContextMenu) {
+          contextMenu.classList.remove("visible");
+        }
       }
       return true;
-
     }
     
     // Links edition - Might be empty.
