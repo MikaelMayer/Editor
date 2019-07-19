@@ -2968,6 +2968,8 @@ editionscript = """
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     var undoSVG = mkSvg("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
     var redoSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
+    var escapeSVG = mkSvg("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z");
+    var linkModeSVG = mkSvg("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
 
     var ifAlreadyRunning = typeof editor_model === "object";
     
@@ -3294,7 +3296,7 @@ editionscript = """
         );
       }
       else {
-        addPinnedModifyMenuIcon(folderSVG + "<span class='modify-menu-icon-label-link'>ESCAPE</span>", 
+        addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>ESCAPE</span>", 
           {"class": "link-select-button", title: "Go back to original screen",
             id: "escapebutton"
           },
@@ -3921,7 +3923,7 @@ editionscript = """
               isHref ? el("span", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [],
                         {innerHTML: liveLinkSVG(model.link)}): undefined,
               isHref ? el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Activate internal link mode"}, [], {
-                innerHTML: plusSVG,
+                innerHTML: linkModeSVG,
                 onclick: linkSelect
               }): undefined,
               el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
