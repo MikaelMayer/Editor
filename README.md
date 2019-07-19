@@ -32,6 +32,7 @@ Then, point your browser to http://localhost:3000
     - Summary of changes to the file system
     - Save/cancel current solution
   - Automatic ambiguity resolution button ('questions')
+  - Special interface for linking to internal elements on the page.
 * Page viewing and edition
   - Static files \*.html, \*.md supported
   - Dynamic files \*.elm or \*.leo supported with file reading on disk and a full-feature functional programming language.
