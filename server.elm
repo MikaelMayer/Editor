@@ -1309,10 +1309,6 @@ div#modify-menu {
 .modify-menu-icon:hover {
   background-color: var(--context-button-color-hover);
 }
-/*modify-menu-icon#internalLinkMode {
-  padding-left: 10px;
-  display: table-row;
-}*/
 div#modify-menu > div.modify-menu-icons:not(.pinned) {
   width: 100%;
   overflow-x: auto;
@@ -1396,7 +1392,7 @@ div#modify-menu input[type=radio] {
   width: initial;
   font-size: 1em;
 }
-div#modify-menu span#insertOption{
+div#modify-menu span.insertOption{
   display: block;
 }
 div.keyvalue > span > input {
@@ -1614,10 +1610,6 @@ div#context-menu .context-menu-button, div#modify-menu .modify-menu-button, div#
   width: var(--context-menu-button-width);
   cursor: pointer;
 }
-/*.link-select-button{
-  color: var(--context-dom-text-color);
-  background-color: #8B0000;
-}*/
 div#context-menu .context-menu-button, div#modify-menu .modify-menu-icons:not(.pinned) .modify-menu-button {
   height: var(--context-menu-height);
 }
@@ -2814,10 +2806,11 @@ editionscript = """
           e.preventDefault();
           if(!redo()) popupMessage("Nothing to redo!");
         }
+        //in link select mode, escape on the keyboard can be
+        //used to exit the link select mode (same as escape button)
         if(editor_model.linkSelectMode) {
           if(e.which == 27) {
-            editor_model.linkSelectMode = false;
-            updateInteractionDiv();
+            escapeLinkMode();
           }
         }
       };
@@ -2978,7 +2971,17 @@ editionscript = """
 
     var ifAlreadyRunning = typeof editor_model === "object";
     
-//hover mode for linkSelectMode
+    //hover mode functions for linkSelectMode
+    function escapeLinkMode() {
+      document.body.removeEventListener('mouseover', linkModeHover1, false);
+      document.body.removeEventListener('mouseout', linkModeHover2, false);
+      //removing the hovered element (which is retained if the escape key is hit)
+      document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
+      editor_model.clickedElem = editor_model.linkFrom;
+      editor_model.linkSelectMode = false;
+      editor_model.linkFrom = undefined;
+      updateInteractionDiv();
+    }
     function noGhostHover (node) {
       curClass = node.getAttribute("class")
       if(curClass === "modify-menu-icon-label-link" ||
@@ -3231,16 +3234,6 @@ editionscript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-
-      function escapeLinkMode() {
-        document.body.removeEventListener('mouseover', linkModeHover1, false);
-        document.body.removeEventListener('mouseout', linkModeHover2, false);
-        console.log("Got here!");
-        editor_model.clickedElem = editor_model.linkFrom;
-        editor_model.linkSelectMode = false;
-        editor_model.linkFrom = undefined;
-        updateInteractionDiv();
-      }
       if(!editor_model.linkSelectMode) {
         addPinnedModifyMenuIcon(
           panelOpenCloseIcon(),
@@ -3422,19 +3415,19 @@ editionscript = """
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {id: "insertOption"}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertBeforeNode", name: "insertionPlace", value: "before"}),
               el("label", {"for": "radioInsertBeforeNode"}, "Before node")]),
           clickedElem.tagName === "HTML" ? undefined :
-            el("span", {id: "insertOption"}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
               el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")], {onclick: restoreCaretPosition}),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {id: "insertOption"}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD"  }),
               el("label", {"for": "radioInsertAfterNode"}, "After node")]),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {id: "insertOption"}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertWrapNode", name: "insertionPlace", value: "wrap"}),
               el("label", {"for": "radioInsertWrapNode"}, "Wrap node")]),
         ]));
