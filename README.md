@@ -178,11 +178,13 @@ Insert the following in a script at the beginning of the body:
 
 Instead of putting this code right into your page, you can also create a file `.editor` where your document is located, and insert the following script (in this context, `editor` will surely be defined).
 
-``Regex.replace "<body>" (\m -> m.match + """
+```
+Regex.replace "<body>" (\m -> m.match + """
   <script>
     editor.ghostNodes.push(insertedNode => /*PREDICATE ON insertedNode*/)
   </script>
-""")`
+""")
+```
 
 #### Saving ghost attributes and properties on page rewrite after edits.
 
