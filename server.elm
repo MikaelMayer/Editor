@@ -2280,7 +2280,12 @@ editionscript = """
     function relativeToAbsolute(url) {
       if(isAbsolute(url) || url && url.length && url[0] == "/") return url;
       let u =  new URL(location.href);
-      return u.pathname.replace(/[^\/]*$/, "") + url;
+      if(url[0] === "#") {
+        return u.pathname + url; 
+      }
+      else {
+        return u.pathname.replace(/[^\/]*$/, "") + url;
+      }
     }
     function navigateLocal(url, replaceState) {
       notifyServer(xmlhttp => {
