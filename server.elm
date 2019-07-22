@@ -78,9 +78,7 @@ canEditPage = userpermissions.pageowner && varedit && not varls
 {freezeWhen} = Update
 
 serverOwned what obj = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
-
 If you really intended to modify this, add ?admin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
-
 For debugging purposes, below is the new value that was pushed:
 <pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
 Here is the old value that was computed
@@ -2205,9 +2203,7 @@ editionscript = """
           replaceContent(xmlhttp.responseText);
           
           console.log ("content replaced");
-
           applyGhostAttributes(saved);
-
           var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
           var newQueryStr = xmlhttp.getResponseHeader("New-Query");
           var ambiguityKey = xmlhttp.getResponseHeader("Ambiguity-Key");
@@ -2386,11 +2382,8 @@ editionscript = """
             on message over here will be notified when the save it complete and will be given the new 
             page content within the xmlhttp response. We need to rewrite the page with these data.
       */
-
       
-
       var serverWorker = new Worker("TharzenEditor/editor.js");
-
       var d = {action:"getServCont"}
       var tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
       const undoStackLen = editor_model.undoStack.length;
@@ -2413,7 +2406,6 @@ editionscript = """
           xmlhttp.response.setHeader("ambiguitySummaries", e.data.ambiguitySummaries);
           xmlhttp.response.setHeader("opSummaryEncoded", e.data.opSummaryEncoded);
           xmlhttp.response.text = e.data.text;
-
           /*
             We want to undo everything in the undo stack that has been done since the save began.
             In the process of vanilla undoing this (using mark's function), the items will be
@@ -2428,11 +2420,9 @@ editionscript = """
             pointed to in the mutationrecord is still connected to the active DOM. if not,
             we use the inactive node to record the path up the tree, and search for the
             corresponding node in the newly active tree, replacing the MR.target with the active one.
-
             Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
             the state pre-update & post-save.
           */
-
           const ads = editor_model.actionsDuringSave;
           const adsLen = editor_model.actionsDuringSave.length;
           console.log ({adsLen});
@@ -2500,7 +2490,6 @@ editionscript = """
       }, 0);*/
       console.log ("send cont end"); 
     } //sendModificationsToServer
-
     //other possible approaches
     //add writable property (for oldValue) to mutation object
     //create array with necessary properties/attributes
@@ -2604,7 +2593,6 @@ editionscript = """
         return;
       } // Send in post the new HTML along with the URL
       
-
       if(!editor_model.autosave) {
         if(editor_model.undoStack.length)
         {
@@ -2667,7 +2655,6 @@ editionscript = """
       }
       console.log("-----------------------------");
     }
-
     function popupMessage(m) {
     	console.log(m);
     }
@@ -2766,7 +2753,6 @@ editionscript = """
                   target.insertBefore(uRemNodes.item(i), kidNodes.item(j)); 
                   //console.log("Added", uRemNodes.item(i));
                 }
-
               }
             }
           }
@@ -2808,7 +2794,6 @@ editionscript = """
       updateInteractionDiv();
       return 1;
     } //undo
-
     function redo() {
       //printstacks();
       const getPerry = (tg) => tg.parentNode ? tg.parentNode : null;
@@ -2855,7 +2840,6 @@ editionscript = """
         if(mutType == "attributes") {
           let cur_attr = target.getAttribute(redoElem[k].attributeName);
           if (redoElem[k].URValue === null) {
-
           }
           else { 
             elly ? elly.setAttribute(redoElem[k].attributeName, redoElem[k].URValue) : 
@@ -2951,7 +2935,6 @@ editionscript = """
           if (sel.getRangeAt && sel.rangeCount) {
               range = sel.getRangeAt(0);
               range.deleteContents();
-
               // Range.createContextualFragment() would be useful here but is
               // only relatively recently standardized and is not supported in
               // some browsers (IE9, for one)
@@ -2962,7 +2945,6 @@ editionscript = """
                   lastNode = frag.appendChild(node);
               }
               range.insertNode(frag);
-
               // Preserve the selection
               if (lastNode) {
                   range = range.cloneRange();
@@ -2981,7 +2963,6 @@ editionscript = """
     function handleFileSelect(evt) {
       evt.stopPropagation();
       evt.preventDefault();
-
       var files = evt.dataTransfer.files; // FileList object
       uploadFilesAtCursor(files);
     }
@@ -3009,13 +2990,11 @@ editionscript = """
         });
       }
     }
-
     function handleDragOver(evt) {
       evt.stopPropagation();
       evt.preventDefault();
       evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
     }
-
     if(@(if varedit then "true" else "false")) {
       var dropZone = document.body;
       dropZone.addEventListener('dragover', handleDragOver, false);
@@ -3168,7 +3147,6 @@ editionscript = """
       updateInteractionDiv();
       // Check if the event.target matches some selector, and do things...
     }
-
     function mkSvg(path, fill) {
       return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
             <path d="${path}" /></svg>`
@@ -3192,7 +3170,6 @@ editionscript = """
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     var undoSVG = mkSvg("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
     var redoSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
-
     var ifAlreadyRunning = typeof editor_model === "object";
     
     
@@ -3306,7 +3283,6 @@ editionscript = """
                       _ -> if boolVar "autosave" True then "true" else "false"),
       path: ifAlreadyRunning ? editor_model.path : @(path |> jsCode.stringOf)
     }
-
     function reorderCompatible (node1, node2){
       let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
       return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
@@ -3317,9 +3293,7 @@ editionscript = """
       e = e || window.event;
       e.preventDefault();
     }
-
     updateInteractionDiv();
-
     function updateInteractionDiv() {
       let model = editor_model;
       var clickedElem = model.clickedElem;
@@ -3430,7 +3404,6 @@ editionscript = """
           updateInteractionDiv();
         })(clickedElem)}
       )
-
       addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
       {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           id: "savebutton"  
@@ -3469,7 +3442,6 @@ editionscript = """
           }
         }
       );
-
       if(model.advanced || model.disambiguationMenu) {
         modifyMenuDiv.append(
           el("a", { class:"troubleshooter", href:  "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
@@ -3634,7 +3606,6 @@ editionscript = """
             el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: true}),
             el("label", {"for": "radioInsertAfterNode"}, "After node")]),
         ]));
-
         let insertTag = function() {
           let newElement = (() => {
             let parent = this;
@@ -3700,7 +3671,6 @@ editionscript = """
             updateInteractionDiv();
           }
         }
-
         let addElem = function(name, createParams) {
           interactionDiv.append(
             el("div", {"class": "tagName"},
@@ -3708,7 +3678,6 @@ editionscript = """
             )
           );
         }
-
         if(clickedElem.tagName === "HEAD") {
           addElem("Title", {tag:"title", children: "Page_title"});
           addElem("Style", {tag:"style", children: "/*Your CSS there*/"});
@@ -3722,7 +3691,6 @@ editionscript = """
           addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }});
           addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n<li><br></li>\n</ol>" }});
           addElem("Button", {tag: "button", props: {innerHTML: "Name_your_button" }});
-
           // something is wrong with creating link and paragraph using childCreate
           // addElem("Link", {tag:"a", childCreate: "Name_your_link"});
           // addElem("Paragraph", {tag:"p", childCreate: "Inserted paragraph"});
@@ -3732,7 +3700,6 @@ editionscript = """
             addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }});
           }
         }
-
         interactionDiv.append(
           el("div", {"class": "tagName"}, [
             el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
@@ -3754,7 +3721,6 @@ editionscript = """
           el("input", {"type": "text", "class": "tagname-info", "value": textPreview(clickedElem, 50), "readonly": "readonly"})
           ]
         ));
-
         /*
           Build the DOM node selector:
           Two parts:
@@ -3763,7 +3729,6 @@ editionscript = """
           |-----------------------|
           |  children / siblings  |
           |-----------------------|
-
           Two status:
           editor_model.displayClickedElemAsMainElem = true
           Status 1 (default). Show current clicked element as main element on the top:
@@ -3772,16 +3737,13 @@ editionscript = """
           |-----------------------|
           |   children elements   |
           |-----------------------|
-
           Status 2. Show current clicked element's parent element as main element on the top:
           |-----------------------------------------------------|
           |                  parent element                     |
           |-----------------------------------------------------|  
           | previous sibling | clicked element* | next sibling  |
           |-----------------------------------------------------|
-
           All the HTML elements (except empty parts) in the selector can be clicked.
-
           Check parent: When the clicked element in status 1 is clicked in selector, the selector switches to status 2 (display its parent as main element in first level).
           Check parent: When the parent element in status 2 is clicked in selector, the selector remains status 2 while the parent element becomes current clicked element.
           
@@ -3790,17 +3752,13 @@ editionscript = """
           
           Check siblings: When the siblings in status 2 is clicked in selector, the sibling will become 'clicked element' but the selector won't switch status 1. 
           The siblings will be in the middle of second level of status 2. This is because we want user switching siblings in second level easily.
-
           When other elements in selector are clicked, change 'clicked element' to it. And it also follow rules above.
-
           Bonus feature (Memoization):
             When user select DOM nodes along DOM tree from bottom to top continuously, the selector will remember its traverse path.
             When user tries to traverse back through DOM tree from top to bottom, the selector will show previous visited children element with its parent element.
             img -> div -> body
             body -> div -> img
-
             The main point is to decide which child should be displayed in the middle of second part (children element part) of selector in status 1.
-
             Implementation:
               editor_model.previousVisitedElem = [], as a stack storing DOM node path
               
@@ -3819,7 +3777,6 @@ editionscript = """
           el("div", {"class": "mainElem"}, []),
           el("div", {"class": "childrenElem"}, [])
         );
-
         let displayMainElem = function(elem) {
           let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
           mainElemDiv.append(
@@ -3830,7 +3787,6 @@ editionscript = """
             el("div", {"class": "mainElemInfo"}, textPreview(elem, 50))
           );
         }
-
         let displayChildrenElem = function(elem) {
           let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
           childrenElemDiv.append(
@@ -3846,7 +3802,6 @@ editionscript = """
             )
           );
         }
-
         // show attributes of element on the dom selector
         let displayElemAttr = function(targetDiv, elem) {
           for (let i = 0; elem && elem.attributes && i < elem.attributes.length; i++) {
@@ -3863,7 +3818,6 @@ editionscript = """
             );
           }
         }
-
         // display children and siblings in the second part of selector
         let displayChildrenSiblings = function(middleChild, selectMiddleChild) {
           // display clicked element's previous sibling, clicked element, clicked element's next sibling
@@ -3877,7 +3831,6 @@ editionscript = """
               if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
                 return;
               }
-
               // still in status 2, but clicked element change to previous sibling
               editor_model.displayClickedElemAsMainElem = false;
               editor_model.previousVisitedElem = []; // clear the stack
@@ -3892,7 +3845,6 @@ editionscript = """
             );
           }
           cnt++;
-
           // display certain child in the middle
           displayChildrenElem(middleChild);
           document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
@@ -3900,7 +3852,6 @@ editionscript = """
             if (!c.tagName) {
               return;
             }
-
             // switch to status 1
             editor_model.displayClickedElemAsMainElem = true;
             editor_model.clickedElem = c;
@@ -3911,7 +3862,6 @@ editionscript = """
             document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].classList.add("selectedDom");
           }
           cnt++;
-
           // display next sibling
           if (middleChild.nextElementSibling && (middleChild.nextElementSibling.id !== "context-menu" || middleChild.nextElementSibling.id !== "modify-menu" || middleChild.nextElementSibling.id !== "editbox")) {
             displayChildrenElem(middleChild.nextElementSibling);
@@ -3920,7 +3870,6 @@ editionscript = """
               if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
                 return;
               }
-
               // still in status 2, but clicked element change to next sibling
               editor_model.displayClickedElemAsMainElem = false;
               editor_model.previousVisitedElem = []; // clear the stack
@@ -3935,7 +3884,6 @@ editionscript = """
             );
           }
         }
-
         // editor itself should be invisible
         if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
           // status 1. display clicked element in main part
@@ -3947,7 +3895,6 @@ editionscript = """
               if (!clickedElem.tagName) {
                 return;
               }
-
               // When the main element in selector is clicked, selector switch to status 2 so that user can see its parent element
               editor_model.displayClickedElemAsMainElem = false;
               editor_model.clickedElem = clickedElem;
@@ -3955,7 +3902,6 @@ editionscript = """
               updateInteractionDiv();
             }
             displayElemAttr(mainElemDiv, clickedElem);
-
             // display children, if no previous selected child, display first 3 children elements in second part of selector
             if (editor_model.previousVisitedElem.length < 2 ||
                 (editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1] != clickedElem)) {
@@ -3976,7 +3922,6 @@ editionscript = """
                     if (!c.tagName) {
                       return;
                     }
-
                     // still in status 1
                     editor_model.displayClickedElemAsMainElem = true;
                     editor_model.clickedElem = c;
@@ -3998,7 +3943,6 @@ editionscript = """
           } else {
             // status 2. display clicked element's parent element in main part
             let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
-
             // <html> has no parent element
             if (clickedElem.parentElement) {
               displayMainElem(clickedElem.parentElement);
@@ -4006,7 +3950,6 @@ editionscript = """
                 if (!clickedElem.parentElement.tagName) {
                   return;
                 }
-
                 // still in status 2 while current clicked element's parent element becomes clicked element so that user can see grandparent element
                 editor_model.displayClickedElemAsMainElem = false;
                 // memoization. when user click parent element:
@@ -4034,7 +3977,6 @@ editionscript = """
           }
         }
       }
-
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
             let newel = el(document.querySelector("#newTagName").value);
             let elements = clickedElem.childNodes;
@@ -4095,13 +4037,11 @@ editionscript = """
             ));
         }
       }
-
       let highlightsubmit = function() {
         let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
         this.parentElement.parentElement.querySelector("button").disabled =
           attrName === "" || attrName.trim() !== attrName
       }
-
       if(clickedElem && clickedElem.nodeType === 1) {
         keyvalues.append(
           el("div", {"class": "keyvalue keyvalueadder"}, [
@@ -4121,7 +4061,6 @@ editionscript = """
           ])
         );
       }
-
       function uploadImagesAtCursor(files, srcName) {
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
@@ -4130,10 +4069,8 @@ editionscript = """
             clickedElem.setAttribute("src", targetPathName);
           });
         }
-
         // refresh images list
         showListsImages(srcName);
-
         // automatically select upload image
         let selectedImage = document.querySelectorAll(".imgFolder");
         for (let i = 0; i < selectedImage.length; ++i) {
@@ -4165,7 +4102,6 @@ editionscript = """
         // init: clear image list
         let selectedImage = document.querySelectorAll(".imgFolder");
         selectedImage.forEach(e => e.remove());
-
         for (let i = 0; i < images.length; ++i) {
           interactionDiv.append(
             el("div", { class: "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
@@ -4188,14 +4124,11 @@ editionscript = """
       }
       
       interactionDiv.append(keyvalues);
-
       if (clickedElem && clickedElem.tagName === "IMG") {
         let srcName = clickedElem.attributes[0].value;
-
         clickedElem.ondragover = function (e) {
           e.preventDefault();
         }
-
         clickedElem.ondrop = function (e) {
           // upload and replace the image
           e.stopPropagation();
@@ -4203,7 +4136,6 @@ editionscript = """
           var files = e.dataTransfer.files; // FileList object
           uploadImagesAtCursor(files, srcName);
         }
-
         // upload image button
         interactionDiv.append(
           el("a", 
@@ -4220,9 +4152,7 @@ editionscript = """
         // show lists of images in selected image's folder
         showListsImages(srcName);
       }
-
       //interactionDiv.append(el("hr"));
-
       if(clickedElem && (clickedElem.tagName === "SCRIPT" || clickedElem.tagName === "STYLE" || clickedElem.tagName === "TITLE")) {
         // interactionDiv.append(el("hr"));
         interactionDiv.append(el("textarea", {style: "width:100%; height:50%"},
@@ -4231,7 +4161,6 @@ editionscript = """
             onkeyup: function () { clickedElem.childNodes[0].textContent = this.value; }
           }));
       }
-
       // let user modify button content
       if(clickedElem && (clickedElem.tagName === "BUTTON")) {
         // provide the onclick attribute to users so user can modify it in modify-menu
@@ -4262,7 +4191,6 @@ editionscript = """
         addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
           {title: "Go to " + model.link, "class": "inert"});
       }
-
       if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
         addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
           <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
@@ -4390,7 +4318,6 @@ editionscript = """
               sel.addRange(range);
             }});
       }
-
       let baseElem = clickedElem;
       while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
         baseElem = baseElem.nextElementSibling;
@@ -4422,7 +4349,6 @@ editionscript = """
         contextMenu.classList.add("visible");
       }
       return true;
-
     } //update interaction div end
     
     // Links edition - Might be empty.
