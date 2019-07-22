@@ -262,17 +262,17 @@ luca =
       }
       console.log ({msg});
       notifBox.style.value = msg;
-      window.alert(notifBox.style.value);
+      //window.alert(notifBox.style.value);
       notifBox.style.display = 'block';
       notifBox.style.zIndex = 100;
       notifBox.style.visibility = true;
       editor_model.editor_log.push(msg);
-      window.alert(notifBox.style.value);
+      //window.alert(notifBox.style.value);
       let em = editor_model.editor_log;
       console.log ({em, msg});
       let log = document.getElementById("fullLog");
-      console.log ("whooop"); 
-      window.alert(notifBox.style.value);
+      //console.log ("whooop"); 
+      //window.alert(notifBox.style.value);
       /*
       if (!log) {
         console.log ("not log in sendmods");
