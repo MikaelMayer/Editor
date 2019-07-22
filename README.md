@@ -32,6 +32,7 @@ Then, point your browser to http://localhost:3000
     - Summary of changes to the file system
     - Save/cancel current solution
   - Automatic ambiguity resolution button ('questions')
+  - Special interface for linking to internal elements on the page.
 * Page viewing and edition
   - Static files \*.html, \*.md supported
   - Dynamic files \*.elm or \*.leo supported with file reading on disk and a full-feature functional programming language.
@@ -178,11 +179,13 @@ Insert the following in a script at the beginning of the body:
 
 Instead of putting this code right into your page, you can also create a file `.editor` where your document is located, and insert the following script (in this context, `editor` will surely be defined).
 
-``Regex.replace "<body>" (\m -> m.match + """
+```
+Regex.replace "<body>" (\m -> m.match + """
   <script>
     editor.ghostNodes.push(insertedNode => /*PREDICATE ON insertedNode*/)
   </script>
-""")`
+""")
+```
 
 #### Saving ghost attributes and properties on page rewrite after edits.
 
