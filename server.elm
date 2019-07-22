@@ -246,14 +246,59 @@ luca =
       //TODO not full reload bump: Mikael
     }
 
-    function pushNotification(msg) {
+    function sendNotification(msg, timeout) {
       /*
-      TODO send message to the notifications stack, display a disappearing text box with
-      the notification in it. If this text box is clicked, it expands to show the whole
-      notification stack. 
-
-      Right now this code just calls window.alert() to tell the user of the notification.
+        Pushes the notification msg to the log & displays it for 3 seconds directly left of the moidfymenu.
+        css for notification box is textarea .notif
       */
+
+      let modifyMenuDiv = document.querySelector("#modify-menu");
+      if (!modifyMenuDiv) {
+        window.alert("Notifications havent been set up for use outside of editor, like in the filesystem");
+        return;
+      }
+      let notifBox = document.getElementById("notif-box");
+      if (!notifBox) { //function el(tag, attributes, children, properties) 
+        notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
+        modifyMenuDiv.append(notifBox);
+      }
+      console.log ({msg});
+      notifBox.style.value = msg;
+      window.alert(notifBox.style.value);
+      notifBox.style.display = 'block';
+      notifBox.style.zIndex = 100;
+      notifBox.style.visibility = true;
+      editor_model.editor_log.push(msg);
+      window.alert(notifBox.style.value);
+      let em = editor_model.editor_log;
+      console.log ({em, msg});
+      let log = document.getElementById("fullLog");
+      console.log ("whooop"); 
+      window.alert(notifBox.style.value);
+      /*
+      if (!log) {
+        console.log ("not log in sendmods");
+        log = el("textarea", {id:"fullLog", class:"textarea logger", visibility:false, readonly:true, isghost:true}, [], {});
+      }
+      if (log.style.display == 'block') {
+        console.log ("here fuck");
+        let elog = editor_model.editor_log;
+        let logtxt = "";
+        for (let i = 0; i < editor_model.editor_log.length; i++) {
+          logtxt = logtxt + editor_model.editor_log[i] + "\n";
+        }
+        logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
+        log.style.display = 'block';
+        console.log ({log});
+      }*/
+      setTimeout(hideNotification, timeout ? timeout : 3000);
+    }
+
+    function hideNotification() {
+      let notifBox = document.getElementById("notif-box");
+      if (notifBox) {
+        notifBox.style.display = 'none';
+      }
     }
 
     //document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
@@ -1093,6 +1138,27 @@ input:checked + .slider:before {
   -ms-transform: translateX(13px);
   transform: translateX(13px);
 }
+.textarea {
+  color: white;
+  font-family: Arial;
+}
+.notifs {
+  background-color: #000000; /* black */
+  transform:translateX(48px);
+  position:fixed;
+  top:5px;
+  right:496px;
+  width:256px;
+  height:128px;
+}
+.logger {
+  background-color: #000000; /* black */
+  position:fixed;
+  width: 400px;
+  top:128px;
+  height:128px;
+}
+
 
 /* Rounded sliders */
 .slider.round {
@@ -2307,16 +2373,18 @@ editionscript = """
       if(document.getElementById("modify-menu")) {
         document.getElementById("modify-menu").append(newMenu);
       }
-      console.log ("here!!!");
       updateInteractionDiv();
-      
+      sendNotification("Beginning save!");
+      console.log ("send cont beg");
+      let modmen = document.getElementById("modify-menu");
+      console.log ({modmen});
       /*
         Spawn new worker thread to 
           (1) read SERVER_CONTENT. 
-            set up xmlhttp request and in the .then send a message back to this thread.
-          (2) save
-            on message over here needs to handle the incoming SERVER_CONTENT, then send it back
-            to the worker thread with the new action of saving, and with the content to save.
+            set up xmlhttp request over in a worker thread and wait for the promise to be fullfilled.
+          (2) save - also on worker thread
+            on message over here will be notified when the save it complete and will be given the new 
+            page content within the xmlhttp response. We need to rewrite the page with these data.
       */
 
       
@@ -2356,13 +2424,13 @@ editionscript = """
             as the undo/redo stacks are an array of array of MutationRecords, all of whose target
             has just been erased and replaced with a new object. 
             So we need to convert the old UR stacks to be pointing to the right objects.
-            
-            I don't think it'll let us manufacture MutationRecords to populate the UR stacks with.
-            This leads me to think we should run through and actually do the things on the stack
-            to repopulate it, but this may be overkill.
+            We solve this in the undo()/redo() functions, by checking to see if the object
+            pointed to in the mutationrecord is still connected to the active DOM. if not,
+            we use the inactive node to record the path up the tree, and search for the
+            corresponding node in the newly active tree, replacing the MR.target with the active one.
 
             Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
-            the state pre-update post-save.
+            the state pre-update & post-save.
           */
 
           const ads = editor_model.actionsDuringSave;
@@ -2380,9 +2448,12 @@ editionscript = """
             }
           });
           outputValueObserver.disconnect();
+          let iss = editor_model.isSaving;
           xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {});
           xmlhttp.readyState = XMLHttpRequest.DONE
           xmlhttp.onreadystatechange();
+          let iss1 = editor_model.isSaving;
+          console.log ({iss, iss1});
           setTimeout(function() {
             outputValueObserver.observe
             ( document.body.parentElement
@@ -2412,6 +2483,7 @@ editionscript = """
               throw new Error("unidentified action in actionsduringsave");
             }
           }
+          sendNotification("Save completed!");
           console.log ({xmlhttp});
           console.log ("worker confirmed save finished");
         }
@@ -2426,7 +2498,7 @@ editionscript = """
         });
         console.log ("server notified on this thread");
       }, 0);*/
-      console.log ("finished here!!!! o"); 
+      console.log ("send cont end"); 
     } //sendModificationsToServer
 
     //other possible approaches
@@ -2502,7 +2574,7 @@ editionscript = """
           } else {
             onlyGhosts = false;
             sendToUndo(mutation, cur_time);
-            console.log("Attribute is not ghost", mutation);
+            //console.log("Attribute is not ghost", mutation);
           }
         } else if(mutation.type == "childList") {
           if(!areChildrenGhosts(mutation.target)) {
@@ -2510,25 +2582,25 @@ editionscript = """
               if(!hasGhostAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
-                console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
+                //console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
               }
             }
             for(var j = 0; j < mutation.removedNodes.length; j++) {
               if(!isGhostNode(mutation.removedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
-                console.log(`Removed node ${j} was not a ghost`, mutation);
+                //console.log(`Removed node ${j} was not a ghost`, mutation);
               }
             }
           }
         } else {
           onlyGhosts = false;
           sendToUndo(mutation, cur_time);
-          console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
+          //console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
         }
       }
       if(onlyGhosts) {
-        console.log("mutations are only ghosts, skipping");
+        //console.log("mutations are only ghosts, skipping");
         return;
       } // Send in post the new HTML along with the URL
       
@@ -3113,6 +3185,7 @@ editionscript = """
     var gearSVG = mkSvg("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
     var folderSVG = mkSvg("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
     var reloadSVG = mkSvg("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
+    var logSVG = mkSvg("M 17.24,16 A 1.24,2 0 0 1 16,18 1.24,2 0 0 1 14.76,16 1.24,2 0 0 1 16,14 1.24,2 0 0 1 17.24,16 Z M 20,16 21.24,16 21.24,16 A 1.24,2 0 0 1 20,18 1.24,2 0 0 1 18.76,16 1.24,2 0 0 1 20,14 1.33,2.16 0 0 1 21,15 M 12,14 12,18 14,18 M 10,12 23,12 23,20 10,20 Z M 23,6 23,11 28,11 M 14,6 14,12 10,12 10,20 14,20 14,25 28,25 28,11 23,6 14,6 Z");
     var sourceSVG = mkSvg("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
     var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
@@ -3218,6 +3291,9 @@ editionscript = """
       undoStack: ifAlreadyRunning ? editor_model.undoStack : [],
       redoStack: ifAlreadyRunning ? editor_model.redoStack : [],
       actionsDuringSave: ifAlreadyRunning ? editor_model.actionsDuringSave : [],
+      //editor log
+      editor_log: !ifAlreadyRunning ? [] : editor_model.editor_log,
+      show_log:false,
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
@@ -3365,8 +3441,10 @@ editionscript = """
           : function(event) {
             if(!this.classList.contains("disabled")) {
               if (editor_model.isSaving) {
-                window.alert("TODO Can't save while saving is being undertaken");
+                console.log ("is saving");
+                sendNotification("Can't save while save is being undertaken");
               } else {
+                console.log ("not saving apparently");
                 sendModificationsToServer();
               }
             }
@@ -3422,9 +3500,65 @@ editionscript = """
               u.pathname = u.pathname.replace(/[^\/]*$/, "");
               u.searchParams.set("ls", "true");
               navigateLocal(u.href);
-            } 
+            }
           }
-        );        
+        );
+        const flog = () => el("textarea", {id:"fullLog", class:"textarea logger", visibility:false, readonly:true, isghost:true}, [], {});
+        function toggleEditorLog() {
+          //function el(tag, attributes, children, properties) 
+          let log = document.getElementById("fullLog");
+          if (!log) {
+            console.log ("hereooyo");
+            log = flog();
+            log.style.zIndex = 100;
+            log.style.display = 'none';
+            modifyMenuDiv.append(log);
+          }
+          console.log ({modifyMenuDiv});
+          console.log ({log});
+          let logtxt = "";
+          const elog = editor_model.editor_log;
+          console.log ({elog});
+          for (let i = 0; i < elog.length; i++) {
+            const l = elog[i];
+            console.log ({l});
+            logtxt = logtxt + l + "\n";
+          }
+          logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
+          console.log ({logtxt});
+          if (log.style.display == 'block') {
+            editor_model.show_log = false;
+            log.style.visibility = false;
+            log.style.display = 'none';
+          } else {
+            editor_model.show_log = true;
+            log.style.visibility = true;
+            log.style.display = 'block';
+          }
+        }
+        addModifyMenuIcon(logSVG,
+          {"class": "tagName", title: "Display the full log"},
+            {onclick: function(e) {
+              toggleEditorLog();
+            }});
+        if (editor_model.show_log) {
+          let log = document.getElementById("fullLog");
+          if (!log) {
+            log = flog();
+          }
+          let logtxt = "";
+          const elog = editor_model.editor_log;
+          console.log ({elog});
+          for (let i = 0; i < elog.length; i++) {
+            const l = elog[i];
+            console.log ({l});
+            logtxt = logtxt + l + "\n";
+          }
+          logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
+          editor_model.show_log = true;
+          log.style.visibility = true;
+          log.style.display = 'block';
+        }
         /*addModifyMenuIcon(undoSVG, 
           {"class": "tagName", title: "Undo most recent change"},
             {onclick: function(event) {
@@ -3439,7 +3573,7 @@ editionscript = """
               }
             }
         );*/
-  
+        
         if(editor_model.disambiguationMenu) {
           interactionDiv.append(editor_model.disambiguationMenu);
         	interactionDiv.append(el("button.modifyMenuButton#cancelAmbiguity", 
@@ -4289,7 +4423,7 @@ editionscript = """
       }
       return true;
 
-    }
+    } //update interaction div end
     
     // Links edition - Might be empty.
     @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then
