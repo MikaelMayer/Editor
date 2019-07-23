@@ -1,17 +1,22 @@
 /* The switch - the box around the slider */
+
 .switch {
     position: relative;
     display: inline-block;
     width: 30px;
     height: 17px;
     vertical-align: middle;
-  }
-  
-  /* Hide default HTML checkbox */
-  .switch input {display:none;}
-  
-  /* The slider */
-  .slider {
+}
+
+/* Hide default HTML checkbox */
+
+.switch input {
+    display: none;
+}
+
+/* The slider */
+
+.slider {
     position: absolute;
     cursor: pointer;
     top: 0;
@@ -21,9 +26,9 @@
     background-color: #ccc;
     -webkit-transition: .4s;
     transition: .4s;
-  }
-  
-  .slider:before {
+}
+
+.slider:before {
     position: absolute;
     content: "";
     height: 13px;
@@ -33,10 +38,11 @@
     background-color: white;
     -webkit-transition: .4s;
     transition: .4s;
-  }
-  
-  /* Remove all input default border and shadow in modify-menu*/
-  #modify-menu input[type=text] {
+}
+
+/* Remove all input default border and shadow in modify-menu*/
+
+#modify-menu input[type=text] {
     outline-color: invert;
     outline-style: none;
     outline-width: 0px;
@@ -47,140 +53,161 @@
     -webkit-user-select: text;
     outline-color: transparent;
     box-shadow: none;
-  }
-  
-  input:checked + .slider {
+}
+
+input:checked+.slider {
     background-color: #2196F3;
-  }
-  
-  input:focus + .slider {
+}
+
+input:focus+.slider {
     box-shadow: 0 0 1px #2196F3;
-  }
-  
-  input:checked + .slider:before {
+}
+
+input:checked+.slider:before {
     -webkit-transform: translateX(13px);
     -ms-transform: translateX(13px);
     transform: translateX(13px);
-  }
-  
-  /* Rounded sliders */
-  .slider.round {
+}
+
+/* Rounded sliders */
+
+.slider.round {
     border-radius: 17px;
-  }
-  
-  .slider.round:before {
+}
+
+.slider.round:before {
     border-radius: 50%;
-  }
-  
-  .switch + label {
+}
+
+.switch+label {
     cursor: pointer;
     padding-top: 5px;
     padding-bottom: 5px;
-  }
+}
 
-  .filename {
+.filename {
     color: #FFF;
     padding-left: 3px;
     vertical-align: top;
     display: block;
-  }
-  div.imgFolder {
+}
+
+div.imgFolder {
     display: inline-block;
     margin: 0.2em;
-  }
-  div.imgFolder > img {
+}
+
+div.imgFolder>img {
     max-width: 100%;
-    min-width:2em;
-  }
-  a.troubleshooter {
+    min-width: 2em;
+}
+
+a.troubleshooter {
     position: absolute;
     top: calc(100% - 3em);
-    display: inline-block; 
-  }
-  .editor-menu {
+    display: inline-block;
+}
+
+.editor-menu {
     display: initial !important;
-  }
-  .disabled {
+}
+
+.disabled {
     color: #BBB;
-  }
-  input.global-setting[type=checkbox] {
+}
+
+input.global-setting[type=checkbox] {
     display: none;
-  }
-  input.global-setting[type=checkbox]:checked + span.label-checkbox {
+}
+
+input.global-setting[type=checkbox]:checked+span.label-checkbox {
     background: #bcbbff;
-  }
-  span.label-checkbox {
+}
+
+span.label-checkbox {
     padding: 2px;
     border-radius: 10px;
-  }
-  span.label-checkbox:hover {
-    background-color: rgba(0,0,0,0.06);
+}
+
+span.label-checkbox:hover {
+    background-color: rgba(0, 0, 0, 0.06);
     cursor: pointer;
-  }
-  
-  @keyframes spin{
-      from {
-      outline-color: #FAA;
+}
+
+@keyframes spin {
+    from {
+        outline-color: #FAA;
     }
     33% {
-      outline-color: #AFA;
+        outline-color: #AFA;
     }
     66% {
-      outline-color: #AAF;
+        outline-color: #AAF;
     }
-      to {
-      outline-color: #FAA;
-    }	
-  }
-  
-  span#ambiguity-id {
+    to {
+        outline-color: #FAA;
+    }
+}
+
+span#ambiguity-id {
     color: #9dff00;
     display: block;
-  }
-  .solution {
+}
+
+.solution {
     display: block;
     padding: 3px;
-  }
-  .solution.selected {
-    background: rgba(255,255,255,0.2);
-  }
-  .to-be-selected {
+}
+
+.solution.selected {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.to-be-selected {
     outline: #FCC 2px solid;
-    animation:spin 1s linear infinite;
-  }
-  .solution:not(.selected):hover {
-    background: rgba(255,255,255,0.1);
+    animation: spin 1s linear infinite;
+}
+
+.solution:not(.selected):hover {
+    background: rgba(255, 255, 255, 0.1);
     cursor: pointer;
-  }
-  .solution.notfinal {
+}
+
+.solution.notfinal {
     color: #f6f6aa;
-  }
-  .add {
+}
+
+.add {
     background: lightgreen
-  }
-  .remove {
+}
+
+.remove {
     background: #f8a7a7;
     text-decoration: line-through
-  }
-  div.disambiguationMenu {
-      height: 40%;
-      overflow-y: auto;
+}
+
+div.disambiguationMenu {
+    height: 40%;
+    overflow-y: auto;
     padding-left: 0.3em;
     padding-top: 0.3em;
     padding-bottom: 0.3em;
     border: 2px solid #f6f6aa;
-  }
-  .codepreview {
+}
+
+.codepreview {
     font-family: monospace;
     padding: 3px;
     background: white;
     color: black;
     margin-left: 0.1em;
-  }
-  .solution:not(.selected) .codepreview {
-    background: rgba(255,255,255,0.8);
-  }
-  #modify-menu button.modifyMenuButton {
+}
+
+.solution:not(.selected) .codepreview {
+    background: rgba(255, 255, 255, 0.8);
+}
+
+#modify-menu button.modifyMenuButton {
     background-color: var(--context-button-color);
     min-height: var(--context-button-width);
     color: var(--context-dom-text-color);
@@ -189,82 +216,94 @@
     padding: 0.4em;
     font-weight: bold;
     cursor: pointer;
-  }
-  #modify-menu button.modifyMenuButton:hover {
+}
+
+#modify-menu button.modifyMenuButton:hover {
     background-color: var(--context-button-color-hover);
-  }
-  #editor_codepreview, #manualsync-menuitem {
+}
+
+#editor_codepreview, #manualsync-menuitem {
     display: none;
     z-index: 999;
-  }
-  [ghost-visible=true] {
+}
+
+[ghost-visible=true] {
     display: initial !important;
-  }
-  [ghost-disabled=true] {
+}
+
+[ghost-disabled=true] {
     opacity: 0.5 !important;
     cursor: initial;
     pointer-events: none !important;
-  }
-  [ghost-disabled=false] {
-    opacity: 1  !important;
+}
+
+[ghost-disabled=false] {
+    opacity: 1 !important;
     pointer-events: auto !important;
-  }
-  #manualsync-menuitem[ghost-disabled=false] > button {
-    cursor:pointer !important;
-    opacity: 1  !important;
+}
+
+#manualsync-menuitem[ghost-disabled=false]>button {
+    cursor: pointer !important;
+    opacity: 1 !important;
     pointer-events: auto !important;
-  }
-  #manualsync-menuitem[force-visible=true] {
+}
+
+#manualsync-menuitem[force-visible=true] {
     display: initial;
-  }
-  [ghost-visible=false] {
+}
+
+[ghost-visible=false] {
     display: none !important;
-  }
-  #manualsync-menuitem> button {
+}
+
+#manualsync-menuitem>button {
     vertical-align: top;
     opacity: 0.5;
     cursor: initial;
     pointer-events: none;
-  }
-  #editor_codepreview {
+}
+
+#editor_codepreview {
     width: 100%;
     height: 600px;
-  }
-  @media screen and (pointer: coarse) {
+}
+
+@media screen and (pointer: coarse) {
     body {
-      font-size: 48px;
+        font-size: 48px;
     }
     menu.edittoolbar {
-      right: 10px;
+        right: 10px;
     }
     menuitem.filename {
-      display: none;
+        display: none;
     }
     /*menuitem {
       font-size: 2.5em;
     }*/
     button {
-      font-size: 1em;
+        font-size: 1em;
     }
     menuitem#question-menuitem {
-      display: none;
+        display: none;
     }
     menuitem#autosave-menuitem {
-      display: none;
+        display: none;
     }
     #editor_codepreview {
-      width: 100%;
-      height: 600px;
+        width: 100%;
+        height: 600px;
     }
-  }
-  .summary {
+}
+
+.summary {
     color: green;
-  }
-  
-  div#modify-menu {
-    -webkit-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
-    -moz-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
-    box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
+}
+
+div#modify-menu {
+    -webkit-box-shadow: 0px 0px 34px 0px rgba(0, 0, 0, 0.75);
+    -moz-box-shadow: 0px 0px 34px 0px rgba(0, 0, 0, 0.75);
+    box-shadow: 0px 0px 34px 0px rgba(0, 0, 0, 0.75);
     position: fixed;
     top: 0px;
     right: 0px;
@@ -278,82 +317,98 @@
     transition-property: transform;
     transition-duration: 0.5s;
     z-index: 100001;
-  }
-  .modify-menu-icon {
+}
+
+.modify-menu-icon {
     vertical-align: middle;
     cursor: pointer;
     width: var(--context-menu-button-width);
-  }
-  .modify-menu-icon:hover {
+}
+
+.modify-menu-icon:hover {
     background-color: var(--context-button-color-hover);
-  }
-  div#modify-menu > div.modify-menu-icons:not(.pinned) {
+}
+
+div#modify-menu>div.modify-menu-icons:not(.pinned) {
     width: 100%;
     overflow-x: auto;
-  }
-  div#modify-menu > div.modify-menu-icons.pinned {
+}
+
+div#modify-menu>div.modify-menu-icons.pinned {
     width: var(--context-menu-button-width);
     position: absolute;
     left: calc(0px - var(--context-menu-button-width));
-  }
-  div#modify-menu > div.information {
+}
+
+div#modify-menu>div.information {
     overflow-y: auto;
     max-height: calc(100% - var(--context-menu-height));
     margin: 2%;
     border-radius: 0.3em;
-  }
-  
-  div.#modify-menu > div.information-style {
+}
+
+div.#modify-menu>div.information-style {
     padding: 0.4rem;
-  }
-  
-  div.information > textarea {
+}
+
+div.information>textarea {
     font-size: 1em;
-  }
-  
-  div#modify-menu.visible {
+}
+
+div#modify-menu.visible {
     transform: translate(0%, 0%);
-  }
-  div#modify-menu h3 {
+}
+
+div#modify-menu h3 {
     margin-top: 2px;
     margin-bottom: 2px;
-  }
-  div#modify-menu div.keyvalues {
+}
+
+div#modify-menu div.keyvalues {
     margin-top: 6px;
     display: table;
     width: 100%;
     table-layout: fixed;
-  }
-  div#modify-menu div.keyvalues > div.keyvalue {
+}
+
+div#modify-menu div.keyvalues>div.keyvalue {
     display: table-row;
-  }
-  div#modify-menu div.keyvalues > div.keyvalue > * {
+}
+
+div#modify-menu div.keyvalues>div.keyvalue>* {
     display: table-cell;
     padding: 4px;
     vertical-align: middle;
-  }
-  div#modify-menu div.keyvalues > div.keyvalueadder {
+}
+
+div#modify-menu div.keyvalues>div.keyvalueadder {
     opacity: 0.5;
-  }
-  div#modify-menu div.keyvalues > div.keyvalueadder:hover {
+}
+
+div#modify-menu div.keyvalues>div.keyvalueadder:hover {
     opacity: 1;
-  }
-  div#modify-menu input {
+}
+
+div#modify-menu input {
     padding: 6px;
     width: 100%;
-  }
-  div#modify-menu .codefont {
+}
+
+div#modify-menu .codefont {
     font-size: 1.4em;
     font-family: monospace;
-  }
-  div#modify-menu .tagname-input {
+}
+
+div#modify-menu .tagname-input {
     padding: 4px;
     flex: 1;
-  }
-  div#modify-menu .tagname-input input {
+}
+
+div#modify-menu .tagname-input input {
     display: inline-block;
-  }
-  div#modify-menu .tagname-info {
+}
+
+div#modify-menu .tagname-info {
     display: inline-block;
     border-radius: 4px;
     white-space: nowrap;
@@ -363,59 +418,63 @@
     color: var(--context-dom-text-color);
     flex: 2;
     line-height: 3.5em;
-  }
-  div#modify-menu input[type=radio] {
+}
+
+div#modify-menu input[type=radio] {
     width: initial;
     font-size: 1em;
-  }
-  div#modify-menu span.insertOption{
+}
+
+div#modify-menu span.insertOption {
     display: block;
-  }
-  div.keyvalue > span > input {
+}
+
+div.keyvalue>span>input {
     border-radius: 4px;
     margin: 2px;
-  }
-  
-  div.tagname-summary {
+}
+
+div.tagname-summary {
     display: flex;
     background-color: var(--context-dom-selector-color);
     border-radius: 0.4em;
     padding: 4px;
     margin: 2%;
-  }
-  
-  .inline-input {
+}
+
+.inline-input {
     background: transparent;
     color: var(--context-dom-text-color);
     border: none;
-  }
-  
-  /* dom selector css */
-  div.dom-selector-style {
+}
+
+/* dom selector css */
+
+div.dom-selector-style {
     margin: 2%;
     border-radius: 0.4em;
     padding: 0.4rem;
-  }
-  
-  div.childrenElem {
+}
+
+div.childrenElem {
     display: flex;
     height: 80px;
-  }
-  
-  div.mainElemName {
+}
+
+div.mainElemName {
     color: var(--context-dom-text-color);
     font-family: monospace;
-  }
-  
-  div.childrenSelectorName {
-      font-family: monospace;
-  }
-        
-  div.childrenSelector {
+}
+
+div.childrenSelectorName {
+    font-family: monospace;
+}
+
+div.childrenSelector {
     min-width: 50px;
     position: relative;
-    flex: 1; 
-    text-align: center; 
+    flex: 1;
+    text-align: center;
     overflow: hidden;
     padding: 10px;
     margin: 2px;
@@ -424,47 +483,48 @@
     transition: all 0.5s;
     text-decoration: none;
     cursor: pointer;
-  }
-  
-  div.childrenSelector:hover {
-     -webkit-filter: contrast(125%); /* Chrome, Opera */
-        -moz-filter: blur(125%);
-        -ms-filter: blur(125%);    
-            filter: blur(125%);
-  }
-  
-  div.mainElem {
+}
+
+div.childrenSelector:hover {
+    -webkit-filter: contrast(125%);
+    /* Chrome, Opera */
+    -moz-filter: blur(125%);
+    -ms-filter: blur(125%);
+    filter: blur(125%);
+}
+
+div.mainElem {
     height: 90px;
     padding-bottom: 6px;
     position: relative;
     text-align: center;
     font-size: 1.6em;
     margin-bottom: 0.5em;
-  }
-        
-  div.mainElemInfo {
+}
+
+div.mainElemInfo {
     font-size: 0.6em;
     color: var(--context-dom-text-color);
-  }
-  
-  div.childrenSelectorInfo {
+}
+
+div.childrenSelectorInfo {
     text-overflow: ellipsis;
     overflow: hidden;
     color: var(--context-dom-text-color);
     height: 38px;
     font-size: 0.8em;
-  }
-  
-  div.elementAttr {
+}
+
+div.elementAttr {
     font-size: 0.5em;
     line-height: 1.02em;
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
     color: var(--context-dom-text-color);
-  }
-  
-  div.no-children, div.no-parent {
+}
+
+div.no-children, div.no-parent {
     background-color: transparent;
     text-align: center;
     text-transform: uppercase;
@@ -476,13 +536,13 @@
     line-height: 50px;
     font-size: 0.8rem;
     pointer-events: none;
-  }
-  
-  div.no-children {
+}
+
+div.no-children {
     width: 100%;
-  }
-        
-  div.no-sibling {
+}
+
+div.no-sibling {
     background-color: transparent;
     color: black;
     width: 20%;
@@ -493,51 +553,53 @@
     min-width: 50px;
     padding-top: 20px;
     pointer-events: none;
-  }
-  
-  /* make button's text unselectable for better user experience */
-  .noselect {
+}
+
+/* make button's text unselectable for better user experience */
+
+.noselect {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     -khtml-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
-  }
-  
-  .selectedDom {
+}
+
+.selectedDom {
     background-color: var(--context-dom-selector-color) !important;
     border: none;
-  }
-  
-  #upload-image-btn-a {
-    margin: 10%; 
-    padding: 4px 10px; 
-    height: 20px; 
-    position: relative; 
-    color: #888; 
-    background: #fafafa; 
-    border-radius: 4px; 
-    display: inline-block; 
-    height: 20px; 
+}
+
+#upload-image-btn-a {
+    margin: 10%;
+    padding: 4px 10px;
+    height: 20px;
+    position: relative;
+    color: #888;
+    background: #fafafa;
+    border-radius: 4px;
+    display: inline-block;
+    height: 20px;
     width: 280px;
-  }
-  
-  #upload-image-btn-input {
-    position: absolute; 
-    top: 0; 
-    left: 0; 
+}
+
+#upload-image-btn-input {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-  }
-  
-  /* highlight selected image */
-  div.highlight-select-image {
+}
+
+/* highlight selected image */
+
+div.highlight-select-image {
     box-shadow: 2px 2px 3px black;
-  }
-  
-  :root {
+}
+
+:root {
     --context-color: rgba(0, 128, 128, 0.8);
-    --context-color-next: rgba(0, 158, 158, 0.8); 
+    --context-color-next: rgba(0, 158, 158, 0.8);
     --context-button-color: rgba(0, 192, 192, 0.8);
     --context-button-color-hover: rgba(0, 232, 232, 0.8);
     --context-button-color-inert: rgba(128, 128, 128, 0.8);
@@ -551,205 +613,215 @@
     --context-menu-padding-top: 0px;
     --context-menu-padding-left: 0px;
     --context-button-selected: rgba(0, 212, 212, 0.8);
-  }
-  div.tagName {
+}
+
+div.tagName {
     padding: 4px;
     cursor: pointer;
     background: var(--context-button-color);
     vertical-align: text-bottom;
-  }
-  div.tagName:hover {
+}
+
+div.tagName:hover {
     background: var(--context-button-color-hover);
-  }
-  
-  [ghost-hovered=true] {
+}
+
+[ghost-hovered=true] {
     outline: 2px dashed var(--context-color-next);
-  }
-  [ghost-clicked=true] {
+}
+
+[ghost-clicked=true] {
     outline: 2px solid var(--context-color);
-  }
-  div#context-menu {
+}
+
+div#context-menu {
     position: absolute;
     display: none;
     background-color: var(--context-color);
     color: white;
     font-weight: bold;
     z-index: 1000000;
-  }
-  div#context-menu.visible {
+}
+
+div#context-menu.visible {
     display: block;
     height: var(--context-menu-height);
     width: 200px;
-  }
-  div#context-menu .context-menu-button, div#modify-menu .modify-menu-button, div#modify-menu .modify-menu-icons .context-menu-button {
+}
+
+div#context-menu .context-menu-button, div#modify-menu .modify-menu-button, div#modify-menu .modify-menu-icons .context-menu-button {
     background: var(--context-button-color);
     display: inline-block;
     width: var(--context-menu-button-width);
     cursor: pointer;
-  }
-  div#context-menu .context-menu-button, div#modify-menu .modify-menu-icons:not(.pinned) .modify-menu-button {
+}
+
+div#context-menu .context-menu-button, div#modify-menu .modify-menu-icons:not(.pinned) .modify-menu-button {
     height: var(--context-menu-height);
-  }
-  div#modify-menu .modify-menu-icons.pinned .modify-menu-button {
+}
+
+div#modify-menu .modify-menu-icons.pinned .modify-menu-button {
     border-bottom: 1px solid black;
-  }
-  div#modify-menu .modify-menu-icons.pinned .modify-menu-button:last-child {
+}
+
+div#modify-menu .modify-menu-icons.pinned .modify-menu-button:last-child {
     border-bottom: none;
-  }
-  div#context-menu .context-menu-button.selected, div#modify-menu .modify-menu-button.selected {
+}
+
+div#context-menu .context-menu-button.selected, div#modify-menu .modify-menu-button.selected {
     background: var(--context-button-selected);
-  }
-  
-  div#modify-menu .modify-menu-button.inert.active {
+}
+
+div#modify-menu .modify-menu-button.inert.active {
     background: var(--context-button-color-inert-active)
-  }
-  div#modify-menu .modify-menu-button.disabled {
+}
+
+div#modify-menu .modify-menu-button.disabled {
     opacity: 0.5;
     cursor: not-allowed;
-  }
-  div#modify-menu .modify-menu-icon-label {
+}
+
+div#modify-menu .modify-menu-icon-label {
     display: block;
     color: white;
     font-size: calc(var(--context-menu-button-width) / 3);
     text-align: center;
-  }
-  div#modify-menu .modify-menu-icon-label-link {
+}
+
+div#modify-menu .modify-menu-icon-label-link {
     display: block;
     color: white;
     font-size: calc(var(--context-menu-button-width) / 4);
     text-align: center;
-  }
-  div#context-menu .context-menu-button > svg, div#modify-menu .modify-menu-button > svg {
+}
+
+div#context-menu .context-menu-button>svg, div#modify-menu .modify-menu-button>svg {
     padding-left: var(--context-menu-padding-left);
     padding-right: var(--context-menu-padding-left);
     padding-top: var(--context-menu-padding-top);
     padding-bottom: var(--context-menu-padding-top);
-  }
-  div#context-menu .context-menu-button.inert, div#modify-menu .modify-menu-icons.modify-menu-icons .modify-menu-button.inert {
+}
+
+div#context-menu .context-menu-button.inert, div#modify-menu .modify-menu-icons.modify-menu-icons .modify-menu-button.inert {
     background: var(--context-button-color-inert)
-  }
-  svg.context-menu-icon > path {
-    fill:none;
-    stroke:#FFFFFF;
-    stroke-width:2px;
-    stroke-linecap:butt;
-    -linejoin:miter;
-    stroke-opacity:1;
-  }
-  svg.context-menu-icon.fill > path {
-    fill:#FFFFFF;
-    fill-rule:evenodd;
-    stroke-width:1px;
-  }
-  div#context-menu .context-menu-button:hover, div#modify-menu .modify-menu-button:hover:not(.disabled) {
+}
+
+svg.context-menu-icon>path {
+    fill: none;
+    stroke: #FFFFFF;
+    stroke-width: 2px;
+    stroke-linecap: butt;
+    -linejoin: miter;
+    stroke-opacity: 1;
+}
+
+svg.context-menu-icon.fill>path {
+    fill: #FFFFFF;
+    fill-rule: evenodd;
+    stroke-width: 1px;
+}
+
+div#context-menu .context-menu-button:hover, div#modify-menu .modify-menu-button:hover:not(.disabled) {
     background: var(--context-button-color-hover);
-  }
-  div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-button.inert:hover:not(.disabled) {
+}
+
+div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-button.inert:hover:not(.disabled) {
     background: var(--context-button-color-inert-hover)
-  }
-  #applyNewTagName {
+}
+
+#applyNewTagName {
     display: none;
-  }
-  #applyNewTagName.visible {
+}
+
+#applyNewTagName.visible {
     display: inline-block;
-  }
-  textarea#singleChildNodeContent {
+}
+
+textarea#singleChildNodeContent {
     width: 100%;
     height: 50%;
-  }
-  
-  @media (pointer: coarse) {
+}
+
+@media (pointer: coarse) {
     div#modify-menu {
-      -webkit-box-shadow: none;
-      -moz-box-shadow: none;
-      box-shadow: none;
-      /* font-size: 48px; */
-      bottom: 0px;
-      left: 0px;
-      top: initial;
-      right: initial;
-      height: 40%;
-      width: 100%;
-      min-height: 350px;
-      transform: translate(0px, 100%);
-      padding: 0;
-      padding-bottom: 80px;
+        -webkit-box-shadow: none;
+        -moz-box-shadow: none;
+        box-shadow: none;
+        /* font-size: 48px; */
+        bottom: 0px;
+        left: 0px;
+        top: initial;
+        right: initial;
+        height: 40%;
+        width: 100%;
+        min-height: 350px;
+        transform: translate(0px, 100%);
+        padding: 0;
+        padding-bottom: 80px;
     }
-    div#modify-menu > div.modify-menu-icons.pinned {
-      width: auto;
-      height: var(--context-menu-height);
-      position: absolute;
-      top: calc(0px - var(--context-menu-height));
-      left: 0px;
+    div#modify-menu>div.modify-menu-icons.pinned {
+        width: auto;
+        height: var(--context-menu-height);
+        position: absolute;
+        top: calc(0px - var(--context-menu-height));
+        left: 0px;
     }
-    div#modify-menu > div.modify-menu-icons.pinned span.modify-menu-icon-label {
-      display: none;
+    div#modify-menu>div.modify-menu-icons.pinned span.modify-menu-icon-label {
+        display: none;
     }
-  
     div.bottom-placeholder {
-      width: 100%;
-      height: 30%;
+        width: 100%;
+        height: 30%;
     }
-    
     :root {
-      --context-menu-height: 48px;
-      --context-menu-button-width: 48px;
-      --context-menu-padding-top: 9px;
-      --context-menu-padding-left: 4px;
+        --context-menu-height: 48px;
+        --context-menu-button-width: 48px;
+        --context-menu-padding-top: 9px;
+        --context-menu-padding-left: 4px;
     }
-  
     /* mobile dom selector */
     div.dom-selector-style {
-      height: 45%;
-      margin: 0.15em;
-      border-radius: 0.4em;
-      margin: 2%;
+        height: 45%;
+        margin: 0.15em;
+        border-radius: 0.4em;
+        margin: 2%;
     }
-  
     div.elementAttr {
-      display: none;
+        display: none;
     }
-  
     div.mainElem {
-      margin-bottom: 0;
-      height: 40%;
+        margin-bottom: 0;
+        height: 40%;
     }
-  
     div.childrenSelector {
-      padding: 6px;
-      font-size: 1.2em;
+        padding: 6px;
+        font-size: 1.2em;
     }
-  
     div.no-sibling {
-      font-size: 1em;
-      padding-top: 20px;
+        font-size: 1em;
+        padding-top: 20px;
     }
-  
     /* mobile modify menu */
     div.tagname-summary {
-      padding-left: 10px;
+        padding-left: 10px;
     }
-  
     div.information {
-      margin: 2%;
-      margin-top: 0;
-      height: 215px;
-      overflow-y: auto;
+        margin: 2%;
+        margin-top: 0;
+        height: 215px;
+        overflow-y: auto;
     }
-  
-    div.information > textarea {
-      font-size: 1.2em;
-      border-radius: 0.3em;
-      border: none; 
-      padding: 1.5%;
+    div.information>textarea {
+        font-size: 1.2em;
+        border-radius: 0.3em;
+        border: none;
+        padding: 1.5%;
     }
-  
     div.insert-information-style {
-      max-height: 400px;
-      height: 400px;
+        max-height: 400px;
+        height: 400px;
     }
-  
-    div.insert-information-style > h1 {
-      margin: 0;
+    div.insert-information-style>h1 {
+        margin: 0;
     }
-  }
+}
