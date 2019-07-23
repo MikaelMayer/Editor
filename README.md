@@ -155,39 +155,51 @@ Alternatively, one can modify the inline &lt;style&gt; tag at the beginning of t
 
 #### Dealing with scripts or plug-ins that modify the page
 
-Some scripts or plugins (such as Google Analytics, Ace editor, Grammarly...) insert nodes or add special attributes. These nodes and attributes should not be back-propagated.  
-Editor offers several mechanisms to prevent this unwanted back-propagation.
+Some scripts or plugins (such as Google Analytics, Ace editor, Grammarly...) insert nodes, or add or modify attributes.
+These nodes, new attributes and modified attribute values should be ignored.
 
-If you are the author of dynamically added elements or attributes to the page, Editor lets you mark them as "ghosts" so that they are not back-propagated. To do so:
+Editor defines two notions to ignore them: ghosts and ignored.
 
-* Attributes starting with "ghost-" are considered as ghost.
-  *Never add an attribute starting with "ghost-" on the source program, it would be automatically erased on the first back-propagation.*
-* The attribute `isghost="true"` on an element ensures that the whole element is ignored when back-propagation occurs.
-  Alternatively, setting `element.isghost=true` in javascript results in the same effect without modifying the DOM.  
-  *Never put isghost="true" on an element on the source side level, it would be automatically erased on the first back-propagation.*
-* The attribute `list-ghost-attributes="attr1 attr2 ... attrn"` on an element ensures that any inserted attribute with one of the name `attr1` ... `attrn` will not be back-propagated.
-  *Never put one of the `attr1` ... `attrn` attributes on the source side level, else it would be automatically erased on the first back-propagation.*
-* The attribute `children-are-ghosts="true"` on an element ensures that any inserted or modified child to this element is not back-propagated.
-  *Never add children at the source level to an element which has this attribute, else they would be automatically erased on the first back-propagation.*
+* A `ghost` node or attribute is never back-propagated.
+  Mark node or attributes as ghosts if they have been added dynamically.
+* An ignored attribute is back-propagated with its original value, all modifications are ignored.
+  In the case of attributes, Editor provides a way to change the base values.
+  
+If your own scripts dynamically add nodes or attributes to the page, Editor lets you mark them as ghosts or ignored so that edits are not back-propagated. Here is how:
+
+* Add the ***attribute*** `isghost="true"` to an element by javascript code to ensure it is ignored when back-propagation occurs.
+  Alternatively, setting the ***property*** `element.isghost=true` in JavaScript does the same.
+* The ***attribute*** `children-are-ghosts="true"` on an element ensures that any inserted or modified child to this element is not back-propagated.
+* ***Attributes*** starting with "ghost-" are considered as ghosts (e.g. ghost-visible)
+* The ***attribute*** `list-ghost-attributes="attr1 attr2 ... attrn"` on an element ensures that any ***inserted*** attribute with one of the name `attr1` ... `attrn` will not be back-propagated.
+* The ***attribute*** `list-ignored-attributes="attr1 attr2 ... attrn"` on an element ensures that any ***existing*** attribute named `attr1` ... `attrn` will have its original value back-propagated.
+
+Be careful of the use of ghosting mechanisms in raw HTML, as if the targetted ghost nodes or attributes already existed, marking them as ghost would be automatically erase on the first save.
+
+
+##### Dynamically mark nodes and attributes as ghosts or ignored
 
 If you are not yourself adding dynamic elements or attributes, Editor also observes insertions and deletions and lets you mark inserted elements as ghosts.
-Insert the following in a script at the beginning of the body:
+Insert the following in a script after the &lt;body> tag:
 
 * `(typeof editor == "object" ? editor.ghostNodes : []).push(insertedNode => /*PREDICATE ON insertedNode*/);`: For any inserted node, if this predicate returns `true`, Editor will mark and consider the `insertedNode` as ghost.  
   A simple predicate to filter out inserted nodes which have the class "dummy" would look like: `insertedNode.nodeType == 1 && insertedNode.classList && insertedNode.classList.contains("dummy")`.
 * `(typeof editor == "object" ? editor.ghostAttrs : []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be considered as ghost.
+* `(typeof editor == "object" ? editor.ignoredAttrs : []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be ignored.
 
-Instead of putting this code right into your page, you can also create a file `.editor` where your document is located, and insert the following script (in this context, `editor` will surely be defined).
+Instead of putting this code right into your page, you can also create a file `.editor` where your document is located, and insert the following script:
 
 ```
-Regex.replace "<body>" (\m -> m.match + """
+Regex.replace "(?=</head>)" (\_ -> """
   <script>
-    editor.ghostNodes.push(insertedNode => /*PREDICATE ON insertedNode*/)
+    editor.ghostNodes.push(insertedNode => /*PREDICATE ON insertedNode*/);
+    editor.ghostAttrs.push(insertedNode =>  /*ARRAY OF STRINGS*/);
+    editor.ignoredAttrs.push(insertedNode =>  /*ARRAY OF STRINGS*/);
   </script>
-""")
+""") content
 ```
 
-#### Saving ghost attributes and properties on page rewrite after edits.
+#### Saving ghost and ignored attributes and properties on page rewrite after edits.
 
 Editor re-writes the whole page each time a update is back-propagated. It is however possible to save some ghost attributes and some ghost nodes. Here is the list of things Editor saves and restores:
 
@@ -195,6 +207,7 @@ Editor re-writes the whole page each time a update is back-propagated. It is how
 * Any node with an `id` and a `save-properties` DOM attribute will have all the javascript properties, that are encoded in the value of `save-properties` separated with space, restored.
 * Any node with an `id` and a `save-ghost-attributes` DOM attribute will have all its attributes, whose name are encoded in the value of `save-ghost-attributes` separated with spaces, restored. Attributes in `save-ghost-attributes` are automatically considered as ghost attributes, so no `list-ghost-attributes` is necessary;
 * Any node with a `save-ghost` attribute set to `true`, that is a child of `head` or whose parent has an `id`, will be reinserted back as a child to the `head` or the parent, if it does not yet exists.
+* Any node with an `id` and a `save-ignored-attributes` DOM attribute will have all its attributes, whose name are encoded in the value of `save-ignored-attributes` separated with spaces, restored. Attributes in `save-ignored-attributes` are automatically considered as ignored attributes, so no `list-ignored-attributes` is necessary;
 
 #### Add/Customize edition capabilities on your webpage
 

@@ -983,14 +983,15 @@ main =
           if not varedit || varls then
             bodychildren
           else 
-          (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
-           if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
-           serverOwned "edit prelude when not in edit mode" []) ++
-           serverOwned "initial script" initialScript ++
-           bodychildren ++
-           (serverOwned "synchronization script and placeholder" [<script>@editionscript</script>, <div class="bottom-placeholder"> </div>])]
+             (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
+              if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
+              serverOwned "edit prelude when not in edit mode" []) ++
+             bodychildren ++
+             (serverOwned "synchronization script and placeholder" [<script>@editionscript</script>, <div class="bottom-placeholder"> </div>])]
       ["head", headattrs, headChildren] ->
-        ["head", headattrs, <meta name="viewport" content="width=device-width"> :: headChildren]
+        ["head", headattrs,
+           serverOwned "initial script" initialScript ++
+           (<meta name="viewport" content="width=device-width"> :: headChildren)]
       x -> x -- head
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -1845,7 +1846,7 @@ function isGhostAttributeKey(name) {
 
 editor = typeof editor === "object" ? editor : {};
 
-// Array of functions on nodes returning an array of attributes that should be ghosts.
+// Array of functions on nodes returning an array of attributes that should be ghosts (i.e. removed on back-propagation)
 editor.ghostAttrs = [];
 editor.ghostAttrs.push(n =>
   ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ").concat(
@@ -1860,6 +1861,12 @@ editor.ghostAttrs.push(n =>
 // attribute of some chrome extensions
 editor.ghostAttrs.push(n => ["bis_skin_checked"]);
 
+// Array of functions on nodes returning an array of attributes that should be ignored (i.e. old value returned on back-propagation)
+editor.ignoredAttrs = [];
+editor.ignoredAttrs.push(n =>
+  ((n && n.getAttribute && n.getAttribute("list-ignored-attributes")) || "").split(" ").concat(
+    ((n && n.getAttribute && n.getAttribute("save-ignored-attributes")) || "").split(" ")).filter(a => a != "")
+)
 
 function isSpecificGhostAttributeKeyFromNode(n) {
   var additionalGhostAttributes = [];
@@ -1867,6 +1874,31 @@ function isSpecificGhostAttributeKeyFromNode(n) {
     additionalGhostAttributes = additionalGhostAttributes.concat(editor.ghostAttrs[k](n))
   }
   return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
+}
+
+function isIgnoredAttributeKeyFromNode(n) {
+  var additionalIgnoredAttributes = [];
+  for(var k in editor.ignoredAttrs) {
+    additionalIgnoredAttributes = additionalIgnoredAttributes.concat(editor.ignoredAttrs[k](n))
+  }
+  return ((a, n) => (name, oldValue) => {
+    let result = a.indexOf(name) != -1;
+    if(result) { // let's store the previous attribute's value
+      n.__editor__ = n.__editor__ || {};
+      n.__editor__.ignoredAttrMap = n.__editor__.ignoredAttrMap || {};
+      if(!(name in n.__editor__.ignoredAttrMap) && typeof oldValue !== "undefined") {
+        n.__editor__.ignoredAttrMap[name] = oldValue;
+      }
+    }
+    return result;
+  })(additionalIgnoredAttributes, n);
+}
+function ignoredAttributeValue(n, name) {
+  let result = n.__editor__.ignoredAttrMap[name];
+  if(typeof result === "undefined") {
+    return n.getAttribute(name);
+  }
+  return result;
 }
 
 // Array of predicates that, if they return true on a node, Editor will mark this node as ghost.
@@ -1931,9 +1963,18 @@ function handleScriptInsertion(mutations) {
         if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode))) {
          if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
          insertedNode.isghost = true;
+        } else { // Record ignored attributes
+          if(insertedNode.nodeType == 1) {
+            var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(insertedNode);
+            for(var k = 0; k < insertedNode.attributes.length; k++) {
+              var attr = insertedNode.attributes[k];
+              isIgnoredAttributeKey(attr.name, attr.value);
+            }
+          }
         }
       }
     }
+    
   }
 }
 
@@ -1944,7 +1985,7 @@ if (typeof automaticGhostMarker !== "undefined") {
 
 automaticGhostMarker = new MutationObserver(handleScriptInsertion);
 automaticGhostMarker.observe
- ( document.body.parentElement
+ ( document.head.parentElement
  , { attributes: false
    , childList: true
    , characterData: false
@@ -2029,83 +2070,72 @@ function remove(node) {
 
 -- Script added to the end of the page
 editionscript = """ 
-  var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
+  console.log("editionscript running");
+   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
-  console.log("editionscript running");
   
   // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
   // Same for some attributes
   function saveGhostAttributes() {
     var ghostModified = document.querySelectorAll("[ghost-visible]");
-    var idGhostAttributes = [];
+    var savedGhostAttributes = [];
     for(var i = 0; i < ghostModified.length; i++) {
-      var id = ghostModified[i].getAttribute("id");
-      if(id !== null && typeof id !== "undefined") {
-        idGhostAttributes.push([id,
+      var elem = ghostModified[i];
+      savedGhostAttributes.push([dataToRecoverElement(elem),
           "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
-      }
     }
-    var ghostAttributesModified = document.querySelectorAll("[save-ghost-attributes]");
-    for(var i = 0; i < ghostAttributesModified.length; i++) {
-      var elem = ghostAttributesModified[i];
-      var id = elem.getAttribute("id");
-      if(id != null) {
-        var toSave = elem.getAttribute("save-ghost-attributes").split(" ");
+    function saveAttributes(name) {
+       var ghostAttributesModified = document.querySelectorAll("["+name+"]");
+      for(var i = 0; i < ghostAttributesModified.length; i++) {
+        var elem = ghostAttributesModified[i];
+        var toSave = elem.getAttribute(name).split(" ");
         for(j in toSave) {
           var key = toSave[j];
-          idGhostAttributes.push([id, key, elem.getAttribute(key)]);
+          savedGhostAttributes.push([dataToRecoverElement(elem), key, elem.getAttribute(key)]);
         }
       }
     }
+    saveAttributes("save-ghost-attributes")
+    saveAttributes("save-ignored-attributes")
     
     var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
-    var idDynamicAttributes = [];
+    var savedProperties = [];
     for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
       var elem = elemsWithAttributesToSave[i];
-      var id = elem.getAttribute("id");
-      if(id !== null && typeof id !== "undefined") {
-        var toSave = elem.getAttribute("save-properties").split(" ");
-        for(j in toSave) {
-          var key = toSave[j];
-          idDynamicAttributes.push([id, key, elem[key]])
-        }
+      var toSave = elem.getAttribute("save-properties").split(" ");
+      for(j in toSave) {
+        var key = toSave[j];
+        savedProperties.push([dataToRecoverCaretPosition(elem), key, elem[key]])
       }
     }
     var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
     var parentsGhostNodes = [];
     for(var i = 0; i < ghostElemsToReinsert.length; i++) {
       var elem = ghostElemsToReinsert[i];
-      if(elem.parentNode.tagName == "HEAD") {
-        parentsGhostNodes.push({parentSelector: "HEAD", node: elem});
-      } else {
-        var id =  elem.parentNode.getAttribute("id");
-        if(id != null) {
-          parentsGhostNodes.push({parentSelector: "#"+id, node: elem});
-        }
-      }
+      parentsGhostNodes.push({parent: dataToRecoverCaretPosition(elem.parentNode), node: elem});
     }
-    return [idGhostAttributes, idDynamicAttributes, parentsGhostNodes];
+    return [savedGhostAttributes, savedProperties, parentsGhostNodes];
   }
   function applyGhostAttributes(attrs) {
-    var [idGhostAttributes, idDynamicAttributes, parentsGhostNodes] = attrs;
-    for(var i in idGhostAttributes) {
-      var [id, key, attr] = idGhostAttributes[i];
-      var elem = document.getElementById(id);
+    var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
+    for(var i in savedGhostAttributes) {
+      var [data, key, attr] = savedGhostAttributes[i];
+      var elem = recoverElementFromData(data);
       if(elem != null) {
         elem.setAttribute(key, attr);
       }
     }
-    for(var i in idDynamicAttributes) {
-      var [id, key, value] = idDynamicAttributes[i];
-      var elem = document.getElementById(id);
+    for(var i in savedProperties) {
+      var [data, key, value] = savedProperties[i];
+      var elem = recoverElementFromData(id);
       if(elem != null) {
         elem[key] = value;
       }
     }
     for(var i in parentsGhostNodes) {
-      var {parentSelector: selector, node: elem} = parentsGhostNodes[i];
-      var parent = document.querySelector(selector);
+      var {parent: data, node: elem} = parentsGhostNodes[i];
+      var parent = recoverElementFromData(data);
       if(parent != null) {
         if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
           parent.appendChild(elem);
@@ -2122,10 +2152,11 @@ editionscript = """
       } else {
         var attributes = [];
         var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(n);
+        var isIgnoredAttributeKey =  isIgnoredAttributeKeyFromNode(n); // TODO recover ignored value
         for(var i = 0; i < n.attributes.length; i++) {
           var key = n.attributes[i].name;
-          var value = n.attributes[i].value;
           if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key)) {
+            var value = isIgnoredAttributeKey(key) ? ignoredAttributeValue(n, key) : n.attributes[i].value;
             if(key == "style") {
               value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
             }
@@ -2419,8 +2450,11 @@ editionscript = """
         }
         if(mutation.type == "attributes") {
           var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(mutation.target);
+          var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(mutation.target);
           if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
-              mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue) {
+             mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue ||
+             isIgnoredAttributeKey(mutation.attributeName)
+              ) {
           } else {
             onlyGhosts = false;
             sendToUndo(mutation, cur_time);
