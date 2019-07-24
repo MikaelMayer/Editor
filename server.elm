@@ -991,7 +991,8 @@ main =
       ["head", headattrs, headChildren] ->
         ["head", headattrs,
            serverOwned "initial script" initialScript ++
-           (<meta name="viewport" content="width=device-width"> :: headChildren)]
+           (serverOwned "viewport instructions" <meta name="viewport" content="width=device-width"> :: 
+            serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css"> :: headChildren)]
       x -> x -- head
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -1059,23 +1060,6 @@ browserSide = listDict.get "browserSide" defaultOptions == Just True
 
 initialScript = [
 <script>
-// For apache server
-if(!document.getElementById('apcahe-editor-css')) {
-    var link = document.createElement('link');
-    link.id = 'apcahe-editor-css';
-    link.rel = 'stylesheet';
-    link.href = './TharzenEditor/Editor/editor.css';
-    document.head.appendChild(link);
-}
-
-// For node server
-if(!document.getElementById('node-editor-css')) {
-    var link = document.createElement('link');
-    link.id = 'node-editor-css';
-    link.rel = 'stylesheet';
-    link.href = './editor.css';
-    document.head.appendChild(link);
-}
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
