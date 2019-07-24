@@ -1345,6 +1345,9 @@ div#modify-menu {
 .modify-menu-icon:hover {
   background-color: var(--context-button-color-hover);
 }
+.modify-menu-icon.inert {
+  align-items: center;
+}
 div#modify-menu > div.modify-menu-icons:not(.pinned) {
   width: 100%;
   overflow-x: auto;
@@ -1378,15 +1381,27 @@ div#modify-menu h3 {
 }
 div#modify-menu div.keyvalues {
   margin-top: 6px;
-  display: table;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   table-layout: fixed;
 }
 div#modify-menu div.keyvalues > div.keyvalue {
-  display: table-row;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: space-between;
+}
+div#modify-menu div.keyvalues > div.keyvalue > span{
+  display: flex;
+  flex-direction: row;
+}
+div#modify-menu .attribute-key-value {
+  width: 168px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 div#modify-menu div.keyvalues > div.keyvalue > * {
-  display: table-cell;
   padding: 4px;
   vertical-align: middle;
 }
@@ -1657,7 +1672,6 @@ div#modify-menu .modify-menu-icons.pinned .modify-menu-button:last-child {
 div#context-menu .context-menu-button.selected, div#modify-menu .modify-menu-button.selected {
   background: var(--context-button-selected);
 }
-
 div#modify-menu .modify-menu-button.inert.active {
   background: var(--context-button-color-inert-active)
 }
@@ -3962,9 +3976,8 @@ editionscript = """
           keyvalues.append(
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
-              el("span", {},
-                el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, 
-                  [], {
+              el("span", {}, [
+                el("input", {"type": "text", value: value, "id": ("dom-attr-" + name), class: "attribute-key-value"}, [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
                         if(isHref) {
@@ -3976,25 +3989,27 @@ editionscript = """
                             livelink.setAttribute("title", "Go to " + this.value);
                           }
                         }
-                      })(name, isHref)
+                    })(name, isHref)
+                  }),
+                isHref ? el("div", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [], {
+                  innerHTML: liveLinkSVG(model.link)
+                }) : undefined,
+                isHref ? el("div", {title: "Activate internal link mode", "class": "modify-menu-icon inert"}, [], { 
+                  innerHTML: linkModeSVG,
+                  onclick: linkSelect
+                }) : undefined,
+                el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
+                  innerHTML: wasteBasketSVG,
+                  onclick: ((name) => function() {
+                    clickedElem.removeAttribute(name);
+                    editor_model.clickedElem = clickedElem;
+                    updateInteractionDiv();
+                    })(name)
                   })
+                ]
               ),
-              isHref ? el("span", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [],
-                        {innerHTML: liveLinkSVG(model.link)}): undefined,
-              isHref ? el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Activate internal link mode"}, [], {
-                innerHTML: linkModeSVG,
-                onclick: linkSelect
-              }): undefined,
-              el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
-                innerHTML: wasteBasketSVG,
-                onclick: ((name) => function() {
-                  clickedElem.removeAttribute(name);
-                  editor_model.clickedElem = clickedElem;
-                  updateInteractionDiv();
-                })(name)
-              }),
-            ]
-          ));
+            ])
+          );
         }
       }
 
