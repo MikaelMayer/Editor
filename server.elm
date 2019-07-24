@@ -60,14 +60,15 @@ boolVar name resDefault =
   Maybe.withDefaultReplace (
     listDict.get name defaultOptions |> Maybe.withDefault resDefault |> freeze)
 
+browserSide = listDict.get "browserSide" defaultOptions == Just True
+
 varadmin = boolVar "admin" False
 varedit = boolVar "edit" False
 varls = boolVar "ls" False
+varraw = boolVar "raw" False
 defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
-
-
 
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
@@ -119,6 +120,9 @@ applyDotEditor source =
         Err msg -> let _ = Debug.log ("Error while executing " + dotEditor + " : " + msg) () in
           source
         Ok newSource -> newSource
+
+isTextFile path =
+  Regex.matchIn """\.(?:txt|css|js|sass|scss)$""" path
 
 (sourcecontent, folderView): (String, Boolean)
 (sourcecontent, folderView) = --updatecheckpoint "sourcecontent" <|
@@ -190,9 +194,11 @@ applyDotEditor source =
         )
       |> Maybe.map applyDotEditor
       |> Maybe.withDefaultReplace (
-        serverOwned "404 page" """<html><head></head><body>@(
-            if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
-          )</body></html>"""
+        serverOwned "404 page" (if isTextFile path then
+               if permissionToCreate then freeze """@path does not exist yet. Modify this page to create it!""" else """Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)"""
+            else """<html><head></head><body>@(
+              if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
+                )</body></html>""")
       )
 {---------------------------------------------------------------------------
 Utility functions to be inherited by the main body of any
@@ -937,7 +943,7 @@ evaluatedPage =
     window.addEventListener('drop', handleDrop, false);
     window.addEventListener('dragover', (e) => e.preventDefault(), false);
     </script></body></html>
-  else if Regex.matchIn """\.txt$""" path then
+  else if isTextFile path || varraw then
     Ok <html><head></head><body>
       <textarea id="thetext" style="width:100%;height:100%" initdata=@sourcecontent
         onkeyup="if(this.getAttribute('initdata') !== this.value) this.setAttribute('initdata', this.value)"></textarea>
@@ -945,7 +951,14 @@ evaluatedPage =
         document.getElementById('thetext').value = document.getElementById('thetext').getAttribute('initdata')
       </script>
     </body></html>
-  else Err """Serving only .html, .md and .elm files. Got @path"""
+  else 
+    Ok <html><head></head><body>
+      <p>Editor cannot open file because it does not recognize the extension.</p>
+      <p>As an alternative, you can open the file in raw mode by appending <code>?raw</code> to it.</p>
+      <button onclick="""
+        location.search = location.search + (location.search == "" ? "?raw" : "&raw");
+      """>Open @path in raw mode</button>
+    </body></html>  
 
 {---------------------------------------------------------------------------
  Recovers from evaluation errors
@@ -1812,8 +1825,6 @@ textarea#singleChildNodeContent {
   }
 }
 </style>]
-
-browserSide = listDict.get "browserSide" defaultOptions == Just True
 
 initialScript = [
 <script>
