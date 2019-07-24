@@ -1053,23 +1053,27 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 editionmenu thesource = [
 <div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
-if iscloseable then <span dummy=""></span> else closeEditBox,
-<style id="booleanswitch">
-
-</style>,
-<style>
-
-</style>]
+if iscloseable then <span dummy=""></span> else closeEditBox]
 
 browserSide = listDict.get "browserSide" defaultOptions == Just True
 
 initialScript = [
 <script>
-if(!document.getElementById('editor-css')) {
+// For apache server
+if(!document.getElementById('apcahe-editor-css')) {
     var link = document.createElement('link');
-    link.id = 'editor-css';
+    link.id = 'apcahe-editor-css';
     link.rel = 'stylesheet';
     link.href = './TharzenEditor/Editor/editor.css';
+    document.head.appendChild(link);
+}
+
+// For node server
+if(!document.getElementById('node-editor-css')) {
+    var link = document.createElement('link');
+    link.id = 'node-editor-css';
+    link.rel = 'stylesheet';
+    link.href = './editor.css';
     document.head.appendChild(link);
 }
 
