@@ -6,6 +6,12 @@ fs = nodejs.delayedFS nodejs.nodeFS nodejs.nodeFSWrite
 
 elmserver = fs.read "server.elm" |> Maybe.withDefaultLazy (\\_ -> error "server.elm not found")
 
+server_elm_style = fs.read "server-elm-style.css" |> Maybe.withDefaultLazy (\\_ -> error "server-elm-style.css not found")
+
+elmserver = Regex.replace """<link rel="stylesheet" type="text/css" href="/server-elm-style.css">""" (
+  \\_ -> "<style>" + server_elm_style + "</style>"
+) elmserver
+
 fs.read "bin/server.js"
 |> Maybe.withDefaultLazy (\\_ -> error "bin/server.js not found")
 |> Regex.replace "const defaultServerContent = .*;" (\\_ ->
