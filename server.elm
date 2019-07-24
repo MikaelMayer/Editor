@@ -1345,9 +1345,6 @@ div#modify-menu {
 .modify-menu-icon:hover {
   background-color: var(--context-button-color-hover);
 }
-.modify-menu-icon.inert {
-  align-items: center;
-}
 div#modify-menu > div.modify-menu-icons:not(.pinned) {
   width: 100%;
   overflow-x: auto;
@@ -1392,12 +1389,12 @@ div#modify-menu div.keyvalues > div.keyvalue {
   align-items: stretch;
   justify-content: space-between;
 }
-div#modify-menu div.keyvalues > div.keyvalue > span{
+div#modify-menu div.keyvalues > div.keyvalue > span {
   display: flex;
   flex-direction: row;
+  justify-content: space-between;
 }
 div#modify-menu .attribute-key-value {
-  width: 168px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1444,7 +1441,16 @@ div#modify-menu input[type=radio] {
 div#modify-menu span.insertOption{
   display: block;
 }
-div.keyvalue > span > input {
+div#modify-menu #element-move {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: 40px;
+  width: 95%;
+  padding: 6px;
+}
+div.keyvalue span > input {
+  width: 155px !important;
   border-radius: 4px;
   margin: 2px;
 }
@@ -1634,12 +1640,17 @@ div.tagName {
 div.tagName:hover {
   background: var(--context-button-color-hover);
 }
-
+div.tagName#customHTML {
+  display: flex;
+}
 [ghost-hovered=true] {
   outline: 2px dashed var(--context-color-next);
 }
 [ghost-clicked=true] {
   outline: 2px solid var(--context-color);
+}
+[move-to=true] {
+  outline: 5px solid red;
 }
 div#context-menu {
   position: absolute;
@@ -2085,7 +2096,7 @@ function remove(node) {
 -- Script added to the end of the page
 editionscript = """ 
   console.log("editionscript running");
-   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
+  var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
   
@@ -2110,8 +2121,8 @@ editionscript = """
         }
       }
     }
-    saveAttributes("save-ghost-attributes")
-    saveAttributes("save-ignored-attributes")
+    saveAttributes("save-ghost-attributes");
+    saveAttributes("save-ignored-attributes");  
     
     var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
     var savedProperties = [];
@@ -2883,7 +2894,7 @@ editionscript = """
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
-        if(editor_model.linkSelectMode) {
+        if(editor_model.selectMode) {
           if(e.which == 27) {
             escapeLinkMode();
           }
@@ -2969,6 +2980,7 @@ editionscript = """
         return;
       }
       var clickedElem = event.target;
+      console.log(typeof event.target);
       var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
       var matchOptions = function(clickedElem) {
         var result = true;
@@ -3055,8 +3067,11 @@ editionscript = """
       //removing the hovered element (which is retained if the escape key is hit)
       document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
       editor_model.clickedElem = editor_model.linkFrom;
-      editor_model.linkSelectMode = false;
+      editor_model.selectMode = false;
+      editor_model.linkFrom.removeAttribute("move-to");
       editor_model.linkFrom = undefined;
+      editor_model.moveElement = "";
+      editor_model.atCaret = undefined;
       updateInteractionDiv();
     }
     function noGhostHover (node) {
@@ -3181,7 +3196,10 @@ editionscript = """
       //data structures to represent undo/redo "stack"
       undoStack: [],
       redoStack: [],
-      linkSelectMode: false,
+      selectMode: false,
+      //acts as both "boolean" as well as where to move element (relative to original node) 
+      moveElement: "",
+      atCaret: undefined,
       linkFrom: undefined,
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
@@ -3313,7 +3331,7 @@ editionscript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      if(!editor_model.linkSelectMode) {
+      if(!editor_model.selectMode) {
         addPinnedModifyMenuIcon(
           panelOpenCloseIcon(),
           {title: "Open/close settings tab", "class": "inert" },
@@ -3378,38 +3396,70 @@ editionscript = """
             id: "escapebutton"
           },
           {onclick: function(event) {
-            escapeLinkMode();
+              escapeLinkMode();
             }
           }
         )
         addPinnedModifyMenuIcon(plusSVG + "<span class='modify-menu-icon-label-link'>SELECT</span>", 
-          {"class": "link-select-button", title: "Select desired local link",
+          {"class": "link-select-button", title: (editor_model.moveElement ? "Select element to move" : "Select desired local link"),
             id: "selectbutton"
           },
           {onclick: function(event) {
             let linkTo = editor_model.clickedElem,
                 targetID = linkTo.getAttribute("id");
-            //console.log("Target ID is:", targetID);
-            if(!targetID) {
-              targetID = "ID" + editor_model.idNum
-              linkTo.setAttribute("id", targetID);
-              editor_model.idNum += 1;
-              //console.log("here!");
+            //internal link
+            if(!editor_model.moveElement) {
+              //console.log("Target ID is:", targetID);
+              if(!targetID) {
+                targetID = "ID" + editor_model.idNum
+                linkTo.setAttribute("id", targetID);
+                editor_model.idNum += 1;
+                //console.log("here!");
+              }
+              else if(targetID.length > 100) {
+                targetID = targetID.trim();
+                linkTo.setAttribute("id", targetID);
+              }
+              //console.log("TargetID is now:", targetID);  
+              editor_model.linkFrom.setAttribute("href", "#" + targetID);
+              console.log(editor_model.linkFrom.getAttribute("id"));    
             }
-            else if(targetID.length > 100) {
-              targetID = targetID.trim();
-              linkTo.setAttribute("id", targetID);
+            //moving stuff
+            else {
+              console.log("Current movement option is:", editor_model.moveElement);
+              if(editor_model.moveElement === "before") {
+                editor_model.linkFrom.parentElement.insertBefore(linkTo, editor_model.linkFrom);
+              }
+              else if(editor_model.moveElement === "caret") {
+                let s = editor_model.atCaret;
+                if(!s) {
+                  let txt = s.startContainer;
+                  if(txt.textContent.length > s.startOffset && s.startOffset > 0) { // split
+                    // Need to split the text node.
+                    txt.parentElement.insertBefore(document.createTextNode(txt.textContent.substring(s.startOffset)), txt.nextSibling);
+                    txt.textContent = txt.textContent.substring(0, s.startOffset);
+                  }
+                  editor_model.linkFrom.insertBefore(linkTo, txt.nextSibling);
+                }
+                else { //insert at end of startContainer if no caret position saved
+                  editor_model.linkFrom.insertBefore(linkTo, null);
+                }
+              }
+              else if(editor_model.moveElement === "after") {
+                editor_model.linkFrom.parentElement.insertBefore(linkTo, editor_model.linkFrom.nextSibling);
+              }
+              else { //in case of wrap
+                editor_model.linkFrom.parentElement.insertBefore(linkTo, editor_model.linkFrom);
+                linkTo.appendChild(editor_model.linkFrom);  
+              }
             }
-            //console.log("TargetID is now:", targetID);  
-            editor_model.linkFrom.setAttribute("href", "#" + targetID);
-            console.log(editor_model.linkFrom.getAttribute)
             escapeLinkMode();
             }
           }
         )
       }
 
-      if(model.advanced || model.disambiguationMenu) {
+      if((model.advanced || model.disambiguationMenu) && (!model.selectMode)) {
         modifyMenuDiv.append(
           el("a", { class:"troubleshooter", href: "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
         modifyMenuIconsDiv.append(
@@ -3488,7 +3538,8 @@ editionscript = """
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
       } else {
-      if(model.insertElement)  {
+      
+      if(model.insertElement && !model.selectMode)  {
         interactionDiv.classList.add("insert-information-style");
         interactionDiv.classList.add("information-style");
         interactionDiv.append(el("h1", {}, "Insert"));
@@ -3510,7 +3561,23 @@ editionscript = """
               el("input", {type: "radio", id: "radioInsertWrapNode", name: "insertionPlace", value: "wrap"}),
               el("label", {"for": "radioInsertWrapNode"}, "Wrap node")]),
         ]));
-
+        interactionDiv.append(el("div", {"class":"modify-menu-icon", title: "Move element to this location:", id: "element-move"}, [
+            el("div", {}, [], {innerHTML: linkModeSVG}),
+            el("div", {"class": "text-button"}, [], {innerText: "Choose element to move."}),
+          ], {
+          onclick: function () { 
+              let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
+              let defaultValue = "after";
+              for (let i = 0, length = radios.length; i < length; i++) {
+                if (radios[i].checked) defaultValue = radios[i].getAttribute("value");
+              }
+              editor_model.moveElement = defaultValue;
+              editor_model.atCaret = model.caretPosition;
+              linkSelect();
+            }
+          }
+        ));
+        
         let insertTag = function() {
           let newElement = (() => {
             let parent = this;
@@ -3519,7 +3586,7 @@ editionscript = """
             if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
             return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
           })();
-          let insertionStyle = (() => {
+          var insertionStyle = (() => {
             let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
             let defaultValue = "after";
             for (let i = 0, length = radios.length; i < length; i++) {
@@ -3624,7 +3691,7 @@ editionscript = """
         }
 
         interactionDiv.append(
-          el("div", {"class": "tagName"}, [
+          el("div", {"class": "tagName", id: "customHTML"}, [
             el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
             el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
                 innerHTML: plusSVG, 
@@ -3930,14 +3997,16 @@ editionscript = """
       //    |--  |  |  |--
 
       
-      let linkSelect = function() {
+      function linkSelect() {
         editor_model.visible = false;
-        editor_model.linkSelectMode = true;
+        editor_model.selectMode = true;
         editor_model.linkFrom = editor_model.clickedElem;
         //"center" clicked element on document body
         editor_model.clickedElem = document.body;
         //removes all context menu stuff 
         document.querySelector("#context-menu").classList.remove("visible");
+        //highlight original clicked element
+        editor_model.linkFrom.setAttribute("move-to", true)
         updateInteractionDiv();
         popupMessage("Please select an element to link to.");
 
@@ -3975,9 +4044,9 @@ editionscript = """
           let isHref = name === "href" && clickedElem.tagName === "A";
           keyvalues.append(
             el("div", {"class": "keyvalue"}, [
-              el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
+              el("span", {title: "This element has attribute name '" + name + "'", class: "attribute-key-value"}, name + ": "),
               el("span", {}, [
-                el("input", {"type": "text", value: value, "id": ("dom-attr-" + name), class: "attribute-key-value"}, [], {
+                el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
                         if(isHref) {
@@ -3996,7 +4065,11 @@ editionscript = """
                 }) : undefined,
                 isHref ? el("div", {title: "Activate internal link mode", "class": "modify-menu-icon inert"}, [], { 
                   innerHTML: linkModeSVG,
-                  onclick: linkSelect
+                  onclick: () => {
+                    editor_model.moveElement = "";
+                    editor_model.atCaret = undefined;
+                    linkSelect();
+                  }
                 }) : undefined,
                 el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
                   innerHTML: wasteBasketSVG,
@@ -4024,31 +4097,33 @@ editionscript = """
         keyvalues.append(
           el("div", {"class": "keyvalue keyvalueadder"}, [
             el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
-            el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
-              onfocus: function() {
-                let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
-                if(keyInput && keyInput.value != "") {
-                  let name = document.querySelector("div.keyvalueadder input[name=name]").value;
+            el("span", {}, [
+              el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
+                onfocus: function() {
+                  let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
+                  if(keyInput && keyInput.value != "") {
+                    let name = document.querySelector("div.keyvalueadder input[name=name]").value;
+                    clickedElem.setAttribute(
+                      name,
+                      document.querySelector("div.keyvalueadder input[name=value]").value
+                    );
+                    updateInteractionDiv();
+                    let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
+                    if(d) d.focus();
+                  }
+                },
+                onkeyup: highlightsubmit})),
+              el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+                disabled: true,
+                onclick() {
                   clickedElem.setAttribute(
-                    name,
-                    document.querySelector("div.keyvalueadder input[name=value]").value
+                    this.parentElement.querySelector("[name=name]").value,
+                    this.parentElement.querySelector("[name=value]").value
                   );
                   updateInteractionDiv();
-                  let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
-                  if(d) d.focus();
                 }
-              },
-              onkeyup: highlightsubmit})),
-            el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
-              disabled: true,
-              onclick() {
-                clickedElem.setAttribute(
-                  this.parentElement.querySelector("[name=name]").value,
-                  this.parentElement.querySelector("[name=value]").value
-                );
-                updateInteractionDiv();
-              }
-            })
+              })
+            ])
           ])
         );
       }
@@ -4184,7 +4259,7 @@ editionscript = """
       }
     }
     
-      if(!editor_model.linkSelectMode) {
+      if(!editor_model.selectMode) {
         contextMenu.innerHTML = "";
         var whereToAddContextButtons = contextMenu;
         var noContextMenu = false;
