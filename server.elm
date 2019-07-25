@@ -2896,7 +2896,7 @@ editionscript = """
         //used to exit the link select mode (same as escape button)
         if(editor_model.selectMode) {
           if(e.which == 27) {
-            escapeLinkMode();
+            escapeSelectMode();
           }
         }
       };
@@ -3060,8 +3060,8 @@ editionscript = """
 
     var ifAlreadyRunning = typeof editor_model === "object";
     
-    //hover mode functions for linkSelectMode
-    function escapeLinkMode() {
+    //hover mode functions for selectMode
+    function escapeSelectMode() {
       document.body.removeEventListener('mouseover', linkModeHover1, false);
       document.body.removeEventListener('mouseout', linkModeHover2, false);
       //removing the hovered element (which is retained if the escape key is hit)
@@ -3396,7 +3396,7 @@ editionscript = """
             id: "escapebutton"
           },
           {onclick: function(event) {
-              escapeLinkMode();
+              escapeSelectMode();
             }
           }
         )
@@ -3453,7 +3453,7 @@ editionscript = """
                 linkTo.appendChild(editor_model.linkFrom);  
               }
             }
-            escapeLinkMode();
+            escapeSelectMode();
             }
           }
         )
@@ -3567,13 +3567,12 @@ editionscript = """
           ], {
           onclick: function () { 
               let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
-              let defaultValue = "after";
+              editor_model.moveElement = "after";
               for (let i = 0, length = radios.length; i < length; i++) {
-                if (radios[i].checked) defaultValue = radios[i].getAttribute("value");
+                if (radios[i].checked) editor_model.moveElement = radios[i].getAttribute("value");
               }
-              editor_model.moveElement = defaultValue;
               editor_model.atCaret = model.caretPosition;
-              linkSelect();
+              startSelectMode();
             }
           }
         ));
@@ -3591,8 +3590,8 @@ editionscript = """
             let defaultValue = "after";
             for (let i = 0, length = radios.length; i < length; i++) {
               if (radios[i].checked) return radios[i].getAttribute("value");
-              defaultValue = radios[i].getAttribute("value")
-            }
+              defaultValue = radios[i].getAttribute("value");
+            } 
             return defaultValue;
           })();
           if(insertionStyle === "after") {
@@ -3997,7 +3996,7 @@ editionscript = """
       //    |--  |  |  |--
 
       
-      function linkSelect() {
+      function startSelectMode() {
         editor_model.visible = false;
         editor_model.selectMode = true;
         editor_model.linkFrom = editor_model.clickedElem;
@@ -4009,10 +4008,8 @@ editionscript = """
         editor_model.linkFrom.setAttribute("move-to", true)
         updateInteractionDiv();
         popupMessage("Please select an element to link to.");
-
         document.body.addEventListener('mouseover', linkModeHover1, false);
         document.body.addEventListener('mouseout', linkModeHover2, false);
-
       }
 
 
@@ -4068,7 +4065,7 @@ editionscript = """
                   onclick: () => {
                     editor_model.moveElement = "";
                     editor_model.atCaret = undefined;
-                    linkSelect();
+                    startSelectMode();
                   }
                 }) : undefined,
                 el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
