@@ -1137,13 +1137,11 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 editionmenu thesource = [
 <div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
-<script type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js"></script>
 if iscloseable then <span dummy=""></span> else closeEditBox]
 
 initialScript = [
 <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js"></script>,
 <script>
-
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
 // https://stackoverflow.com/questions/32902734/how-to-make-google-sign-in-token-valid-for-longer-than-1-hour
@@ -3234,20 +3232,19 @@ editionscript = """
               document.querySelector(".mainElem").append(
                   el("div", {"class": "no-parent"}, "No Parent")
               );
-            }
+            } 
             displayChildrenSiblings(clickedElem, true);
           }
-            //CSS display location for now
-  //CSS display location for now
-  console.log("problem?");
-  var CSSDisplay = document.createElement('script');
-  //CSSDisplay.setAttribute('src', 'https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js');
-  /*CSSDisplay.onload = function () {
-    CSSP = new losslesscssjs();
-    console.log(CSSP);
-  }*/
-
-
+          var CSSparser = new losslesscssjs();
+          var CSSdisplay= [];
+          console.log(document.styleSheets);
+          for(let i = 0; i < document.styleSheets.length; i++) {
+            for(let j = 0; j < document.styleSheets[i].length; j++)
+            if(editor_model.clickedElem.matches(document.styleSheets[i][j].selectorText)) {
+                CSSdisplay.push(document.styleSheets[i][j]));
+              }
+          }
+          interactionDiv.append(el("textarea"));
         }
       }
 
