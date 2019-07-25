@@ -1399,7 +1399,7 @@ editionscript = """
    var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
-  
+
   // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
   // Same for some attributes
   function saveGhostAttributes() {
@@ -3233,6 +3233,17 @@ editionscript = """
             }
             displayChildrenSiblings(clickedElem, true);
           }
+            //CSS display location for now
+  //CSS display location for now
+  console.log("problem?");
+  var CSSDisplay = document.createElement('script');
+  //CSSDisplay.setAttribute('src', 'https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js');
+  /*CSSDisplay.onload = function () {
+    CSSP = new losslesscssjs();
+    console.log(CSSP);
+  }*/
+
+
         }
       }
 
