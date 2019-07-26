@@ -93,13 +93,14 @@ input:checked+.slider:before {
 }
 
 div.imgFolder {
-    display: inline-block;
-    margin: 0.2em;
+    text-align: center;
+    padding: 0.6em;
 }
 
-div.imgFolder>img {
+div.imgFolder > img {
     max-width: 100%;
     min-width: 2em;
+    padding: 8px;
 }
 
 a.troubleshooter {
@@ -586,7 +587,7 @@ div.no-sibling {
 
 #upload-image-btn-input {
     position: absolute;
-    top: 0;
+    top: -7px; /* alignment */
     left: 0;
     width: 100%;
 }
@@ -594,7 +595,8 @@ div.no-sibling {
 /* highlight selected image */
 
 div.highlight-select-image {
-    box-shadow: 2px 2px 3px black;
+    border: 2px solid white;
+    border-radius: 0.8em;
 }
 
 :root {
