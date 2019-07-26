@@ -577,8 +577,8 @@ div.no-sibling {
     padding: 4px 10px;
     height: 20px;
     position: relative;
-    color: #888;
-    background: #fafafa;
+    color: black;
+    background: transparent;
     border-radius: 4px;
     display: inline-block;
     height: 20px;

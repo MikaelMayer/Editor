@@ -329,7 +329,7 @@ luca =
         var progbar = document.getElementById("progress-bar");
       })(xhr, file);
       @(if listDict.get "browserSide" defaultOptions == Just True then """
-      xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+      xhr.open("POST", "/Thaditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
       """ else """
       xhr.open("POST", targetPathName, false);
       xhr.setRequestHeader("write-file", file.type);
