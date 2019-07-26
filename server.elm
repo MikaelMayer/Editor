@@ -3235,16 +3235,41 @@ editionscript = """
             } 
             displayChildrenSiblings(clickedElem, true);
           }
-          var CSSparser = new losslesscssjs();
-          var CSSdisplay= [];
-          console.log(document.styleSheets);
-          for(let i = 0; i < document.styleSheets.length; i++) {
-            for(let j = 0; j < document.styleSheets[i].length; j++)
-            if(editor_model.clickedElem.matches(document.styleSheets[i][j].selectorText)) {
-                CSSdisplay.push(document.styleSheets[i][j]));
+          if(!model.insertElement) {
+            var CSSparser = new losslesscssjs();
+            var CSSdisplay= [];
+            console.log(document.styleSheets);
+            for(let i = 1; i < document.styleSheets.length; i++) {
+              for(let j = 0; j < document.styleSheets[i].cssRules.length; j++) {
+                if(editor_model.clickedElem.matches(document.styleSheets[i].cssRules[j].selectorText)) {
+                  CSSdisplay.push(document.styleSheets[i].cssRules[j]);
+                }
               }
+            }
+            console.log(CSSdisplay);
+            var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {});
+            for(let k in CSSdisplay) {
+              let eachCSS = el("textarea", {"class": "CSS-selectors"});
+              eachCSS.value = CSSdisplay[k].cssText;
+              CSSarea.append(eachCSS);
+            }
+            interactionDiv.append(CSSarea);
+            interactionDiv.append(el("button", { style: "width: 100%; height: 10%;"}), [], {
+              innerHTML: "Update CSS",
+              onclick() { 
+                console.log("clicking does something");
+                CSSarea.childList.forEach(function(e) {
+                  let CSSTopLVL = CSSparser.parseCSS(e.value);
+                  if(CSSTopLVL.kind === "cssBlock") {
+                    let CSSRules = CSSparser.parseRules(CSSTopLVL.rules)[0];
+                    for(let l in CSSRules) {
+                      clickedElem.style.setProperty(CSSRules[l].directive, CSSRules[l].value);
+                    }
+                  }
+                });
+              }
+            });
           }
-          interactionDiv.append(el("textarea"));
         }
       }
 
