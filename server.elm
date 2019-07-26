@@ -371,6 +371,46 @@ luca =
           return JSON.parse(doReadServer("listdir", dirname) || "[]");
 		    }
 	  };
+    editor.toTreasureMap = function(oldNode) {
+      if(!oldNode) return undefined;
+      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
+        return {id: oldNode.getAttribute("id")};
+      }
+      let tentativeSelector = [];
+      let t = oldNode;
+      let isText = false, textIndex = 0;
+      while(t && t.parentNode) {
+        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
+        if(t.nodeType === 1) {
+          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
+        } else {
+          isText = true;
+          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
+        }
+        t = t.parentNode;
+      }
+      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
+    }
+    // Returns the new node that matches the old node the closest.
+    // For text nodes, try to recover the text node, if not, returns the parent node;
+    editor.fromTreasureMap = function(data) {
+      if(!data) return undefined;
+      if(typeof data === "object" && data.id) {
+        return document.getElementById(data.id);
+      }
+      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
+        let tentativeSelector = data.tentativeSelector;
+        while(tentativeSelector.length >= 1) {
+          let newNode = document.querySelector(tentativeSelector.join(" "));
+          if(newNode) {
+            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+          }
+          tentativeSelector.shift();
+        }
+        return undefined;
+      }
+    }
+    
     function el(tag, attributes, children, properties) {
       let tagClassIds = tag.split(/(?=#|\.)/g);
       let x;
@@ -1414,7 +1454,7 @@ lastEditScript = """
     var savedGhostAttributes = [];
     for(var i = 0; i < ghostModified.length; i++) {
       var elem = ghostModified[i];
-      savedGhostAttributes.push([dataToRecoverElement(elem),
+      savedGhostAttributes.push([editor.toTreasureMap(elem),
           "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
     }
     function saveAttributes(name) {
@@ -1424,7 +1464,7 @@ lastEditScript = """
         var toSave = elem.getAttribute(name).split(" ");
         for(j in toSave) {
           var key = toSave[j];
-          savedGhostAttributes.push([dataToRecoverElement(elem), key, elem.getAttribute(key)]);
+          savedGhostAttributes.push([editor.toTreasureMap(elem), key, elem.getAttribute(key)]);
         }
       }
     }
@@ -1445,7 +1485,7 @@ lastEditScript = """
     var parentsGhostNodes = [];
     for(var i = 0; i < ghostElemsToReinsert.length; i++) {
       var elem = ghostElemsToReinsert[i];
-      parentsGhostNodes.push({parent: dataToRecoverElement(elem.parentNode), node: elem});
+      parentsGhostNodes.push({parent: editor.toTreasureMap(elem.parentNode), node: elem});
     }
     return [savedGhostAttributes, savedProperties, parentsGhostNodes];
   }
@@ -1453,21 +1493,21 @@ lastEditScript = """
     var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
     for(var i in savedGhostAttributes) {
       var [data, key, attr] = savedGhostAttributes[i];
-      var elem = recoverElementFromData(data);
+      var elem = editor.fromTreasureMap(data);
       if(elem != null) {
         elem.setAttribute(key, attr);
       }
     }
     for(var i in savedProperties) {
       var [data, key, value] = savedProperties[i];
-      var elem = recoverElementFromData(id);
+      var elem = editor.fromTreasureMap(id);
       if(elem != null) {
         elem[key] = value;
       }
     }
     for(var i in parentsGhostNodes) {
       var {parent: data, node: elem} = parentsGhostNodes[i];
-      var parent = recoverElementFromData(data);
+      var parent = editor.fromTreasureMap(data);
       if(parent != null) {
         if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
           parent.appendChild(elem);
@@ -1522,7 +1562,7 @@ lastEditScript = """
         editor_model.selectionRange = dataToRecoverSelectionRange(editor_model.selectionRange);
       }
       if(editor_model.clickedElem) {
-        editor_model.clickedElem = dataToRecoverElement(editor_model.clickedElem);
+        editor_model.clickedElem = editor.toTreasureMap(editor_model.clickedElem);
       }
     }
     function replaceContent(NC) {
@@ -2405,45 +2445,6 @@ lastEditScript = """
       }
     }
 
-    function dataToRecoverElement(oldNode) {
-      if(!oldNode) return undefined;
-      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
-        return {id: oldNode.getAttribute("id")};
-      }
-      let tentativeSelector = [];
-      let t = oldNode;
-      let isText = false, textIndex = 0;
-      while(t && t.parentNode) {
-        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
-        if(t.nodeType === 1) {
-          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
-        } else {
-          isText = true;
-          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
-        }
-        t = t.parentNode;
-      }
-      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
-    }
-    // Returns the new node that matches the old node the closest.
-    // For text nodes, try to recover the text node, if not, returns the parent node;
-    function recoverElementFromData(data) {
-      if(!data) return undefined;
-      if(typeof data === "object" && data.id) {
-        return document.getElementById(data.id);
-      }
-      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
-        let tentativeSelector = data.tentativeSelector;
-        while(tentativeSelector.length >= 1) {
-          let newNode = document.querySelector(tentativeSelector.join(" "));
-          if(newNode) {
-            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
-          }
-          tentativeSelector.shift();
-        }
-        return undefined;
-      }
-    }
     function setCaretPositionIn(node, position) {
       position = Math.min(position, node.textContent.length);
       if (node.nodeType == 3) {
@@ -2465,11 +2466,11 @@ lastEditScript = """
     }
     function dataToRecoverCaretPosition(caretPosition) {
       if(!caretPosition) return undefined;
-      return {target: dataToRecoverElement(caretPosition.startContainer), startOffset: caretPosition.startOffset};
+      return {target: editor.toTreasureMap(caretPosition.startContainer), startOffset: caretPosition.startOffset};
     }
     function recoverCaretPositionFromData(data) {
       if(!data) return;
-      let newTextNodeOrParent = recoverElementFromData(data.target);
+      let newTextNodeOrParent = editor.fromTreasureMap(data.target);
       if(newTextNodeOrParent) setCaretPositionIn(newTextNodeOrParent, data.startOffset)
     }
     function dataToRecoverSelectionRange(selectionRange) { // TODO
@@ -2484,7 +2485,7 @@ lastEditScript = """
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
       //makes visibility of editor model consistent throughout reloads
       visible: ifAlreadyRunning ? editor_model.visible : false,
-      clickedElem: ifAlreadyRunning ? recoverElementFromData(editor_model.clickedElem) : undefined,
+      clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor_model.clickedElem) : undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
       notextselection: false,
