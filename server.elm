@@ -332,7 +332,7 @@ luca =
         var progbar = document.getElementById("progress-bar");
       })(xhr, file);
       @(if listDict.get "browserSide" defaultOptions == Just True then """
-      xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+      xhr.open("POST", "/Thaditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
       """ else """
       xhr.open("POST", targetPathName, false);
       xhr.setRequestHeader("write-file", file.type);
@@ -3392,6 +3392,11 @@ lastEditScript = """
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
             document.getElementById("dom-attr-src").setAttribute("value", file.name);
             clickedElem.setAttribute("src", targetPathName);
+            // adapt to HTML5 new attribute 'srcset'
+            // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
+            if (clickedElem.getAttribute("srcset") != undefined) {
+              clickedElem.setAttribute("srcset", "");
+            }
           });
         }
 
@@ -3402,30 +3407,38 @@ lastEditScript = """
         let selectedImage = document.querySelectorAll(".imgFolder");
         for (let i = 0; i < selectedImage.length; ++i) {
           if (selectedImage[i].getAttribute("src") === files[files.length - 1]) {
-            // selectedImage[i].style.outline = "2px solid white";
             selectedImage[i].classList.add("highlight-select-image");
           } else {
-            // selectedImage[i].style.outline = "none";
             selectedImage[i].classList.remove("highlight-select-image");
           }
         }
       }
       
       function showListsImages(srcName) {
-        srcName = relativeToAbsolute(srcName)
+        srcName = relativeToAbsolute(srcName);
         let dir = "";
         for(let i = 0, arr = srcName.split(/\\|\//); i < arr.length - 1; ++i) {
           dir += (arr[i] + "/");
         }
         files = editor.fs.listdir(dir);
         
-        images = [];
+        let images = [];
+        let currentSelectedImage;
         files.forEach(file => {
           let ext = file.split('.').pop().toLowerCase();
           if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif') {
-            images.push(file);
+            if (file === srcName.split("/").pop()) {
+              currentSelectedImage = file;
+            } else {
+              images.push(file);
+            }
           }
         });
+        // sometimes website use 'srcset' as the url of image, we cannot find currentSelectedImage precisely
+        if (currentSelectedImage != null) {
+          images.unshift(currentSelectedImage);   // currentSelectedImage should be placed as the first one
+        }
+
         // init: clear image list
         let selectedImage = document.querySelectorAll(".imgFolder");
         selectedImage.forEach(e => e.remove());
@@ -3438,23 +3451,29 @@ lastEditScript = """
                 let otherImages = document.querySelectorAll(".imgFolder");
                 for (let i = 0; i < otherImages.length; ++i) {
                   otherImages[i].classList.remove("highlight-select-image");
-                  // otherImages[i].style.outline = "none";
                 }
                 // replace image
+                // adapt to HTML5 new attribute 'srcset'
+                // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
+                if (clickedElem.getAttribute("srcset") != undefined) {
+                  clickedElem.setAttribute("srcset", "");
+                }
                 clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
                 document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
-                // this.style.outline = "2px solid white";
                 this.classList.add("highlight-select-image");
               }
             })
           );
+        }
+        if (currentSelectedImage != null) {
+          document.querySelectorAll(".imgFolder")[0].classList.add("highlight-select-image");
         }
       }
       
       interactionDiv.append(keyvalues);
 
       if (clickedElem && clickedElem.tagName === "IMG") {
-        let srcName = clickedElem.attributes[0].value;
+        let srcName = clickedElem.getAttribute("src");
 
         clickedElem.ondragover = function (e) {
           e.preventDefault();
@@ -3484,6 +3503,7 @@ lastEditScript = """
         // show lists of images in selected image's folder
         showListsImages(srcName);
       }
+
       let voidTags = {AREA: true, BASE: true, BR: true, COL: true, COMMANd: true, EMBED: true, HR: true, IMG: true, INPUT: true, KEYGEN: true, LINK: true, META: true, PARAM: true, SOURCE: true, TRACK: true, WBR: true};
       //interactionDiv.append(el("hr"));
       // Nodes only with 1 text child
