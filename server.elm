@@ -72,7 +72,7 @@ iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (free
 
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
-permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
+permissionToEditServer = boolVar "superadmin" False -- should be possibly get from user authentication
 -- List.contains ("sub", "102014571179481340426") user -- That's my Google user ID.
 
 canEditPage = userpermissions.pageowner && varedit && not varls
@@ -81,7 +81,7 @@ canEditPage = userpermissions.pageowner && varedit && not varls
 
 serverOwned what obj = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
 
-If you really intended to modify this, add ?admin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
+If you really intended to modify this, add ?superadmin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
 
 For debugging purposes, below is the new value that was pushed:
 <pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
@@ -271,6 +271,9 @@ luca =
       xmlhttp.open("POST", location.pathname + location.search);
       xmlhttp.setRequestHeader("reload", "true");
       xmlhttp.setRequestHeader("url", url);
+      if(googleAuthIdToken) {
+        xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
+      }
       console.log("setting url to ", url);
       xmlhttp.send("{\"a\":1}");
     }
@@ -1097,29 +1100,24 @@ main =
   ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
     List.filter (case of [_, _] -> False; _ -> True) |>
     List.mapWithReverse identity (case of
-      ["body", bodyattrs, bodychildren] ->
+      ["body", bodyattrs, bodyChildren] ->
         ["body",
            (if canEditPage then
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
-           bodyattrs, luca ++
+           bodyattrs, insertThereInstead True bodyChildren ++ luca ++
           if not varedit || varls then
-            bodychildren
+            bodyChildren
           else 
              (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
               if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
               serverOwned "edit prelude when not in edit mode" []) ++
-             bodychildren ++
-             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder"> </div>, <script>@lastEditScript</script>] ++
-                Update.lens {apply (_, emptyList) = emptyList,
-                  update {outputNew, input=(bodychildren, _)} =
-                    Ok (InputsWithDiffs [((bodychildren ++ outputNew, []), Just <| Update.vTupleDiffs_1 <|
-                      VListDiffs [(List.length bodyChildren, ListElemInsert (List.length outputNew))]
-                    )])
-                } (bodychildren, []) -- All children added to the end of the body are added back to bodyChildren.
+             bodyChildren ++
+             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder"> </div>, <script>@lastEditScript</script>] ++ insertThereInstead False bodyChildren -- All new nodes there are added back to bodyChildren.
              )]
       ["head", headattrs, headChildren] ->
         ["head", headattrs,
+           insertThereInstead True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
            serverOwned "initial script" initialScript ++
            (serverOwned "viewport instructions" <meta name="viewport" content="width=device-width"> :: 
             serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css"> :: headChildren)]
@@ -1127,6 +1125,15 @@ main =
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
+
+-- Returns an empty list. If elements are inserted, inserts them in the given list instead.
+insertThereInstead atBeginning list =
+  Update.lens {apply _ = [],
+    update {outputNew, input=list} =
+      Ok (InputsWithDiffs [((if atBeginning then outputNew ++ list else list ++ outputNew, []), Just <| Update.vTupleDiffs_1 <|
+        VListDiffs [(if atBeginning then 0 else List.length list, ListElemInsert (List.length outputNew))]
+      )])
+  } list
 
 {---------------------------------------------------------------------------
  Definitions for the pipeline above
@@ -1186,7 +1193,7 @@ editionmenu thesource = [
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
 if iscloseable then <span dummy=""></span> else closeEditBox]
 
-initialScript = [
+initialScript = serverOwned "initial script" [
 <script>
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
@@ -1203,7 +1210,10 @@ function isGhostNode(elem) {
 }
 
 function areChildrenGhosts(n) {
-  return n && n.getAttribute && n.getAttribute("children-are-ghosts") == "true";
+  return n && n.getAttribute && (
+    n.getAttribute("children-are-ghosts") == "true" ||
+    n.getAttribute("children-are-ghost") == "true"
+  );
 }
 function hasGhostAncestor(htmlElem) {
   if(htmlElem == null) return false;
@@ -1280,7 +1290,8 @@ editor.ghostNodes = [];
 editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
      (insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1 ||
-      insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1)
+      insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1 ||
+      insertedNode.getAttribute("src").indexOf("googletagmanager.com/gtm.js") != -1)
 );
 
 // For for ace styles in header
@@ -1318,7 +1329,7 @@ editor.ghostNodes.push(insertedNode =>
 );
 // For the grammarly extension
 editor.ghostNodes.push(insertedNode =>
-  insertedNode.classList.contains("gr-top-z-index") || insertedNode.classList.contains("gr-top-zero")
+  insertedNode.nodeType === 1 && insertedNode.matches(".gr-top-z-index, .gr-top-zero")
 );
 
 function handleScriptInsertion(mutations) {
@@ -1332,7 +1343,7 @@ function handleScriptInsertion(mutations) {
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
-        if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
+        if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.nodeType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
          if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
          insertedNode.isghost = true;
         } else { // Record ignored attributes
@@ -1517,9 +1528,9 @@ lastEditScript = """
   }
   
   function domNodeToNativeValue(n) {
-      if(n.nodeType == "3") {
+      if(n.nodeType == 3) {
         return ["TEXT", n.textContent];
-      } else if(n.nodeType == "8") {
+      } else if(n.nodeType == 8) {
         return ["COMMENT", n.textContent];
       } else {
         var attributes = [];
@@ -1536,10 +1547,15 @@ lastEditScript = """
           }
         }
         var children = [];
+        var childNodes = n.childNodes;
+        if(n.tagName.toLowerCase() === "noscript" && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
+          // We'll recover the associated HTML node
+          childNodes = el("div", {}, [], {innerHTML: n.childNodes[0].textContent, parentNode: n}).childNodes;
+        }
         if(!areChildrenGhosts(n)) {
-          for(i = 0; i < n.childNodes.length; i++) {
-            if(!isGhostNode(n.childNodes[i])) {
-              children.push(domNodeToNativeValue(n.childNodes[i]));
+          for(i = 0; i < childNodes.length; i++) {
+            if(!isGhostNode(childNodes[i])) {
+              children.push(domNodeToNativeValue(childNodes[i]));
             }
           }
         }
