@@ -1070,7 +1070,14 @@ main =
               if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
               serverOwned "edit prelude when not in edit mode" []) ++
              bodychildren ++
-             (serverOwned "synchronization script and placeholder" [<script>@editionscript</script>, <div class="bottom-placeholder"> </div>])]
+             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder"> </div>, <script>@lastEditScript</script>] ++
+                Update.lens {apply (_, emptyList) = emptyList,
+                  update {outputNew, input=(bodychildren, _)} =
+                    Ok (InputsWithDiffs [((bodychildren ++ outputNew, []), Just <| Update.vTupleDiffs_1 <|
+                      VListDiffs [(List.length bodyChildren, ListElemInsert (List.length outputNew))]
+                    )])
+                } (bodychildren, []) -- All children added to the end of the body are added back to bodyChildren.
+             )]
       ["head", headattrs, headChildren] ->
         ["head", headattrs,
            serverOwned "initial script" initialScript ++
@@ -1394,8 +1401,8 @@ function remove(node) {
 ]
 
 -- Script added to the end of the page
-editionscript = """ 
-  console.log("editionscript running");
+lastEditScript = """ 
+  console.log("lastEditScript running");
    var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
@@ -1744,7 +1751,7 @@ editionscript = """
       //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
       //and should be combined together when undoing/redoing
       let lastUndo = editor_model.undoStack[editor_model.undoStack.length-1]; 
-      console.log(lastUndo);
+      //console.log(lastUndo);
       if(!lastUndo || (lastUndo[0].timestamp < (time - 10))) { 
         editor_model.undoStack.push([m]);
       }
@@ -1819,7 +1826,6 @@ editionscript = """
         {
           editor_model.canSave = true;
         }
-        console.log("canSave is:", editor_model.canSave);
         var saveButtons = document.querySelectorAll(".saveButton");
         // TODO: Can we regenerate the whole interface for consistency?
         for(let sb of saveButtons) {
@@ -1842,7 +1848,7 @@ editionscript = """
       outputValueObserver.disconnect();
     }
     
-    setTimeout(function() {
+    //setTimeout(function() {
       outputValueObserver = new MutationObserver(handleMutations);
       outputValueObserver.observe
        ( document.body.parentElement
@@ -1854,7 +1860,7 @@ editionscript = """
          , subtree: true
          }
        )
-     }, 10)
+     //}, 10)
     
     //debugging function for printing both teh undo and redo stacks.
     function printstacks() {
