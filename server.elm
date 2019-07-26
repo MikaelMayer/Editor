@@ -415,7 +415,85 @@ evaluatedPage: Result String Html
 evaluatedPage = 
   if canEvaluate /= "true" then
     Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
-  else
+  else if isTextFile path || varraw then
+    Ok <html>
+        <head>
+        <title>@path</title>
+        <style type="text/css" media="screen">
+            #aceeditor { 
+                  height: 100%;
+                  width: 100%;
+                  border: 1px solid #DDD;
+                  border-radius: 4px;
+                  border-bottom-right-radius: 0px;
+                  margin-top: 5px;
+            }
+        </style>
+        <script>
+          function loadAceEditor() {
+            console.log("executing script");
+            var aceeditor = ace.edit("aceeditor");
+            var mode = path.match(/\.js$/) ? "ace/mode/javascript" :
+                       path.match(/\.html?$/) ? "ace/mode/html" :
+                       path.match(/\.css$/) ? "ace/mode/css" :
+                       path.match(/\.json$/) ? "ace/mode/json" :
+                       path.match(/\.leo$/) ? "ace/mode/elm" :
+                       path.match(/\.elm$/) ? "ace/mode/elm" :
+                       path.match(/\.php$/) ? "ace/mode/php" :
+                       "ace/mode/plain_text";
+            aceeditor.session.setMode({path: mode, v: Date.now()});
+            aceeditor.setOptions({
+              fontSize: "20pt"
+            });
+            aceeditor.setValue(document.getElementById("aceeditor").getAttribute("initdata"));
+            aceeditor.session.on('change', function(e) {
+              document.getElementById("aceeditor").setAttribute("initdata", aceeditor.getValue());
+            });
+            var callbackSelection = function() {
+              var anchor = aceeditor.selection.getSelectionAnchor();
+              var lead = aceeditor.selection.getSelectionLead();
+              var div = document.querySelector("#aceeditor");
+              div.setAttribute("ghost-anchor-row", anchor.row)
+              div.setAttribute("ghost-anchor-column", anchor.column)
+              div.setAttribute("ghost-lead-row", lead.row)
+              div.setAttribute("ghost-lead-column", lead.column)
+            }
+            aceeditor.selection.on("changeSelection", callbackSelection);
+            aceeditor.selection.on("changeCursor", callbackSelection);
+            var div = document.querySelector("#aceeditor");
+            aceeditor.selection.moveTo(div.getAttribute("ghost-anchor-row") || 0, div.getAttribute("ghost-anchor-column") || 0)
+            aceeditor.focus();
+          }
+        </script>
+        </head>
+        <body>
+        <div id="aceeditor" list-ghost-attributes="class draggable style" children-are-ghosts="true"
+          save-ghost-attributes="style ghost-anchor-column ghost-anchor-row ghost-lead-column ghost-lead-row" initdata=@sourcecontent></div>
+        <script>
+        editor.ghostNodes.push(node =>
+          node.tagName === "SCRIPT" && node.getAttribute("src") && node.getAttribute("src").match(/mode-(.*)\.js/)
+        );
+        var script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/ace.js';
+        script.async = false;
+        script.setAttribute("isghost", "true");
+        ace = undefined;
+        document.head.appendChild(script);
+        var path = @(jsCode.stringOf path);
+        onAceLoaded = (delay) => () => {
+          if(typeof ace != "undefined") {
+            console.log("ace loaded.")
+            loadAceEditor();
+          } else {
+            console.log("ace not loaded. Retrying in " + (delay * 2) + "ms");
+            setTimeout(onAceLoaded(delay * 2), 100);
+          }
+        }
+        onAceLoaded(1)();
+        </script>
+        </body>
+        </html>
+  else 
   let isPhp = Regex.matchIn """\.php$""" path in
   let isHtml = Regex.matchIn """\.html?$""" path in
   if isHtml || isPhp then
@@ -943,84 +1021,6 @@ evaluatedPage =
     window.addEventListener('drop', handleDrop, false);
     window.addEventListener('dragover', (e) => e.preventDefault(), false);
     </script></body></html>
-  else if isTextFile path || varraw then
-    Ok <html>
-        <head>
-        <title>@path</title>
-        <style type="text/css" media="screen">
-            #aceeditor { 
-                  height: 100%;
-                  width: 100%;
-                  border: 1px solid #DDD;
-                  border-radius: 4px;
-                  border-bottom-right-radius: 0px;
-                  margin-top: 5px;
-            }
-        </style>
-        <script>
-          function loadAceEditor() {
-            console.log("executing script");
-            var aceeditor = ace.edit("aceeditor");
-            var mode = path.match(/\.js$/) ? "ace/mode/javascript" :
-                       path.match(/\.html?$/) ? "ace/mode/html" :
-                       path.match(/\.css$/) ? "ace/mode/css" :
-                       path.match(/\.json$/) ? "ace/mode/json" :
-                       path.match(/\.leo$/) ? "ace/mode/elm" :
-                       path.match(/\.elm$/) ? "ace/mode/elm" :
-                       path.match(/\.php$/) ? "ace/mode/php" :
-                       "ace/mode/plain_text";
-            aceeditor.session.setMode({path: mode, v: Date.now()});
-            aceeditor.setOptions({
-              fontSize: "20pt"
-            });
-            aceeditor.setValue(document.getElementById("aceeditor").getAttribute("initdata"));
-            aceeditor.session.on('change', function(e) {
-              document.getElementById("aceeditor").setAttribute("initdata", aceeditor.getValue());
-            });
-            var callbackSelection = function() {
-              var anchor = aceeditor.selection.getSelectionAnchor();
-              var lead = aceeditor.selection.getSelectionLead();
-              var div = document.querySelector("#aceeditor");
-              div.setAttribute("ghost-anchor-row", anchor.row)
-              div.setAttribute("ghost-anchor-column", anchor.column)
-              div.setAttribute("ghost-lead-row", lead.row)
-              div.setAttribute("ghost-lead-column", lead.column)
-            }
-            aceeditor.selection.on("changeSelection", callbackSelection);
-            aceeditor.selection.on("changeCursor", callbackSelection);
-            var div = document.querySelector("#aceeditor");
-            aceeditor.selection.moveTo(div.getAttribute("ghost-anchor-row") || 0, div.getAttribute("ghost-anchor-column") || 0)
-            aceeditor.focus();
-          }
-        </script>
-        </head>
-        <body>
-        <div id="aceeditor" list-ghost-attributes="class draggable style" children-are-ghosts="true"
-          save-ghost-attributes="style ghost-anchor-column ghost-anchor-row ghost-lead-column ghost-lead-row" initdata=@sourcecontent></div>
-        <script>
-        editor.ghostNodes.push(node =>
-          node.tagName === "SCRIPT" && node.getAttribute("src") && node.getAttribute("src").match(/mode-(.*)\.js/)
-        );
-        var script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/ace.js';
-        script.async = false;
-        script.setAttribute("isghost", "true");
-        ace = undefined;
-        document.head.appendChild(script);
-        var path = @(jsCode.stringOf path);
-        onAceLoaded = (delay) => () => {
-          if(typeof ace != "undefined") {
-            console.log("ace loaded.")
-            loadAceEditor();
-          } else {
-            console.log("ace not loaded. Retrying in " + (delay * 2) + "ms");
-            setTimeout(onAceLoaded(delay * 2), 100);
-          }
-        }
-        onAceLoaded(1)();
-        </script>
-        </body>
-        </html>
   else 
     Ok <html><head></head><body>
       <p>Editor cannot open file because it does not recognize the extension.</p>
@@ -1285,7 +1285,7 @@ function handleScriptInsertion(mutations) {
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
-        if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode))) {
+        if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
          if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
          insertedNode.isghost = true;
         } else { // Record ignored attributes
