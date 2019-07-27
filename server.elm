@@ -60,18 +60,19 @@ boolVar name resDefault =
   Maybe.withDefaultReplace (
     listDict.get name defaultOptions |> Maybe.withDefault resDefault |> freeze)
 
+browserSide = listDict.get "browserSide" defaultOptions == Just True
+
 varadmin = boolVar "admin" False
 varedit = boolVar "edit" False
 varls = boolVar "ls" False
+varraw = boolVar "raw" False
 defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
 
-
-
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
-permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
+permissionToEditServer = boolVar "superadmin" False -- should be possibly get from user authentication
 -- List.contains ("sub", "102014571179481340426") user -- That's my Google user ID.
 
 canEditPage = userpermissions.pageowner && varedit && not varls
@@ -80,7 +81,7 @@ canEditPage = userpermissions.pageowner && varedit && not varls
 
 serverOwned what obj = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
 
-If you really intended to modify this, add ?admin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
+If you really intended to modify this, add ?superadmin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
 
 For debugging purposes, below is the new value that was pushed:
 <pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
@@ -119,6 +120,9 @@ applyDotEditor source =
         Err msg -> let _ = Debug.log ("Error while executing " + dotEditor + " : " + msg) () in
           source
         Ok newSource -> newSource
+
+isTextFile path =
+  Regex.matchIn """\.(?:txt|css|js|sass|scss)$""" path
 
 (sourcecontent, folderView): (String, Boolean)
 (sourcecontent, folderView) = --updatecheckpoint "sourcecontent" <|
@@ -190,9 +194,11 @@ applyDotEditor source =
         )
       |> Maybe.map applyDotEditor
       |> Maybe.withDefaultReplace (
-        serverOwned "404 page" """<html><head></head><body>@(
-            if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
-          )</body></html>"""
+        serverOwned "404 page" (if isTextFile path then
+               if permissionToCreate then freeze """@path does not exist yet. Modify this page to create it!""" else """Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)"""
+            else """<html><head></head><body>@(
+              if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
+                )</body></html>""")
       )
 {---------------------------------------------------------------------------
 Utility functions to be inherited by the main body of any
@@ -265,6 +271,9 @@ luca =
       xmlhttp.open("POST", location.pathname + location.search);
       xmlhttp.setRequestHeader("reload", "true");
       xmlhttp.setRequestHeader("url", url);
+      if(googleAuthIdToken) {
+        xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
+      }
       console.log("setting url to ", url);
       xmlhttp.send("{\"a\":1}");
     }
@@ -323,7 +332,7 @@ luca =
         var progbar = document.getElementById("progress-bar");
       })(xhr, file);
       @(if listDict.get "browserSide" defaultOptions == Just True then """
-      xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+      xhr.open("POST", "/Thaditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
       """ else """
       xhr.open("POST", targetPathName, false);
       xhr.setRequestHeader("write-file", file.type);
@@ -365,6 +374,46 @@ luca =
           return JSON.parse(doReadServer("listdir", dirname) || "[]");
 		    }
 	  };
+    editor.toTreasureMap = function(oldNode) {
+      if(!oldNode) return undefined;
+      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
+        return {id: oldNode.getAttribute("id")};
+      }
+      let tentativeSelector = [];
+      let t = oldNode;
+      let isText = false, textIndex = 0;
+      while(t && t.parentNode) {
+        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
+        if(t.nodeType === 1) {
+          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
+        } else {
+          isText = true;
+          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
+        }
+        t = t.parentNode;
+      }
+      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
+    }
+    // Returns the new node that matches the old node the closest.
+    // For text nodes, try to recover the text node, if not, returns the parent node;
+    editor.fromTreasureMap = function(data) {
+      if(!data) return undefined;
+      if(typeof data === "object" && data.id) {
+        return document.getElementById(data.id);
+      }
+      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
+        let tentativeSelector = data.tentativeSelector;
+        while(tentativeSelector.length >= 1) {
+          let newNode = document.querySelector(tentativeSelector.join(" "));
+          if(newNode) {
+            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+          }
+          tentativeSelector.shift();
+        }
+        return undefined;
+      }
+    }
+    
     function el(tag, attributes, children, properties) {
       let tagClassIds = tag.split(/(?=#|\.)/g);
       let x;
@@ -409,9 +458,87 @@ evaluatedPage: Result String Html
 evaluatedPage = 
   if canEvaluate /= "true" then
     Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
-  else
+  else if isTextFile path || varraw then
+    Ok <html>
+        <head>
+        <title>@path</title>
+        <style type="text/css" media="screen">
+            #aceeditor { 
+                  height: 100%;
+                  width: 100%;
+                  border: 1px solid #DDD;
+                  border-radius: 4px;
+                  border-bottom-right-radius: 0px;
+                  margin-top: 5px;
+            }
+        </style>
+        <script>
+          function loadAceEditor() {
+            console.log("executing script");
+            var aceeditor = ace.edit("aceeditor");
+            var mode = path.match(/\.js$/) ? "ace/mode/javascript" :
+                       path.match(/\.html?$/) ? "ace/mode/html" :
+                       path.match(/\.css$/) ? "ace/mode/css" :
+                       path.match(/\.json$/) ? "ace/mode/json" :
+                       path.match(/\.leo$/) ? "ace/mode/elm" :
+                       path.match(/\.elm$/) ? "ace/mode/elm" :
+                       path.match(/\.php$/) ? "ace/mode/php" :
+                       "ace/mode/plain_text";
+            aceeditor.session.setMode({path: mode, v: Date.now()});
+            aceeditor.setOptions({
+              fontSize: "20pt"
+            });
+            aceeditor.setValue(document.getElementById("aceeditor").getAttribute("initdata"));
+            aceeditor.session.on('change', function(e) {
+              document.getElementById("aceeditor").setAttribute("initdata", aceeditor.getValue());
+            });
+            var callbackSelection = function() {
+              var anchor = aceeditor.selection.getSelectionAnchor();
+              var lead = aceeditor.selection.getSelectionLead();
+              var div = document.querySelector("#aceeditor");
+              div.setAttribute("ghost-anchor-row", anchor.row)
+              div.setAttribute("ghost-anchor-column", anchor.column)
+              div.setAttribute("ghost-lead-row", lead.row)
+              div.setAttribute("ghost-lead-column", lead.column)
+            }
+            aceeditor.selection.on("changeSelection", callbackSelection);
+            aceeditor.selection.on("changeCursor", callbackSelection);
+            var div = document.querySelector("#aceeditor");
+            aceeditor.selection.moveTo(div.getAttribute("ghost-anchor-row") || 0, div.getAttribute("ghost-anchor-column") || 0)
+            aceeditor.focus();
+          }
+        </script>
+        </head>
+        <body>
+        <div id="aceeditor" list-ghost-attributes="class draggable style" children-are-ghosts="true"
+          save-ghost-attributes="style ghost-anchor-column ghost-anchor-row ghost-lead-column ghost-lead-row" initdata=@sourcecontent></div>
+        <script>
+        editor.ghostNodes.push(node =>
+          node.tagName === "SCRIPT" && node.getAttribute("src") && node.getAttribute("src").match(/mode-(.*)\.js/)
+        );
+        var script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/ace.js';
+        script.async = false;
+        script.setAttribute("isghost", "true");
+        ace = undefined;
+        document.head.appendChild(script);
+        var path = @(jsCode.stringOf path);
+        onAceLoaded = (delay) => () => {
+          if(typeof ace != "undefined") {
+            console.log("ace loaded.")
+            loadAceEditor();
+          } else {
+            console.log("ace not loaded. Retrying in " + (delay * 2) + "ms");
+            setTimeout(onAceLoaded(delay * 2), 100);
+          }
+        }
+        onAceLoaded(1)();
+        </script>
+        </body>
+        </html>
+  else 
   let isPhp = Regex.matchIn """\.php$""" path in
-  let isHtml = Regex.matchIn """\.html$""" path in
+  let isHtml = Regex.matchIn """\.html?$""" path in
   if isHtml || isPhp then
     let sourcecontent = if isHtml then sourcecontent else
       let phpToElm =
@@ -937,15 +1064,14 @@ evaluatedPage =
     window.addEventListener('drop', handleDrop, false);
     window.addEventListener('dragover', (e) => e.preventDefault(), false);
     </script></body></html>
-  else if Regex.matchIn """\.txt$""" path then
+  else 
     Ok <html><head></head><body>
-      <textarea id="thetext" style="width:100%;height:100%" initdata=@sourcecontent
-        onkeyup="if(this.getAttribute('initdata') !== this.value) this.setAttribute('initdata', this.value)"></textarea>
-      <script>
-        document.getElementById('thetext').value = document.getElementById('thetext').getAttribute('initdata')
-      </script>
-    </body></html>
-  else Err """Serving only .html, .md and .elm files. Got @path"""
+      <p>Editor cannot open file because it does not recognize the extension.</p>
+      <p>As an alternative, you can open the file in raw mode by appending <code>?raw</code> to it.</p>
+      <button onclick="""
+        location.search = location.search + (location.search == "" ? "?raw" : "&raw");
+      """>Open @path in raw mode</button>
+    </body></html>  
 
 {---------------------------------------------------------------------------
  Recovers from evaluation errors
@@ -974,27 +1100,40 @@ main =
   ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
     List.filter (case of [_, _] -> False; _ -> True) |>
     List.mapWithReverse identity (case of
-      ["body", bodyattrs, bodychildren] ->
+      ["body", bodyattrs, bodyChildren] ->
         ["body",
            (if canEditPage then
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
-           bodyattrs, luca ++
+           bodyattrs, insertThereInstead True bodyChildren ++ luca ++
           if not varedit || varls then
-            bodychildren
+            bodyChildren
           else 
-          (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
-           if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
-           serverOwned "edit prelude when not in edit mode" []) ++
-           serverOwned "initial script" initialScript ++
-           bodychildren ++
-           (serverOwned "synchronization script and placeholder" [<script>@editionscript</script>, <div class="bottom-placeholder"> </div>])]
+             (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
+              if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
+              serverOwned "edit prelude when not in edit mode" []) ++
+             bodyChildren ++
+             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder"> </div>, <script>@lastEditScript</script>] ++ insertThereInstead False bodyChildren -- All new nodes there are added back to bodyChildren.
+             )]
       ["head", headattrs, headChildren] ->
-        ["head", headattrs, <meta name="viewport" content="width=device-width"> :: headChildren]
+        ["head", headattrs,
+           insertThereInstead True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
+           serverOwned "initial script" initialScript ++
+           (serverOwned "viewport instructions" <meta name="viewport" content="width=device-width"> :: 
+            serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css"> :: headChildren)]
       x -> x -- head
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
+
+-- Returns an empty list. If elements are inserted, inserts them in the given list instead.
+insertThereInstead atBeginning list =
+  Update.lens {apply _ = [],
+    update {outputNew, input=list} =
+      Ok (InputsWithDiffs [((if atBeginning then outputNew ++ list else list ++ outputNew, []), Just <| Update.vTupleDiffs_1 <|
+        VListDiffs [(if atBeginning then 0 else List.length list, ListElemInsert (List.length outputNew))]
+      )])
+  } list
 
 {---------------------------------------------------------------------------
  Definitions for the pipeline above
@@ -1052,762 +1191,11 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 editionmenu thesource = [
 <div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
-if iscloseable then <span dummy=""></span> else closeEditBox,
-<style id="booleanswitch">
-  /* The switch - the box around the slider */
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 30px;
-  height: 17px;
-  vertical-align: middle;
-}
+if iscloseable then <span dummy=""></span> else closeEditBox]
 
-/* Hide default HTML checkbox */
-.switch input {display:none;}
-
-/* The slider */
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #ccc;
-  -webkit-transition: .4s;
-  transition: .4s;
-}
-
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 13px;
-  width: 13px;
-  left: 2px;
-  bottom: 2px;
-  background-color: white;
-  -webkit-transition: .4s;
-  transition: .4s;
-}
-
-/* Remove all input default border and shadow in modify-menu*/
-#modify-menu input[type=text] {
-  outline-color: invert;
-  outline-style: none;
-  outline-width: 0px;
-  border: none;
-  border-style: none;
-  text-shadow: none;
-  -webkit-appearance: none;
-  -webkit-user-select: text;
-  outline-color: transparent;
-  box-shadow: none;
-}
-
-input:checked + .slider {
-  background-color: #2196F3;
-}
-
-input:focus + .slider {
-  box-shadow: 0 0 1px #2196F3;
-}
-
-input:checked + .slider:before {
-  -webkit-transform: translateX(13px);
-  -ms-transform: translateX(13px);
-  transform: translateX(13px);
-}
-
-/* Rounded sliders */
-.slider.round {
-  border-radius: 17px;
-}
-
-.slider.round:before {
-  border-radius: 50%;
-}
-
-.switch + label {
-  cursor: pointer;
-  padding-top: 5px;
-  padding-bottom: 5px;
-}
-</style>,
-<style>
-.filename {
-  color: #FFF;
-  padding-left: 3px;
-  vertical-align: top;
-  display: block;
-}
-div.imgFolder {
-  display: inline-block;
-  margin: 0.2em;
-}
-div.imgFolder > img {
-  max-width: 100%;
-  min-width:2em;
-}
-a.troubleshooter {
-  position: absolute;
-  top: calc(100% - 3em);
-  display: inline-block; 
-}
-.editor-menu {
-  display: initial !important;
-}
-.disabled {
-  color: #BBB;
-}
-input.global-setting[type=checkbox] {
-  display: none;
-}
-input.global-setting[type=checkbox]:checked + span.label-checkbox {
-  background: #bcbbff;
-}
-span.label-checkbox {
-  padding: 2px;
-  border-radius: 10px;
-}
-span.label-checkbox:hover {
-  background-color: rgba(0,0,0,0.06);
-  cursor: pointer;
-}
-
-@@keyframes spin{
-	from {
-    outline-color: #FAA;
-  }
-  33% {
-    outline-color: #AFA;
-  }
-  66% {
-    outline-color: #AAF;
-  }
-	to {
-    outline-color: #FAA;
-  }	
-}
-
-span#ambiguity-id {
-  color: #9dff00;
-  display: block;
-}
-.solution {
-  display: block;
-  padding: 3px;
-}
-.solution.selected {
-  background: rgba(255,255,255,0.2);
-}
-.to-be-selected {
-  outline: #FCC 2px solid;
-  animation:spin 1s linear infinite;
-}
-.solution:not(.selected):hover {
-  background: rgba(255,255,255,0.1);
-  cursor: pointer;
-}
-.solution.notfinal {
-  color: #f6f6aa;
-}
-.add {
-  background: lightgreen
-}
-.remove {
-  background: #f8a7a7;
-  text-decoration: line-through
-}
-div.disambiguationMenu {
-	height: 40%;
-	overflow-y: auto;
-  padding-left: 0.3em;
-  padding-top: 0.3em;
-  padding-bottom: 0.3em;
-  border: 2px solid #f6f6aa;
-}
-.codepreview {
-  font-family: monospace;
-  padding: 3px;
-  background: white;
-  color: black;
-  margin-left: 0.1em;
-}
-.solution:not(.selected) .codepreview {
-  background: rgba(255,255,255,0.8);
-}
-#modify-menu button.modifyMenuButton {
-  background-color: var(--context-button-color);
-  min-height: var(--context-button-width);
-  color: var(--context-dom-text-color);
-  border-style: none;
-  margin-top: 5px;
-  padding: 0.4em;
-  font-weight: bold;
-  cursor: pointer;
-}
-#modify-menu button.modifyMenuButton:hover {
-  background-color: var(--context-button-color-hover);
-}
-#editor_codepreview, #manualsync-menuitem {
-  display: none;
-  z-index: 999;
-}
-[ghost-visible=true] {
-  display: initial !important;
-}
-[ghost-disabled=true] {
-  opacity: 0.5 !important;
-  cursor: initial;
-  pointer-events: none !important;
-}
-[ghost-disabled=false] {
-  opacity: 1  !important;
-  pointer-events: auto !important;
-}
-#manualsync-menuitem[ghost-disabled=false] > button {
-  cursor:pointer !important;
-  opacity: 1  !important;
-  pointer-events: auto !important;
-}
-#manualsync-menuitem[force-visible=true] {
-  display: initial;
-}
-[ghost-visible=false] {
-  display: none !important;
-}
-#manualsync-menuitem> button {
-  vertical-align: top;
-  opacity: 0.5;
-  cursor: initial;
-  pointer-events: none;
-}
-#editor_codepreview {
-  width: 100%;
-  height: 600px;
-}
-@@media screen and (pointer: coarse) {
-  body {
-    font-size: 48px;
-  }
-  menu.edittoolbar {
-    right: 10px;
-  }
-  menuitem.filename {
-    display: none;
-  }
-  /*menuitem {
-    font-size: 2.5em;
-  }*/
-  button {
-    font-size: 1em;
-  }
-  menuitem#question-menuitem {
-    display: none;
-  }
-  menuitem#autosave-menuitem {
-    display: none;
-  }
-  #editor_codepreview {
-    width: 100%;
-    height: 600px;
-  }
-}
-.summary {
-  color: green;
-}
-
-div#modify-menu {
-  -webkit-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
-  -moz-box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
-  box-shadow: 0px 0px 34px 0px rgba(0,0,0,0.75);
-  position: fixed;
-  top: 0px;
-  right: 0px;
-  width: 400px;
-  height: 100%;
-  background-color: var(--context-color);
-  color: var(--context-dom-text-color);
-  padding: 5px;
-  font-size: 16px;
-  transform: translate(100%, 0px);
-  transition-property: transform;
-  transition-duration: 0.5s;
-  z-index: 100001;
-}
-.modify-menu-icon {
-  vertical-align: middle;
-  cursor: pointer;
-  width: var(--context-menu-button-width);
-}
-.modify-menu-icon:hover {
-  background-color: var(--context-button-color-hover);
-}
-div#modify-menu > div.modify-menu-icons:not(.pinned) {
-  width: 100%;
-  overflow-x: auto;
-}
-div#modify-menu > div.modify-menu-icons.pinned {
-  width: var(--context-menu-button-width);
-  position: absolute;
-  left: calc(0px - var(--context-menu-button-width));
-}
-div#modify-menu > div.information {
-  overflow-y: auto;
-  max-height: calc(100% - var(--context-menu-height));
-  margin: 2%;
-  border-radius: 0.3em;
-}
-
-div.#modify-menu > div.information-style {
-  padding: 0.4rem;
-}
-
-div.information > textarea {
-  font-size: 1em;
-}
-
-div#modify-menu.visible {
-  transform: translate(0%, 0%);
-}
-div#modify-menu h3 {
-  margin-top: 2px;
-  margin-bottom: 2px;
-}
-div#modify-menu div.keyvalues {
-  margin-top: 6px;
-  display: table;
-  width: 100%;
-  table-layout: fixed;
-}
-div#modify-menu div.keyvalues > div.keyvalue {
-  display: table-row;
-}
-div#modify-menu div.keyvalues > div.keyvalue > * {
-  display: table-cell;
-  padding: 4px;
-  vertical-align: middle;
-}
-div#modify-menu div.keyvalues > div.keyvalueadder {
-  opacity: 0.5;
-}
-div#modify-menu div.keyvalues > div.keyvalueadder:hover {
-  opacity: 1;
-}
-div#modify-menu input {
-  padding: 6px;
-  width: 100%;
-}
-div#modify-menu .codefont {
-  font-size: 1.4em;
-  font-family: monospace;
-}
-div#modify-menu .tagname-input {
-  padding: 4px;
-  flex: 1;
-}
-div#modify-menu .tagname-input input {
-  display: inline-block;
-}
-div#modify-menu .tagname-info {
-  display: inline-block;
-  border-radius: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  background: transparent;
-  color: var(--context-dom-text-color);
-  flex: 2;
-  line-height: 3.5em;
-}
-div#modify-menu input[type=radio] {
-  width: initial;
-  font-size: 1em;
-}
-
-div.keyvalue > span > input {
-  border-radius: 4px;
-  margin: 2px;
-}
-
-div.tagname-summary {
-  display: flex;
-  background-color: var(--context-dom-selector-color);
-  border-radius: 0.4em;
-  padding: 4px;
-  margin: 2%;
-}
-
-.inline-input {
-  background: transparent;
-  color: var(--context-dom-text-color);
-  border: none;
-}
-
-/* dom selector css */
-div.dom-selector-style {
-  margin: 2%;
-  border-radius: 0.4em;
-  padding: 0.4rem;
-}
-
-div.childrenElem {
-  display: flex;
-  height: 80px;
-}
-
-div.mainElemName {
-  color: var(--context-dom-text-color);
-  font-family: monospace;
-}
-
-div.childrenSelectorName {
-    font-family: monospace;
-}
-      
-div.childrenSelector {
-  min-width: 50px;
-  position: relative;
-  flex: 1; 
-  text-align: center; 
-  overflow: hidden;
-  padding: 10px;
-  margin: 2px;
-  border-radius: 0.3rem;
-  background-color: var(--context-dom-children-selector-color);
-  transition: all 0.5s;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-div.childrenSelector:hover {
-   -webkit-filter: contrast(125%); /* Chrome, Opera */
-      -moz-filter: blur(125%);
-      -ms-filter: blur(125%);    
-          filter: blur(125%);
-}
-
-div.mainElem {
-  height: 90px;
-  padding-bottom: 6px;
-  position: relative;
-  text-align: center;
-  font-size: 1.6em;
-  margin-bottom: 0.5em;
-}
-      
-div.mainElemInfo {
-  font-size: 0.6em;
-  color: var(--context-dom-text-color);
-}
-
-div.childrenSelectorInfo {
-  text-overflow: ellipsis;
-  overflow: hidden;
-  color: var(--context-dom-text-color);
-  height: 38px;
-  font-size: 0.8em;
-}
-
-div.elementAttr {
-  font-size: 0.5em;
-  line-height: 1.02em;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
-  color: var(--context-dom-text-color);
-}
-
-div.no-children, div.no-parent {
-  background-color: transparent;
-  text-align: center;
-  text-transform: uppercase;
-  color: black;
-  padding: 10px;
-  margin: 2px;
-  border-radius: 0.3rem;
-  font-weight: bold;
-  line-height: 50px;
-  font-size: 0.8rem;
-  pointer-events: none;
-}
-
-div.no-children {
-  width: 100%;
-}
-      
-div.no-sibling {
-  background-color: transparent;
-  color: black;
-  width: 20%;
-  text-transform: uppercase;
-  font-size: 0.8rem;
-  line-height: 15px;
-  font-weight: bold;
-  min-width: 50px;
-  padding-top: 20px;
-  pointer-events: none;
-}
-
-/* make button's text unselectable for better user experience */
-.noselect {
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  -khtml-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-}
-
-.selectedDom {
-  background-color: var(--context-dom-selector-color) !important;
-  border: none;
-}
-
-#upload-image-btn-a {
-  margin: 10%; 
-  padding: 4px 10px; 
-  height: 20px; 
-  position: relative; 
-  color: #888; 
-  background: #fafafa; 
-  border-radius: 4px; 
-  display: inline-block; 
-  height: 20px; 
-  width: 280px;
-}
-
-#upload-image-btn-input {
-  position: absolute; 
-  top: 0; 
-  left: 0; 
-  width: 100%;
-}
-
-/* highlight selected image */
-div.highlight-select-image {
-  box-shadow: 2px 2px 3px black;
-}
-
-:root {
-  --context-color: rgba(0, 128, 128, 0.8);
-  --context-color-next: rgba(0, 158, 158, 0.8); 
-  --context-button-color: rgba(0, 192, 192, 0.8);
-  --context-button-color-hover: rgba(0, 232, 232, 0.8);
-  --context-button-color-inert: rgba(128, 128, 128, 0.8);
-  --context-button-color-inert-hover: rgba(150, 150, 150, 0.8);
-  --context-button-color-inert-active: rgba(182, 182, 182, 0.8);
-  --context-dom-selector-color: rgba(0, 212, 159, 0.8);
-  --context-dom-children-selector-color: rgba(0, 178, 179, 0.8);
-  --context-dom-text-color: whitesmoke;
-  --context-menu-height: 30px;
-  --context-menu-button-width: 40px;
-  --context-menu-padding-top: 0px;
-  --context-menu-padding-left: 0px;
-  --context-button-selected: rgba(0, 212, 212, 0.8);
-}
-div.tagName {
-  padding: 4px;
-  cursor: pointer;
-  background: var(--context-button-color);
-  vertical-align: text-bottom;
-}
-div.tagName:hover {
-  background: var(--context-button-color-hover);
-}
-
-[ghost-hovered=true] {
-  outline: 2px dashed var(--context-color-next);
-}
-[ghost-clicked=true] {
-  outline: 2px solid var(--context-color);
-}
-div#context-menu {
-  position: absolute;
-  display: none;
-  background-color: var(--context-color);
-  color: white;
-  font-weight: bold;
-  z-index: 1000000;
-}
-div#context-menu.visible {
-  display: block;
-  height: var(--context-menu-height);
-  width: 200px;
-}
-div#context-menu .context-menu-button, div#modify-menu .modify-menu-button, div#modify-menu .modify-menu-icons .context-menu-button {
-  background: var(--context-button-color);
-  display: inline-block;
-  width: var(--context-menu-button-width);
-  cursor: pointer;
-}
-div#context-menu .context-menu-button, div#modify-menu .modify-menu-icons:not(.pinned) .modify-menu-button {
-  height: var(--context-menu-height);
-}
-div#modify-menu .modify-menu-icons.pinned .modify-menu-button {
-  border-bottom: 1px solid black;
-}
-div#modify-menu .modify-menu-icons.pinned .modify-menu-button:last-child {
-  border-bottom: none;
-}
-div#context-menu .context-menu-button.selected, div#modify-menu .modify-menu-button.selected {
-  background: var(--context-button-selected);
-}
-
-div#modify-menu .modify-menu-button.inert.active {
-  background: var(--context-button-color-inert-active)
-}
-div#modify-menu .modify-menu-button.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-div#modify-menu .modify-menu-icon-label {
-  display: block;
-  color: white;
-  font-size: calc(var(--context-menu-button-width) / 3);
-  text-align: center;
-}
-div#context-menu .context-menu-button > svg, div#modify-menu .modify-menu-button > svg {
-  padding-left: var(--context-menu-padding-left);
-  padding-right: var(--context-menu-padding-left);
-  padding-top: var(--context-menu-padding-top);
-  padding-bottom: var(--context-menu-padding-top);
-}
-div#context-menu .context-menu-button.inert, div#modify-menu .modify-menu-icons.modify-menu-icons .modify-menu-button.inert {
-  background: var(--context-button-color-inert)
-}
-svg.context-menu-icon > path {
-  fill:none;
-  stroke:#FFFFFF;
-  stroke-width:2px;
-  stroke-linecap:butt;
-  -linejoin:miter;
-  stroke-opacity:1;
-}
-svg.context-menu-icon.fill > path {
-  fill:#FFFFFF;
-  fill-rule:evenodd;
-  stroke-width:1px;
-}
-div#context-menu .context-menu-button:hover, div#modify-menu .modify-menu-button:hover:not(.disabled) {
-  background: var(--context-button-color-hover);
-}
-div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-button.inert:hover:not(.disabled) {
-  background: var(--context-button-color-inert-hover)
-}
-#applyNewTagName {
-  display: none;
-}
-#applyNewTagName.visible {
-  display: inline-block;
-}
-textarea#singleChildNodeContent {
-  width: 100%;
-  height: 50%;
-}
-
-@@media (pointer: coarse) {
-  div#modify-menu {
-    -webkit-box-shadow: none;
-    -moz-box-shadow: none;
-    box-shadow: none;
-    /* font-size: 48px; */
-    bottom: 0px;
-    left: 0px;
-    top: initial;
-    right: initial;
-    height: 40%;
-    width: 100%;
-    min-height: 350px;
-    transform: translate(0px, 100%);
-    padding: 0;
-    padding-bottom: 80px;
-  }
-  div#modify-menu > div.modify-menu-icons.pinned {
-    width: auto;
-    height: var(--context-menu-height);
-    position: absolute;
-    top: calc(0px - var(--context-menu-height));
-    left: 0px;
-  }
-  div#modify-menu > div.modify-menu-icons.pinned span.modify-menu-icon-label {
-    display: none;
-  }
-
-  div.bottom-placeholder {
-    width: 100%;
-    height: 30%;
-  }
-  
-  :root {
-    --context-menu-height: 48px;
-    --context-menu-button-width: 48px;
-    --context-menu-padding-top: 9px;
-    --context-menu-padding-left: 4px;
-  }
-
-  /* mobile dom selector */
-  div.dom-selector-style {
-    height: 45%;
-    margin: 0.15em;
-    border-radius: 0.4em;
-    margin: 2%;
-  }
-
-  div.elementAttr {
-    display: none;
-  }
-
-  div.mainElem {
-    margin-bottom: 0;
-    height: 40%;
-  }
-
-  div.childrenSelector {
-    padding: 6px;
-    font-size: 1.2em;
-  }
-
-  div.no-sibling {
-    font-size: 1em;
-    padding-top: 20px;
-  }
-
-  /* mobile modify menu */
-  div.tagname-summary {
-    padding-left: 10px;
-  }
-
-  div.information {
-    margin: 2%;
-    margin-top: 0;
-    height: 215px;
-    overflow-y: auto;
-  }
-
-  div.information > textarea {
-    font-size: 1.2em;
-    border-radius: 0.3em;
-    border: none; 
-    padding: 1.5%;
-  }
-
-  div.insert-information-style {
-    max-height: 400px;
-    height: 400px;
-  }
-
-  div.insert-information-style > h1 {
-    margin: 0;
-  }
-}
-</style>]
-
-browserSide = listDict.get "browserSide" defaultOptions == Just True
-
-initialScript = [
+initialScript = serverOwned "initial script" [
 <script>
+
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
 // https://stackoverflow.com/questions/32902734/how-to-make-google-sign-in-token-valid-for-longer-than-1-hour
@@ -1822,7 +1210,10 @@ function isGhostNode(elem) {
 }
 
 function areChildrenGhosts(n) {
-  return n && n.getAttribute && n.getAttribute("children-are-ghosts") == "true";
+  return n && n.getAttribute && (
+    n.getAttribute("children-are-ghosts") == "true" ||
+    n.getAttribute("children-are-ghost") == "true"
+  );
 }
 function hasGhostAncestor(htmlElem) {
   if(htmlElem == null) return false;
@@ -1837,7 +1228,7 @@ function isGhostAttributeKey(name) {
 
 editor = typeof editor === "object" ? editor : {};
 
-// Array of functions on nodes returning an array of attributes that should be ghosts.
+// Array of functions on nodes returning an array of attributes that should be ghosts (i.e. removed on back-propagation)
 editor.ghostAttrs = [];
 editor.ghostAttrs.push(n =>
   ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ").concat(
@@ -1852,6 +1243,12 @@ editor.ghostAttrs.push(n =>
 // attribute of some chrome extensions
 editor.ghostAttrs.push(n => ["bis_skin_checked"]);
 
+// Array of functions on nodes returning an array of attributes that should be ignored (i.e. old value returned on back-propagation)
+editor.ignoredAttrs = [];
+editor.ignoredAttrs.push(n =>
+  ((n && n.getAttribute && n.getAttribute("list-ignored-attributes")) || "").split(" ").concat(
+    ((n && n.getAttribute && n.getAttribute("save-ignored-attributes")) || "").split(" ")).filter(a => a != "")
+)
 
 function isSpecificGhostAttributeKeyFromNode(n) {
   var additionalGhostAttributes = [];
@@ -1861,6 +1258,31 @@ function isSpecificGhostAttributeKeyFromNode(n) {
   return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
 }
 
+function isIgnoredAttributeKeyFromNode(n) {
+  var additionalIgnoredAttributes = [];
+  for(var k in editor.ignoredAttrs) {
+    additionalIgnoredAttributes = additionalIgnoredAttributes.concat(editor.ignoredAttrs[k](n))
+  }
+  return ((a, n) => (name, oldValue) => {
+    let result = a.indexOf(name) != -1;
+    if(result) { // let's store the previous attribute's value
+      n.__editor__ = n.__editor__ || {};
+      n.__editor__.ignoredAttrMap = n.__editor__.ignoredAttrMap || {};
+      if(!(name in n.__editor__.ignoredAttrMap) && typeof oldValue !== "undefined") {
+        n.__editor__.ignoredAttrMap[name] = oldValue;
+      }
+    }
+    return result;
+  })(additionalIgnoredAttributes, n);
+}
+function ignoredAttributeValue(n, name) {
+  let result = n.__editor__.ignoredAttrMap[name];
+  if(typeof result === "undefined") {
+    return n.getAttribute(name);
+  }
+  return result;
+}
+
 // Array of predicates that, if they return true on a node, Editor will mark this node as ghost.
 editor.ghostNodes = [];
 
@@ -1868,7 +1290,8 @@ editor.ghostNodes = [];
 editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
      (insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1 ||
-      insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1)
+      insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1 ||
+      insertedNode.getAttribute("src").indexOf("googletagmanager.com/gtm.js") != -1)
 );
 
 // For for ace styles in header
@@ -1892,7 +1315,7 @@ editor.ghostNodes.push(insertedNode =>
 );
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
 editor.ghostNodes.push(insertedNode => 
-  insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null &&
+  insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
   insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined" && (insertedNode.setAttribute("save-ghost", "true") || true)
 );
 // For ace script for syntax highlight
@@ -1906,7 +1329,7 @@ editor.ghostNodes.push(insertedNode =>
 );
 // For the grammarly extension
 editor.ghostNodes.push(insertedNode =>
-  insertedNode.classList.contains("gr-top-z-index") || insertedNode.classList.contains("gr-top-zero")
+  insertedNode.nodeType === 1 && insertedNode.matches(".gr-top-z-index, .gr-top-zero")
 );
 
 function handleScriptInsertion(mutations) {
@@ -1920,12 +1343,21 @@ function handleScriptInsertion(mutations) {
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
-        if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode))) {
+        if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.nodeType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
          if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
          insertedNode.isghost = true;
+        } else { // Record ignored attributes
+          if(insertedNode.nodeType == 1) {
+            var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(insertedNode);
+            for(var k = 0; k < insertedNode.attributes.length; k++) {
+              var attr = insertedNode.attributes[k];
+              isIgnoredAttributeKey(attr.name, attr.value);
+            }
+          }
         }
       }
     }
+    
   }
 }
 
@@ -1936,7 +1368,7 @@ if (typeof automaticGhostMarker !== "undefined") {
 
 automaticGhostMarker = new MutationObserver(handleScriptInsertion);
 automaticGhostMarker.observe
- ( document.body.parentElement
+ ( document.head.parentElement
  , { attributes: false
    , childList: true
    , characterData: false
@@ -2020,84 +1452,73 @@ function remove(node) {
 ]
 
 -- Script added to the end of the page
-editionscript = """ 
-  var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
+lastEditScript = """ 
+  console.log("lastEditScript running");
+   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
-  console.log("editionscript running");
   
   // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
   // Same for some attributes
   function saveGhostAttributes() {
     var ghostModified = document.querySelectorAll("[ghost-visible]");
-    var idGhostAttributes = [];
+    var savedGhostAttributes = [];
     for(var i = 0; i < ghostModified.length; i++) {
-      var id = ghostModified[i].getAttribute("id");
-      if(id !== null && typeof id !== "undefined") {
-        idGhostAttributes.push([id,
+      var elem = ghostModified[i];
+      savedGhostAttributes.push([editor.toTreasureMap(elem),
           "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
-      }
     }
-    var ghostAttributesModified = document.querySelectorAll("[save-ghost-attributes]");
-    for(var i = 0; i < ghostAttributesModified.length; i++) {
-      var elem = ghostAttributesModified[i];
-      var id = elem.getAttribute("id");
-      if(id != null) {
-        var toSave = elem.getAttribute("save-ghost-attributes").split(" ");
+    function saveAttributes(name) {
+       var ghostAttributesModified = document.querySelectorAll("["+name+"]");
+      for(var i = 0; i < ghostAttributesModified.length; i++) {
+        var elem = ghostAttributesModified[i];
+        var toSave = elem.getAttribute(name).split(" ");
         for(j in toSave) {
           var key = toSave[j];
-          idGhostAttributes.push([id, key, elem.getAttribute(key)]);
+          savedGhostAttributes.push([editor.toTreasureMap(elem), key, elem.getAttribute(key)]);
         }
       }
     }
+    saveAttributes("save-ghost-attributes")
+    saveAttributes("save-ignored-attributes")
     
     var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
-    var idDynamicAttributes = [];
+    var savedProperties = [];
     for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
       var elem = elemsWithAttributesToSave[i];
-      var id = elem.getAttribute("id");
-      if(id !== null && typeof id !== "undefined") {
-        var toSave = elem.getAttribute("save-properties").split(" ");
-        for(j in toSave) {
-          var key = toSave[j];
-          idDynamicAttributes.push([id, key, elem[key]])
-        }
+      var toSave = elem.getAttribute("save-properties").split(" ");
+      for(j in toSave) {
+        var key = toSave[j];
+        savedProperties.push([dataToRecoverCaretPosition(elem), key, elem[key]])
       }
     }
     var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
     var parentsGhostNodes = [];
     for(var i = 0; i < ghostElemsToReinsert.length; i++) {
       var elem = ghostElemsToReinsert[i];
-      if(elem.parentNode.tagName == "HEAD") {
-        parentsGhostNodes.push({parentSelector: "HEAD", node: elem});
-      } else {
-        var id =  elem.parentNode.getAttribute("id");
-        if(id != null) {
-          parentsGhostNodes.push({parentSelector: "#"+id, node: elem});
-        }
-      }
+      parentsGhostNodes.push({parent: editor.toTreasureMap(elem.parentNode), node: elem});
     }
-    return [idGhostAttributes, idDynamicAttributes, parentsGhostNodes];
+    return [savedGhostAttributes, savedProperties, parentsGhostNodes];
   }
   function applyGhostAttributes(attrs) {
-    var [idGhostAttributes, idDynamicAttributes, parentsGhostNodes] = attrs;
-    for(var i in idGhostAttributes) {
-      var [id, key, attr] = idGhostAttributes[i];
-      var elem = document.getElementById(id);
+    var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
+    for(var i in savedGhostAttributes) {
+      var [data, key, attr] = savedGhostAttributes[i];
+      var elem = editor.fromTreasureMap(data);
       if(elem != null) {
         elem.setAttribute(key, attr);
       }
     }
-    for(var i in idDynamicAttributes) {
-      var [id, key, value] = idDynamicAttributes[i];
-      var elem = document.getElementById(id);
+    for(var i in savedProperties) {
+      var [data, key, value] = savedProperties[i];
+      var elem = editor.fromTreasureMap(id);
       if(elem != null) {
         elem[key] = value;
       }
     }
     for(var i in parentsGhostNodes) {
-      var {parentSelector: selector, node: elem} = parentsGhostNodes[i];
-      var parent = document.querySelector(selector);
+      var {parent: data, node: elem} = parentsGhostNodes[i];
+      var parent = editor.fromTreasureMap(data);
       if(parent != null) {
         if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
           parent.appendChild(elem);
@@ -2107,17 +1528,18 @@ editionscript = """
   }
   
   function domNodeToNativeValue(n) {
-      if(n.nodeType == "3") {
+      if(n.nodeType == 3) {
         return ["TEXT", n.textContent];
-      } else if(n.nodeType == "8") {
+      } else if(n.nodeType == 8) {
         return ["COMMENT", n.textContent];
       } else {
         var attributes = [];
         var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(n);
+        var isIgnoredAttributeKey =  isIgnoredAttributeKeyFromNode(n); // TODO recover ignored value
         for(var i = 0; i < n.attributes.length; i++) {
           var key = n.attributes[i].name;
-          var value = n.attributes[i].value;
           if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key)) {
+            var value = isIgnoredAttributeKey(key) ? ignoredAttributeValue(n, key) : n.attributes[i].value;
             if(key == "style") {
               value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
             }
@@ -2125,10 +1547,15 @@ editionscript = """
           }
         }
         var children = [];
+        var childNodes = n.childNodes;
+        if(n.tagName.toLowerCase() === "noscript" && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
+          // We'll recover the associated HTML node
+          childNodes = el("div", {}, [], {innerHTML: n.childNodes[0].textContent, parentNode: n}).childNodes;
+        }
         if(!areChildrenGhosts(n)) {
-          for(i = 0; i < n.childNodes.length; i++) {
-            if(!isGhostNode(n.childNodes[i])) {
-              children.push(domNodeToNativeValue(n.childNodes[i]));
+          for(i = 0; i < childNodes.length; i++) {
+            if(!isGhostNode(childNodes[i])) {
+              children.push(domNodeToNativeValue(childNodes[i]));
             }
           }
         }
@@ -2151,7 +1578,7 @@ editionscript = """
         editor_model.selectionRange = dataToRecoverSelectionRange(editor_model.selectionRange);
       }
       if(editor_model.clickedElem) {
-        editor_model.clickedElem = dataToRecoverElement(editor_model.clickedElem);
+        editor_model.clickedElem = editor.toTreasureMap(editor_model.clickedElem);
       }
     }
     function replaceContent(NC) {
@@ -2291,7 +1718,12 @@ editionscript = """
     function relativeToAbsolute(url) {
       if(isAbsolute(url) || url && url.length && url[0] == "/") return url;
       let u =  new URL(location.href);
-      return u.pathname.replace(/[^\/]*$/, "") + url;
+      if(url[0] === "#") {
+        return u.pathname + url; 
+      }
+      else {
+        return u.pathname.replace(/[^\/]*$/, "") + url;
+      }
     }
     function navigateLocal(url, replaceState) {
       notifyServer(xmlhttp => {
@@ -2374,8 +1806,8 @@ editionscript = """
       Object.defineProperty(m, 'timestamp', {value: time})
       //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
       //and should be combined together when undoing/redoing
-      lastUndo = editor_model.undoStack[editor_model.undoStack.length-1]; 
-      console.log(lastUndo);
+      let lastUndo = editor_model.undoStack[editor_model.undoStack.length-1]; 
+      //console.log(lastUndo);
       if(!lastUndo || (lastUndo[0].timestamp < (time - 10))) { 
         editor_model.undoStack.push([m]);
       }
@@ -2406,8 +1838,11 @@ editionscript = """
         }
         if(mutation.type == "attributes") {
           var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(mutation.target);
+          var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(mutation.target);
           if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
-              mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue) {
+             mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue ||
+             isIgnoredAttributeKey(mutation.attributeName)
+              ) {
           } else {
             onlyGhosts = false;
             sendToUndo(mutation, cur_time);
@@ -2447,7 +1882,6 @@ editionscript = """
         {
           editor_model.canSave = true;
         }
-        console.log("canSave is:", editor_model.canSave);
         var saveButtons = document.querySelectorAll(".saveButton");
         // TODO: Can we regenerate the whole interface for consistency?
         for(let sb of saveButtons) {
@@ -2470,7 +1904,7 @@ editionscript = """
       outputValueObserver.disconnect();
     }
     
-    setTimeout(function() {
+    //setTimeout(function() {
       outputValueObserver = new MutationObserver(handleMutations);
       outputValueObserver.observe
        ( document.body.parentElement
@@ -2482,7 +1916,7 @@ editionscript = """
          , subtree: true
          }
        )
-     }, 10)
+     //}, 10)
     
     //debugging function for printing both teh undo and redo stacks.
     function printstacks() {
@@ -2820,6 +2254,13 @@ editionscript = """
           e.preventDefault();
           if(!redo()) popupMessage("Nothing to redo!");
         }
+        //in link select mode, escape on the keyboard can be
+        //used to exit the link select mode (same as escape button)
+        if(editor_model.linkSelectMode) {
+          if(e.which == 27) {
+            escapeLinkMode();
+          }
+        }
       };
       
       var bodyeditable = document.querySelector("body[contenteditable=true]");
@@ -2918,7 +2359,7 @@ editionscript = """
       }
       while(clickedElem && editorSelectOptions && !matchOptions(clickedElem)) {
         clickedElem = clickedElem.parentElement;
-      }
+      }                           
       var ancestors = [];
       var tmp = clickedElem;
       var aElement;
@@ -2975,49 +2416,51 @@ editionscript = """
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     var undoSVG = mkSvg("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
     var redoSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
+    var escapeSVG = mkSvg("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z");
+    var linkModeSVG = mkSvg("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
 
     var ifAlreadyRunning = typeof editor_model === "object";
     
-    
-    function dataToRecoverElement(oldNode) {
-      if(!oldNode) return undefined;
-      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
-        return {id: oldNode.getAttribute("id")};
-      }
-      let tentativeSelector = [];
-      let t = oldNode;
-      let isText = false, textIndex = 0;
-      while(t && t.parentNode) {
-        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
-        if(t.nodeType === 1) {
-          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
-        } else {
-          isText = true;
-          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
-        }
-        t = t.parentNode;
-      }
-      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
+    //hover mode functions for linkSelectMode
+    function escapeLinkMode() {
+      document.body.removeEventListener('mouseover', linkModeHover1, false);
+      document.body.removeEventListener('mouseout', linkModeHover2, false);
+      //removing the hovered element (which is retained if the escape key is hit)
+      document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
+      editor_model.clickedElem = editor_model.linkFrom;
+      editor_model.linkSelectMode = false;
+      editor_model.linkFrom = undefined;
+      updateInteractionDiv();
     }
-    // Returns the new node that matches the old node the closest.
-    // For text nodes, try to recover the text node, if not, returns the parent node;
-    function recoverElementFromData(data) {
-      if(!data) return undefined;
-      if(typeof data === "object" && data.id) {
-        return document.getElementById(data.id);
-      }
-      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
-        let tentativeSelector = data.tentativeSelector;
-        while(tentativeSelector.length >= 1) {
-          let newNode = document.querySelector(tentativeSelector.join(" "));
-          if(newNode) {
-            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
-          }
-          tentativeSelector.shift();
+    function noGhostHover (node) {
+      curClass = node.getAttribute("class")
+      if(curClass === "modify-menu-icon-label-link" ||
+        curClass === "context-menu-icon" ||
+        curClass === "context-menu-icon fill") {
+          return false;
         }
-        return undefined;
+      else if(node.tagName === "path" || node.tagName === "PATH") {
+        return false;
+      }
+      return true;
+    }
+    function linkModeHover1(event) {
+      //console.log(event.target);
+      //console.log(event.target.tagName);
+      //console.log(event.target.getAttribute("class"));
+      if(noGhostHover(event.target)) { 
+        event.target.setAttribute("ghost-hovered", true);
+        updateInteractionDiv();
+        //console.log("hey!");
       }
     }
+    function linkModeHover2(event) {
+      if(noGhostHover(event.target)) {
+        event.target.removeAttribute("ghost-hovered");
+        updateInteractionDiv();
+      }
+    }
+
     function setCaretPositionIn(node, position) {
       position = Math.min(position, node.textContent.length);
       if (node.nodeType == 3) {
@@ -3039,11 +2482,11 @@ editionscript = """
     }
     function dataToRecoverCaretPosition(caretPosition) {
       if(!caretPosition) return undefined;
-      return {target: dataToRecoverElement(caretPosition.startContainer), startOffset: caretPosition.startOffset};
+      return {target: editor.toTreasureMap(caretPosition.startContainer), startOffset: caretPosition.startOffset};
     }
     function recoverCaretPositionFromData(data) {
       if(!data) return;
-      let newTextNodeOrParent = recoverElementFromData(data.target);
+      let newTextNodeOrParent = editor.fromTreasureMap(data.target);
       if(newTextNodeOrParent) setCaretPositionIn(newTextNodeOrParent, data.startOffset)
     }
     function dataToRecoverSelectionRange(selectionRange) { // TODO
@@ -3058,7 +2501,7 @@ editionscript = """
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
       //makes visibility of editor model consistent throughout reloads
       visible: ifAlreadyRunning ? editor_model.visible : false,
-      clickedElem: ifAlreadyRunning ? recoverElementFromData(editor_model.clickedElem) : undefined,
+      clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor_model.clickedElem) : undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
       notextselection: false,
@@ -3072,6 +2515,9 @@ editionscript = """
       //data structures to represent undo/redo "stack"
       undoStack: [],
       redoStack: [],
+      linkSelectMode: false,
+      linkFrom: undefined,
+      idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       textareaScroll: ifAlreadyRunning ? editor_model.textareaScroll : 0,
@@ -3111,6 +2557,8 @@ editionscript = """
     }
 
     updateInteractionDiv();
+
+
 
     function updateInteractionDiv() {
       let model = editor_model;
@@ -3199,68 +2647,105 @@ editionscript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      addPinnedModifyMenuIcon(
-        panelOpenCloseIcon(),
-        {title: "Open/close settings tab", "class": "inert" },
-        {onclick: function(event) {
-            document.querySelector("#modify-menu").classList.toggle("visible");
-            editor_model.visible = !editor_model.visible;
-            this.innerHTML = panelOpenCloseIcon();
-          }
+      if(!editor_model.linkSelectMode) {
+        addPinnedModifyMenuIcon(
+          panelOpenCloseIcon(),
+          {title: "Open/close settings tab", "class": "inert" },
+          {onclick: function(event) {
+              document.querySelector("#modify-menu").classList.toggle("visible");
+              editor_model.visible = !editor_model.visible;
+              this.innerHTML = panelOpenCloseIcon();
+            }
         });
-      addPinnedModifyMenuIcon(
-        gearSVG + "<span class='modify-menu-icon-label'>Misc.</span>",
-        {title: "Advanced", "class": "inert" + (editor_model.advanced ? " active": "")
-        },
-        {onclick: (c => function(event) {
-          //defaults to turning on advanced menu if the editor model is already visible, otherwise toggles advanced menu.
-          if(editor_model.visible) {
-            editor_model.advanced = !editor_model.advanced;
-          }
-          else {
-            editor_model.advanced = true;
-          }
-          editor_model.visible = true;
-          updateInteractionDiv();
-        })(clickedElem)}
-      )
-
-      addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
-      {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
+        addPinnedModifyMenuIcon(
+          gearSVG + "<span class='modify-menu-icon-label'>Misc.</span>",
+          {title: "Advanced", "class": "inert" + (editor_model.advanced ? " active": "")
+          },
+          {onclick: (c => function(event) {
+            //defaults to turning on advanced menu if the editor model is already visible, otherwise toggles advanced menu.
+            if(editor_model.visible) {
+              editor_model.advanced = !editor_model.advanced;
+            }
+            else {
+              editor_model.advanced = true;
+            }
+            editor_model.visible = true;
+            updateInteractionDiv();
+          })(clickedElem)}
+        )
+        addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
+        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           id: "savebutton"  
-      },
-        {onclick: editor_model.disambiguationMenu ? 
-          ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
-            editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
-          : function(event) {
-            if(!this.classList.contains("disabled")) {
-              sendModificationsToServer();
+        },
+          {onclick: editor_model.disambiguationMenu ? 
+            ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
+              editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
+            : function(event) {
+              if(!this.classList.contains("disabled")) {
+                sendModificationsToServer();
+              }
             }
           }
-        }
-      )
-      addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
-        {"class": "inert", title: "Undo most recent change",
-          id: "undobutton"
-        },
-        {onclick: function(event) {
-          if(!undo()) popupMessage("Nothing to undo!");
+        )
+        addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
+          {"class": "inert", title: "Undo most recent change",
+            id: "undobutton"
+          },
+          {onclick: function(event) {
+            if(!undo()) popupMessage("Nothing to undo!");
+            }
+          }   
+        );
+        addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
+          {"class": "inert", title: "Redo most recent undo",
+            id: "redobutton"
+          },
+        	{onclick: function(event) {
+        	 if(!redo()) popupMessage("Nothing to redo!");
+            }
           }
-        }   
-      );
-      addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
-        {"class": "inert", title: "Redo most recent undo",
-          id: "redobutton"
-        },
-       	{onclick: function(event) {
-        	if(!redo()) popupMessage("Nothing to redo!");
+        );
+      }
+      else {
+        addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>ESCAPE</span>", 
+          {"class": "link-select-button", title: "Go back to original screen",
+            id: "escapebutton"
+          },
+          {onclick: function(event) {
+            escapeLinkMode();
+            }
           }
-        }
-      );
+        )
+        addPinnedModifyMenuIcon(plusSVG + "<span class='modify-menu-icon-label-link'>SELECT</span>", 
+          {"class": "link-select-button", title: "Select desired local link",
+            id: "selectbutton"
+          },
+          {onclick: function(event) {
+            let linkTo = editor_model.clickedElem,
+                targetID = linkTo.getAttribute("id");
+            //console.log("Target ID is:", targetID);
+            if(!targetID) {
+              targetID = "ID" + editor_model.idNum
+              linkTo.setAttribute("id", targetID);
+              editor_model.idNum += 1;
+              //console.log("here!");
+            }
+            else if(targetID.length > 100) {
+              targetID = targetID.trim();
+              linkTo.setAttribute("id", targetID);
+            }
+            //console.log("TargetID is now:", targetID);  
+            editor_model.linkFrom.setAttribute("href", "#" + targetID);
+            console.log(editor_model.linkFrom.getAttribute)
+            escapeLinkMode();
+            }
+          }
+        )
+      }
 
       if(model.advanced || model.disambiguationMenu) {
         modifyMenuDiv.append(
-          el("a", { class:"troubleshooter", href:  "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
+          el("a", { class:"troubleshooter", href: "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
         modifyMenuIconsDiv.append(
           el("span", { class:'filename', title:"the path of the file you are currently viewing"}, 
             editor_model.path ? editor_model.path : "[root folder]"));
@@ -3293,20 +2778,6 @@ editionscript = """
             } 
           }
         );        
-        /*addModifyMenuIcon(undoSVG, 
-          {"class": "tagName", title: "Undo most recent change"},
-            {onclick: function(event) {
-              if(!undo()) alert("Nothing to undo!");
-              }
-            }   
-        );
-        addModifyMenuIcon(redoSVG,
-          {"class": "tagname", title: "Redo recent undo"},
-            {onclick: function(event) {
-              if(!redo()) alert("Nothing to redo!");
-              }
-            }
-        );*/
   
         if(editor_model.disambiguationMenu) {
           interactionDiv.append(editor_model.disambiguationMenu);
@@ -3329,7 +2800,7 @@ editionscript = """
                   },
                 value: source
                })])); 
-          let sourceEdit = document.getElementById("sourcecontentmodifier")
+          let sourceEdit = document.getElementById("sourcecontentmodifier");
           sourceEdit.scrollTop = editor_model.curScrollPos;
         }
         modifyMenuDiv.append(
@@ -3357,19 +2828,19 @@ editionscript = """
         interactionDiv.append(el("h1", {}, "Insert"));
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertBeforeNode", name: "insertionPlace", value: "before"}),
               el("label", {"for": "radioInsertBeforeNode"}, "Before node")]),
           clickedElem.tagName === "HTML" ? undefined :
-            el("span", {}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
               el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")], {onclick: restoreCaretPosition}),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD"  }),
               el("label", {"for": "radioInsertAfterNode"}, "After node")]),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {}, [
+            el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertWrapNode", name: "insertionPlace", value: "wrap"}),
               el("label", {"for": "radioInsertWrapNode"}, "Wrap node")]),
         ]));
@@ -3788,6 +3259,28 @@ editionscript = """
         }
       }
 
+      //    |--  |\ |  |--
+      //    |--  | \|  |  | of DOM SELECTOR
+      //    |--  |  |  |--
+
+      
+      let linkSelect = function() {
+        editor_model.visible = false;
+        editor_model.linkSelectMode = true;
+        editor_model.linkFrom = editor_model.clickedElem;
+        //"center" clicked element on document body
+        editor_model.clickedElem = document.body;
+        //removes all context menu stuff 
+        document.querySelector("#context-menu").classList.remove("visible");
+        updateInteractionDiv();
+        popupMessage("Please select an element to link to.");
+
+        document.body.addEventListener('mouseover', linkModeHover1, false);
+        document.body.addEventListener('mouseout', linkModeHover2, false);
+
+      }
+
+
       interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
             let newel = el(document.querySelector("#newTagName").value);
             let elements = clickedElem.childNodes;
@@ -3836,6 +3329,10 @@ editionscript = """
               ),
               isHref ? el("span", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [],
                         {innerHTML: liveLinkSVG(model.link)}): undefined,
+              isHref ? el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Activate internal link mode"}, [], {
+                innerHTML: linkModeSVG,
+                onclick: linkSelect
+              }): undefined,
               el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
                 innerHTML: wasteBasketSVG,
                 onclick: ((name) => function() {
@@ -3843,9 +3340,9 @@ editionscript = """
                   editor_model.clickedElem = clickedElem;
                   updateInteractionDiv();
                 })(name)
-              })
-              ]
-            ));
+              }),
+            ]
+          ));
         }
       }
 
@@ -3854,6 +3351,7 @@ editionscript = """
         this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
           attrName === "" || attrName.trim() !== attrName
       }
+
 
       if(clickedElem && clickedElem.nodeType === 1) {
         keyvalues.append(
@@ -3894,6 +3392,11 @@ editionscript = """
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
             document.getElementById("dom-attr-src").setAttribute("value", file.name);
             clickedElem.setAttribute("src", targetPathName);
+            // adapt to HTML5 new attribute 'srcset'
+            // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
+            if (clickedElem.getAttribute("srcset") != undefined) {
+              clickedElem.setAttribute("srcset", "");
+            }
           });
         }
 
@@ -3904,30 +3407,38 @@ editionscript = """
         let selectedImage = document.querySelectorAll(".imgFolder");
         for (let i = 0; i < selectedImage.length; ++i) {
           if (selectedImage[i].getAttribute("src") === files[files.length - 1]) {
-            // selectedImage[i].style.outline = "2px solid white";
             selectedImage[i].classList.add("highlight-select-image");
           } else {
-            // selectedImage[i].style.outline = "none";
             selectedImage[i].classList.remove("highlight-select-image");
           }
         }
       }
       
       function showListsImages(srcName) {
-        srcName = relativeToAbsolute(srcName)
+        srcName = relativeToAbsolute(srcName);
         let dir = "";
         for(let i = 0, arr = srcName.split(/\\|\//); i < arr.length - 1; ++i) {
           dir += (arr[i] + "/");
         }
         files = editor.fs.listdir(dir);
         
-        images = [];
+        let images = [];
+        let currentSelectedImage;
         files.forEach(file => {
           let ext = file.split('.').pop().toLowerCase();
           if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif') {
-            images.push(file);
+            if (file === srcName.split("/").pop()) {
+              currentSelectedImage = file;
+            } else {
+              images.push(file);
+            }
           }
         });
+        // sometimes website use 'srcset' as the url of image, we cannot find currentSelectedImage precisely
+        if (currentSelectedImage != null) {
+          images.unshift(currentSelectedImage);   // currentSelectedImage should be placed as the first one
+        }
+
         // init: clear image list
         let selectedImage = document.querySelectorAll(".imgFolder");
         selectedImage.forEach(e => e.remove());
@@ -3940,23 +3451,29 @@ editionscript = """
                 let otherImages = document.querySelectorAll(".imgFolder");
                 for (let i = 0; i < otherImages.length; ++i) {
                   otherImages[i].classList.remove("highlight-select-image");
-                  // otherImages[i].style.outline = "none";
                 }
                 // replace image
+                // adapt to HTML5 new attribute 'srcset'
+                // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
+                if (clickedElem.getAttribute("srcset") != undefined) {
+                  clickedElem.setAttribute("srcset", "");
+                }
                 clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
                 document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
-                // this.style.outline = "2px solid white";
                 this.classList.add("highlight-select-image");
               }
             })
           );
+        }
+        if (currentSelectedImage != null) {
+          document.querySelectorAll(".imgFolder")[0].classList.add("highlight-select-image");
         }
       }
       
       interactionDiv.append(keyvalues);
 
       if (clickedElem && clickedElem.tagName === "IMG") {
-        let srcName = clickedElem.attributes[0].value;
+        let srcName = clickedElem.getAttribute("src");
 
         clickedElem.ondragover = function (e) {
           e.preventDefault();
@@ -3986,6 +3503,7 @@ editionscript = """
         // show lists of images in selected image's folder
         showListsImages(srcName);
       }
+
       let voidTags = {AREA: true, BASE: true, BR: true, COL: true, COMMANd: true, EMBED: true, HR: true, IMG: true, INPUT: true, KEYGEN: true, LINK: true, META: true, PARAM: true, SOURCE: true, TRACK: true, WBR: true};
       //interactionDiv.append(el("hr"));
       // Nodes only with 1 text child
@@ -4019,187 +3537,187 @@ editionscript = """
       }
     }
     
-    
-      contextMenu.innerHTML = "";
-      var whereToAddContextButtons = contextMenu;
-      var noContextMenu = false;
-      // What to put in context menu?
-      if(onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
-        whereToAddContextButtons = modifyMenuIconsDiv;
-        noContextMenu = true;
-      }
-      let numButtons = 0;
-      let addContextMenuButton = function(innerHTML, attributes, properties) {
-        let button = el("div", attributes, [], properties);
-        button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
-        button.classList.add("context-menu-button");
-        button.innerHTML = innerHTML;
-        whereToAddContextButtons.append(button);
-        numButtons++;
-      }
-      if(model.link) {
-        addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
-          {title: "Go to " + model.link, "class": "inert"});
-      }
+      if(!editor_model.linkSelectMode) {
+        contextMenu.innerHTML = "";
+        var whereToAddContextButtons = contextMenu;
+        var noContextMenu = false;
+        // What to put in context menu?
+        if(onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
+          whereToAddContextButtons = modifyMenuIconsDiv;
+          noContextMenu = true;
+        }
+        let numButtons = 0;
+        let addContextMenuButton = function(innerHTML, attributes, properties) {
+          let button = el("div", attributes, [], properties);
+          button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
+          button.classList.add("context-menu-button");
+          button.innerHTML = innerHTML;
+          whereToAddContextButtons.append(button);
+          numButtons++;
+        }
+        if(model.link) {
+          addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
+            {title: "Go to " + model.link, "class": "inert"});
+        }
 
-      if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
-        addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
-        {title: "Move selected element up"},
-        {onclick: (c => event => {
-            let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
-               c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
-            // There is whitespace before this element, we try to reinsert
-            c.parentElement.insertBefore(c, c.previousElementSibling);
-            if(wsTxtNode) { // We move the whitespace as well.
-              c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
-            }
-            editor_model.clickedElem = c;
-            updateInteractionDiv();
-          })(clickedElem)
-        });
-      }
-      if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
-        addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-          <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
-        {title: "Move selected element down"},
-        {onclick: (c => (event) => {
-            let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 &&
-              c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
-            let nodeToInsertAfter = c.nextElementSibling;
-            nodeToInsertAfter.insertAdjacentElement("afterend", c);
-            if(wsTxtNode) { // We move the whitespace as well
-              nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
-            }
-            editor_model.clickedElem = c;
-            updateInteractionDiv();
-          })(clickedElem)
-        });
-      }
-      if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
-        addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
-            <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
-            <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
-          {title: "Clone selected element"},
-          {onclick: ((c, contextMenu) => event => {
-              c.removeAttribute("ghost-clicked");
-              let cloned = duplicate(c);
-              if(cloned) {
-                editor_model.clickedElem = cloned;
-                updateInteractionDiv();
-              } else contextMenu.classList.remove("visible");
-            })(clickedElem, contextMenu)
-          });
-        addContextMenuButton(wasteBasketSVG,
-          {title: "Delete selected element"},
+        if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+          addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
+          {title: "Move selected element up"},
           {onclick: (c => event => {
-              c.remove();
-              editor_model.clickedElem = undefined;
+              let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
+                c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
+              // There is whitespace before this element, we try to reinsert
+              c.parentElement.insertBefore(c, c.previousElementSibling);
+              if(wsTxtNode) { // We move the whitespace as well.
+                c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
+              }
+              editor_model.clickedElem = c;
               updateInteractionDiv();
             })(clickedElem)
           });
-      }
-      if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer)) {
-        // There should be different ways to wrap the selection:
-        // a href, span, div.
-        addContextMenuButton(plusSVG,
-            {title: "Wrap selection"},
-            {onclick: (s => event => {
-              let elements = [];
-              let tmp = s.startContainer;
-              let nodeToInsertAfter = s.startContainer;
-              let parent = nodeToInsertAfter.parentElement;
-              while(tmp && tmp !== s.endContainer.nextSibling) {
-                if(tmp.nodeType === 3) {
-                  elements.push(tmp === s.startContainer ? tmp === s.endContainer ? tmp.textContent.substring(s.startOffset, s.endOffset) : tmp.textContent.substring(s.startOffset) :
-                    tmp === s.endContainer ? tmp.textContent.substring(0, s.endOffset) :
-                    tmp.textContent);
-                  if(tmp === s.startContainer) {
-                    if(tmp === s.endContainer && tmp.textContent.length > s.endOffset) {
-                      // Need to split the text node.
-                      tmp.parentElement.insertBefore(document.createTextNode(tmp.textContent.substring(s.endOffset)), tmp.nextSibling);
-                    }
-                    if(s.startOffset === 0) {
-                      nodeToInsertAfter = nodeToInsertAfter.previousSibling;
-                      tmp.remove();
+        }
+        if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+          addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
+            <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
+          {title: "Move selected element down"},
+          {onclick: (c => (event) => {
+              let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 && 
+                c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
+              let nodeToInsertAfter = c.nextElementSibling;
+              nodeToInsertAfter.insertAdjacentElement("afterend", c);
+              if(wsTxtNode) { // We move the whitespace as well
+                nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
+              }
+              editor_model.clickedElem = c;
+              updateInteractionDiv();
+            })(clickedElem)
+          });
+        }
+        if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
+          addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
+              <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
+              <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
+            {title: "Clone selected element"},
+            {onclick: ((c, contextMenu) => event => {
+                c.removeAttribute("ghost-clicked");
+                let cloned = duplicate(c);
+                if(cloned) {
+                  editor_model.clickedElem = cloned;
+                  updateInteractionDiv();
+                } else contextMenu.classList.remove("visible");
+              })(clickedElem, contextMenu)
+            });
+          addContextMenuButton(wasteBasketSVG,
+            {title: "Delete selected element"},
+            {onclick: (c => event => {
+                c.remove();
+                editor_model.clickedElem = undefined;
+                updateInteractionDiv();
+              })(clickedElem)
+            });
+        }
+        if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer)) {
+          // There should be different ways to wrap the selection:
+          // a href, span, div.
+          addContextMenuButton(plusSVG,
+              {title: "Wrap selection"},
+              {onclick: (s => event => {
+                let elements = [];
+                let tmp = s.startContainer;
+                let nodeToInsertAfter = s.startContainer;
+                let parent = nodeToInsertAfter.parentElement;
+                while(tmp && tmp !== s.endContainer.nextSibling) {
+                  if(tmp.nodeType === 3) {
+                    elements.push(tmp === s.startContainer ? tmp === s.endContainer ? tmp.textContent.substring(s.startOffset, s.endOffset) : tmp.textContent.substring(s.startOffset) :
+                      tmp === s.endContainer ? tmp.textContent.substring(0, s.endOffset) :
+                      tmp.textContent);
+                    if(tmp === s.startContainer) {
+                      if(tmp === s.endContainer && tmp.textContent.length > s.endOffset) {
+                        // Need to split the text node.
+                        tmp.parentElement.insertBefore(document.createTextNode(tmp.textContent.substring(s.endOffset)), tmp.nextSibling);
+                      }
+                      if(s.startOffset === 0) {
+                        nodeToInsertAfter = nodeToInsertAfter.previousSibling;
+                        tmp.remove();
+                      } else {
+                        tmp.textContent = tmp.textContent.substring(0, s.startOffset);
+                      }
+                    } else if(tmp === s.endContainer) {
+                      if(s.endOffset === s.endContainer.textContent.length) {
+                        tmp.remove();
+                      } else {
+                        tmp.textContent = tmp.textContent.substring(s.endOffset);
+                      }
                     } else {
-                      tmp.textContent = tmp.textContent.substring(0, s.startOffset);
-                    }
-                  } else if(tmp === s.endContainer) {
-                    if(s.endOffset === s.endContainer.textContent.length) {
                       tmp.remove();
-                    } else {
-                      tmp.textContent = tmp.textContent.substring(s.endOffset);
                     }
                   } else {
+                    elements.push(tmp);
                     tmp.remove();
                   }
-                } else {
-                  elements.push(tmp);
-                  tmp.remove();
+                  tmp = tmp.nextSibling;
                 }
-                tmp = tmp.nextSibling;
-              }
-              let insertedNode = el("span", {"ghost-clicked": "true"});
-              for(let k of elements) {
-                insertedNode.append(k);
-              }
-              let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
-              parent.insertBefore(insertedNode, nodeToInsertBefore);
-              document.querySelector("#modify-menu").classList.toggle("visible", true);
-              editor_model.visible = true;
-              editor_model.clickedElem = insertedNode;
-              updateInteractionDiv();
-            })(model.selectionRange)}
-            )
-      }
-      if(!model.selectionRange) {
-        addContextMenuButton(plusSVG,
-            {title: "Insert element", contenteditable: false},
-            {onclick: event => {
-              editor_model.clickedElem = clickedElem;
-              editor_model.displayClickedElemAsMainElem = true;
-              editor_model.insertElement = true;
-              updateInteractionDiv();
-              restoreCaretPosition();
-            }});
-      }
-
-      let baseElem = clickedElem;
-      while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
-        baseElem = baseElem.nextElementSibling;
-      }
-      baseElem = model.selectionRange || baseElem || clickedElem;
-      
-      if(baseElem && !noContextMenu) {
-        let clientRect = baseElem.getBoundingClientRect();
-        // Find out where to place context menu.
-        let clickedElemLeft = window.scrollX + clientRect.left;
-        let clickedElemTop = window.scrollY + clientRect.top;
-        let clickedElemBottom = window.scrollY + clientRect.bottom;
-        let clickedElemRight = window.scrollX + clientRect.right;
-        let desiredWidth = numButtons * buttonWidth();
-        let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
-        if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
-        let desiredTop = clickedElemTop - buttonHeight(); 
-        if(desiredTop - window.scrollY < 9) {
-          desiredTop = clickedElemBottom;
-          if(desiredTop + buttonHeight() > window.innerHeight) {
-            desiredTop = window.innerHeight - buttonHeight(); 
-          }
+                let insertedNode = el("span", {"ghost-clicked": "true"});
+                for(let k of elements) {
+                  insertedNode.append(k);
+                }
+                let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
+                parent.insertBefore(insertedNode, nodeToInsertBefore);
+                document.querySelector("#modify-menu").classList.toggle("visible", true);
+                editor_model.visible = true;
+                editor_model.clickedElem = insertedNode;
+                updateInteractionDiv();
+              })(model.selectionRange)}
+              )
         }
-        if(desiredLeft < 0) desiredLeft = 0;
-        if(desiredTop < 0) desiredTop = 0;
-        contextMenu.style.left = desiredLeft + "px";
-        contextMenu.style.top = desiredTop + "px";
-        contextMenu.style.width = desiredWidth + "px";
-        contextMenu.classList.add("visible");
-      }
-      if(noContextMenu) {
-        contextMenu.classList.remove("visible");
+        if(!model.selectionRange) {
+          addContextMenuButton(plusSVG,
+              {title: "Insert element", contenteditable: false},
+              {onclick: event => {
+                editor_model.clickedElem = clickedElem;
+                editor_model.displayClickedElemAsMainElem = true;
+                editor_model.insertElement = true;
+                updateInteractionDiv();
+                restoreCaretPosition();
+              }});
+        }
+
+        let baseElem = clickedElem;
+        while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
+          baseElem = baseElem.nextElementSibling;
+        }
+        baseElem = model.selectionRange || baseElem || clickedElem;
+      
+        if(baseElem && !noContextMenu) {
+          let clientRect = baseElem.getBoundingClientRect();
+          // Find out where to place context menu.
+          let clickedElemLeft = window.scrollX + clientRect.left;
+          let clickedElemTop = window.scrollY + clientRect.top;
+          let clickedElemBottom = window.scrollY + clientRect.bottom;
+          let clickedElemRight = window.scrollX + clientRect.right;
+          let desiredWidth = numButtons * buttonWidth();
+          let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
+          if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
+          let desiredTop = clickedElemTop - buttonHeight(); 
+          if(desiredTop - window.scrollY < 9) {
+            desiredTop = clickedElemBottom;
+            if(desiredTop + buttonHeight() > window.innerHeight) {
+              desiredTop = window.innerHeight - buttonHeight(); 
+            }
+          }
+          if(desiredLeft < 0) desiredLeft = 0;
+          if(desiredTop < 0) desiredTop = 0;
+          contextMenu.style.left = desiredLeft + "px";
+          contextMenu.style.top = desiredTop + "px";
+          contextMenu.style.width = desiredWidth + "px";
+          contextMenu.classList.add("visible");
+        }
+        if(noContextMenu) {
+          contextMenu.classList.remove("visible");
+        }
       }
       return true;
-
     }
     
     // Links edition - Might be empty.
