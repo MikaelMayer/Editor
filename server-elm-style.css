@@ -354,7 +354,7 @@ div#modify-menu>div.modify-menu-icons.pinned {
 
 div#modify-menu>div.information {
     overflow-y: auto;
-    max-height: calc(100% - var(--context-menu-height));
+    max-height: 65%;/*calc(100% - var(--context-menu-height));*/
     margin: 2%;
     border-radius: 0.3em;
 }

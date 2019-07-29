@@ -397,8 +397,9 @@ luca =
         x.append(children);
       }
       if(typeof properties == "object") {
-        for(let k in properties)
+        for(let k in properties) {
           x[k] = properties[k];
+        }
       }
       return x;
     }    
@@ -3235,9 +3236,11 @@ editionscript = """
             } 
             displayChildrenSiblings(clickedElem, true);
           }
+          //CSS parser
           if(!model.insertElement) {
             var CSSparser = new losslesscssjs();
             var CSSdisplay= [];
+            console.log(model.clickedElem.style);
             console.log(document.styleSheets);
             for(let i = 1; i < document.styleSheets.length; i++) {
               for(let j = 0; j < document.styleSheets[i].cssRules.length; j++) {
@@ -3253,22 +3256,79 @@ editionscript = """
               eachCSS.value = CSSdisplay[k].cssText;
               CSSarea.append(eachCSS);
             }
+            function checkSimilarities() {
+              let retList = [];
+              CSSdisplay.forEach(function(e) => {
+                CSSarea.childNodes.forEach(function(i) => {
+                  if(i.value !== e.cssText) {
+                    retList.push(i);
+                  }
+                });
+              });
+              return retList
+            }
             interactionDiv.append(CSSarea);
-            interactionDiv.append(el("button", { style: "width: 100%; height: 10%;"}), [], {
+            interactionDiv.append(el("button", {style: "width: 100%; height: 7%;"}, [], {
+              innerHTML: "Examine changes",
+              onclick: () => { 
+                console.log(CSSarea.childNodes);
+                let tempCSS;
+                if(tempCSS = document.getElementbyID("Temp-CSS")) {
+                  let prevCSS = CSSparser.parseCSS(tempCSS.innerHTML);    
+                  let checkCSS = checkSimilarities(); 
+                  checkCSS.forEach(function(e) => {
+                    let delList = [];
+                    curCSS = CSSparser.parserCSS(e.value);
+                    for(let m in prevCSS) {
+                      if(curCSS[0].kind === prevCSS[m].kind) {
+                        if(curCSS[0].content && curCSS[0].selector === prevCSS[m].selector) {
+                          delList.push(m);
+                        }
+                        else if(curCSS[0].selector === prevCSS[m].selector) {
+                          delList.push(m);
+                        }
+                      }
+                    }
+                    for(let i in delList) {
+                      delete prevCSS[m];
+                    }
+                    prevCSS.push(curCSS[0]);
+                  });
+                  tempCSS.innerHTML = CSSparser.unparseCSS(prevCSS);
+                }
+                tempCSS.innerHTML = CSSparser.unparseCSS(prevCSS)
+                else {
+                  let addText = "";
+                  let checkCSS = checkSimilarities();
+                  checkCSS.forEach(function(e) => {
+                    addText.concat(e.value);
+                  })
+                  tempCSS = el("style", {"isghost": true}, [], {
+                    innerHTML: addText;
+                  });
+                  document.append(tempCSS);
+                }
+              }
+            }));
+            interactionDiv.append(el("button", {style: "width: 100%; height: 7%;"}, [], {
               innerHTML: "Update CSS",
-              onclick() { 
-                console.log("clicking does something");
-                CSSarea.childList.forEach(function(e) {
+              onclick: () => { 
+                console.log(CSSarea.childNodes);
+                CSSarea.childNodes.forEach(function(e) {
+                  console.log(e.value);
                   let CSSTopLVL = CSSparser.parseCSS(e.value);
-                  if(CSSTopLVL.kind === "cssBlock") {
-                    let CSSRules = CSSparser.parseRules(CSSTopLVL.rules)[0];
-                    for(let l in CSSRules) {
-                      clickedElem.style.setProperty(CSSRules[l].directive, CSSRules[l].value);
+                  console.log(CSSTopLVL);
+                  for(let m in CSSTopLVL) {
+                    if(CSSTopLVL[m].kind === "cssBlock") {
+                      let CSSRules = CSSTopLVL[m].rules;
+                      for(let l in CSSRules) {
+                        clickedElem.style.setProperty(CSSRules[l].directive, CSSRules[l].value);
+                      }
                     }
                   }
                 });
               }
-            });
+            }));
           }
         }
       }
@@ -3310,7 +3370,7 @@ editionscript = """
             updateInteractionDiv();
           }
         }
-      ));
+      )); 
       
       let keyvalues = el("div", {"class":"keyvalues"});
       for(let i = 0; clickedElem && clickedElem.attributes && i < clickedElem.attributes.length; i++) {
