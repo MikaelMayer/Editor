@@ -376,6 +376,15 @@ div#modify-menu h3 {
     margin-bottom: 2px;
 }
 
+div#modify-menu button.CSSbutton {
+    width: 100%; 
+    height: 7%;
+}
+
+div#modify-menu button.CSSbutton .delete-CSS {
+    
+}
+
 div#modify-menu div.keyvalues {
     margin-top: 6px;
     display: table;

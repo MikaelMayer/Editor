@@ -3204,7 +3204,7 @@ editionscript = """
             let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
 
             // <html> has no parent element
-            if (clickedElem.parentElement) {
+            if(clickedElem.parentElement) {
               displayMainElem(clickedElem.parentElement);
               mainElemDiv.onclick = function () {
                 if (!clickedElem.parentElement.tagName) {
@@ -3239,49 +3239,98 @@ editionscript = """
           //CSS parser
           if(!model.insertElement) {
             var CSSparser = new losslesscssjs();
-            var CSSdisplay= [];
-            console.log(model.clickedElem.style);
+            var CSSdisplay = [];
             console.log(document.styleSheets);
             for(let i = 1; i < document.styleSheets.length; i++) {
-              for(let j = 0; j < document.styleSheets[i].cssRules.length; j++) {
+              for(let j in document.styleSheets[i].cssRules) {
                 if(editor_model.clickedElem.matches(document.styleSheets[i].cssRules[j].selectorText)) {
                   CSSdisplay.push(document.styleSheets[i].cssRules[j]);
                 }
               }
             }
-            console.log(CSSdisplay);
             var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {});
             for(let k in CSSdisplay) {
-              let eachCSS = el("textarea", {"class": "CSS-selectors"});
+              let eachCSS = el("textarea", {"class": "CSS-selectors"}, [el("div", {"class": "delete-CSS"}, [], {
+                innerHTML: wasteBasketSVG,
+                onclick() {
+                  let tempCSS = CSSparser.parseCSS(document.getElementById(Temp-CSS));
+                  let curCSS = CSSparser.parseCSS(this.value);
+                  let notWS = firstNonWS(curCSS);
+                  for(i in tempCSS) {
+                    if(curCSS[notWS].selector === tempCSS[i].selector) {
+                      tempCSS.splice(i);
+                      break;
+                    }
+                  }
+                  CSSarea.removeChild(this); 
+                }
+              })]);
               eachCSS.value = CSSdisplay[k].cssText;
               CSSarea.append(eachCSS);
             }
-            function checkSimilarities() {
-              let retList = [];
-              CSSdisplay.forEach(function(e) => {
-                CSSarea.childNodes.forEach(function(i) => {
-                  if(i.value !== e.cssText) {
-                    retList.push(i);
+            //checks for similarities between existing
+            function checkSimilarities(Existing) {
+              let retList = CSSarea.childNodes;
+              CSSdisplay.forEach(function(e) {
+                CSSarea.childNodes.forEach(function(i) {
+                  if(((e.selectorText ? e.selectorText : CSSparser.parseCSS(e.cssText).selector) === CSSparser.parseCSS(i.value).selector) && 
+                  (i.value === e.cssText)) {
+                    retList.splice(indexof(i));
                   }
                 });
               });
-              return retList
+              return retList;
+            }
+            function firstNonWS(parsedCSS) {
+              let count;
+              for(count = 0; count < parsedCSS.length; count++) {
+                if(parsedCSS[count].kind !== "whitespace") {
+                  return count;
+                }
+              }
+              return -1;
             }
             interactionDiv.append(CSSarea);
-            interactionDiv.append(el("button", {style: "width: 100%; height: 7%;"}, [], {
+            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Create new selector "}, [], {
+              innerHTML: "New CSS",
+              onclick() { 
+                CSSarea.append(el("textarea", {"class": "CSS-selectors"}, [el("div", {"class": "delete-CSS"}, [], {
+                  innerHTML: wasteBasketSVG,
+                  onclick() {
+                    let tempCSS = CSSparser.parseCSS(document.getElementById(Temp-CSS));
+                    let curCSS = CSSparser.parseCSS(this.value);
+                    let notWS = firstNonWS(curCSS);
+                    for(i in tempCSS) {
+                      if(curCSS[notWS].selector === tempCSS[i].selector) {
+                        tempCSS.splice(i);
+                        break;
+                      }
+                    }
+                    CSSarea.removeChild(this); 
+                  }
+                })]));
+              }
+            }));
+            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Look at changes"}, [], {
               innerHTML: "Examine changes",
-              onclick: () => { 
+              onclick() { 
                 console.log(CSSarea.childNodes);
-                let tempCSS;
-                if(tempCSS = document.getElementbyID("Temp-CSS")) {
+                let tempCSS = document.getElementById("Temp-CSS");
+                if(tempCSS) {
                   let prevCSS = CSSparser.parseCSS(tempCSS.innerHTML);    
-                  let checkCSS = checkSimilarities(); 
-                  checkCSS.forEach(function(e) => {
+                  CSSarea.childNodes.forEach(function(e) {
                     let delList = [];
-                    curCSS = CSSparser.parserCSS(e.value);
-                    for(let m in prevCSS) {
+                    let curCSS = CSSparser.parseCSS(e.value);
+                    let notws = firstNonWS(curCSS);
+                    if(notws < 0) {
+                      popupMessage("This CSS is just whitespace!");
+                      continue;
+                    }
+                    //not sure if we want to delete previous CSS for the same selectors if they are already added to ghost style node
+                    //inserted into head
+                    /*for(let m in prevCSS) {
                       if(curCSS[0].kind === prevCSS[m].kind) {
-                        if(curCSS[0].content && curCSS[0].selector === prevCSS[m].selector) {
+                        if(curCSS[0].content && (curCSS[0].content.selector === prevCSS[m].content.selector)) {
                           delList.push(m);
                         }
                         else if(curCSS[0].selector === prevCSS[m].selector) {
@@ -3290,29 +3339,30 @@ editionscript = """
                       }
                     }
                     for(let i in delList) {
-                      delete prevCSS[m];
+                      delete prevCSS[delList[i]];
+                    }*/
+                    for(let i in curCSS) {
+                      prevCSS.push(curCSS[i]);
                     }
-                    prevCSS.push(curCSS[0]);
                   });
                   tempCSS.innerHTML = CSSparser.unparseCSS(prevCSS);
                 }
-                tempCSS.innerHTML = CSSparser.unparseCSS(prevCSS)
                 else {
-                  let addText = "";
-                  let checkCSS = checkSimilarities();
-                  checkCSS.forEach(function(e) => {
-                    addText.concat(e.value);
-                  })
-                  tempCSS = el("style", {"isghost": true}, [], {
-                    innerHTML: addText;
+                  var addText = "";
+                  let checkCSS = checkSimilarities(CSSdisplay);
+                  checkCSS.forEach(function(e) {
+                    addText = addText.concat(e.value);  
                   });
-                  document.append(tempCSS);
+                  tempCSS = el("style", {"isghost": true, id: "Temp-CSS"}, [], {
+                    innerHTML: addText
+                  });
+                  document.head.appendChild(tempCSS);
                 }
               }
             }));
-            interactionDiv.append(el("button", {style: "width: 100%; height: 7%;"}, [], {
-              innerHTML: "Update CSS",
-              onclick: () => { 
+            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Save updates to CSS"}, [], {
+              innerHTML: "Save changes",
+              onclick() { 
                 console.log(CSSarea.childNodes);
                 CSSarea.childNodes.forEach(function(e) {
                   console.log(e.value);
