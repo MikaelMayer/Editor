@@ -343,7 +343,7 @@ luca =
         var progbar = document.getElementById("progress-bar");
       })(xhr, file);
       @(if listDict.get "browserSide" defaultOptions == Just True then """
-      xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+      xhr.open("POST", "/Thaditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
       """ else """
       xhr.open("POST", targetPathName, false);
       xhr.setRequestHeader("write-file", file.type);
@@ -2404,7 +2404,7 @@ editionscript = """
             page content within the xmlhttp response. We need to rewrite the page with these data.
       */
       
-      var serverWorker = new Worker("TharzenEditor/editor.js");
+      var serverWorker = new Worker("Thaditor/editor.js");
       var d = {action:"getServCont"}
       var tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
       const undoStackLen = editor_model.undoStack.length;
