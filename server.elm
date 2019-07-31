@@ -3236,51 +3236,18 @@ editionscript = """
             } 
             displayChildrenSiblings(clickedElem, true);
           }
+
+          ///////////////////////////////////////////////////////////////////////
+          /*
+           /\_/\
+          ( o.o )
+           > ^ <
+          */
           //CSS parser
-          if(!model.insertElement) {
+          if(!model.insertElement) { 
+            let clickedElem = editor_model.clickedElem;
             var CSSparser = new losslesscssjs();
             var CSSdisplay = [];
-            console.log(document.styleSheets);
-            for(let i = 1; i < document.styleSheets.length; i++) {
-              for(let j in document.styleSheets[i].cssRules) {
-                if(editor_model.clickedElem.matches(document.styleSheets[i].cssRules[j].selectorText)) {
-                  CSSdisplay.push(document.styleSheets[i].cssRules[j]);
-                }
-              }
-            }
-            var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {});
-            for(let k in CSSdisplay) {
-              let eachCSS = el("textarea", {"class": "CSS-selectors"}, [el("div", {"class": "delete-CSS"}, [], {
-                innerHTML: wasteBasketSVG,
-                onclick() {
-                  let tempCSS = CSSparser.parseCSS(document.getElementById(Temp-CSS));
-                  let curCSS = CSSparser.parseCSS(this.value);
-                  let notWS = firstNonWS(curCSS);
-                  for(i in tempCSS) {
-                    if(curCSS[notWS].selector === tempCSS[i].selector) {
-                      tempCSS.splice(i);
-                      break;
-                    }
-                  }
-                  CSSarea.removeChild(this); 
-                }
-              })]);
-              eachCSS.value = CSSdisplay[k].cssText;
-              CSSarea.append(eachCSS);
-            }
-            //checks for similarities between existing
-            function checkSimilarities(Existing) {
-              let retList = CSSarea.childNodes;
-              CSSdisplay.forEach(function(e) {
-                CSSarea.childNodes.forEach(function(i) {
-                  if(((e.selectorText ? e.selectorText : CSSparser.parseCSS(e.cssText).selector) === CSSparser.parseCSS(i.value).selector) && 
-                  (i.value === e.cssText)) {
-                    retList.splice(indexof(i));
-                  }
-                });
-              });
-              return retList;
-            }
             function firstNonWS(parsedCSS) {
               let count;
               for(count = 0; count < parsedCSS.length; count++) {
@@ -3290,25 +3257,83 @@ editionscript = """
               }
               return -1;
             }
+            function deleteCSS() {
+              let tempCSS = CSSparser.parseCSS(document.getElementById("Temp-CSS"));
+              let curCSS = CSSparser.parseCSS(this.nextSibling);
+              let notWS = firstNonWS(curCSS);
+              let notEmpty = false;
+              if(tempCSS) {
+                tempCSS.forEach((e) => {if(e.kind != "whitespace") {
+                  notEmpty = true;
+                }})
+              }
+              console.log(tempCSS);
+              if(notEmpty) {
+                for(i in tempCSS) {
+                  if(curCSS[notWS].selector === tempCSS[i].selector) {
+                    tempCSS.splice(i);
+                    break;
+                  }
+                }
+              }
+              CSSarea.removeChild(this.parentElement); 
+            }
+            var allCSS = "", var displayCSS = "";
+            let curCSS = [];
+            document.querySelectorAll("style").forEach((e) => {
+              allCSS = allCSS.concat(e.textContent);
+            });  
+            console.log(allCSS);
+            var parsedAllCSS = CSSparser.parseCSS(allCSS);
+            for(let i = 0; i < parsedAllCSS.length; i++) {
+              if(parsedAllCSS[i].kind === 'whitespace') {
+                continue;
+              }
+              else if(parsedAllCSS[i].kind === 'cssBlock' && clickedElem.matches(parsedAllCSS[i].selector)) {
+                curCSS.push({type: 'cssBlock', content: parsedAllCSS[i], before: parsedALLCSS[i-1], after: parsedAllCSS[i+1]});
+              }
+              else if(parsedAllCSS[i].kind === '@media' && window.matchMedia(parsedAllCSS[i].selector).matches) {
+                for(let j = 0; j < parsedAllCSS.content; j++) {
+                  if(clickedElem.matches(parsedAllCSS.content[j].selector)) {
+                    curCSS.push({type: '@media', content: parsedAllCSS.content[j], contentBefore: parsedAllCSS.content[j-1], contentAfter: parsedAllCSS.content[j+1],
+                      before: parsedALLCSS[i-1], after: parsedAllCSS[i+1]});
+                  }
+                }
+              }
+              
+            }
+            /*for(let i = 1; i < document.styleSheets.length; i++) {
+              for(let j in document.styleSheets[i].cssRules) {
+                if(editor_model.clickedElem.matches(document.styleSheets[i].cssRules[j].selectorText)) {
+                  CSSdisplay.push(document.styleSheets[i].cssRules[j]);
+                }
+              }
+            }
+            var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {});
+            for(let k in CSSdisplay) {
+              let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
+                el("textarea", {"class": "CSS-selectors"}, [], {defaultValue: CSSdisplay[k].cssText}),
+                el("div", {"class": "delete-CSS"}, [], {
+                  innerHTML: wasteBasketSVG,
+                  onclick: deleteCSS
+                })
+              ]);
+              //eachCSS.childList[1].value = CSSdisplay[k].cssText;
+              CSSarea.append(eachCSS);
+            }
+            //checks for similarities between current CSS changes and 
+          
             interactionDiv.append(CSSarea);
-            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Create new selector "}, [], {
+            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Create new selector"}, [], {
               innerHTML: "New CSS",
               onclick() { 
-                CSSarea.append(el("textarea", {"class": "CSS-selectors"}, [el("div", {"class": "delete-CSS"}, [], {
-                  innerHTML: wasteBasketSVG,
-                  onclick() {
-                    let tempCSS = CSSparser.parseCSS(document.getElementById(Temp-CSS));
-                    let curCSS = CSSparser.parseCSS(this.value);
-                    let notWS = firstNonWS(curCSS);
-                    for(i in tempCSS) {
-                      if(curCSS[notWS].selector === tempCSS[i].selector) {
-                        tempCSS.splice(i);
-                        break;
-                      }
-                    }
-                    CSSarea.removeChild(this); 
-                  }
-                })]));
+                CSSarea.append(el("div", {"class": "CSS-modify-unit"}, [
+                  el("textarea", {"class": "CSS-selectors"}, []),
+                  el("div", {"class": "delete-CSS"}, [], {
+                    innerHTML: wasteBasketSVG,
+                    onclick: deleteCSS
+                  })
+                ]));
               }
             }));
             interactionDiv.append(el("button", {"class": "CSSbutton", title: "Look at changes"}, [], {
@@ -3316,7 +3341,15 @@ editionscript = """
               onclick() { 
                 console.log(CSSarea.childNodes);
                 let tempCSS = document.getElementById("Temp-CSS");
+                let notEmpty = false;
                 if(tempCSS) {
+                  tempCSS.forEach((e) => {
+                    if(e.kind != "whitespace") {
+                      notEmpty = true;
+                    }
+                  });
+                }
+                if(notEmpty) {
                   let prevCSS = CSSparser.parseCSS(tempCSS.innerHTML);    
                   CSSarea.childNodes.forEach(function(e) {
                     let delList = [];
@@ -3328,7 +3361,7 @@ editionscript = """
                     }
                     //not sure if we want to delete previous CSS for the same selectors if they are already added to ghost style node
                     //inserted into head
-                    /*for(let m in prevCSS) {
+                    sfor(let m in prevCSS) {
                       if(curCSS[0].kind === prevCSS[m].kind) {
                         if(curCSS[0].content && (curCSS[0].content.selector === prevCSS[m].content.selector)) {
                           delList.push(m);
@@ -3340,7 +3373,7 @@ editionscript = """
                     }
                     for(let i in delList) {
                       delete prevCSS[delList[i]];
-                    }*/
+                    }
                     for(let i in curCSS) {
                       prevCSS.push(curCSS[i]);
                     }
@@ -3349,36 +3382,39 @@ editionscript = """
                 }
                 else {
                   var addText = "";
-                  let checkCSS = checkSimilarities(CSSdisplay);
+                  let checkCSS = [];
+                  CSSarea.childNodes.forEach(function(e) {
+                    checkCSS.push(e.childNodes[0]);
+                  });
+                  CSSdisplay.forEach(function(e) {
+                    checkCSS.forEach(function(i) {
+                      //if the text is unchanged from the original CSS 
+                      if(((e.selectorText ? e.selectorText : CSSparser.parseCSS(e.cssText).selector) === CSSparser.parseCSS(i.value).selector) && 
+                      (i.value === e.cssText)) {
+                        console.log("got here Haha!");
+                        checkCSS.splice(indexof(i));
+                      }
+                    });
+                  });
                   checkCSS.forEach(function(e) {
                     addText = addText.concat(e.value);  
                   });
                   tempCSS = el("style", {"isghost": true, id: "Temp-CSS"}, [], {
                     innerHTML: addText
                   });
+                  tempCSS.innerHTML = addText;
                   document.head.appendChild(tempCSS);
                 }
               }
             }));
-            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Save updates to CSS"}, [], {
-              innerHTML: "Save changes",
+            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Save all updates to CSS"}, [], {
+              innerHTML: "Save all changes",
               onclick() { 
                 console.log(CSSarea.childNodes);
-                CSSarea.childNodes.forEach(function(e) {
-                  console.log(e.value);
-                  let CSSTopLVL = CSSparser.parseCSS(e.value);
-                  console.log(CSSTopLVL);
-                  for(let m in CSSTopLVL) {
-                    if(CSSTopLVL[m].kind === "cssBlock") {
-                      let CSSRules = CSSTopLVL[m].rules;
-                      for(let l in CSSRules) {
-                        clickedElem.style.setProperty(CSSRules[l].directive, CSSRules[l].value);
-                      }
-                    }
-                  }
-                });
+                document.getElementById("Temp-CSS").setAttribute("is-ghost", false);
+                document.getElementById("savebutton").onclick();
               }
-            }));
+            }));*/
           }
         }
       }

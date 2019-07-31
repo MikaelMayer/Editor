@@ -296,15 +296,26 @@ div.disambiguationMenu {
     }
 }
 
-#CSS-modification {
+div#modify-menu #CSS-modification {
     width: 100%;
     overflow-y: auto;
     flex: 1;
 }
 
-.CSS-selectors {
+div#modify-menu #CSS-modification .CSS-modify-unit {
+    display: flex;
+    height: 15%;
+    padding: 4px;
+    align-items: center;
+}
+
+div#modify-menu #CSS-modification .CSS-modify-unit .delete-CSS:hover {
+   background-color: var(--context-button-color-hover);
+}
+
+div#modify-menu #CSS-modification .CSS-modify-unit .CSS-selectors {
     width: 100%;
-    height: 10%;
+    height: 90%;
     overflow-y: auto;
 }
 
@@ -377,12 +388,9 @@ div#modify-menu h3 {
 }
 
 div#modify-menu button.CSSbutton {
-    width: 100%; 
+    width: 98%; 
     height: 7%;
-}
-
-div#modify-menu button.CSSbutton .delete-CSS {
-    
+    padding: 4px;
 }
 
 div#modify-menu div.keyvalues {
