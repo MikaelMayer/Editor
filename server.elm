@@ -2368,10 +2368,7 @@ editionscript = """
     }
     
     function sendModificationsToServer() {
-      //
-      if (@browserSide) {
-        //idk
-      }
+      
       if(document.getElementById("notification-menu") != null) {
         //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
         // TODO: Listen and gather subsequent modifications when it is loading
