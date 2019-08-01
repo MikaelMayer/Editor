@@ -3245,10 +3245,9 @@ editionscript = """
           */
           //CSS parser
           if(!model.insertElement) { 
-            let clickedElem = editor_model.clickedElem;
+            let clickedElement = editor_model.clickedElem;
             var CSSparser = new losslesscssjs();
-            var CSSdisplay = [];
-            function firstNonWS(parsedCSS) {
+            /*function firstNonWS(parsedCSS) {
               let count;
               for(count = 0; count < parsedCSS.length; count++) {
                 if(parsedCSS[count].kind !== "whitespace") {
@@ -3256,8 +3255,8 @@ editionscript = """
                 }
               }
               return -1;
-            }
-            function deleteCSS() {
+            }*/
+            /*function deleteCSS() {
               let tempCSS = CSSparser.parseCSS(document.getElementById("Temp-CSS"));
               let curCSS = CSSparser.parseCSS(this.nextSibling);
               let notWS = firstNonWS(curCSS);
@@ -3277,53 +3276,140 @@ editionscript = """
                 }
               }
               CSSarea.removeChild(this.parentElement); 
+            }*/
+            
+            function findTextBefore(parsed, curIndex, prevRel) {
+              var textBefore = "", textAfter = "";
+              for(; prevRel < curIndex; prevRel++) {
+                  textBefore += CSSparser.unparseCSS([parsed[prevRel]]);
+                }
+              return textBefore;
             }
-            var allCSS = "", var displayCSS = "";
-            let curCSS = [];
-            document.querySelectorAll("style").forEach((e) => {
-              allCSS = allCSS.concat(e.textContent);
-            });  
-            console.log(allCSS);
-            var parsedAllCSS = CSSparser.parseCSS(allCSS);
-            for(let i = 0; i < parsedAllCSS.length; i++) {
-              if(parsedAllCSS[i].kind === 'whitespace') {
-                continue;
+            function findLastText(parsed, prevRel) {
+              let lastTextSegment = "";
+              for(let k = prevRel; k < parsed.length; k++) {
+                lastTextSegment += CSSparser.unparseCSS([parsed[k]]);
               }
-              else if(parsedAllCSS[i].kind === 'cssBlock' && clickedElem.matches(parsedAllCSS[i].selector)) {
-                curCSS.push({type: 'cssBlock', content: parsedAllCSS[i], before: parsedALLCSS[i-1], after: parsedAllCSS[i+1]});
-              }
-              else if(parsedAllCSS[i].kind === '@media' && window.matchMedia(parsedAllCSS[i].selector).matches) {
-                for(let j = 0; j < parsedAllCSS.content; j++) {
-                  if(clickedElem.matches(parsedAllCSS.content[j].selector)) {
-                    curCSS.push({type: '@media', content: parsedAllCSS.content[j], contentBefore: parsedAllCSS.content[j-1], contentAfter: parsedAllCSS.content[j+1],
-                      before: parsedALLCSS[i-1], after: parsedAllCSS[i+1]});
+              return lastTextSegment;
+            }
+            function fullParseCSS() {
+              var fullCSS = [];
+              console.log(document.querySelectorAll("style"));
+              document.querySelectorAll("style").forEach((e) => {
+                var curCSS = [];
+                var parsedCSS = CSSparser.parseCSS(e.textContent);
+                console.log(parsedCSS);
+                //following variable tracks the index of the element after previous relevant CSS segment
+                let prevRelCSS = 0;
+                for(let i in parsedCSS) {
+                  if(parsedCSS[i].kind === 'cssBlock' && clickedElement.matches(parsedCSS[i].selector)) {
+                    //calculating before and after text
+                    let textBefore = findTextBefore(parsedCSS, i, prevRelCSS)
+                    if(curCSS.length) {
+                      curCSS[curCSS.length-1].after = textBefore;
+                    }
+                    curCSS.push({type: 'cssBlock', content: CSSparser.unparseCSS([parsedCSS[i]]), before: textBefore, after: "", orgTag: e});
+                    prevRelCSS = i + 1;
+                  }
+                  else if(parsedCSS[i].kind === '@media' && window.matchMedia(parsedCSS[i].selector).matches) {
+                    let prevRelCSSInner = 0;
+                    //calculating before and after text
+                    let textBefore = textBeforeAfter(parsedCSS, i, prevRelCSS);
+                    //saving selector information 
+                    let curMedia = parsedCSS[i];
+                    if(curCSS.length) {
+                      curCSS[curCSS.length-1].after = textBefore;
+                    }
+                    for(let j in parsedCSS.content) {
+                      if(clickedElement.matches(parsedCSS.content[j].selector)) {
+                        let textBeforeInner = findTextBefore(parsedCSS.content, j, prevRelCSSInner);
+                        if(curCSS.length && curCSS[curCSS.length-1].type === '@media') {
+                          curCSS[curCSS.length-1].innerAfter = textBeforeInner;
+                        }
+                        curMedia.content = CSSparser.unparseCSS([parsedAllCSS.content[j]]);
+                        curCSS.push({type: '@media', content: curMedia, 
+                          innerBefore: textBeforeInner, innerAfter: "",
+                          before: textBefore, after: "", orgTag: e});
+                      }
+                      else if(j === parsedCSS.content.length - 1) {
+                        if(curCSS.length && curCSS[curCSS.length-1].type === '@media') {
+                          curCSS[curCSS.length-1].innerAfter = findLastText(parsedCSS.content, prevRelCSSInner);
+                        }
+                      }
+                      prevRelCSSInner = j + 1;
+                    }
+                    prevRelCSS = i + 1;
+                  }
+                  //else if(parsedAllCSS[i].kind === '@keyframes')
+                  //when last piece of CSS is not connected to clicked element
+                  //in this case, we will need to add the remaining irrelevant raw CSS text to the last relevant CSS segment
+                  else if(i === parsedCSS.length - 1) {
+                    if(curCSS.length) {
+                      curCSS[curCSS.length-1].after = findLastText(parsedCSS, prevRelCSS);
+                    }
+                  }
+                  else if(parsedCSS[i].kind === 'whitespace') { 
+                    continue;
                   }
                 }
-              }
-              
+                fullCSS.push(curCSS);
+              });
+              return fullCSS;
             }
-            /*for(let i = 1; i < document.styleSheets.length; i++) {
-              for(let j in document.styleSheets[i].cssRules) {
-                if(editor_model.clickedElem.matches(document.styleSheets[i].cssRules[j].selectorText)) {
-                  CSSdisplay.push(document.styleSheets[i].cssRules[j]);
+            function fullUnparseCSS(fullCSS) {
+              for(let i in fullCSS) {
+                console.log("current group is:", fullCSS);
+                console.log("current is:", fullCSS[i]);
+                let curTag = fullCSS[i][0].orgTag;
+                let CSSString = "";
+                for(let j = 0; j < fullCSS[i].length; j++) {
+                  if(fullCSS[i][j].type === 'cssBlock') {
+                    CSSString += fullCSS[i][j].before + fullCSS[i][j].content + fullCSS[i][j].after;
+                  }
+                  else if(fullCSS[i][j].type === '@media') {
+                    let k = j;
+                    let mediaInnerText = "";
+                    let curMedia = CSSparser.parseCSS(fullCSS[i][j].content);
+                    while (fullCSS[i][k].type === '@media' && k < fullCSS[i].length) {
+                      mediaInnerText += fullCSS[i][k].content;
+                      k++;
+                    }
+                    curMedia.content = mediaInnerText;
+                    CSSString = CSSparser.unparseCSS([curMedia]);
+                    j = k;
+                  }
                 }
+                curTag.textContent = CSSString;
               }
             }
-            var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {});
-            for(let k in CSSdisplay) {
-              let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
-                el("textarea", {"class": "CSS-selectors"}, [], {defaultValue: CSSdisplay[k].cssText}),
-                el("div", {"class": "delete-CSS"}, [], {
-                  innerHTML: wasteBasketSVG,
-                  onclick: deleteCSS
-                })
-              ]);
-              //eachCSS.childList[1].value = CSSdisplay[k].cssText;
-              CSSarea.append(eachCSS);
+            CSSState = fullParseCSS();
+            var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
+            CSSState = fullParseCSS();
+            for(let i in CSSState) {
+              for(let j in CSSState[i]) {
+                let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
+                  el("textarea", {"class": "CSS-selectors", "storedCSS": CSSState[i][j]}, [], {
+                    defaultValue: CSSState[i][j].content, 
+                    onkeyup() {
+                      CSSState[i][j].content = this.value;
+                      console.log(CSSState[i]);
+                      fullUnparseCSS(CSSState);
+                      //updateInteractionDiv();
+                    } 
+                  })/*,
+                  el("div", {"class": "delete-CSS"}, [], {
+                    innerHTML: wasteBasketSVG,
+                    onclick: deleteCS
+                  })*/
+                ]);
+                //eachCSS.childList[1].value = CSSdisplay[k].cssText;
+                CSSarea.append(eachCSS);
+              }
             }
-            //checks for similarities between current CSS changes and 
-          
             interactionDiv.append(CSSarea);
+            //checks for similarities between current CSS changes and 
+            /*
+            
             interactionDiv.append(el("button", {"class": "CSSbutton", title: "Create new selector"}, [], {
               innerHTML: "New CSS",
               onclick() { 
