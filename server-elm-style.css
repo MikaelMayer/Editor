@@ -70,6 +70,27 @@ input:checked+.slider:before {
     transform: translateX(13px);
 }
 
+.textarea {
+    color: white;
+    font-family: Arial;
+}
+.notifs {
+    background-color: #000000; /* black */
+    transform:translateX(48px);
+    position:fixed;
+    top:5px;
+    right:496px;
+    width:256px;
+    height:128px;
+}
+.logger {
+    background-color: #000000; /* black */
+    position:fixed;
+    width: 400px;
+    top:128px;
+    height:128px;
+}
+
 /* Rounded sliders */
 
 .slider.round {
@@ -101,7 +122,6 @@ div.imgFolder {
 div.imgFolder > img {
     max-width: 100%;
     min-width: 2em;
-    padding: 8px;
 }
 
 a.troubleshooter {
@@ -352,6 +372,17 @@ div#modify-menu>div.information {
 
 div.#modify-menu>div.information-style {
     padding: 0.4rem;
+}
+
+/* information part scroll bar */
+.information.information-style::-webkit-scrollbar {
+    background: transparent;
+    width: 8px;
+}
+
+.information.information-style::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
 }
 
 div.information>textarea {
