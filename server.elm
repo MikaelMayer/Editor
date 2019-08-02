@@ -289,7 +289,7 @@ luca =
 
       let modifyMenuDiv = document.querySelector("#modify-menu");
       if (!modifyMenuDiv) {
-        window.alert("Notifications havent been set up for use outside of editor, like in the filesystem");
+        console.log("Notifications havent been set up for use outside of editor, like in the filesystem");
         return;
       }
       let notifBox = document.getElementById("notif-box");
