@@ -143,7 +143,7 @@ isTextFile path =
               let source = fs.read hydefile |>
                       Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@hydefile' not found?!"]""")
                   source = source + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
-                  fileDirectory = Regex.replace "^/|/[^/]*$" "" hydefile
+                  fileDirectory = Regex.replace "/[^/]*$" "" hydefile
                   inDirectory name = if fileDirectory == "" then name else
                     fileDirectory  + "/" + name
                   fsReadRecord = 
@@ -183,7 +183,7 @@ isTextFile path =
                         (tuplesToWrite, joinedErrors))
                     |> Result.withDefaultMapError (\msg -> ([], msg))
               in
-              let _ = Debug.log "generatedFilesDict" generatedFilesDict in
+              //let _ = Debug.log "generatedFilesDict" generatedFilesDict in
               case listDict.get path generatedFilesDict of
                 Nothing -> if errors == "" then fs.read path else
                   Just <|
@@ -550,8 +550,9 @@ evaluatedPage =
           save-ghost-attributes="style ghost-anchor-column ghost-anchor-row ghost-lead-column ghost-lead-row" initdata=@sourcecontent></div>
         <script>
         editor.ghostNodes.push(node =>
-          node.tagName === "SCRIPT" && node.getAttribute("src") && node.getAttribute("src").match(/mode-(.*)\.js/)
+          node.tagName === "SCRIPT" && node.getAttribute("src") && node.getAttribute("src").match(/mode-(.*)\.js|libs\/ace\/.*\/ext-searchbox.js/)
         );
+        
         var script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/ace.js';
         script.async = false;
@@ -1177,7 +1178,7 @@ main =
 insertThereInstead atBeginning list =
   Update.lens {apply _ = [],
     update {outputNew, input=list} =
-      Ok (InputsWithDiffs [((if atBeginning then outputNew ++ list else list ++ outputNew, []), Just <| Update.vTupleDiffs_1 <|
+      Ok (InputsWithDiffs [(if atBeginning then outputNew ++ list else list ++ outputNew, Just <|
         VListDiffs [(if atBeginning then 0 else List.length list, ListElemInsert (List.length outputNew))]
       )])
   } list
@@ -1361,10 +1362,11 @@ editor.ghostNodes.push(insertedNode =>
     insertedNode.getAttribute("id") == "ssIFrame_google")
 );
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
-// editor.ghostNodes.push(insertedNode => 
-//   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
-//   insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined" && (insertedNode.setAttribute("save-ghost", "true") || true)
-// );
+ editor.ghostNodes.push(insertedNode => 
+   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
+   insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined"&& insertedNode.textContent.match("error_widget\\.ace_warning")
+   && (insertedNode.setAttribute("save-ghost", "true") || true)
+ );
 // For ace script for syntax highlight
 editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
