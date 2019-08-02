@@ -3466,24 +3466,6 @@ lastEditScript = """
         document.body.addEventListener('mouseout', linkModeHover2, false);
 
       }
-
-
-      // interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
-      //       let newel = el(document.querySelector("#newTagName").value);
-      //       let elements = clickedElem.childNodes;
-      //       while(elements.length) {
-      //         newel.append(elements[0]);
-      //       }
-      //       for(let i = 0; i < clickedElem.attributes.length; i++) {
-      //         newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-      //       }
-      //       clickedElem.parentElement.insertBefore(newel, clickedElem);
-      //       clickedElem.remove();
-      //       editor_model.clickedElem = newel;
-      //       updateInteractionDiv();
-      //     }
-      //   }
-      // ));
       
       let keyvalues = el("div", {"class":"keyvalues"});
       if (clickedElem) {
@@ -3530,7 +3512,7 @@ lastEditScript = """
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
               el("span", {},
-                el("input", {"type": "text", value: value, "id": "image-src-input"},
+                el("input", {"type": "text", value: value, "id": "dom-attr-" + name},
                   [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
@@ -3609,7 +3591,7 @@ lastEditScript = """
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-            document.getElementById("image-src-input").setAttribute("value", file.name);
+            document.getElementById("dom-attr-src").setAttribute("value", file.name);
             clickedElem.setAttribute("src", targetPathName);
             // adapt to HTML5 new attribute 'srcset'
             // IF website use 'srcset', we force to set this attribute to null then replace image using 'src'
