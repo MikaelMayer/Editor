@@ -183,7 +183,7 @@ isTextFile path =
                         (tuplesToWrite, joinedErrors))
                     |> Result.withDefaultMapError (\msg -> ([], msg))
               in
-              //let _ = Debug.log "generatedFilesDict" generatedFilesDict in
+              --let _ = Debug.log "generatedFilesDict" generatedFilesDict in
               case listDict.get path generatedFilesDict of
                 Nothing -> if errors == "" then fs.read path else
                   Just <|
