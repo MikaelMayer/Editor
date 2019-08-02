@@ -3688,7 +3688,7 @@ lastEditScript = """
         files.forEach(file => {
           let ext = file.split('.').pop().toLowerCase();
           if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif' || ext == 'svg' || ext == 'bmp') {
-            if (file.split('/').pop() === srcName.split("/").pop()) {
+            if (file.split('/').pop() === srcName.split("/").pop().split("?")[0]) {   // note that srcName maybe "/1.jpg?raw=true"
               currentSelectedImage = file;
             } else {
               images.push(file);
