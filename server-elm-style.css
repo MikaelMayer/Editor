@@ -69,6 +69,27 @@ input:checked+.slider:before {
     transform: translateX(13px);
 }
 
+.textarea {
+    color: white;
+    font-family: Arial;
+}
+.notifs {
+    background-color: #000000; /* black */
+    transform:translateX(48px);
+    position:fixed;
+    top:5px;
+    right:496px;
+    width:256px;
+    height:128px;
+}
+.logger {
+    background-color: #000000; /* black */
+    position:fixed;
+    width: 400px;
+    top:128px;
+    height:128px;
+}
+
 /* Rounded sliders */
 
 .slider.round {
