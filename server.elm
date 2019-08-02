@@ -1125,7 +1125,7 @@ switchEditBox toEdit =
 }
 #editbox:hover {
   opacity: 1;
-  
+}
 </style>@msg
 </div>
 
@@ -3294,11 +3294,11 @@ editionscript = """
             }
             function fullParseCSS() {
               var fullCSS = [];
-              console.log(document.querySelectorAll("style"));
+              console.log("All style tags:", document.querySelectorAll("style"));
               document.querySelectorAll("style").forEach((e) => {
                 var curCSS = [];
                 var parsedCSS = CSSparser.parseCSS(e.textContent);
-                console.log(parsedCSS);
+                console.log("The parsed CSS is:", parsedCSS);
                 //following variable tracks the index of the element after previous relevant CSS segment
                 let prevRelCSS = 0;
                 for(let i in parsedCSS) {
@@ -3382,46 +3382,95 @@ editionscript = """
                 curTag.textContent = CSSString;
               }
             }
-            CSSState = fullParseCSS();
+            
             var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
-            CSSState = fullParseCSS();
-            for(let i in CSSState) {
-              for(let j in CSSState[i]) {
-                let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
-                  el("textarea", {"class": "CSS-selectors", "storedCSS": CSSState[i][j]}, [], {
-                    defaultValue: CSSState[i][j].content, 
-                    onkeyup() {
-                      CSSState[i][j].content = this.value;
-                      console.log(CSSState[i]);
-                      fullUnparseCSS(CSSState);
-                      //updateInteractionDiv();
-                    } 
-                  })/*,
-                  el("div", {"class": "delete-CSS"}, [], {
-                    innerHTML: wasteBasketSVG,
-                    onclick: deleteCS
-                  })*/
-                ]);
-                //eachCSS.childList[1].value = CSSdisplay[k].cssText;
-                CSSarea.append(eachCSS);
+            //CSSState = fullParseCSS();
+            function setCSSAreas() {
+              editor_model.CSSState = fullParseCSS();
+              console.log(editor_model.CSSState);
+              while(CSSarea.firstChild) {
+                CSSarea.removeChild(firstChild);
+              }
+              for(let i in editor_model.CSSState) {
+                for(let j in editor_model.CSSState[i]) {
+                  let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
+                    el("textarea", {"class": "CSS-selectors" }, [], {
+                      defaultValue: editor_model.CSSState[i][j].content, 
+                      onkeyup() {
+                        let throwError = false;
+                        curCSSState = CSSparser.parseCSS(this.value);
+                        console.log(curCSSState);
+                        //check to make sure CSS is still relevant to clicked element.
+                        for(let i in curCSSState) {
+                          if(curCSSState[i].kind === 'cssBlock' || curCSSState[i].kind === '@media') {
+                            if(!(curCSSState[i].kind === 'cssBlock' ? clickedElement.matches(curCSSState[i].selector) : 
+                            (window.matchMedia(curCSSState[i].selector).matches ? clickedElement.matches(curCSSState[i].content.selector) : false))) {
+                              throwError = true;
+                            }
+                          }
+                        }
+                        //when a change is made, write first to stored 
+                        //"semi-parsed" CSS (CSS that contains location information)
+                        //then write to original style tag
+                        if(throwError) {
+                          popupMessage("The CSS is no longer relevant to the selected element!");
+                        }
+                        else {
+                          this.storedCSS.content = this.value;
+                          console.log(editor_model.CSSState[i]);
+                          fullUnparseCSS(editor_model.CSSState);
+                          setCSSAreas();
+                        }
+                      },
+                      storedCSS: editor_model.CSSState[i][j]
+                    })/*,
+                    el("div", {"class": "delete-CSS"}, [], {
+                      innerHTML: wasteBasketSVG,
+                      onclick: deleteCS
+                    })*/
+                  ]);
+                  CSSarea.append(eachCSS);
+                }
               }
             }
+            setCSSAreas();
             interactionDiv.append(CSSarea);
-            //checks for similarities between current CSS changes and 
-            /*
-            
             interactionDiv.append(el("button", {"class": "CSSbutton", title: "Create new selector"}, [], {
               innerHTML: "New CSS",
               onclick() { 
                 CSSarea.append(el("div", {"class": "CSS-modify-unit"}, [
-                  el("textarea", {"class": "CSS-selectors"}, []),
-                  el("div", {"class": "delete-CSS"}, [], {
+                  el("textarea", {"class": "CSS-selectors", }, [], {
+                    onkeyup() {
+                      let throwError = false;
+                      for(let i in curCSSState) {
+                        if(curCSSState[i].kind === 'cssBlock' || curCSSState[i].kind === '@media') {
+                          if(!(curCSSState[i].kind === 'cssBlock' ? clickedElement.matches(curCSSState[i].selector) : 
+                          (window.matchMedia(curCSSState[i].selector).matches ? clickedElement.matches(curCSSState[i].content.selector) : false))) {
+                            throwError = true;
+                          }
+                        }
+                      }
+                      if(this.storedCSS && !throwError) {
+                        this.storedCSS.content = this.value;
+                        console.log(editor_model.CSSState[i]);
+                        fullUnparseCSS(editor_model.CSSState);
+                        setCSSAreas();
+                      }
+                      else {
+                        document.head.appendChild(el("style", {id: "new-Style"}, [], {innerHTML: this.value}));
+                        setCSSAreas();
+                      }
+                    },
+                    storedCSS: undefined
+                  })
+                  /*el("div", {"class": "delete-CSS"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick: deleteCSS
-                  })
+                  })*/
                 ]));
               }
             }));
+            /*
             interactionDiv.append(el("button", {"class": "CSSbutton", title: "Look at changes"}, [], {
               innerHTML: "Examine changes",
               onclick() { 
