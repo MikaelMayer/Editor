@@ -807,7 +807,6 @@ textarea#singleChildNodeContent {
         transform: translate(0px, 100%);
         padding: 0;
         padding-bottom: 80px;
-        overflow-y: scroll;
     }
     div#modify-menu>div.modify-menu-icons.pinned {
         width: auto;
@@ -818,6 +817,12 @@ textarea#singleChildNodeContent {
     }
     div#modify-menu>div.modify-menu-icons.pinned span.modify-menu-icon-label {
         display: none;
+    }
+    div#modify-menu>div.modify-menu-icons.pinned >div.modify-menu-button {
+        height: 50px;
+    }
+    div#modify-menu>div.modify-menu-icons.pinned svg {
+        height: 50px;
     }
     div.bottom-placeholder {
         width: 100%;
