@@ -2626,10 +2626,8 @@ lastEditScript = """
       let interactionDiv = el("div", {"class": "information"});
       modifyMenuDiv.append(modifyMenuPinnedIconsDiv);
       let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
-      // let tagNameSummary = el("div", {"class": "tagname-summary"});
 
       modifyMenuDiv.append(domSelector);
-      // modifyMenuDiv.append(tagNameSummary);
       modifyMenuDiv.append(modifyMenuIconsDiv);
       modifyMenuDiv.append(interactionDiv);
       let createButton = function(innerHTML, attributes, properties) {
@@ -2982,13 +2980,6 @@ lastEditScript = """
       }
       if(clickedElem) {
         interactionDiv.classList.add("information-style");
-        // tagNameSummary.append(el("div", {class: "tagname-input codefont"}, [
-        //       el("input", {"id":"newTagName", "class": "codefont inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
-        //       document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
-        //     }}),
-        //     ]
-        // ));
-        // tagNameSummary.append(el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50)));
 
         /*
           Build the DOM node selector:
@@ -3137,7 +3128,7 @@ lastEditScript = """
               return;
             }
 
-            if (!c.hasChildNodes() || (clickedElem.childNodes[0].nodeType === 3)) {
+            if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
                // still in status 2
               editor_model.displayClickedElemAsMainElem = false;
             } else {
@@ -3182,7 +3173,7 @@ lastEditScript = """
 
         // editor itself should be invisible
         if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
-          if (!clickedElem.hasChildNodes() || (clickedElem.childNodes[0].nodeType === 3)) {
+          if (!clickedElem.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
             editor_model.displayClickedElemAsMainElem = false;
           }
           // status 1. display clicked element in main part
@@ -3225,7 +3216,7 @@ lastEditScript = """
                       return;
                     }
 
-                    if (!c.hasChildNodes() || (clickedElem.childNodes[0].nodeType === 3)) {
+                    if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
                       editor_model.displayClickedElemAsMainElem = false;
                     } else {
                       // still in status 1
@@ -3288,10 +3279,13 @@ lastEditScript = """
           }
         }
       }
-
-      //    |--  |\ |  |--
-      //    |--  | \|  |  | of DOM SELECTOR
-      //    |--  |  |  |--
+      
+        // _______ .__   __.  _______  
+        // |   ____||  \ |  | |       \ 
+        // |  |__   |   \|  | |  .--.  |
+        // |   __|  |  . `  | |  |  |  |  of DOM SELECTOR
+        // |  |____ |  |\   | |  '--'  |
+        // |_______||__| \__| |_______/ 
 
       
       let linkSelect = function() {
@@ -3488,7 +3482,7 @@ lastEditScript = """
         let currentSelectedImage;
         files.forEach(file => {
           let ext = file.split('.').pop().toLowerCase();
-          if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif') {
+          if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif' || ext == 'svg' || ext == 'bmp') {
             if (file.split('/').pop() === srcName.split("/").pop()) {
               currentSelectedImage = file;
             } else {
