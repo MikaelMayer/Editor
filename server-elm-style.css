@@ -53,6 +53,7 @@
     -webkit-user-select: text;
     outline-color: transparent;
     box-shadow: none;
+    color: var(--context-button-color-inert);
 }
 
 input:checked+.slider {
@@ -121,7 +122,6 @@ div.imgFolder {
 div.imgFolder > img {
     max-width: 100%;
     min-width: 2em;
-    padding: 8px;
 }
 
 a.troubleshooter {
@@ -366,11 +366,23 @@ div#modify-menu>div.information {
     overflow-y: auto;
     max-height: calc(100% - var(--context-menu-height));
     margin: 2%;
+    margin-top: 0;
     border-radius: 0.3em;
 }
 
 div.#modify-menu>div.information-style {
     padding: 0.4rem;
+}
+
+/* information part scroll bar */
+.information.information-style::-webkit-scrollbar {
+    background: transparent;
+    width: 8px;
+}
+
+.information.information-style::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
 }
 
 div.information>textarea {
@@ -399,7 +411,7 @@ div#modify-menu div.keyvalues>div.keyvalue {
 
 div#modify-menu div.keyvalues>div.keyvalue>* {
     display: table-cell;
-    padding: 4px;
+    padding-left: 4px;
     vertical-align: middle;
 }
 
@@ -474,13 +486,15 @@ div.tagname-summary {
 
 div.dom-selector-style {
     margin: 2%;
+    margin-bottom: 0;
     border-radius: 0.4em;
     padding: 0.4rem;
 }
 
 div.childrenElem {
     display: flex;
-    height: 80px;
+    height: 30px;
+    margin-top: 4px;
 }
 
 div.mainElemName {
@@ -498,7 +512,7 @@ div.childrenSelector {
     flex: 1;
     text-align: center;
     overflow: hidden;
-    padding: 10px;
+    padding: 2px;
     margin: 2px;
     border-radius: 0.3rem;
     background-color: var(--context-dom-children-selector-color);
@@ -516,17 +530,20 @@ div.childrenSelector:hover {
 }
 
 div.mainElem {
-    height: 90px;
-    padding-bottom: 6px;
+    height: 62px;
     position: relative;
     text-align: center;
-    font-size: 1.6em;
-    margin-bottom: 0.5em;
+    overflow: hidden;
+    font-size: 1.3em;
+    text-overflow: ellipsis;
 }
 
 div.mainElemInfo {
     font-size: 0.6em;
     color: var(--context-dom-text-color);
+    height: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 div.childrenSelectorInfo {
@@ -538,7 +555,9 @@ div.childrenSelectorInfo {
 }
 
 div.elementAttr {
-    font-size: 0.5em;
+    margin-left: 6px;
+    display: inline-block;
+    font-size: 0.6em;
     line-height: 1.02em;
     text-overflow: ellipsis;
     overflow: hidden;
@@ -551,11 +570,9 @@ div.no-children, div.no-parent {
     text-align: center;
     text-transform: uppercase;
     color: black;
-    padding: 10px;
-    margin: 2px;
     border-radius: 0.3rem;
     font-weight: bold;
-    line-height: 50px;
+    line-height: 36px;
     font-size: 0.8rem;
     pointer-events: none;
 }
@@ -569,11 +586,10 @@ div.no-sibling {
     color: black;
     width: 20%;
     text-transform: uppercase;
-    font-size: 0.8rem;
-    line-height: 15px;
+    font-size: 0.7rem;
+    line-height: 20px;
     font-weight: bold;
     min-width: 50px;
-    padding-top: 20px;
     pointer-events: none;
 }
 
@@ -594,8 +610,9 @@ div.no-sibling {
 }
 
 #upload-image-btn-a {
-    margin: 10%;
-    padding: 4px 10px;
+    margin-left: 0;
+    margin-top: 10px;
+    margin-bottom: 10px;
     height: 20px;
     position: relative;
     color: black;
@@ -616,8 +633,8 @@ div.no-sibling {
 /* highlight selected image */
 
 div.highlight-select-image {
-    border: 2px solid white;
-    border-radius: 0.8em;
+    border: 1px solid white;
+    border-radius: 0.76em;
 }
 
 :root {
@@ -763,6 +780,15 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
 textarea#singleChildNodeContent {
     width: 100%;
     height: 50%;
+    border-radius: 0.4em;
+    border: 0;
+    margin-top: 6px;
+    padding: 10px;
+    color: black;
+}
+
+#modify-menu span.insertOption label {
+  display: inline-block;
 }
 
 @media (pointer: coarse) {
@@ -781,6 +807,7 @@ textarea#singleChildNodeContent {
         transform: translate(0px, 100%);
         padding: 0;
         padding-bottom: 80px;
+        overflow-y: scroll;
     }
     div#modify-menu>div.modify-menu-icons.pinned {
         width: auto;
