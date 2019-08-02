@@ -1325,10 +1325,10 @@ editor.ghostNodes.push(insertedNode =>
     insertedNode.getAttribute("id") == "ssIFrame_google")
 );
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
-editor.ghostNodes.push(insertedNode => 
-  insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
-  insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined" && (insertedNode.setAttribute("save-ghost", "true") || true)
-);
+// editor.ghostNodes.push(insertedNode => 
+//   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
+//   insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined" && (insertedNode.setAttribute("save-ghost", "true") || true)
+// );
 // For ace script for syntax highlight
 editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
@@ -3116,6 +3116,7 @@ lastEditScript = """
               // still in status 2, but clicked element change to previous sibling
               editor_model.displayClickedElemAsMainElem = false;
               editor_model.previousVisitedElem = []; // clear the stack
+              editor_model.clickedElem.removeAttribute("ghost-hovered");
               editor_model.clickedElem = c;
               editor_model.notextselection = true;
               updateInteractionDiv();
@@ -3138,6 +3139,7 @@ lastEditScript = """
 
             // switch to status 1
             editor_model.displayClickedElemAsMainElem = true;
+            editor_model.clickedElem.removeAttribute("ghost-hovered");
             editor_model.clickedElem = c;
             editor_model.notextselection = true;
             updateInteractionDiv();
@@ -3159,6 +3161,7 @@ lastEditScript = """
               // still in status 2, but clicked element change to next sibling
               editor_model.displayClickedElemAsMainElem = false;
               editor_model.previousVisitedElem = []; // clear the stack
+              editor_model.clickedElem.removeAttribute("ghost-hovered");
               editor_model.clickedElem = c;
               editor_model.notextselection = true;
               updateInteractionDiv();
@@ -3185,6 +3188,7 @@ lastEditScript = """
 
               // When the main element in selector is clicked, selector switch to status 2 so that user can see its parent element
               editor_model.displayClickedElemAsMainElem = false;
+              editor_model.clickedElem.removeAttribute("ghost-hovered");
               editor_model.clickedElem = clickedElem;
               editor_model.notextselection = true;
               updateInteractionDiv();
@@ -3214,6 +3218,7 @@ lastEditScript = """
 
                     // still in status 1
                     editor_model.displayClickedElemAsMainElem = true;
+                    editor_model.clickedElem.removeAttribute("ghost-hovered");
                     editor_model.clickedElem = c;
                     editor_model.notextselection = true;
                     updateInteractionDiv();
@@ -3255,6 +3260,7 @@ lastEditScript = """
                     editor_model.previousVisitedElem = []; // clear the stack
                   }
                 }
+                editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = clickedElem.parentElement;
                 editor_model.notextselection = true;
                 updateInteractionDiv();
@@ -3397,30 +3403,30 @@ lastEditScript = """
         );
       }
 
-      function uploadImagesAtCursor(files, srcName) {
+      function uploadImagesAtCursor(files) {
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
             document.getElementById("dom-attr-src").setAttribute("value", file.name);
             clickedElem.setAttribute("src", targetPathName);
             // adapt to HTML5 new attribute 'srcset'
-            // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
+            // IF website use 'srcset', we force to set this attribute to null then replace image using 'src'
             if (clickedElem.getAttribute("srcset") != undefined) {
               clickedElem.setAttribute("srcset", "");
             }
           });
         }
-
         // refresh images list
-        showListsImages(srcName);
+        showListsImages(targetPathName);  // targetPathName is the last file of files array, but it seems that user can only upload one file once
 
         // automatically select upload image
-        let selectedImage = document.querySelectorAll(".imgFolder");
+        let selectedImage = document.querySelectorAll(".imgFolder > img");
         for (let i = 0; i < selectedImage.length; ++i) {
-          if (selectedImage[i].getAttribute("src") === files[files.length - 1]) {
-            selectedImage[i].classList.add("highlight-select-image");
+          let imgName = selectedImage[i].getAttribute("src").split("/").pop();
+          if (imgName === files[files.length - 1].name) {
+            selectedImage[i].parentElement.classList.add("highlight-select-image");
           } else {
-            selectedImage[i].classList.remove("highlight-select-image");
+            selectedImage[i].parentElement.classList.remove("highlight-select-image");
           }
         }
       }
@@ -3438,7 +3444,7 @@ lastEditScript = """
         files.forEach(file => {
           let ext = file.split('.').pop().toLowerCase();
           if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif') {
-            if (file === srcName.split("/").pop()) {
+            if (file.split('/').pop() === srcName.split("/").pop()) {
               currentSelectedImage = file;
             } else {
               images.push(file);
@@ -3454,9 +3460,16 @@ lastEditScript = """
         let selectedImage = document.querySelectorAll(".imgFolder");
         selectedImage.forEach(e => e.remove());
 
+        let imgDiv = el("div", { "id": "imgGallery" });
+        if (!document.getElementById("imgGallery")) {
+          interactionDiv.append(imgDiv);
+        } else {
+          imgDiv = document.getElementById("imgGallery");
+        }
+
         for (let i = 0; i < images.length; ++i) {
-          interactionDiv.append(
-            el("div", { class: "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
+          imgDiv.append(
+            el("div", { "class": "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
               onclick() {
                 // highlight the selected image
                 let otherImages = document.querySelectorAll(".imgFolder");
@@ -3495,7 +3508,9 @@ lastEditScript = """
           e.stopPropagation();
           e.preventDefault();
           var files = e.dataTransfer.files; // FileList object
-          uploadImagesAtCursor(files, srcName);
+          if (files && files[0]) {
+            uploadImagesAtCursor(files);
+          }
         }
 
         // upload image button
@@ -3505,7 +3520,7 @@ lastEditScript = """
             el(
               "input", {"id": "upload-image-btn-input", "type": "file", value: "Please upload images..."}, 
               [], 
-              { onchange: function(evt) { uploadImagesAtCursor(evt.target.files, srcName); }}
+              { onchange: function(evt) { uploadImagesAtCursor(evt.target.files); }}
             ), 
             {}
           )

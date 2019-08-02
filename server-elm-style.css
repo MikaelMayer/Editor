@@ -595,8 +595,8 @@ div.no-sibling {
 /* highlight selected image */
 
 div.highlight-select-image {
-    border: 2px solid white;
-    border-radius: 0.8em;
+    border: 1px solid white;
+    border-radius: 0.76em;
 }
 
 :root {
