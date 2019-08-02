@@ -744,6 +744,10 @@ textarea#singleChildNodeContent {
     height: 50%;
 }
 
+#modify-menu span.insertOption label {
+  display: inline-block;
+}
+
 @media (pointer: coarse) {
     div#modify-menu {
         -webkit-box-shadow: none;
@@ -760,6 +764,7 @@ textarea#singleChildNodeContent {
         transform: translate(0px, 100%);
         padding: 0;
         padding-bottom: 80px;
+        overflow-y: scroll;
     }
     div#modify-menu>div.modify-menu-icons.pinned {
         width: auto;

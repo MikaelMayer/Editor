@@ -207,7 +207,7 @@ LUCA stands for "Last Universal Common Ancestor"
 ----------------------------------------------------------------------------}
 
 luca = 
-  [<script>
+  [<script id="thaditor-luca">
     var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
 
     function writeDocument(NC) {
@@ -1083,6 +1083,15 @@ recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
     <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
   Ok page -> page
 
+jsEnabled = boolVar "js" True
+
+removeJS node = case node of
+  [text, content] -> node
+  [tag, attrs, children] ->
+    if tag == "script" then [tag, [], [["TEXT", "/*Script disabled by Thaditor*/"]]] else
+    [tag, attrs, List.map removeJS children]
+  _ -> []
+
 {---------------------------------------------------------------------------
  Instruments the resulting HTML page
  - Removes whitespace that are siblings of <head> and <body>
@@ -1101,6 +1110,7 @@ main =
     List.filter (case of [_, _] -> False; _ -> True) |>
     List.mapWithReverse identity (case of
       ["body", bodyattrs, bodyChildren] ->
+        let bodyChildren = if jsEnabled then bodyChildren else List.map removeJS bodyChildren in
         ["body",
            (if canEditPage then
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
@@ -1113,9 +1123,10 @@ main =
               if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
               serverOwned "edit prelude when not in edit mode" []) ++
              bodyChildren ++
-             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder"> </div>, <script>@lastEditScript</script>] ++ insertThereInstead False bodyChildren -- All new nodes there are added back to bodyChildren.
+             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder"> </div>, <script  id="thaditor-lastscript">@lastEditScript</script>] ++ insertThereInstead False bodyChildren -- All new nodes there are added back to bodyChildren.
              )]
       ["head", headattrs, headChildren] ->
+        let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
         ["head", headattrs,
            insertThereInstead True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
            serverOwned "initial script" initialScript ++
