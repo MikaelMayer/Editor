@@ -2615,10 +2615,10 @@ lastEditScript = """
       let interactionDiv = el("div", {"class": "information"});
       modifyMenuDiv.append(modifyMenuPinnedIconsDiv);
       let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
-      let tagNameSummary = el("div", {"class": "tagname-summary"});
+      // let tagNameSummary = el("div", {"class": "tagname-summary"});
 
       modifyMenuDiv.append(domSelector);
-      modifyMenuDiv.append(tagNameSummary);
+      // modifyMenuDiv.append(tagNameSummary);
       modifyMenuDiv.append(modifyMenuIconsDiv);
       modifyMenuDiv.append(interactionDiv);
       let createButton = function(innerHTML, attributes, properties) {
@@ -2971,13 +2971,13 @@ lastEditScript = """
       }
       if(clickedElem) {
         interactionDiv.classList.add("information-style");
-        tagNameSummary.append(el("div", {class: "tagname-input codefont"}, [
-              el("input", {"id":"newTagName", "class": "codefont inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
-              document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
-            }}),
-            ]
-        ));
-        tagNameSummary.append(el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50)));
+        // tagNameSummary.append(el("div", {class: "tagname-input codefont"}, [
+        //       el("input", {"id":"newTagName", "class": "codefont inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
+        //       document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+        //     }}),
+        //     ]
+        // ));
+        // tagNameSummary.append(el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50)));
 
         /*
           Build the DOM node selector:
@@ -3061,7 +3061,7 @@ lastEditScript = """
             el("div", {"class": "childrenSelector"},
               [
                 el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
-                el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
+                // el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
               ], 
               {
                 onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
@@ -3113,7 +3113,7 @@ lastEditScript = """
           } else {
             let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
             childrenElemDiv.append(
-              el("div", {"class": "childrenSelector no-sibling"}, "no previous sibling")
+              el("div", {"class": "childrenSelector no-sibling"}, "no sibling")
             );
           }
           cnt++;
@@ -3126,8 +3126,13 @@ lastEditScript = """
               return;
             }
 
-            // switch to status 1
-            editor_model.displayClickedElemAsMainElem = true;
+            if (!c.hasChildNodes() || (clickedElem.childNodes[0].nodeType === 3)) {
+               // still in status 2
+              editor_model.displayClickedElemAsMainElem = false;
+            } else {
+              // switch to status 1
+              editor_model.displayClickedElemAsMainElem = true;
+            }
             editor_model.clickedElem.removeAttribute("ghost-hovered");
             editor_model.clickedElem = c;
             editor_model.notextselection = true;
@@ -3139,7 +3144,8 @@ lastEditScript = """
           cnt++;
 
           // display next sibling
-          if (middleChild.nextElementSibling && (middleChild.nextElementSibling.id !== "context-menu" || middleChild.nextElementSibling.id !== "modify-menu" || middleChild.nextElementSibling.id !== "editbox")) {
+          if (middleChild.nextElementSibling && 
+             (middleChild.nextElementSibling.id !== "context-menu" || middleChild.nextElementSibling.id !== "modify-menu" || middleChild.nextElementSibling.id !== "editbox")) {
             displayChildrenElem(middleChild.nextElementSibling);
             document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
               let c = middleChild.nextElementSibling;
@@ -3158,13 +3164,16 @@ lastEditScript = """
           } else {
             let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
             childrenElemDiv.append(
-              el("div", {"class": "childrenSelector no-sibling"}, "no next sibling")
+              el("div", {"class": "childrenSelector no-sibling"}, "no sibling")
             );
           }
         }
 
         // editor itself should be invisible
         if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
+          if (!clickedElem.hasChildNodes() || (clickedElem.childNodes[0].nodeType === 3)) {
+            editor_model.displayClickedElemAsMainElem = false;
+          }
           // status 1. display clicked element in main part
           if (editor_model.displayClickedElemAsMainElem) {
             let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
@@ -3205,8 +3214,12 @@ lastEditScript = """
                       return;
                     }
 
-                    // still in status 1
-                    editor_model.displayClickedElemAsMainElem = true;
+                    if (!c.hasChildNodes() || (clickedElem.childNodes[0].nodeType === 3)) {
+                      editor_model.displayClickedElemAsMainElem = false;
+                    } else {
+                      // still in status 1
+                      editor_model.displayClickedElemAsMainElem = true;
+                    }
                     editor_model.clickedElem.removeAttribute("ghost-hovered");
                     editor_model.clickedElem = c;
                     editor_model.notextselection = true;
@@ -3215,9 +3228,9 @@ lastEditScript = """
                   cnt++;
                 }
               } else {
-                document.querySelector(".childrenElem").append(
-                    el("div", {"class": "no-children"}, "No Children")
-                );
+                // document.querySelector(".childrenElem").append(
+                //     el("div", {"class": "no-children"}, "No Children")
+                // );
               }
             } else {
               editor_model.previousVisitedElem.pop();
@@ -3287,24 +3300,56 @@ lastEditScript = """
       }
 
 
-      interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
-            let newel = el(document.querySelector("#newTagName").value);
-            let elements = clickedElem.childNodes;
-            while(elements.length) {
-              newel.append(elements[0]);
-            }
-            for(let i = 0; i < clickedElem.attributes.length; i++) {
-              newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-            }
-            clickedElem.parentElement.insertBefore(newel, clickedElem);
-            clickedElem.remove();
-            editor_model.clickedElem = newel;
-            updateInteractionDiv();
-          }
-        }
-      ));
+      // interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
+      //       let newel = el(document.querySelector("#newTagName").value);
+      //       let elements = clickedElem.childNodes;
+      //       while(elements.length) {
+      //         newel.append(elements[0]);
+      //       }
+      //       for(let i = 0; i < clickedElem.attributes.length; i++) {
+      //         newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+      //       }
+      //       clickedElem.parentElement.insertBefore(newel, clickedElem);
+      //       clickedElem.remove();
+      //       editor_model.clickedElem = newel;
+      //       updateInteractionDiv();
+      //     }
+      //   }
+      // ));
       
       let keyvalues = el("div", {"class":"keyvalues"});
+      if (clickedElem) {
+        // modify tagname
+          keyvalues.append(
+            el("div", {"class": "keyvalue"}, [
+              el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "tag: "),
+              el("span", {},
+                el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
+                  [], {
+                    // onkeyup() {
+                    //   document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+                    // }
+                  })
+              ),
+              el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
+                  let newel = el(document.querySelector("#newTagName").value);
+                  let elements = clickedElem.childNodes;
+                  while(elements.length) {
+                    newel.append(elements[0]);
+                  }
+                  for(let i = 0; i < clickedElem.attributes.length; i++) {
+                    newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+                  }
+                  clickedElem.parentElement.insertBefore(newel, clickedElem);
+                  clickedElem.remove();
+                  editor_model.clickedElem = newel;
+                  updateInteractionDiv();
+                }
+              }
+            )
+            ])
+          );
+      }
       for(let i = 0; clickedElem && clickedElem.attributes && i < clickedElem.attributes.length; i++) {
         let name = clickedElem.attributes[i].name;
         if(name === "ghost-clicked" || name === "ghost-hovered") continue;
