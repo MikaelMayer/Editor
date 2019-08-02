@@ -1416,6 +1416,8 @@ function emptyTextContent(node) {
   }
   return node;
 }
+editor.emptyTextContent = emptyTextContent;
+
 function insertBefore(parent, node, beforeNode) {
   if(beforeNode == null) {
     parent.append(node);
@@ -1431,7 +1433,7 @@ function duplicate(node, options) {
     var parentInsertion = options.target ? options.target.parentElement : node.parentElement;
     var insertBeforeNode = options.after ? options.target ? options.target.nextSibling : node.nextSibling :
                                            options.target ? options.target             : node;
-    if(node.nextSibling != null && !options.target) {
+    if(node.nextSibling != null && !options.target && !options.ignoreText) {
       var next = node.nextSibling;
       if(next.nodeType == 3 && next.nextSibling != null &&
          next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
@@ -1449,8 +1451,11 @@ function duplicate(node, options) {
     return cloned;
   }
 }
-function remove(node) {
-  if(node.previousSibling != null) { // Remove whitespace as well
+editor.duplicate = duplicate;
+
+function remove(node, options) {
+  if(typeof options == "undefined") options = {}
+  if(node.previousSibling != null && !options.ignoreText) { // Remove whitespace as well
     var next = node.nextSibling;
     if(next.nodeType == 3 && next.nextSibling != null &&
        next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
@@ -1459,6 +1464,7 @@ function remove(node) {
   }
   node.remove();
 }
+editor.remove = remove;
 </script>
 ]
 
@@ -2401,6 +2407,7 @@ lastEditScript = """
       editor_model.link_href_source = aElement; // So that we can modify it
       editor_model.insertElement = false;
       editor_model.advanced = false;
+      editor_model.notextselection = false;
       updateInteractionDiv();
       // Check if the event.target matches some selector, and do things...
     }
@@ -2409,7 +2416,7 @@ lastEditScript = """
       return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
             <path d="${path}" /></svg>`
     }
-    
+    var cloneSVG = mkSvg("M 19,8 31,8 31,26 19,26 Z M 11,4 23,4 23,8 19,8 19,22 11,22 Z");
     var saveSVG = mkSvg("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
     var openLeftSVG = mkSvg("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
     var closeRightSVG = mkSvg("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
@@ -2427,9 +2434,9 @@ lastEditScript = """
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     var undoSVG = mkSvg("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
     var redoSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
-    var escapeSVG = mkSvg("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z");
+    var escapeSVG = mkSvg("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
     var linkModeSVG = mkSvg("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
-
+    var checkSVG = mkSvg("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor_model === "object";
     
     //hover mode functions for linkSelectMode
@@ -2440,7 +2447,8 @@ lastEditScript = """
       document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
       editor_model.clickedElem = editor_model.linkFrom;
       editor_model.linkSelectMode = false;
-      editor_model.linkFrom = undefined;
+      editor_model.linkSelectCallback = undefined;
+      editor_model.linkSelectOtherMenus = undefined;
       updateInteractionDiv();
     }
     function noGhostHover (node) {
@@ -2515,7 +2523,7 @@ lastEditScript = """
       clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor_model.clickedElem) : undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
-      notextselection: false,
+      notextselection: false, // When using the relative DOM selector, set to true to avoid considering the caret (e.g. for insertions and deletions)
       selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
       caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
@@ -2527,7 +2535,7 @@ lastEditScript = """
       undoStack: [],
       redoStack: [],
       linkSelectMode: false,
-      linkFrom: undefined,
+      linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
@@ -2718,7 +2726,7 @@ lastEditScript = """
         );
       }
       else {
-        addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>ESCAPE</span>", 
+        addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
           {"class": "link-select-button", title: "Go back to original screen",
             id: "escapebutton"
           },
@@ -2726,32 +2734,20 @@ lastEditScript = """
             escapeLinkMode();
             }
           }
-        )
-        addPinnedModifyMenuIcon(plusSVG + "<span class='modify-menu-icon-label-link'>SELECT</span>", 
-          {"class": "link-select-button", title: "Select desired local link",
+        );
+        addPinnedModifyMenuIcon(checkSVG + "<span class='modify-menu-icon-label-link'>Select</span>", 
+          {"class": "link-select-button", title: editor_model.linkSelectMsg || "Select target",
             id: "selectbutton"
           },
           {onclick: function(event) {
-            let linkTo = editor_model.clickedElem,
-                targetID = linkTo.getAttribute("id");
-            //console.log("Target ID is:", targetID);
-            if(!targetID) {
-              targetID = "ID" + editor_model.idNum
-              linkTo.setAttribute("id", targetID);
-              editor_model.idNum += 1;
-              //console.log("here!");
-            }
-            else if(targetID.length > 100) {
-              targetID = targetID.trim();
-              linkTo.setAttribute("id", targetID);
-            }
-            //console.log("TargetID is now:", targetID);  
-            editor_model.linkFrom.setAttribute("href", "#" + targetID);
-            console.log(editor_model.linkFrom.getAttribute)
+            editor_model.linkSelectCallback(editor_model.clickedElem);
             escapeLinkMode();
             }
           }
-        )
+        );
+        if(editor_model.linkSelectOtherMenus) {
+          editor_model.linkSelectOtherMenus(addPinnedModifyMenuIcon)
+        }
       }
 
       if(model.advanced || model.disambiguationMenu) {
@@ -2842,10 +2838,18 @@ lastEditScript = """
             el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertBeforeNode", name: "insertionPlace", value: "before"}),
               el("label", {"for": "radioInsertBeforeNode"}, "Before node")]),
-          clickedElem.tagName === "HTML" ? undefined :
+          clickedElem.tagName === "HTML" || !model.caretPosition ? undefined :
+            el("span", {class: "insertOption"}, [
+              el("input", {type: "radio", id: "radioInsertAsFirstChild", name: "insertionPlace", value: "first-child"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
+              el("label", {"for": "radioInsertAsFirstChild"}, "As first child")], {onclick: restoreCaretPosition}),
+          clickedElem.tagName === "HTML" || !model.caretPosition ? undefined :
             el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
-              el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")], {onclick: restoreCaretPosition}),
+              el("label", {"for": "radioInsertAtCaret"}, "At caret")], {onclick: restoreCaretPosition}),
+          clickedElem.tagName === "HTML" || !model.caretPosition ? undefined :
+            el("span", {class: "insertOption"}, [
+              el("input", {type: "radio", id: "radioInsertAsLastChild", name: "insertionPlace", value: "last-child"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
+              el("label", {"for": "radioInsertAsLastChild"}, "As last child")], {onclick: restoreCaretPosition}),
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
             el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD"  }),
@@ -2853,11 +2857,11 @@ lastEditScript = """
           clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
             el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsertWrapNode", name: "insertionPlace", value: "wrap"}),
-              el("label", {"for": "radioInsertWrapNode"}, "Wrap node")]),
+              el("label", {"for": "radioInsertWrapNode", title: "Put the selected node inside the newly inserted node"}, "Wrap node")]),
         ]));
 
-        let insertTag = function() {
-          let newElement = (() => {
+        let insertTag = function(event, newElement) {
+          newElement = newElement || (() => {
             let parent = this;
             while(parent && !parent.classList.contains("tagName")) parent = parent.parentElement;
             let m = parent.querySelector(".templateengine");
@@ -2896,7 +2900,7 @@ lastEditScript = """
             }
             newElement.appendChild(clickedElem);
             console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
-          } else if(typeof model.caretPosition !== "undefined") {
+          } else if(insertionStyle === "caret") {
             let s = model.caretPosition;
             let txt = s.startContainer;
             if(txt.textContent.length > s.startOffset && s.startOffset > 0) { // split
@@ -2912,16 +2916,25 @@ lastEditScript = """
             } else {
               clickedElem.insertBefore(newElement, txt.nextSibling)
             }
-          } else { // Insert at the end of the selected element, inside.
+          } else if(insertionStyle === "last-child") { // Insert at the end of the selected element, inside.
             if(typeof newElement === "string") {
-              // TODO: append at the element.
               let tmpSpan = el("span");
               clickedElem.insertBefore(tmpSpan, null);
-              tmpSpan.insertAdjacentHTML("afterend", newElement);
+              tmpSpan.insertAdjacentHTML("beforeend", newElement);
               tmpSpan.remove();
             } else {
               // Insert at the end.
               clickedElem.insertBefore(newElement, null);
+            }
+          } else if(insertionStyle === "first-child") { // Insert at the end of the selected element, inside.
+            if(typeof newElement === "string") {
+              let tmpSpan = el("span");
+              clickedElem.insertBefore(tmpSpan, null);
+              tmpSpan.insertAdjacentHTML("afterbegin", newElement);
+              tmpSpan.remove();
+            } else {
+              // Insert at the beginning.
+              clickedElem.prepend(newElement);
             }
           }
           editor_model.insertElement = false;
@@ -2948,6 +2961,33 @@ lastEditScript = """
           addElem("<style>", {tag:"style", children: "/*Your CSS there*/", props: {isghost: false}});
           addElem("<script>", {tag:"script", children: "/*Your CSS below*/", props: {isghost: false} });
         } else {
+          interactionDiv.append(
+            el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
+                innerHTML: linkModeSVG,
+                onclick: function(event) {
+                  editor_model.insertElement = false;
+                  activateNodeSelectionMode(
+                    "to move",
+                    node => insertTag.call(this, event, node),
+                    addPinnedModifyMenuIcon => {
+                      addPinnedModifyMenuIcon(cloneSVG + "<span class='modify-menu-icon-label-link'>Clone</span>", 
+                        {"class": "link-select-button", title: "Confirm to clone",
+                          id: "selectbutton"
+                        },
+                        {onclick: function(event) {
+                          let node = editor_model.clickedElem;
+                          let clonedNode = editor.duplicate(node, {ignoreText: true});
+                          insertTag.call(this, event, clonedNode);
+                          escapeLinkMode();
+                          editor_model.clickedElem = cloneNode;
+                          }
+                        }
+                      );
+                    }
+                  )
+                }
+              })
+          )
           interactionDiv.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
             onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
           );
@@ -3293,21 +3333,40 @@ lastEditScript = """
       //    |--  | \|  |  | of DOM SELECTOR
       //    |--  |  |  |--
 
-      
-      let linkSelect = function() {
+      // This function activates the node selection mode, in which one DOM node can be selected,
+      // After clicking on confirm, the callback is called with the selected node.
+      // callbackUI is invoked to render other buttons along with the confirmation button.
+      let activateNodeSelectionMode = function(msg, callback, callbackUI) {
         editor_model.visible = false;
         editor_model.linkSelectMode = true;
-        editor_model.linkFrom = editor_model.clickedElem;
-        //"center" clicked element on document body
-        editor_model.clickedElem = document.body;
+        editor_model.clickedElem = document.body; //"center" clicked element on document body
         //removes all context menu stuff 
         document.querySelector("#context-menu").classList.remove("visible");
+        editor_model.linkSelectCallback = callback;
+        editor_model.linkSelectMsg = "Confirm " + msg;
+        editor_model.linkSelectOtherMenus = callbackUI;
         updateInteractionDiv();
-        popupMessage("Please select an element to link to.");
-
+        popupMessage(editor_model.linkSelectMsg);
         document.body.addEventListener('mouseover', linkModeHover1, false);
         document.body.addEventListener('mouseout', linkModeHover2, false);
-
+      }
+      
+      let linkSelect = function() {
+        activateNodeSelectionMode("to link to",
+          (linkFrom => linkTo => {
+            let targetID = linkTo.getAttribute("id");
+            if(!targetID) {
+              targetID = "ID" + editor_model.idNum
+              linkTo.setAttribute("id", targetID);
+              editor_model.idNum += 1;
+            }
+            else if(targetID.length > 100) {
+              targetID = targetID.trim();
+              linkTo.setAttribute("id", targetID);
+            }
+            linkFrom.setAttribute("href", "#" + targetID);
+          })(editor_model.clickedElem)
+        );
       }
 
 
@@ -3391,7 +3450,7 @@ lastEditScript = """
               ),
               isHref ? el("span", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [],
                         {innerHTML: liveLinkSVG(model.link)}): undefined,
-              isHref ? el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Activate internal link mode"}, [], {
+              isHref ? el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Select a node on the page to refer to"}, [], {
                 innerHTML: linkModeSVG,
                 onclick: linkSelect
               }): undefined,
@@ -3666,9 +3725,7 @@ lastEditScript = """
           });
         }
         if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
-          addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
-              <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
-              <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
+          addContextMenuButton(cloneSVG,
             {title: "Clone selected element"},
             {onclick: ((c, contextMenu) => event => {
                 c.removeAttribute("ghost-clicked");
@@ -3689,8 +3746,6 @@ lastEditScript = """
             });
         }
         if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer)) {
-          // There should be different ways to wrap the selection:
-          // a href, span, div.
           addContextMenuButton(plusSVG,
               {title: "Wrap selection"},
               {onclick: (s => event => {
