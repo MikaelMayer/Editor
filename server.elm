@@ -148,7 +148,7 @@ isTextFile path =
                             List.find (\e -> e == path || e == "/" + path) inputFiles == Nothing &&
                             List.find (\e -> e == path || e == "/" + path) outputFiles == Nothing
                           _ -> False
-                      Nothing -> False -- Need to recompute the cache anyway
+                      _ -> False -- Need to recompute the cache anyway
               in
               if withoutPipeline then fs.read path else
               let source = fs.read hydefile |>
@@ -194,6 +194,7 @@ isTextFile path =
                         (tuplesToWrite, joinedErrors))
                     |> Result.withDefaultMapError (\msg -> ([], msg))
               in
+              let _ = cacheResult () in
               --let _ = Debug.log "generatedFilesDict" generatedFilesDict in
               case listDict.get ("/" + path) generatedFilesDict of
                 Nothing -> if errors == "" then let _ = Debug.log """Unable to read /@path from output of hydefile""" () in fs.read path else
