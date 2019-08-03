@@ -197,11 +197,17 @@ isTextFile path =
               let _ = cacheResult () in
               --let _ = Debug.log "generatedFilesDict" generatedFilesDict in
               case listDict.get ("/" + path) generatedFilesDict of
-                Nothing -> if errors == "" then let _ = Debug.log """Unable to read /@path from output of hydefile""" () in fs.read path else
-                  Just <|
-                  serverOwned "error recovery of hyde build tool" <|
-                  """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
-                  
+                Nothing ->
+                  case listDict.get path generatedFilesDict of
+                    Nothing ->
+                      if errors == "" then
+                        let _ = Debug.log """Unable to read (/)@path from output of hydefile""" () in
+                        fs.read path
+                      else
+                        Just <|
+                        serverOwned "error recovery of hyde build tool" <|
+                        """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
+                    x -> x
                 x -> x
             _ -> fs.read path
         )
@@ -2845,6 +2851,7 @@ lastEditScript = """
           {onclick: function(event) {
               document.querySelector("#modify-menu").classList.toggle("visible");
               editor_model.visible = !editor_model.visible;
+              setTimeout(maybeRepositionContextMenu, 500);
               this.innerHTML = panelOpenCloseIcon();
             }
         });
@@ -3988,6 +3995,7 @@ lastEditScript = """
           contextMenu.style.top = desiredTop + "px";
           contextMenu.style.width = desiredWidth + "px";
           contextMenu.classList.add("visible");
+          setTimeout(maybeRepositionContextMenu, 0);
         }
         if(noContextMenu) {
           contextMenu.classList.remove("visible");
@@ -3997,6 +4005,28 @@ lastEditScript = """
 
     } //end of updateInteractionDiv
 
+    function maybeRepositionContextMenu() {
+      //move the context menu if overlaps with modify-menu
+       let contextMenu = document.querySelector("#context-menu");
+       let modifyMenuDiv = document.querySelector("#modify-menu");
+       let pinnedIcons = document.querySelector(".modify-menu-icons.pinned")
+       let pcr = pinnedIcons.getBoundingClientRect();
+       let ccr = contextMenu.getBoundingClientRect();
+       let mcr = modifyMenuDiv.getBoundingClientRect();
+       if(onMobile()) {
+         if(ccr.bottom > pcr.top) {
+           contextMenu.style.top = (ccr.y - (ccr.bottom - pcr.top)) + "px"
+         } else if(ccr.bottom > mcr.top) {
+           contextMenu.style.top = (ccr.y - (ccr.bottom - mcr.top)) + "px"
+         }
+       } else {
+         if(ccr.right > pcr.left && ccr.top < pcr.bottom) { // Overlap with icons.
+           contextMenu.style.left = (ccr.x - (ccr.right - pcr.left)) + "px"
+         } else if(ccr.right > mcr.left) {
+           contextMenu.style.left = (ccr.x - (ccr.right - mcr.left)) + "px"
+         }
+       }
+    }
 
     
     @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then
