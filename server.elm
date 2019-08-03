@@ -184,8 +184,8 @@ isTextFile path =
                     |> Result.withDefaultMapError (\msg -> ([], msg))
               in
               --let _ = Debug.log "generatedFilesDict" generatedFilesDict in
-              case listDict.get path generatedFilesDict of
-                Nothing -> if errors == "" then fs.read path else
+              case listDict.get ("/" + path) generatedFilesDict of
+                Nothing -> if errors == "" then let _ = Debug.log """Unable to read /@path from output of hydefile""" () in fs.read path else
                   Just <|
                   serverOwned "error recovery of hyde build tool" <|
                   """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
