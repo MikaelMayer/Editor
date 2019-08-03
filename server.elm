@@ -140,10 +140,21 @@ isTextFile path =
         (if hydefilecache == Nothing then fs.read path else
           case hydefilecache of
             Just {file=hydefile} ->
+              let withoutPipeline = 
+                    case hydefilecache of
+                      Just {cacheContent} ->
+                        case evaluate cacheContent of
+                          {inputFiles, outputFiles} ->
+                            List.find (\e -> e == path || e == "/" + path) inputFiles == Nothing &&
+                            List.find (\e -> e == path || e == "/" + path) outputFiles == Nothing
+                          _ -> False
+                      _ -> False -- Need to recompute the cache anyway
+              in
+              if withoutPipeline then fs.read path else
               let source = fs.read hydefile |>
                       Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@hydefile' not found?!"]""")
                   source = source + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
-                  fileDirectory = Regex.replace "^/|/[^/]*$" "" hydefile
+                  fileDirectory = Regex.replace "/[^/]*$" "" hydefile
                   inDirectory name = if fileDirectory == "" then name else
                     fileDirectory  + "/" + name
                   fsReadRecord = 
@@ -183,13 +194,20 @@ isTextFile path =
                         (tuplesToWrite, joinedErrors))
                     |> Result.withDefaultMapError (\msg -> ([], msg))
               in
-              let _ = Debug.log "generatedFilesDict" generatedFilesDict in
-              case listDict.get path generatedFilesDict of
-                Nothing -> if errors == "" then fs.read path else
-                  Just <|
-                  serverOwned "error recovery of hyde build tool" <|
-                  """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
-                  
+              let _ = cacheResult () in
+              --let _ = Debug.log "generatedFilesDict" generatedFilesDict in
+              case listDict.get ("/" + path) generatedFilesDict of
+                Nothing ->
+                  case listDict.get path generatedFilesDict of
+                    Nothing ->
+                      if errors == "" then
+                        let _ = Debug.log """Unable to read (/)@path from output of hydefile""" () in
+                        fs.read path
+                      else
+                        Just <|
+                        serverOwned "error recovery of hyde build tool" <|
+                        """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
+                    x -> x
                 x -> x
             _ -> fs.read path
         )
@@ -550,8 +568,9 @@ evaluatedPage =
           save-ghost-attributes="style ghost-anchor-column ghost-anchor-row ghost-lead-column ghost-lead-row" initdata=@sourcecontent></div>
         <script>
         editor.ghostNodes.push(node =>
-          node.tagName === "SCRIPT" && node.getAttribute("src") && node.getAttribute("src").match(/mode-(.*)\.js/)
+          node.tagName === "SCRIPT" && node.getAttribute("src") && node.getAttribute("src").match(/mode-(.*)\.js|libs\/ace\/.*\/ext-searchbox.js/)
         );
+        
         var script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/ace.js';
         script.async = false;
@@ -1177,7 +1196,7 @@ main =
 insertThereInstead atBeginning list =
   Update.lens {apply _ = [],
     update {outputNew, input=list} =
-      Ok (InputsWithDiffs [((if atBeginning then outputNew ++ list else list ++ outputNew, []), Just <| Update.vTupleDiffs_1 <|
+      Ok (InputsWithDiffs [(if atBeginning then outputNew ++ list else list ++ outputNew, Just <|
         VListDiffs [(if atBeginning then 0 else List.length list, ListElemInsert (List.length outputNew))]
       )])
   } list
@@ -1361,10 +1380,11 @@ editor.ghostNodes.push(insertedNode =>
     insertedNode.getAttribute("id") == "ssIFrame_google")
 );
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
-// editor.ghostNodes.push(insertedNode => 
-//   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
-//   insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined" && (insertedNode.setAttribute("save-ghost", "true") || true)
-// );
+ editor.ghostNodes.push(insertedNode => 
+   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
+   insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined"&& insertedNode.textContent.match("error_widget\\.ace_warning")
+   && (insertedNode.setAttribute("save-ghost", "true") || true)
+ );
 // For ace script for syntax highlight
 editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
@@ -1985,6 +2005,7 @@ lastEditScript = """
           } else {
             onlyGhosts = false;
             sendToUndo(mutation, cur_time);
+            console.log("Attribute is not ghost", mutation);
           }
         } else if(mutation.type == "childList") {
           if(!areChildrenGhosts(mutation.target)) {
@@ -1992,18 +2013,21 @@ lastEditScript = """
               if(!hasGhostAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
+                console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
               }
             }
             for(var j = 0; j < mutation.removedNodes.length; j++) {
               if(!isGhostNode(mutation.removedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
+                console.log(`Removed node ${j} was not a ghost`, mutation);
               }
             }
           }
         } else {
           onlyGhosts = false;
           sendToUndo(mutation, cur_time);
+          console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
         }
       }
       if(onlyGhosts) {
@@ -2033,10 +2057,6 @@ lastEditScript = """
       }, @editdelay)
     } //handleMutations
   
-    if (editor_model && editor_model.outputObserver && typeof editor_model.outputObserver !== "undefined") {
-      editor_model.outputObserver.disconnect();
-    }
-    
     //debugging function for printing both teh undo and redo stacks.
     function printstacks() {
       console.log("-----------------------------");
@@ -2831,6 +2851,7 @@ lastEditScript = """
           {onclick: function(event) {
               document.querySelector("#modify-menu").classList.toggle("visible");
               editor_model.visible = !editor_model.visible;
+              setTimeout(maybeRepositionContextMenu, 500);
               this.innerHTML = panelOpenCloseIcon();
             }
         });
@@ -3974,6 +3995,7 @@ lastEditScript = """
           contextMenu.style.top = desiredTop + "px";
           contextMenu.style.width = desiredWidth + "px";
           contextMenu.classList.add("visible");
+          setTimeout(maybeRepositionContextMenu, 0);
         }
         if(noContextMenu) {
           contextMenu.classList.remove("visible");
@@ -3983,6 +4005,28 @@ lastEditScript = """
 
     } //end of updateInteractionDiv
 
+    function maybeRepositionContextMenu() {
+      //move the context menu if overlaps with modify-menu
+       let contextMenu = document.querySelector("#context-menu");
+       let modifyMenuDiv = document.querySelector("#modify-menu");
+       let pinnedIcons = document.querySelector(".modify-menu-icons.pinned")
+       let pcr = pinnedIcons.getBoundingClientRect();
+       let ccr = contextMenu.getBoundingClientRect();
+       let mcr = modifyMenuDiv.getBoundingClientRect();
+       if(onMobile()) {
+         if(ccr.bottom > pcr.top) {
+           contextMenu.style.top = (ccr.y - (ccr.bottom - pcr.top)) + "px"
+         } else if(ccr.bottom > mcr.top) {
+           contextMenu.style.top = (ccr.y - (ccr.bottom - mcr.top)) + "px"
+         }
+       } else {
+         if(ccr.right > pcr.left && ccr.top < pcr.bottom) { // Overlap with icons.
+           contextMenu.style.left = (ccr.x - (ccr.right - pcr.left)) + "px"
+         } else if(ccr.right > mcr.left) {
+           contextMenu.style.left = (ccr.x - (ccr.right - mcr.left)) + "px"
+         }
+       }
+    }
 
     
     @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then
@@ -4033,8 +4077,10 @@ window.onbeforeunload = function (e) {
     }
 }; //end of window.onbeforeload
 """ else "")
-if (!ifAlreadyRunning) {
-  setTimeout(() => {
+    if (typeof editor_model === "object" && typeof editor_model.outputObserver !== "undefined") {
+      editor_model.outputObserver.disconnect();
+    }
+
     editor_model.outputObserver = new MutationObserver(handleMutations);
     editor_model.outputObserver.observe
       ( document.body.parentElement
@@ -4045,10 +4091,7 @@ if (!ifAlreadyRunning) {
         , characterDataOldValue: true
         , subtree: true
         }
-      )
-  }, 1000);
-}
-
+      );
 """--end of lastEditionScript
 
 googlesigninbutton = serverOwned "the google sign-in button" [
