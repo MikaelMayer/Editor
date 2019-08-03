@@ -140,6 +140,17 @@ isTextFile path =
         (if hydefilecache == Nothing then fs.read path else
           case hydefilecache of
             Just {file=hydefile} ->
+              let withoutPipeline = 
+                    case hydefilecache of
+                      Just {cacheContent} ->
+                        case evaluate cacheContent of
+                          {inputFiles, outputFiles} ->
+                            List.find (\e -> e == path || e == "/" + path) inputFiles == Nothing &&
+                            List.find (\e -> e == path || e == "/" + path) outputFiles == Nothing
+                          _ -> False
+                      Nothing -> False -- Need to recompute the cache anyway
+              in
+              if withoutPipeline then fs.read path else
               let source = fs.read hydefile |>
                       Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@hydefile' not found?!"]""")
                   source = source + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
