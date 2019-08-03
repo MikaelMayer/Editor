@@ -6,6 +6,7 @@
     width: 30px;
     height: 17px;
     vertical-align: middle;
+    margin-left: 0.6rem;
 }
 
 /* Hide default HTML checkbox */
@@ -112,6 +113,8 @@ input:checked+.slider:before {
     padding-left: 3px;
     vertical-align: top;
     display: block;
+    font-weight: bold;
+    font-size: 1.2rem;
 }
 
 div.imgFolder {
@@ -126,8 +129,13 @@ div.imgFolder > img {
 
 a.troubleshooter {
     position: absolute;
-    top: calc(100% - 3em);
+    top: 1rem;
+    /* top: calc(100% - 3em); */
     display: inline-block;
+    right: 2em;
+    text-decoration: none;
+    color: white;
+    font-weight: bold;
 }
 
 .editor-menu {
@@ -354,6 +362,7 @@ div#modify-menu {
 div#modify-menu>div.modify-menu-icons:not(.pinned) {
     width: 100%;
     overflow-x: auto;
+    margin: 0.4rem;
 }
 
 div#modify-menu>div.modify-menu-icons.pinned {
@@ -656,14 +665,20 @@ div.highlight-select-image {
 }
 
 div.tagName {
-    padding: 4px;
+    margin-top: 0.24rem;
+    /* padding: 4px; */
     cursor: pointer;
-    background: var(--context-button-color);
+    /* background: var(--context-button-color); */
     vertical-align: text-bottom;
 }
 
 div.tagName:hover {
     background: var(--context-button-color-hover);
+}
+
+div.information > div.tagName {
+    background: none;
+    height: 80%;
 }
 
 [ghost-hovered=true] {
@@ -694,6 +709,16 @@ div#context-menu .context-menu-button, div#modify-menu .modify-menu-button, div#
     display: inline-block;
     width: var(--context-menu-button-width);
     cursor: pointer;
+}
+
+div.modify-menu-icons:not(.pinned) > div.modify-menu-button {
+    background-color: transparent !important;
+    border-radius: 0.4rem;
+    margin-right: 0.2rem;
+}
+
+div.modify-menu-icons:not(.pinned) > div.modify-menu-button:hover {
+    background-color: var(--context-button-color) !important;
 }
 
 div#context-menu .context-menu-button, div#modify-menu .modify-menu-icons:not(.pinned) .modify-menu-button {
@@ -787,6 +812,23 @@ textarea#singleChildNodeContent {
     color: black;
 }
 
+textarea.templateengine {
+    width: 100%;
+    height: 100%;
+    color: black;
+    border-radius: 0.4rem;
+    border: 0;
+    padding: 0.4rem;
+    font: normal 0.84rem Consolas, Monaco, monospace;
+    resize: none;
+    opacity: 0.8;
+}
+
+textarea.templateengine:focus {
+    outline: none;
+    opacity: 1;
+}
+
 #modify-menu span.insertOption label {
   display: inline-block;
 }
@@ -866,6 +908,15 @@ textarea#singleChildNodeContent {
         border-radius: 0.3em;
         border: none;
         padding: 1.5%;
+    }
+    textarea.templateengine {
+        width: 100%;
+        height: 100%;
+        color: black;
+        font-size: 1.4rem;
+        border-radius: 0.4rem;
+        border: 0;
+        padding: 0.4rem;
     }
     div.insert-information-style {
         max-height: 400px;
