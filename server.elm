@@ -2050,10 +2050,6 @@ lastEditScript = """
       }, @editdelay)
     } //handleMutations
   
-    if (editor_model && editor_model.outputObserver && typeof editor_model.outputObserver !== "undefined") {
-      editor_model.outputObserver.disconnect();
-    }
-    
     //debugging function for printing both teh undo and redo stacks.
     function printstacks() {
       console.log("-----------------------------");
@@ -4050,8 +4046,10 @@ window.onbeforeunload = function (e) {
     }
 }; //end of window.onbeforeload
 """ else "")
-if (!ifAlreadyRunning) {
-  setTimeout(() => {
+    if (typeof editor_model === "object" && typeof editor_model.outputObserver !== "undefined") {
+      editor_model.outputObserver.disconnect();
+    }
+
     editor_model.outputObserver = new MutationObserver(handleMutations);
     editor_model.outputObserver.observe
       ( document.body.parentElement
@@ -4062,10 +4060,7 @@ if (!ifAlreadyRunning) {
         , characterDataOldValue: true
         , subtree: true
         }
-      )
-  }, 1000);
-}
-
+      );
 """--end of lastEditionScript
 
 googlesigninbutton = serverOwned "the google sign-in button" [
