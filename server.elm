@@ -3256,28 +3256,6 @@ editionscript = """
               }
               return -1;
             }*/
-            /*function deleteCSS() {
-              let tempCSS = CSSparser.parseCSS(document.getElementById("Temp-CSS"));
-              let curCSS = CSSparser.parseCSS(this.nextSibling);
-              let notWS = firstNonWS(curCSS);
-              let notEmpty = false;
-              if(tempCSS) {
-                tempCSS.forEach((e) => {if(e.kind != "whitespace") {
-                  notEmpty = true;
-                }})
-              }
-              console.log(tempCSS);
-              if(notEmpty) {
-                for(i in tempCSS) {
-                  if(curCSS[notWS].selector === tempCSS[i].selector) {
-                    tempCSS.splice(i);
-                    break;
-                  }
-                }
-              }
-              CSSarea.removeChild(this.parentElement); 
-            }*/
-            
             function findTextBefore(parsed, curIndex, prevRel) {
               var textBefore = "", textAfter = "";
               for(; prevRel < curIndex; prevRel++) {
@@ -3352,7 +3330,9 @@ editionscript = """
                     continue;
                   }
                 }
-                fullCSS.push(curCSS);
+                if(curCSS.length) {
+                  fullCSS.push(curCSS);
+                }
               });
               return fullCSS;
             }
@@ -3382,20 +3362,22 @@ editionscript = """
                 curTag.textContent = CSSString;
               }
             }
-            
             var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
             //CSSState = fullParseCSS();
             function setCSSAreas() {
               editor_model.CSSState = fullParseCSS();
-              console.log(editor_model.CSSState);
+              console.log("CSS state is:", editor_model.CSSState);
               while(CSSarea.firstChild) {
-                CSSarea.removeChild(firstChild);
+                CSSarea.removeChild(CSSarea.firstChild);
               }
               for(let i in editor_model.CSSState) {
                 for(let j in editor_model.CSSState[i]) {
                   let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
                     el("textarea", {"class": "CSS-selectors" }, [], {
-                      defaultValue: editor_model.CSSState[i][j].content, 
+                      defaultValue: editor_model.CSSState[i][j].content,
+                      onclick() {
+                        setCSSAreas();
+                      },
                       onkeyup() {
                         let throwError = false;
                         curCSSState = CSSparser.parseCSS(this.value);
@@ -3417,17 +3399,22 @@ editionscript = """
                         }
                         else {
                           this.storedCSS.content = this.value;
-                          console.log(editor_model.CSSState[i]);
+                          console.log("Other selectors under the same style tag is:", editor_model.CSSState[i]);
                           fullUnparseCSS(editor_model.CSSState);
-                          setCSSAreas();
+                          //setCSSAreas();
                         }
                       },
                       storedCSS: editor_model.CSSState[i][j]
-                    })/*,
+                    }),
                     el("div", {"class": "delete-CSS"}, [], {
                       innerHTML: wasteBasketSVG,
-                      onclick: deleteCS
-                    })*/
+                      onclick() {
+                        console.log(this.parentElement.childNodes);
+                        this.parentElement.childNodes[0].value = "";
+                        this.parentElement.childNodes[0].storedCSS.content = this.parentElement.childNodes[0].value;
+                        fullUnparseCSS(editor_model.CSSState);
+                      }
+                    })
                   ]);
                   CSSarea.append(eachCSS);
                 }
@@ -3441,115 +3428,44 @@ editionscript = """
                 CSSarea.append(el("div", {"class": "CSS-modify-unit"}, [
                   el("textarea", {"class": "CSS-selectors", }, [], {
                     onkeyup() {
-                      let throwError = false;
-                      for(let i in curCSSState) {
-                        if(curCSSState[i].kind === 'cssBlock' || curCSSState[i].kind === '@media') {
-                          if(!(curCSSState[i].kind === 'cssBlock' ? clickedElement.matches(curCSSState[i].selector) : 
-                          (window.matchMedia(curCSSState[i].selector).matches ? clickedElement.matches(curCSSState[i].content.selector) : false))) {
-                            throwError = true;
-                          }
-                        }
-                      }
-                      if(this.storedCSS && !throwError) {
+                      //not sure if this is necessary: once storedCSS is set, we will reset the whole operation.
+                      if(this.storedCSS) {
                         this.storedCSS.content = this.value;
-                        console.log(editor_model.CSSState[i]);
+                        //console.log(editor_model.CSSState[i]);
                         fullUnparseCSS(editor_model.CSSState);
-                        setCSSAreas();
+                        //setCSSAreas();
                       }
                       else {
-                        document.head.appendChild(el("style", {id: "new-Style"}, [], {innerHTML: this.value}));
-                        setCSSAreas();
+                        let parsedNewCSS = CSSparser.parseCSS(this.value);
+                        for(let i in parsedNewCSS) {
+                          if(parsedNewCSS[i] && parsedNewCSS[i].kind != 'whitespace') {
+                            if(parsedNewCSS[i].kind == 'cssBlock' ? clickedElem.matches(parsedNewCSS[i].selector) :
+                            (window.matchMedia(parsedNewCSS[i].selector).matches ? clickedElem.matches(parsedNewCSS[i].content.selector) : false))
+                            {
+                              let addedStyles = document.getElementById("new-Style");
+                              if(!addedStyles) { 
+                                document.head.appendChild(el("style", {id: "new-Style"}, [], {innerHTML: this.value}));
+                                console.log("Added new style tag", addedStyles);
+                              } 
+                              else {
+                                addedStyles.innerHTML += "\n" + this.value;
+                                console.log("Style tag exists:", addedStyles);
+                              }
+                              console.log("Added new style tag", addedStyles);
+                              //reset to normal case (i.e. reconstruct all text areas)
+                              setCSSAreas();
+                              return;
+                            }
+                          }
+                          popupMessage("Unparsable atm!");
+                        }
                       }
                     },
                     storedCSS: undefined
                   })
-                  /*el("div", {"class": "delete-CSS"}, [], {
-                    innerHTML: wasteBasketSVG,
-                    onclick: deleteCSS
-                  })*/
                 ]));
               }
             }));
-            /*
-            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Look at changes"}, [], {
-              innerHTML: "Examine changes",
-              onclick() { 
-                console.log(CSSarea.childNodes);
-                let tempCSS = document.getElementById("Temp-CSS");
-                let notEmpty = false;
-                if(tempCSS) {
-                  tempCSS.forEach((e) => {
-                    if(e.kind != "whitespace") {
-                      notEmpty = true;
-                    }
-                  });
-                }
-                if(notEmpty) {
-                  let prevCSS = CSSparser.parseCSS(tempCSS.innerHTML);    
-                  CSSarea.childNodes.forEach(function(e) {
-                    let delList = [];
-                    let curCSS = CSSparser.parseCSS(e.value);
-                    let notws = firstNonWS(curCSS);
-                    if(notws < 0) {
-                      popupMessage("This CSS is just whitespace!");
-                      continue;
-                    }
-                    //not sure if we want to delete previous CSS for the same selectors if they are already added to ghost style node
-                    //inserted into head
-                    sfor(let m in prevCSS) {
-                      if(curCSS[0].kind === prevCSS[m].kind) {
-                        if(curCSS[0].content && (curCSS[0].content.selector === prevCSS[m].content.selector)) {
-                          delList.push(m);
-                        }
-                        else if(curCSS[0].selector === prevCSS[m].selector) {
-                          delList.push(m);
-                        }
-                      }
-                    }
-                    for(let i in delList) {
-                      delete prevCSS[delList[i]];
-                    }
-                    for(let i in curCSS) {
-                      prevCSS.push(curCSS[i]);
-                    }
-                  });
-                  tempCSS.innerHTML = CSSparser.unparseCSS(prevCSS);
-                }
-                else {
-                  var addText = "";
-                  let checkCSS = [];
-                  CSSarea.childNodes.forEach(function(e) {
-                    checkCSS.push(e.childNodes[0]);
-                  });
-                  CSSdisplay.forEach(function(e) {
-                    checkCSS.forEach(function(i) {
-                      //if the text is unchanged from the original CSS 
-                      if(((e.selectorText ? e.selectorText : CSSparser.parseCSS(e.cssText).selector) === CSSparser.parseCSS(i.value).selector) && 
-                      (i.value === e.cssText)) {
-                        console.log("got here Haha!");
-                        checkCSS.splice(indexof(i));
-                      }
-                    });
-                  });
-                  checkCSS.forEach(function(e) {
-                    addText = addText.concat(e.value);  
-                  });
-                  tempCSS = el("style", {"isghost": true, id: "Temp-CSS"}, [], {
-                    innerHTML: addText
-                  });
-                  tempCSS.innerHTML = addText;
-                  document.head.appendChild(tempCSS);
-                }
-              }
-            }));
-            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Save all updates to CSS"}, [], {
-              innerHTML: "Save all changes",
-              onclick() { 
-                console.log(CSSarea.childNodes);
-                document.getElementById("Temp-CSS").setAttribute("is-ghost", false);
-                document.getElementById("savebutton").onclick();
-              }
-            }));*/
           }
         }
       }
