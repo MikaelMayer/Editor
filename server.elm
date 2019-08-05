@@ -3363,6 +3363,7 @@ editionscript = """
               }
             }
             var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
+            var curCSSWindow = undefined;
             //CSSState = fullParseCSS();
             function setCSSAreas() {
               editor_model.CSSState = fullParseCSS();
@@ -3376,8 +3377,12 @@ editionscript = """
                     el("textarea", {"class": "CSS-selectors" }, [], {
                       defaultValue: editor_model.CSSState[i][j].content,
                       onclick() {
-                        setCSSAreas();
-                      },
+                        curCaret = window.getSelection()
+                        if(curCSSWindow && curCSSWindow !== curCaret.anchorNode) {
+                          curCSSWindow = curCaret.anchorNode;
+                          setCSSAreas();
+                        }
+                      }
                       onkeyup() {
                         let throwError = false;
                         curCSSState = CSSparser.parseCSS(this.value);
