@@ -1170,7 +1170,7 @@ main =
            (if canEditPage then
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
-           bodyattrs, insertThereInstead True bodyChildren ++ luca ++
+           bodyattrs, insertThereInstead identity True bodyChildren ++ luca ++
           if not varedit || varls then
             bodyChildren
           else 
@@ -1178,12 +1178,13 @@ main =
               if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
               serverOwned "edit prelude when not in edit mode" []) ++
              bodyChildren ++
-             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder"> </div>, <script  id="thaditor-lastscript">@lastEditScript</script>] ++ insertThereInstead False bodyChildren -- All new nodes there are added back to bodyChildren.
+             Update.sizeFreeze [["div", [["id", "editor-files-to-overwrite"]], insertThereInstead insertedElementsToWriteFile True fileOperations]] ++
+             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder"> </div>, <script  id="thaditor-lastscript">@lastEditScript</script>] ++ insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
              )]
       ["head", headattrs, headChildren] ->
         let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
         ["head", headattrs,
-           insertThereInstead True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
+           insertThereInstead identity True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
            serverOwned "initial script" initialScript ++
            (serverOwned "viewport instructions" <meta name="viewport" content="width=device-width"> :: 
             serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css"> :: headChildren)]
@@ -1192,11 +1193,17 @@ main =
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
 
+insertedElementsToWriteFile = List.map <| case of
+   [_, [["class", "file-overwrite"], ["name", name], ["oldcontent", oldcontent], ["newcontent", newcontent]], _] ->
+     (name, Write oldcontent newcontent (Update.diffs oldcontent newcontent |> Maybe.withDefault (VStringDiffs [])))
+   thisInstead ->
+     error """In #editor-files-to-overwrite, you should put attributes class="file-overwrite" name="[full path name]" oldcontent="[old file content]" newcontent="[new file content]"> in this order (even call the funciton addFileToSave(name, oldContent, newContent) fo simplicity. Got @thisInstead"""
+
 -- Returns an empty list. If elements are inserted, inserts them in the given list instead.
-insertThereInstead atBeginning list =
+insertThereInstead onInsert atBeginning list =
   Update.lens {apply _ = [],
     update {outputNew, input=list} =
-      Ok (InputsWithDiffs [(if atBeginning then outputNew ++ list else list ++ outputNew, Just <|
+      Ok (InputsWithDiffs [(if atBeginning then onInsert outputNew ++ list else list ++ onInsert outputNew, Just <|
         VListDiffs [(if atBeginning then 0 else List.length list, ListElemInsert (List.length outputNew))]
       )])
   } list
@@ -1530,6 +1537,16 @@ lastEditScript = """
    var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
+  
+  // Before saving, call this function to that it eventually triggers a save action to any file.
+  function addFileToSave(path, oldcontent, newcontent) {
+    var placement = document.querySelector("#editor-files-to-overwrite");
+    if(!placement) {
+      console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
+      return;
+    }
+    placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}));
+  }
   
   // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
   // Same for some attributes
