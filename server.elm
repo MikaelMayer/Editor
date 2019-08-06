@@ -3695,8 +3695,13 @@ lastEditScript = """
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-            document.getElementById("dom-attr-src").setAttribute("value", file.name);
-            clickedElem.setAttribute("src", targetPathName);
+            if(clickedElem.style.backgroundImage) {
+              clickedElem.style.backgroundImage = "url(" + targetPathName + ")";
+            }
+            else {
+              document.getElementById("dom-attr-src").setAttribute("value", file.name);
+              clickedElem.setAttribute("src", targetPathName);
+            }
             // adapt to HTML5 new attribute 'srcset'
             // IF website use 'srcset', we force to set this attribute to null then replace image using 'src'
             if (clickedElem.getAttribute("srcset") != undefined) {
@@ -3769,8 +3774,14 @@ lastEditScript = """
                 if (clickedElem.getAttribute("srcset") != undefined) {
                   clickedElem.setAttribute("srcset", "");
                 }
-                clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
-                document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
+                if(!clickedElem.style.backgroundImage) {
+                  clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
+                  document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
+                }
+                else {
+                  clickedElem.style.backgroundImage = "url('" + this.children[0].getAttribute("src") + "')"
+                  console.log(this.children[0].getAttribute("src"));
+                }
                 this.classList.add("highlight-select-image");
               }
             })
@@ -3782,9 +3793,10 @@ lastEditScript = """
       }
       
       interactionDiv.append(keyvalues);
-      if (clickedElem && clickedElem.tagName === "IMG") {
-        let srcName = clickedElem.getAttribute("src");
-
+      if (clickedElem && (clickedElem.tagName === "IMG" || clickedElem.style.backgroundImage)) {
+        var backgroundImgURL = clickedElem.style.backgroundImage;
+        let srcName =  backgroundImgURL ? backgroundImgURL.match(/\((.*?)\)/)[1].replace(/('|")/g,'') : clickedElem.getAttribute("src");
+        
         clickedElem.ondragover = function (e) {
           e.preventDefault();
         }

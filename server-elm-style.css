@@ -420,6 +420,7 @@ div#modify-menu div.keyvalues>div.keyvalue {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
+    width: 98%;
 }
 
 div#modify-menu div.keyvalues>div.keyvalue .attribute-key-value {
