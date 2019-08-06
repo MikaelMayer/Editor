@@ -6,6 +6,7 @@
     width: 30px;
     height: 17px;
     vertical-align: middle;
+    margin-left: 0.6rem;
 }
 
 /* Hide default HTML checkbox */
@@ -53,6 +54,7 @@
     -webkit-user-select: text;
     outline-color: transparent;
     box-shadow: none;
+    color: var(--context-button-color-inert);
 }
 
 input:checked+.slider {
@@ -67,6 +69,27 @@ input:checked+.slider:before {
     -webkit-transform: translateX(13px);
     -ms-transform: translateX(13px);
     transform: translateX(13px);
+}
+
+.textarea {
+    color: white;
+    font-family: Arial;
+}
+.notifs {
+    background-color: #000000; /* black */
+    transform:translateX(48px);
+    position:fixed;
+    top:5px;
+    right:496px;
+    width:256px;
+    height:128px;
+}
+.logger {
+    background-color: #000000; /* black */
+    position:fixed;
+    width: 400px;
+    top:128px;
+    height:128px;
 }
 
 /* Rounded sliders */
@@ -90,22 +113,29 @@ input:checked+.slider:before {
     padding-left: 3px;
     vertical-align: top;
     display: block;
+    font-weight: bold;
+    font-size: 1.2rem;
 }
 
 div.imgFolder {
-    display: inline-block;
-    margin: 0.2em;
+    text-align: center;
+    padding: 0.6em;
 }
 
-div.imgFolder>img {
+div.imgFolder > img {
     max-width: 100%;
     min-width: 2em;
 }
 
 a.troubleshooter {
     position: absolute;
-    top: calc(100% - 3em);
+    top: 1rem;
+    /* top: calc(100% - 3em); */
     display: inline-block;
+    right: 2em;
+    text-decoration: none;
+    color: white;
+    font-weight: bold;
 }
 
 .editor-menu {
@@ -332,6 +362,7 @@ div#modify-menu {
 div#modify-menu>div.modify-menu-icons:not(.pinned) {
     width: 100%;
     overflow-x: auto;
+    margin: 0.4rem;
 }
 
 div#modify-menu>div.modify-menu-icons.pinned {
@@ -344,11 +375,23 @@ div#modify-menu>div.information {
     overflow-y: auto;
     max-height: calc(100% - var(--context-menu-height));
     margin: 2%;
+    margin-top: 0;
     border-radius: 0.3em;
 }
 
 div.#modify-menu>div.information-style {
     padding: 0.4rem;
+}
+
+/* information part scroll bar */
+.information.information-style::-webkit-scrollbar {
+    background: transparent;
+    width: 8px;
+}
+
+.information.information-style::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
 }
 
 div.information>textarea {
@@ -377,7 +420,7 @@ div#modify-menu div.keyvalues>div.keyvalue {
 
 div#modify-menu div.keyvalues>div.keyvalue>* {
     display: table-cell;
-    padding: 4px;
+    padding-left: 4px;
     vertical-align: middle;
 }
 
@@ -392,6 +435,7 @@ div#modify-menu div.keyvalues>div.keyvalueadder:hover {
 div#modify-menu input {
     padding: 6px;
     width: 100%;
+    color: black;
 }
 
 div#modify-menu .codefont {
@@ -452,13 +496,15 @@ div.tagname-summary {
 
 div.dom-selector-style {
     margin: 2%;
+    margin-bottom: 0;
     border-radius: 0.4em;
     padding: 0.4rem;
 }
 
 div.childrenElem {
     display: flex;
-    height: 80px;
+    height: 30px;
+    margin-top: 4px;
 }
 
 div.mainElemName {
@@ -476,7 +522,7 @@ div.childrenSelector {
     flex: 1;
     text-align: center;
     overflow: hidden;
-    padding: 10px;
+    padding: 2px;
     margin: 2px;
     border-radius: 0.3rem;
     background-color: var(--context-dom-children-selector-color);
@@ -494,17 +540,20 @@ div.childrenSelector:hover {
 }
 
 div.mainElem {
-    height: 90px;
-    padding-bottom: 6px;
+    height: 62px;
     position: relative;
     text-align: center;
-    font-size: 1.6em;
-    margin-bottom: 0.5em;
+    overflow: hidden;
+    font-size: 1.3em;
+    text-overflow: ellipsis;
 }
 
 div.mainElemInfo {
     font-size: 0.6em;
     color: var(--context-dom-text-color);
+    height: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 div.childrenSelectorInfo {
@@ -516,7 +565,9 @@ div.childrenSelectorInfo {
 }
 
 div.elementAttr {
-    font-size: 0.5em;
+    margin-left: 6px;
+    display: inline-block;
+    font-size: 0.6em;
     line-height: 1.02em;
     text-overflow: ellipsis;
     overflow: hidden;
@@ -529,11 +580,9 @@ div.no-children, div.no-parent {
     text-align: center;
     text-transform: uppercase;
     color: black;
-    padding: 10px;
-    margin: 2px;
     border-radius: 0.3rem;
     font-weight: bold;
-    line-height: 50px;
+    line-height: 36px;
     font-size: 0.8rem;
     pointer-events: none;
 }
@@ -547,11 +596,10 @@ div.no-sibling {
     color: black;
     width: 20%;
     text-transform: uppercase;
-    font-size: 0.8rem;
-    line-height: 15px;
+    font-size: 0.7rem;
+    line-height: 20px;
     font-weight: bold;
     min-width: 50px;
-    padding-top: 20px;
     pointer-events: none;
 }
 
@@ -572,12 +620,13 @@ div.no-sibling {
 }
 
 #upload-image-btn-a {
-    margin: 10%;
-    padding: 4px 10px;
+    margin-left: 0;
+    margin-top: 10px;
+    margin-bottom: 10px;
     height: 20px;
     position: relative;
-    color: #888;
-    background: #fafafa;
+    color: black;
+    background: transparent;
     border-radius: 4px;
     display: inline-block;
     height: 20px;
@@ -586,7 +635,7 @@ div.no-sibling {
 
 #upload-image-btn-input {
     position: absolute;
-    top: 0;
+    top: -7px; /* alignment */
     left: 0;
     width: 100%;
 }
@@ -594,7 +643,8 @@ div.no-sibling {
 /* highlight selected image */
 
 div.highlight-select-image {
-    box-shadow: 2px 2px 3px black;
+    border: 1px solid white;
+    border-radius: 0.76em;
 }
 
 :root {
@@ -616,14 +666,20 @@ div.highlight-select-image {
 }
 
 div.tagName {
-    padding: 4px;
+    margin-top: 0.24rem;
+    /* padding: 4px; */
     cursor: pointer;
-    background: var(--context-button-color);
+    /* background: var(--context-button-color); */
     vertical-align: text-bottom;
 }
 
 div.tagName:hover {
     background: var(--context-button-color-hover);
+}
+
+div.information > div.tagName {
+    background: none;
+    height: 80%;
 }
 
 [ghost-hovered=true] {
@@ -654,6 +710,16 @@ div#context-menu .context-menu-button, div#modify-menu .modify-menu-button, div#
     display: inline-block;
     width: var(--context-menu-button-width);
     cursor: pointer;
+}
+
+div.modify-menu-icons:not(.pinned) > div.modify-menu-button {
+    background-color: transparent !important;
+    border-radius: 0.4rem;
+    margin-right: 0.2rem;
+}
+
+div.modify-menu-icons:not(.pinned) > div.modify-menu-button:hover {
+    background-color: var(--context-button-color) !important;
 }
 
 div#context-menu .context-menu-button, div#modify-menu .modify-menu-icons:not(.pinned) .modify-menu-button {
@@ -740,6 +806,32 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
 textarea#singleChildNodeContent {
     width: 100%;
     height: 50%;
+    border-radius: 0.4em;
+    border: 0;
+    margin-top: 6px;
+    padding: 10px;
+    color: black;
+}
+
+textarea.templateengine {
+    width: 100%;
+    height: 100%;
+    color: black;
+    border-radius: 0.4rem;
+    border: 0;
+    padding: 0.4rem;
+    font: normal 0.84rem Consolas, Monaco, monospace;
+    resize: none;
+    opacity: 0.8;
+}
+
+textarea.templateengine:focus {
+    outline: none;
+    opacity: 1;
+}
+
+#modify-menu span.insertOption label {
+  display: inline-block;
 }
 
 @media (pointer: coarse) {
@@ -768,6 +860,12 @@ textarea#singleChildNodeContent {
     }
     div#modify-menu>div.modify-menu-icons.pinned span.modify-menu-icon-label {
         display: none;
+    }
+    div#modify-menu>div.modify-menu-icons.pinned >div.modify-menu-button {
+        height: 50px;
+    }
+    div#modify-menu>div.modify-menu-icons.pinned svg {
+        height: 50px;
     }
     div.bottom-placeholder {
         width: 100%;
@@ -816,6 +914,15 @@ textarea#singleChildNodeContent {
         border-radius: 0.3em;
         border: none;
         padding: 1.5%;
+    }
+    textarea.templateengine {
+        width: 100%;
+        height: 100%;
+        color: black;
+        font-size: 1.4rem;
+        border-radius: 0.4rem;
+        border: 0;
+        padding: 0.4rem;
     }
     div.insert-information-style {
         max-height: 400px;
