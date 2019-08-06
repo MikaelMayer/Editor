@@ -2942,7 +2942,7 @@ lastEditScript = """
           },
           {onclick: function(event) {
             editor_model.linkSelectCallback(editor_model.clickedElem);
-            escapeLinkMode();
+            escapeSelectMode();
             }
           }
         );
@@ -3221,7 +3221,7 @@ lastEditScript = """
                           let node = editor_model.clickedElem;
                           let clonedNode = editor.duplicate(node, {ignoreText: true});
                           insertTag.call(this, event, clonedNode);
-                          escapeLinkMode();
+                          escapeSelectMode();
                           editor_model.clickedElem = clonedNode;
                           }
                         }
@@ -3609,8 +3609,8 @@ lastEditScript = """
           let isHref = name === "href" && clickedElem.tagName === "A";
           keyvalues.append(
             el("div", {"class": "keyvalue"}, [
-              el("span", {title: "This element has attribute name '" + name + "'", class: "attribute-key-value"}, name + ": "),
-              el("span", {}, [
+              el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
+              el("span", {class: "attribute-key-value"}, [
                 el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
@@ -3645,21 +3645,7 @@ lastEditScript = """
                     })(name)
                   })
                 ]
-              ),
-              isHref ? el("span", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [],
-                        {innerHTML: liveLinkSVG(model.link)}): undefined,
-              isHref ? el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Select a node on the page to refer to"}, [], {
-                innerHTML: linkModeSVG,
-                onclick: linkSelect
-              }): undefined,
-              el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
-                innerHTML: wasteBasketSVG,
-                onclick: ((name) => function() {
-                  clickedElem.removeAttribute(name);
-                  editor_model.clickedElem = clickedElem;
-                  updateInteractionDiv();
-                })(name)
-              }),
+              )
             ]
           ));
         }
@@ -3674,8 +3660,8 @@ lastEditScript = """
       if(clickedElem && clickedElem.nodeType === 1) {
         keyvalues.append(
           el("div", {"class": "keyvalue keyvalueadder"}, [
-            el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
-            el("span", {}, [
+            el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
+            el("span", {class: "attribute-key-value"}, [
               el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
                 onfocus: function() {
                   let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
@@ -3699,20 +3685,8 @@ lastEditScript = """
                     this.parentElement.querySelector("[name=value]").value
                   );
                   updateInteractionDiv();
-                }
-              },
-              onkeyup: highlightsubmit})),
-            el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
-              disabled: true,
-              onclick() {
-                clickedElem.setAttribute(
-                  this.parentElement.querySelector("[name=name]").value,
-                  this.parentElement.querySelector("[name=value]").value
-                );
-                //editor_model.clickedElem = clickedElem;
-                updateInteractionDiv();
-              }
-            })
+                },
+                onkeyup: highlightsubmit })])
           ])
         );
       }

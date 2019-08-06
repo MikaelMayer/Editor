@@ -409,19 +409,27 @@ div#modify-menu h3 {
 
 div#modify-menu div.keyvalues {
     margin-top: 6px;
-    display: table;
+    display: flex;
+    flex-direction: column;
     width: 100%;
-    table-layout: fixed;
 }
 
 div#modify-menu div.keyvalues>div.keyvalue {
-    display: table-row;
+    padding: 2px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
 }
 
-div#modify-menu div.keyvalues>div.keyvalue>* {
-    display: table-cell;
-    padding-left: 4px;
-    vertical-align: middle;
+div#modify-menu div.keyvalues>div.keyvalue .attribute-key-value {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+div#modify-menu div.keyvalues>div.keyvalue .attribute-key {
+    width: 42%;
 }
 
 div#modify-menu div.keyvalues>div.keyvalueadder {
@@ -430,6 +438,11 @@ div#modify-menu div.keyvalues>div.keyvalueadder {
 
 div#modify-menu div.keyvalues>div.keyvalueadder:hover {
     opacity: 1;
+}
+
+div#modify-menu div.keyvalues>div.keyvalueadder .attribute-key-value{
+    display: flex;
+    flex-direction: row;
 }
 
 div#modify-menu input {
@@ -800,7 +813,7 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
 }
 
 #applyNewTagName.visible {
-    display: inline-block;
+    display: inline-flex;
 }
 
 textarea#singleChildNodeContent {
