@@ -1569,8 +1569,8 @@ lastEditScript = """
         }
       }
     }
-    saveAttributes("save-ghost-attributes")
-    saveAttributes("save-ignored-attributes")
+    saveAttributes("save-ghost-attributes");
+    saveAttributes("save-ignored-attributes");  
     
     var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
     var savedProperties = [];
@@ -2410,9 +2410,9 @@ lastEditScript = """
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
-        if(editor_model.linkSelectMode) {
+        if(editor_model.selectMode) {
           if(e.which == 27) {
-            escapeLinkMode();
+            escapeSelectMode();
           }
         }
       };
@@ -2495,6 +2495,7 @@ lastEditScript = """
 	        return;
       	}
       var clickedElem = event.target;
+      console.log(typeof event.target);
       var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
       var matchOptions = function(clickedElem) {
         var result = true;
@@ -2575,8 +2576,8 @@ lastEditScript = """
     var checkSVG = mkSvg("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor_model === "object";
     
-    //hover mode functions for linkSelectMode
-    function escapeLinkMode() {
+    //hover mode functions for selectMode
+    function escapeSelectMode() {
       document.body.removeEventListener('mouseover', linkModeHover1, false);
       document.body.removeEventListener('mouseout', linkModeHover2, false);
       //removing the hovered element (which is retained if the escape key is hit)
@@ -2861,7 +2862,7 @@ lastEditScript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      if(!editor_model.linkSelectMode) {
+      if(!editor_model.selectMode) {
         addPinnedModifyMenuIcon(
           panelOpenCloseIcon(),
           {title: "Open/close settings tab", "class": "inert" },
@@ -2931,7 +2932,7 @@ lastEditScript = """
             id: "escapebutton"
           },
           {onclick: function(event) {
-            escapeLinkMode();
+              escapeSelectMode();
             }
           }
         );
@@ -3112,13 +3113,13 @@ lastEditScript = """
             if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
             return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
           })();
-          let insertionStyle = (() => {
+          var insertionStyle = (() => {
             let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
             let defaultValue = "after";
             for (let i = 0, length = radios.length; i < length; i++) {
               if (radios[i].checked) return radios[i].getAttribute("value");
-              defaultValue = radios[i].getAttribute("value")
-            }
+              defaultValue = radios[i].getAttribute("value");
+            } 
             return defaultValue;
           })();
           if(insertionStyle === "after") {
@@ -3248,7 +3249,7 @@ lastEditScript = """
           }
         }
         interactionDiv.append(
-          el("div", {"class": "tagName"}, [
+          el("div", {"class": "tagName", id: "customHTML"}, [
             el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
             el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
                 innerHTML: plusSVG, 
@@ -3608,10 +3609,9 @@ lastEditScript = """
           let isHref = name === "href" && clickedElem.tagName === "A";
           keyvalues.append(
             el("div", {"class": "keyvalue"}, [
-              el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
-              el("span", {},
-                el("input", {"type": "text", value: value, "id": "dom-attr-" + name},
-                  [], {
+              el("span", {title: "This element has attribute name '" + name + "'", class: "attribute-key-value"}, name + ": "),
+              el("span", {}, [
+                el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
                     onkeyup: ((name, isHref) => function () {
                         clickedElem.setAttribute(name, this.value);
                         if(isHref) {
@@ -3623,8 +3623,28 @@ lastEditScript = """
                             livelink.setAttribute("title", "Go to " + this.value);
                           }
                         }
-                      })(name, isHref)
+                    })(name, isHref)
+                  }),
+                isHref ? el("div", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [], {
+                  innerHTML: liveLinkSVG(model.link)
+                }) : undefined,
+                isHref ? el("div", {title: "Activate internal link mode", "class": "modify-menu-icon inert"}, [], { 
+                  innerHTML: linkModeSVG,
+                  onclick: () => {
+                    editor_model.moveElement = "";
+                    editor_model.atCaret = undefined;
+                    startSelectMode();
+                  }
+                }) : undefined,
+                el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
+                  innerHTML: wasteBasketSVG,
+                  onclick: ((name) => function() {
+                    clickedElem.removeAttribute(name);
+                    editor_model.clickedElem = clickedElem;
+                    updateInteractionDiv();
+                    })(name)
                   })
+                ]
               ),
               isHref ? el("span", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [],
                         {innerHTML: liveLinkSVG(model.link)}): undefined,
@@ -3655,18 +3675,30 @@ lastEditScript = """
         keyvalues.append(
           el("div", {"class": "keyvalue keyvalueadder"}, [
             el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
-            el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
-              onfocus: function() {
-                let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
-                if(keyInput && keyInput.value != "") {
-                  let name = document.querySelector("div.keyvalueadder input[name=name]").value;
+            el("span", {}, [
+              el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
+                onfocus: function() {
+                  let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
+                  if(keyInput && keyInput.value != "") {
+                    let name = document.querySelector("div.keyvalueadder input[name=name]").value;
+                    clickedElem.setAttribute(
+                      name,
+                      document.querySelector("div.keyvalueadder input[name=value]").value
+                    );
+                    updateInteractionDiv();
+                    let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
+                    if(d) d.focus();
+                  }
+                },
+                onkeyup: highlightsubmit})),
+              el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+                disabled: true,
+                onclick() {
                   clickedElem.setAttribute(
-                    name,
-                    document.querySelector("div.keyvalueadder input[name=value]").value
+                    this.parentElement.querySelector("[name=name]").value,
+                    this.parentElement.querySelector("[name=value]").value
                   );
                   updateInteractionDiv();
-                  let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
-                  if(d) d.focus();
                 }
               },
               onkeyup: highlightsubmit})),
@@ -3700,7 +3732,6 @@ lastEditScript = """
         }
         // refresh images list
         showListsImages(targetPathName);  // targetPathName is the last file of files array, but it seems that user can only upload one file once
-
         // automatically select upload image
         let selectedImage = document.querySelectorAll(".imgFolder > img");
         for (let i = 0; i < selectedImage.length; ++i) {
@@ -3841,7 +3872,7 @@ lastEditScript = """
       }
     }
     
-      if(!editor_model.linkSelectMode) {
+      if(!editor_model.selectMode) {
         contextMenu.innerHTML = "";
         var whereToAddContextButtons = contextMenu;
         var noContextMenu = false;
