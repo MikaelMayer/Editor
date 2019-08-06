@@ -2410,9 +2410,9 @@ lastEditScript = """
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
-        if(editor_model.selectMode) {
+        if(editor_model.linkSelectMode) {
           if(e.which == 27) {
-            escapeSelectMode();
+            escapeLinkMode();
           }
         }
       };
@@ -2576,13 +2576,14 @@ lastEditScript = """
     var checkSVG = mkSvg("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor_model === "object";
     
-    //hover mode functions for selectMode
-    function escapeSelectMode() {
+    //hover mode functions for linkSelectMode
+    function escapeLinkMode() {
       document.body.removeEventListener('mouseover', linkModeHover1, false);
       document.body.removeEventListener('mouseout', linkModeHover2, false);
       //removing the hovered element (which is retained if the escape key is hit)
       document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
-      editor_model.clickedElem = editor_model.linkFrom;
+      //editor_model.clickedElem = editor_model.linkFrom;
+      editor_model.visible = false;
       editor_model.linkSelectMode = false;
       editor_model.linkSelectCallback = undefined;
       editor_model.linkSelectOtherMenus = undefined;
@@ -2862,7 +2863,7 @@ lastEditScript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      if(!editor_model.selectMode) {
+      if(!editor_model.linkSelectMode) {
         addPinnedModifyMenuIcon(
           panelOpenCloseIcon(),
           {title: "Open/close settings tab", "class": "inert" },
@@ -2932,7 +2933,7 @@ lastEditScript = """
             id: "escapebutton"
           },
           {onclick: function(event) {
-              escapeSelectMode();
+              escapeLinkMode();
             }
           }
         );
@@ -2941,8 +2942,8 @@ lastEditScript = """
             id: "selectbutton"
           },
           {onclick: function(event) {
-            editor_model.linkSelectCallback(editor_model.clickedElem);
-            escapeSelectMode();
+              editor_model.linkSelectCallback(editor_model.clickedElem);
+              escapeLinkMode();
             }
           }
         );
@@ -3221,7 +3222,7 @@ lastEditScript = """
                           let node = editor_model.clickedElem;
                           let clonedNode = editor.duplicate(node, {ignoreText: true});
                           insertTag.call(this, event, clonedNode);
-                          escapeSelectMode();
+                          escapeLinkMode();
                           editor_model.clickedElem = clonedNode;
                           }
                         }
@@ -3235,6 +3236,7 @@ lastEditScript = """
             onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
           );
           // TODO: Filter and sort which one we can add
+          console.log("got here!");
           addElem("List item", {tag:"li", props: { innerHTML: "<br>" }});
           addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }});
           addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n<li><br></li>\n</ol>" }});
@@ -3628,13 +3630,9 @@ lastEditScript = """
                 isHref ? el("div", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [], {
                   innerHTML: liveLinkSVG(model.link)
                 }) : undefined,
-                isHref ? el("div", {title: "Activate internal link mode", "class": "modify-menu-icon inert"}, [], { 
+                isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
                   innerHTML: linkModeSVG,
-                  onclick: () => {
-                    editor_model.moveElement = "";
-                    editor_model.atCaret = undefined;
-                    startSelectMode();
-                  }
+                  onclick: linkSelect
                 }) : undefined,
                 el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
                   innerHTML: wasteBasketSVG,
@@ -3858,7 +3856,7 @@ lastEditScript = """
       }
     }
     
-      if(!editor_model.selectMode) {
+      if(!editor_model.linkSelectMode) {
         contextMenu.innerHTML = "";
         var whereToAddContextButtons = contextMenu;
         var noContextMenu = false;
