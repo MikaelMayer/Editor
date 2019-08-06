@@ -2543,6 +2543,7 @@ editionscript = """
     function updateInteractionDiv() {
       let model = editor_model;
       var clickedElem = model.clickedElem;
+      var CSSparser = new losslesscssjs();
       var contextMenu = document.querySelector("#context-menu");
       var modifyMenuDiv = document.querySelector("#modify-menu");
       //if both are closed, just return 
@@ -3244,9 +3245,10 @@ editionscript = """
            > ^ <
           */
           //CSS parser
+          
           if(!model.insertElement) { 
             let clickedElement = editor_model.clickedElem;
-            var CSSparser = new losslesscssjs();
+            
             /*function firstNonWS(parsedCSS) {
               let count;
               for(count = 0; count < parsedCSS.length; count++) {
@@ -3606,8 +3608,13 @@ editionscript = """
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-            document.getElementById("dom-attr-src").setAttribute("value", file.name);
-            clickedElem.setAttribute("src", targetPathName);
+            if(checkforBackgroundImg()) {
+              clickedElem.style. = "url('" + targetPathName + "')";
+            }
+            else() {
+              document.getElementById("dom-attr-src").setAttribute("value", file.name);
+              clickedElem.setAttribute("src", targetPathName);
+            }
           });
         }
 
@@ -3667,10 +3674,26 @@ editionscript = """
         }
       }
       
-      interactionDiv.append(keyvalues);
+      function checkForBackgroundImg () {
+        var clickedStyle = CSSparser.parseRules(clickedElem.cssText);
+        for(let i in clickedStyle) {
+          if(clickedStyle[i].directive === "background-image") {
+            //removes links in ()
+            var matches = clickedStyle[i].value.match(/\((.*?)\)/); 
+            for(let j in matches){
+              matches[j].replace(/('|")/g,''); 
+            }
+            return matches; 
+          }
+        }
+        return undefined;
+      }
 
-      if (clickedElem && clickedElem.tagName === "IMG") {
-        let srcName = clickedElem.attributes[0].value;
+      interactionDiv.append(keyvalues);
+      
+      let backgroundImgSrc = checkforBackgroundImg();
+      if (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc)) {
+        let srcName = backgroundImgSrc ? backgroundImgSrc : clickedElem.attributes[0].value;
 
         clickedElem.ondragover = function (e) {
           e.preventDefault();
