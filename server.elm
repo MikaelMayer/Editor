@@ -3382,7 +3382,7 @@ editionscript = """
                           curCSSWindow = curCaret.anchorNode;
                           setCSSAreas();
                         }
-                      }
+                      },
                       onkeyup() {
                         let throwError = false;
                         curCSSState = CSSparser.parseCSS(this.value);
