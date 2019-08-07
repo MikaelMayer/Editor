@@ -3245,33 +3245,33 @@ editionscript = """
            > ^ <
           */
           //CSS parser
+          function findText(parsed, endIndex, prevRel) {
+            var textSegment = "";
+            for(; prevRel < endIndex; prevRel++) {
+              parsed ? parsed[0].selector ? textBefore += CSSparser.unparseCSS([parsed[prevRel]]) : 
+                textSegment += CSSparser.unparseRules([parsed[prevRel]]) : 
+                return undefined;
+            }
+            return textSegment;
+          }
           
           if(!model.insertElement) { 
             let clickedElement = editor_model.clickedElem;
+            console.log("All style tags:", document.querySelectorAll("style"));
+            function linkCSSFile() {
+              if(clickedElement.tagName === "LINK") {
+                clickedElement.getAttribute("href");
+                interactionDiv.append(el("textarea", {"class": "CSS-selectors" }, [], {
+                  defaultValue: "Placeholder",
+                  onkeyup() {
+                    clickedElement.parentNode.appendChild(el("style", {"isghost": true}, [], {
+                      value: this.value
+                    }));
+                  }
+                }));
+              }
+            }
             
-            /*function firstNonWS(parsedCSS) {
-              let count;
-              for(count = 0; count < parsedCSS.length; count++) {
-                if(parsedCSS[count].kind !== "whitespace") {
-                  return count;
-                }
-              }
-              return -1;
-            }*/
-            function findTextBefore(parsed, curIndex, prevRel) {
-              var textBefore = "", textAfter = "";
-              for(; prevRel < curIndex; prevRel++) {
-                  textBefore += CSSparser.unparseCSS([parsed[prevRel]]);
-                }
-              return textBefore;
-            }
-            function findLastText(parsed, prevRel) {
-              let lastTextSegment = "";
-              for(let k = prevRel; k < parsed.length; k++) {
-                lastTextSegment += CSSparser.unparseCSS([parsed[k]]);
-              }
-              return lastTextSegment;
-            }
             function fullParseCSS() {
               var fullCSS = [];
               console.log("All style tags:", document.querySelectorAll("style"));
@@ -3366,8 +3366,27 @@ editionscript = """
             }
             var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
             var curCSSWindow = undefined;
+            
             //CSSState = fullParseCSS();
             function setCSSAreas() {
+              //inline styles 
+              var inline = clickedElement.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
+              if(inline) {
+                interactionDiv.append(el("h1", {}, [], {innerHTML: "Inline styles:"}),
+                  el("textarea", {"class": "CSS-selectors"}, [], {
+                    onfocus() {
+                        curCaret = window.getSelection();
+                        if(curCSSWindow && curCSSWindow !== curCaret.anchorNode) {
+                          curCSSWindow = curCaret.anchorNode;
+                          setCSSAreas();
+                        }
+                    },
+                    onkeyup() {
+                      clickedElement.setAttribute("style", this.value);
+                    }
+                  }))
+              }
+              //rest of CSS
               editor_model.CSSState = fullParseCSS();
               console.log("CSS state is:", editor_model.CSSState);
               while(CSSarea.firstChild) {
@@ -3378,8 +3397,8 @@ editionscript = """
                   let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
                     el("textarea", {"class": "CSS-selectors" }, [], {
                       defaultValue: editor_model.CSSState[i][j].content,
-                      onclick() {
-                        curCaret = window.getSelection()
+                      onfocus() {
+                        curCaret = window.getSelection();
                         if(curCSSWindow && curCSSWindow !== curCaret.anchorNode) {
                           curCSSWindow = curCaret.anchorNode;
                           setCSSAreas();
@@ -3603,15 +3622,44 @@ editionscript = """
           ])
         );
       }
-
-      function uploadImagesAtCursor(files, srcName) {
+      function checkForBackgroundImg() {
+        var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
+        var backgroundCheck = [];
+        for(let i in clickedStyle) {
+          if(clickedStyle[i].directive === "background-image") {
+            //parsing operations
+            var diffPics = clickedStyle[i].value.split(",");   
+            for(let k in diffPics) {
+              //extracts only url(...)
+              var matches = diffPics[k].match(/url\((.*?)\)/);
+              //deepcopy string
+              var remainStr = diffPics[k].splice(0); 
+              for(let j in matches) {
+                //from current understanding, there should only be one url(...) per split of ,
+                if(j == 1) {
+                  console.log(`Odd syntax, ${matches[j]} also matched!`);
+                }
+                let sIndex = curStyleStr.indexOf(matches[j]);
+                //extracting the rest of the string 
+                remainStr = remainStr.splice(sIndex + matches[j].length);
+                //getting rid of "url(" and ")"
+                //matches[j] = matches[j].match(/\(.*?\)/)[0].replace(/('|")/g,'');
+                backgroundCheck.append(url: matches[j], remainder: remainStr});  
+              }
+            }
+            return {textBefore: findTextBefore(clickedStyle), textAfter: }
+          }
+        } 
+        return backgroundCheck.length ? backgroundCheck : undefined;
+      }
+      function uploadImagesAtCursor(files, srcName, parsedCSS) {
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-            if(checkforBackgroundImg()) {
-              clickedElem.style. = "url('" + targetPathName + "')";
+            if(checkForBackgroundImg()) {
+              clickedElem.setAttribute("style", );
             }
-            else() {
+            else {
               document.getElementById("dom-attr-src").setAttribute("value", file.name);
               clickedElem.setAttribute("src", targetPathName);
             }
@@ -3633,7 +3681,6 @@ editionscript = """
           }
         }
       }
-      
       function showListsImages(srcName) {
         srcName = relativeToAbsolute(srcName)
         let dir = "";
@@ -3674,26 +3721,12 @@ editionscript = """
         }
       }
       
-      function checkForBackgroundImg () {
-        var clickedStyle = CSSparser.parseRules(clickedElem.cssText);
-        for(let i in clickedStyle) {
-          if(clickedStyle[i].directive === "background-image") {
-            //removes links in ()
-            var matches = clickedStyle[i].value.match(/\((.*?)\)/); 
-            for(let j in matches){
-              matches[j].replace(/('|")/g,''); 
-            }
-            return matches; 
-          }
-        }
-        return undefined;
-      }
+      
 
       interactionDiv.append(keyvalues);
-      
-      let backgroundImgSrc = checkforBackgroundImg();
+      let backgroundImgSrc = checkForBackgroundImg();
       if (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc)) {
-        let srcName = backgroundImgSrc ? backgroundImgSrc : clickedElem.attributes[0].value;
+        let srcName = backgroundImgSrc ? backgroundImgSrc[0].url : clickedElem.attributes[0].value;
 
         clickedElem.ondragover = function (e) {
           e.preventDefault();
