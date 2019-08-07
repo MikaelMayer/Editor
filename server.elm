@@ -1558,6 +1558,8 @@ lastEditScript = """
       savedGhostAttributes.push([editor.toTreasureMap(elem),
           "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
     }
+
+
     function saveAttributes(name) {
        var ghostAttributesModified = document.querySelectorAll("["+name+"]");
       for(var i = 0; i < ghostAttributesModified.length; i++) {
@@ -1590,6 +1592,8 @@ lastEditScript = """
     }
     return [savedGhostAttributes, savedProperties, parentsGhostNodes];
   }
+
+
   function applyGhostAttributes(attrs) {
     var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
     for(var i in savedGhostAttributes) {
@@ -1653,6 +1657,8 @@ lastEditScript = """
         return [n.tagName.toLowerCase(), attributes, children];
       }
     }
+
+    //(outer lastEditScript)
     function saveDisplayProperties() {
       let singleChildNodeContent = document.querySelector("textarea#singleChildNodeContent");
       if(singleChildNodeContent) {
@@ -1942,7 +1948,6 @@ lastEditScript = """
           }
           editor_model.isAfterSave = false;
           sendNotification("Save completed!");
-
         }
       }
       serverWorker.postMessage(data);
@@ -2022,7 +2027,7 @@ lastEditScript = """
           } else {
             onlyGhosts = false;
             sendToUndo(mutation, cur_time);
-            console.log("Attribute is not ghost", mutation);
+            //console.log("Attribute is not ghost", mutation);
           }
         } else if(mutation.type == "childList") {
           if(!areChildrenGhosts(mutation.target)) {
@@ -2030,21 +2035,21 @@ lastEditScript = """
               if(!hasGhostAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
-                console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
+                //console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
               }
             }
             for(var j = 0; j < mutation.removedNodes.length; j++) {
               if(!isGhostNode(mutation.removedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
-                console.log(`Removed node ${j} was not a ghost`, mutation);
+                //console.log(`Removed node ${j} was not a ghost`, mutation);
               }
             }
           }
         } else {
           onlyGhosts = false;
           sendToUndo(mutation, cur_time);
-          console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
+          //console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
         }
       }
       if(onlyGhosts) {
@@ -2694,7 +2699,7 @@ lastEditScript = """
       if(!data) return;
       return undefined;
     }
-    
+    //(outer lastEditScript)
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
       //makes visibility of editor model consistent throughout reloads
       visible: ifAlreadyRunning ? editor_model.visible : false,
@@ -2777,7 +2782,7 @@ lastEditScript = """
       document.body.addEventListener('mouseout', linkModeHover2, false);
     }
       
-    updateInteractionDiv();
+    updateInteractionDiv(); //outer lastEditScript
 
     function updateInteractionDiv() {
       let model = editor_model;
