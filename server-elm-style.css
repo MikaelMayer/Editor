@@ -811,12 +811,37 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
     background: var(--context-button-color-inert-hover)
 }
 
-#applyNewTagName {
+div#modify-menu div.keyvalues>div.keyvalue #applyNewTagName {
     display: none;
 }
 
-#applyNewTagName.visible {
-    display: inline-flex;
+div#modify-menu div.keyvalues>div.keyvalue #applyNewTagName.visible {
+    display: flex;
+    width: var(--context-menu-button-width);
+    padding: 4px;
+}
+div#modify-menu div.keyvalues>div.keyvalue #newTagName {
+    background: none;
+    color: white;
+}
+
+div#modify-menu div.keyvalues>div.keyvalue #newTagName:focus {
+    background: white;
+    color: initial;
+}
+
+
+div#modify-menu div.keyvalues>div.keyvalue #applyNewTagName + div#newtagname-align-placeholder {
+  display: flex;
+  width: calc(var(--context-menu-button-width) - 8px);
+  padding: 4px;
+  margin: 2px;
+  border-radius: 4px;
+  border-width: 2px;
+}
+
+div#modify-menu div.keyvalues>div.keyvalue #applyNewTagName.visible + div#newtagname-align-placeholder {
+  display: none;
 }
 
 textarea#singleChildNodeContent {

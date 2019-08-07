@@ -2552,6 +2552,10 @@ lastEditScript = """
       return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
             <path d="${path}" /></svg>`
     }
+    var arrowDown = mkSvg("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true);
+    var arrowRight = mkSvg("M 21,25 18,22 22,18 8,18 8,12 22,12 18,8 21,5 31,15 Z", true);
+    var arrowUp = mkSvg("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true);
+    var arrowLeft = mkSvg("M 19,25 22,22 18,18 32,18 32,12 18,12 22,8 19,5 9,15 Z", true);
     var cloneSVG = mkSvg("M 19,8 31,8 31,26 19,26 Z M 11,4 23,4 23,8 19,8 19,22 11,22 Z");
     var saveSVG = mkSvg("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
     var openLeftSVG = mkSvg("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
@@ -3574,30 +3578,32 @@ lastEditScript = """
           keyvalues.append(
             el("div", {"class": "keyvalue"}, [
               el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "tag: "),
-              el("span", {},
+              el("span", {class:"attribute-key-value"}, [
                 el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
                   [], {
-                    // onkeyup() {
-                    //   document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
-                    // }
-                  })
-              ),
-              el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
-                  let newel = el(document.querySelector("#newTagName").value);
-                  let elements = clickedElem.childNodes;
-                  while(elements.length) {
-                    newel.append(elements[0]);
-                  }
-                  for(let i = 0; i < clickedElem.attributes.length; i++) {
-                    newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-                  }
-                  clickedElem.parentElement.insertBefore(newel, clickedElem);
-                  clickedElem.remove();
-                  editor_model.clickedElem = newel;
-                  updateInteractionDiv();
-                }
-              }
-            )
+                    onkeyup() {
+                       document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+                    }
+                  }),
+                  el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
+                        let newel = el(document.querySelector("#newTagName").value);
+                        let elements = clickedElem.childNodes;
+                        while(elements.length) {
+                          newel.append(elements[0]);
+                        }
+                        for(let i = 0; i < clickedElem.attributes.length; i++) {
+                          newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+                        }
+                        clickedElem.parentElement.insertBefore(newel, clickedElem);
+                        clickedElem.remove();
+                        editor_model.clickedElem = newel;
+                        updateInteractionDiv();
+                      }
+                    }
+                  ),
+                  el("div", {id:"newtagname-align-placeholder"}, " ")
+                ]
+              )
             ])
           );
       }
@@ -3878,11 +3884,11 @@ lastEditScript = """
           addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
             {title: "Go to " + model.link, "class": "inert"});
         }
-
+        var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
+        var isDisplayInline = computedStyle && computedStyle.display.startsWith("inline");
         if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
-          addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
-          {title: "Move selected element up"},
+          addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
+          {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
           {onclick: (c => event => {
               let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
                 c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
@@ -3897,9 +3903,8 @@ lastEditScript = """
           });
         }
         if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
-          addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
-          {title: "Move selected element down"},
+          addContextMenuButton(isDisplayInline ? arrowRight : arrowDown,
+          {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
           {onclick: (c => (event) => {
               let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 && 
                 c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
