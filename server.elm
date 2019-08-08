@@ -3364,10 +3364,17 @@ editionscript = """
                 curTag.textContent = CSSString;
               }
             }
-            var inline = clickedElement.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
+            
+            var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
+            var curCSSWindow = undefined;
+            //CSSState = fullParseCSS();
+            function setCSSAreas() {
+              //inline styles 
+              var inline = clickedElement.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
               if(inline) {
                 interactionDiv.append(el("h1", {}, [], {innerHTML: "Inline styles:"}),
                   el("textarea", {"class": "inline-CSS"}, [], {
+                    defaultValue: inline,
                     onfocus() {
                       curCaret = window.getSelection();
                       if(curCSSWindow && curCSSWindow !== curCaret.anchorNode) {
@@ -3380,12 +3387,6 @@ editionscript = """
                     }
                   }))
               }
-            var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
-            var curCSSWindow = undefined;
-            //CSSState = fullParseCSS();
-            function setCSSAreas() {
-              //inline styles 
-              
               //rest of CSS
               editor_model.CSSState = fullParseCSS();
               console.log("CSS state is:", editor_model.CSSState);
@@ -3624,14 +3625,14 @@ editionscript = """
       }
 
       //extract url and extraneous text from specified CSS value (which is originally part of a rule)
-      function findURLs(styleStr, targetAttr) {
+      function findURLS(styleStr) {
         var urls = [];
-        var diffPics = styleStr.value.split(",");
+        var diffPics = styleStr.split(",");
         for(let k in diffPics) {
           //extracts only url(...)
           var matches = diffPics[k].match(/url\((.*?)\)/);
           //deepcopy string
-          var remainStr = diffPics[k].splice(0); 
+          var remainStr = diffPics[k].slice(0); 
           for(let j in matches) {
             //from current understanding, there should only be one url(...) per split of ,
             if(j == 1) {
@@ -3639,8 +3640,8 @@ editionscript = """
             }
             let sIndex = diffPics[k].indexOf(matches[j]);
             //extracting the rest of the string 
-            afterStr = remainStr.splice(sIndex + matches[j].length);
-            beforeStr = remainStr.splice(0, sIndex);
+            afterStr = remainStr.slice(sIndex + matches[j].length);
+            beforeStr = remainStr.slice(0, sIndex);
             urls.append({remainderBefore: before, url: matches[j], remainderAfter: afterStr});  
           }
         }
@@ -3651,22 +3652,36 @@ editionscript = """
       //a link to an image is provided as part of the value for this rule;
       //TODO: expand the set of CSS being checked to any style tags as well.
       function checkForBackgroundImg() {
+        console.log("clicked element is:", clickedElem);
+        clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
         var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
+        console.log(clickedStyle);
         //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
         //former first, if it contains a url. for now, I am looping through the CSS rules twice.
-        console.log("got here!");
+        console.log("^parsed rules ");
         for(let i in clickedStyle) {
-          if(clickedStyle[i].directive === "background") {
-            clickedStyle[i].value = findURLS(clickedStyle[i].value, "background-image");  
-            return {parsedCSS: clickedStyle, imageSelection: 0};
+          for(let j in clickedStyle[i]) {
+            if(clickedStyle[i][j].directive === "background") {
+              clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
+              if(clickedStyle[i][j].value.length) {
+                return {relCSS: clickedStyle[i][j], imageSelection: 0};
+              }
+            }
           }
         }
         for(let i in clickedStyle) {
-          if(clickedStyle[i].directive === "background-image") {
-            clickedStyle[i].value = findURLS(clickedStyle[i].value, "background-image");  
-            return {parsedCSS: clickedStyle, imageSelection: 0};
+          for(let j in clickedStyle[i]) {
+            if(clickedStyle[i][j].directive === "background-image") {
+              console.log("hello?");
+              console.log(clickedStyle[i][j].value);
+              clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
+              if(clickedStyle[i][j].value.length) {
+                return {relCSS: clickedStyle[i][j], imageSelection: 0};
+              }
+            }
           }
         } 
+        console.log("unsuccessful");
         return undefined;
       }
 
@@ -3781,6 +3796,8 @@ editionscript = """
       if (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc)) {
         let srcName = backgroundImgSrc ? backgroundImgSrc.relCSS.value[0].url : clickedElem.attributes[0].value;
 
+        console.log(srcName);
+        console.log(backgroundImgSrc.relCSS.value[0].url);
         clickedElem.ondragover = function (e) {
           e.preventDefault();
         }
