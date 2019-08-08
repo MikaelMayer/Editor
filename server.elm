@@ -502,6 +502,76 @@ luca =
    </script>]
 
 
+-- Conversion of php script to elm script
+phpToElmFinal path string =
+  let includingFolder = Regex.replace """(/)[^/]*$""" (\{submatches=[slash]} -> slash) path in
+  let phpToElm string =
+        let echoRaw content = "\nob = ob + " + content in
+        let wrapStr content = freeze String.q3 + Regex.replace "@" (\{match=m} -> m + m) content + freeze String.q3 in
+        let echo content = echoRaw (wrapStr content) in
+        let phpStringToElmString =
+                (Regex.replace """(\")([^\"]*)(\")""" <| \m ->
+                  nth m.group 1 +
+                  (nth m.group 2
+                  |> Regex.replace """\$[0-9a-zA-Z_]*""" (\n ->
+                     freeze "\" + " + nth n.group 0 + freeze " + \"")) +
+                  nth m.group 3) >>
+                (Regex.replace """\$_GET\[([^\]]*)\]""" <| \m ->
+                  freeze "listDict.get "+ nth m.group 1 + freeze " $_GET |> Maybe.withDefaultReplace ''"
+                ) >>
+                (Regex.replace """\$_SERVER\[([^\]]*)\]""" <| \m ->
+                  freeze "listDict.get "+ nth m.group 1 + freeze " $_SERVER |> Maybe.withDefaultReplace ''"
+                )
+        in
+        if not (Regex.matchIn "<?php" string) then
+          echo string
+        else
+        Regex.replace """^((?:(?!<\?php)[\s\S])+?)(?=(<\?php))|(\?>)([\s\S]*?)(?=<\?php)|(\?>)([\s\S]*?)$|(^)(<\?php)([\s\S]*?)(?=\?>)|(<\?php)\s*if\s*\(([\s\S]*?)\s*\)\s*\{\s*\?>((?:(?!<\?php)[\s\S])+?)<\?php\s*\}\s*(?=\?>)|(<\?php)([\s\S]*?)(?=\?>)""" (
+             \{submatches=[content1, isRaw1, isRaw2, content2, isRaw3, content3, beginning1, isPhp1, code1, isPhpIf, condIf, codeIf, isPhp2, code2]} ->
+          if isPhp1 /= "" || isPhp2 /= "" || isPhpIf /= "" then
+            let prefix = if isPhp1 /= "" then echo beginning1 else freeze "" in
+            prefix +
+            if isPhpIf /= "" then
+              echoRaw <| "(if "+condIf+" then " + wrapStr codeIf + " else \"\")"
+            else
+            let code = if isPhp1 /= "" then code1 else code2 in
+            case Regex.extract """^\s*include\("([^"]*)"\)""" code of
+              Just [included] ->
+                phpToElm (fs.read (includingFolder + included) |> Maybe.withDefaultReplace ("\n[code to read " + included + " in " + includingFolder +"]"))
+              _ ->
+            case Regex.extract """^\s*switch\s*\(([^\)]*)\)\s*\{((?:\s*(?:case\s*[^:]*?\s*|default):((?:\s*\$[\w_]+\s*=\s*(?:(?!;\r?\n)[\s\S])*;)*)(?:\s*break\s*;)?)*)\s*\}\s*""" code of
+              Just [input, assignments, lastAssignment] ->
+                let vars = "(" + (Regex.find """(\$[\w_]+)\s*=""" lastAssignment |> List.map (\[_, name] -> name) |> String.join ", ") + ")" in
+                let results = assignments |> Regex.find """\s*(case\s*([^:]*?)\s*|default):((?:\s*\$[\w_]+\s*=\s*(?:(?!;\r?\n)[\s\S])*;)*)(?:\s*break\s*;)?""" |>
+                      List.map (\[whole, caseOrDefault, pattern, values] ->
+                        let tuple =
+                              Regex.find """\s*\$[\w_]+\s*=\s*((?:(?!;\r?\n)[\s\S])*?)\s*;""" values |>
+                              List.map (\[whole2, value2] -> phpStringToElmString value2) |> String.join ", "
+                        in
+                        let finalPattern = if caseOrDefault == "default" then "_" else pattern in
+                        "\n  " + finalPattern + " -> (" + tuple + ")"
+                      ) |> String.join ""
+                in
+                "\n" + vars + " = case " + phpStringToElmString input + " of"  + results
+              _ ->
+            case Regex.extract """\s*(?:echo|print)\s+([^;]+?);\s*""" code of
+              Just [content] -> echoRaw content
+              res ->
+                "\n[convert" + code + "]\n" + toString res
+          else
+          let content = if isRaw1 /= "" then
+                content1
+              else if isRaw2 /= "" then
+                content2
+              else -- if isRaw3 /= "" then
+                content3
+          in
+          echo content
+        ) string
+  in
+  flip (+) "\nob" <|
+  (+) "date _ = '2019'\nob = freeze ''" <| phpToElm string
+
 {---------------------------------------------------------------------------
  Evaluates the page according to the path extension.
  - Wraps html pages to parse them as raw html
@@ -596,37 +666,12 @@ evaluatedPage =
   let isHtml = Regex.matchIn """\.html?$""" path in
   if isHtml || isPhp then
     let sourcecontent = if isHtml then sourcecontent else
-      let phpToElm =
-        let phpStringToElmString =
-          (Regex.replace """(\")([^\"]*)(\")""" <| \m ->
-            nth m.group 1 +
-            (nth m.group 2
-            |> Regex.replace """\$[0-9a-zA-Z_]*""" (\n ->
-               freeze "\" + " + nth n.group 0 + freeze " + \"")) +
-            nth m.group 3) >>
-          (Regex.replace """\$_GET\[([^\]]*)\]""" <| \m ->
-            freeze "listDict.get "+ nth m.group 1 + freeze " $_GET |> Maybe.withDefaultReplace ''"
-          )
-        in
-        \string ->
-        string |>
-        Regex.replace """<\?php\s+echo\s+([^;]+?);\s+\?>"""
-           (\m -> freeze "@(" + nth m.group 1 + freeze ")") |>
-        Regex.replace """^\s*<\?php(\s+(?:(?!\?>)[\s\S])*)\?>([\s\S]*)$"""
-          (\m ->
-            nth m.group 1 
-            |> Regex.replace """(\r?\n\s*)(\$[0-9a-zA-Z_]*\s*=\s*)((?:(?!;).)*)(;)"""
-                 (\assign -> (nth assign.group 1) +
-                   freeze "let " +
-                   (nth assign.group 2) +
-                   phpStringToElmString (nth assign.group 3) +
-                   freeze " in")
-            |> (\res -> res + freeze " " + String.q3 + nth m.group 2 + String.q3))
-      in
-      let elmSourceContent = phpToElm sourcecontent in
-      __evaluate__ (("$_GET", vars)::("path", path)::("fs", fs)::preludeEnv) elmSourceContent |>
+      let elmSourceContent = phpToElmFinal path sourcecontent in
+      __evaluate__ (("$_GET", vars)::("$_SERVER", [("SCRIPT_NAME", "/" + path)])::("path", path)::("fs", fs)::preludeEnv) elmSourceContent |>
       case of
-        Err msg -> serverOwned "error message" "<html><head></head><body><pre>Error elm-reinterpreted php: " + msg + "</pre></body></html>"
+        Err msg -> serverOwned "error message" "<html><head></head><body><pre>Error elm-reinterpreted php: " + Regex.replace "<" "&lt;" msg + "</pre>Original computed source <pre>" +
+          Regex.replace "<" "&lt;" elmSourceContent +
+          "</pre></body></html>"
         Ok sourcecontent -> sourcecontent
     in
     let interpretableData =
@@ -1291,7 +1336,7 @@ function areChildrenGhosts(n) {
 function hasGhostAncestor(htmlElem) {
   if(htmlElem == null) return false;
   if(isGhostNode(htmlElem)) return true;
-  return areChildrenGhosts(htmlElem.parentNode) || hasGhostAncestor(htmlElem.parentNode);
+  return areChildrenGhosts(htmlElem.parentNode) || (htmlElem.parentNode == null && htmlElem.nodeType !== 9 /*document*/) || hasGhostAncestor(htmlElem.parentNode);
 }
 function isGhostAttributeKey(name) {
   return name.startsWith("ghost-");
