@@ -3245,12 +3245,11 @@ editionscript = """
            > ^ <
           */
           //CSS parser
-          function findText(parsed, endIndex, prevRel) {
+          function findText(parsed, startIndex, endIndex) {
             var textSegment = "";
-            for(; prevRel < endIndex; prevRel++) {
-              parsed ? parsed[0].selector ? textBefore += CSSparser.unparseCSS([parsed[prevRel]]) : 
-                textSegment += CSSparser.unparseRules([parsed[prevRel]]) : 
-                return undefined;
+            for(; startIndex < endIndex; startIndex++) {
+              textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[startIndex]]) :
+                parsed[0].directive ? CSSparser.unparseRules([parsed[startIndex]]) : "" : "";
             }
             return textSegment;
           }
@@ -3284,7 +3283,7 @@ editionscript = """
                 for(let i in parsedCSS) {
                   if(parsedCSS[i].kind === 'cssBlock' && clickedElement.matches(parsedCSS[i].selector)) {
                     //calculating before and after text
-                    let textBefore = findTextBefore(parsedCSS, i, prevRelCSS)
+                    let textBefore = findText(parsedCSS, prevRelCSS, i);
                     if(curCSS.length) {
                       curCSS[curCSS.length-1].after = textBefore;
                     }
@@ -3294,7 +3293,7 @@ editionscript = """
                   else if(parsedCSS[i].kind === '@media' && window.matchMedia(parsedCSS[i].selector).matches) {
                     let prevRelCSSInner = 0;
                     //calculating before and after text
-                    let textBefore = textBeforeAfter(parsedCSS, i, prevRelCSS);
+                    let textBefore = findText(parsedCSS, prevRelCSS, i);
                     //saving selector information 
                     let curMedia = parsedCSS[i];
                     if(curCSS.length) {
@@ -3302,7 +3301,7 @@ editionscript = """
                     }
                     for(let j in parsedCSS.content) {
                       if(clickedElement.matches(parsedCSS.content[j].selector)) {
-                        let textBeforeInner = findTextBefore(parsedCSS.content, j, prevRelCSSInner);
+                        let textBeforeInner = findText(parsedCSS.content, prevRelCSSInner, j);
                         if(curCSS.length && curCSS[curCSS.length-1].type === '@media') {
                           curCSS[curCSS.length-1].innerAfter = textBeforeInner;
                         }
@@ -3313,7 +3312,7 @@ editionscript = """
                       }
                       else if(j === parsedCSS.content.length - 1) {
                         if(curCSS.length && curCSS[curCSS.length-1].type === '@media') {
-                          curCSS[curCSS.length-1].innerAfter = findLastText(parsedCSS.content, prevRelCSSInner);
+                          curCSS[curCSS.length-1].innerAfter = findText(parsedCSS.content, prevRelCSSInner, parsedCSS.content.length);
                         }
                       }
                       prevRelCSSInner = j + 1;
@@ -3324,8 +3323,9 @@ editionscript = """
                   //when last piece of CSS is not connected to clicked element
                   //in this case, we will need to add the remaining irrelevant raw CSS text to the last relevant CSS segment
                   else if(i === parsedCSS.length - 1) {
+                    //if there is at least one relevant piece of CSS before the end of the selector query array
                     if(curCSS.length) {
-                      curCSS[curCSS.length-1].after = findLastText(parsedCSS, prevRelCSS);
+                      curCSS[curCSS.length-1].after = findText(parsedCSS, prevRelCSS, parsedCSS.length);
                     }
                   }
                   else if(parsedCSS[i].kind === 'whitespace') { 
@@ -3364,28 +3364,28 @@ editionscript = """
                 curTag.textContent = CSSString;
               }
             }
-            var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
-            var curCSSWindow = undefined;
-            
-            //CSSState = fullParseCSS();
-            function setCSSAreas() {
-              //inline styles 
-              var inline = clickedElement.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
+            var inline = clickedElement.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
               if(inline) {
                 interactionDiv.append(el("h1", {}, [], {innerHTML: "Inline styles:"}),
-                  el("textarea", {"class": "CSS-selectors"}, [], {
+                  el("textarea", {"class": "inline-CSS"}, [], {
                     onfocus() {
-                        curCaret = window.getSelection();
-                        if(curCSSWindow && curCSSWindow !== curCaret.anchorNode) {
-                          curCSSWindow = curCaret.anchorNode;
-                          setCSSAreas();
-                        }
+                      curCaret = window.getSelection();
+                      if(curCSSWindow && curCSSWindow !== curCaret.anchorNode) {
+                        curCSSWindow = curCaret.anchorNode;
+                        setCSSAreas();
+                      }
                     },
                     onkeyup() {
                       clickedElement.setAttribute("style", this.value);
                     }
                   }))
               }
+            var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
+            var curCSSWindow = undefined;
+            //CSSState = fullParseCSS();
+            function setCSSAreas() {
+              //inline styles 
+              
               //rest of CSS
               editor_model.CSSState = fullParseCSS();
               console.log("CSS state is:", editor_model.CSSState);
@@ -3622,42 +3622,81 @@ editionscript = """
           ])
         );
       }
+
+      //extract url and extraneous text from specified CSS value (which is originally part of a rule)
+      function findURLs(styleStr, targetAttr) {
+        var urls = [];
+        var diffPics = styleStr.value.split(",");
+        for(let k in diffPics) {
+          //extracts only url(...)
+          var matches = diffPics[k].match(/url\((.*?)\)/);
+          //deepcopy string
+          var remainStr = diffPics[k].splice(0); 
+          for(let j in matches) {
+            //from current understanding, there should only be one url(...) per split of ,
+            if(j == 1) {
+              console.log(`Odd syntax, ${matches[j]} also matched!`);
+            }
+            let sIndex = diffPics[k].indexOf(matches[j]);
+            //extracting the rest of the string 
+            afterStr = remainStr.splice(sIndex + matches[j].length);
+            beforeStr = remainStr.splice(0, sIndex);
+            urls.append({remainderBefore: before, url: matches[j], remainderAfter: afterStr});  
+          }
+        }
+        return urls;
+      }
+
+      //checks the inline CSS of the clicked node/element to see if background or background-image is a rule, and if 
+      //a link to an image is provided as part of the value for this rule;
+      //TODO: expand the set of CSS being checked to any style tags as well.
       function checkForBackgroundImg() {
         var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
-        var backgroundCheck = [];
+        //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
+        //former first, if it contains a url. for now, I am looping through the CSS rules twice.
+        console.log("got here!");
+        for(let i in clickedStyle) {
+          if(clickedStyle[i].directive === "background") {
+            clickedStyle[i].value = findURLS(clickedStyle[i].value, "background-image");  
+            return {parsedCSS: clickedStyle, imageSelection: 0};
+          }
+        }
         for(let i in clickedStyle) {
           if(clickedStyle[i].directive === "background-image") {
-            //parsing operations
-            var diffPics = clickedStyle[i].value.split(",");   
-            for(let k in diffPics) {
-              //extracts only url(...)
-              var matches = diffPics[k].match(/url\((.*?)\)/);
-              //deepcopy string
-              var remainStr = diffPics[k].splice(0); 
-              for(let j in matches) {
-                //from current understanding, there should only be one url(...) per split of ,
-                if(j == 1) {
-                  console.log(`Odd syntax, ${matches[j]} also matched!`);
-                }
-                let sIndex = curStyleStr.indexOf(matches[j]);
-                //extracting the rest of the string 
-                remainStr = remainStr.splice(sIndex + matches[j].length);
-                //getting rid of "url(" and ")"
-                //matches[j] = matches[j].match(/\(.*?\)/)[0].replace(/('|")/g,'');
-                backgroundCheck.append(url: matches[j], remainder: remainStr});  
-              }
-            }
-            return {textBefore: findTextBefore(clickedStyle), textAfter: }
+            clickedStyle[i].value = findURLS(clickedStyle[i].value, "background-image");  
+            return {parsedCSS: clickedStyle, imageSelection: 0};
           }
         } 
-        return backgroundCheck.length ? backgroundCheck : undefined;
+        return undefined;
       }
-      function uploadImagesAtCursor(files, srcName, parsedCSS) {
+
+      //unparse the background/background-image object
+      function unparseBackgroundImg(backImgObj) {
+        var textSegment = "";
+        let valueText = "";
+        for(let i in backImgObj.relCSS.value) {
+          valueText += (i !== 0 ? "," : "") + backImgObj.relCSS.value[i].remainderBefore + backImgObj.relCSS[i].url + backImgObj.relCSS[i].remainderAfter;
+        }
+        backImgObj.relCSS.value = valueText;
+        return findText(backImgObj.relCSS, 0, backImgObj.relCSS.length);
+      }
+
+      function uploadImagesAtCursor(files, srcName, backImgObj) {
         for (var i = 0, file; file = files[i]; i++) {
           var targetPathName =  editor.getStorageFolder(file) + file.name;
           editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-            if(checkForBackgroundImg()) {
-              clickedElem.setAttribute("style", );
+            if(backImgObj) {
+              backImgObj.imageSelection = (() => {
+                let radios = document.querySelectorAll(".background-img-radio");
+                let defaultValue = 0;
+                for (let i in radios) {
+                  //hopefully there aren't more than 10 images!
+                  if (radios[i].checked) defaultValue = Number(radios[i].getAttribute("value").match(/[0-9]/g));
+                }
+                return defaultValue;
+              })();
+              backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url("'+ targetPathName +'")';
+              clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
             }
             else {
               document.getElementById("dom-attr-src").setAttribute("value", file.name);
@@ -3681,7 +3720,8 @@ editionscript = """
           }
         }
       }
-      function showListsImages(srcName) {
+
+      function showListsImages(srcName, backImgObj) {
         srcName = relativeToAbsolute(srcName)
         let dir = "";
         for(let i = 0, arr = srcName.split(/\\|\//); i < arr.length - 1; ++i) {
@@ -3711,8 +3751,23 @@ editionscript = """
                   // otherImages[i].style.outline = "none";
                 }
                 // replace image
-                clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
-                document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
+                if(backImgObj) {
+                  backImgObj.imageSelection = (() => {
+                    let radios = document.querySelectorAll(".background-img-radio");
+                    let defaultValue = 0;
+                    for (let i in radios) {
+                      //hopefully there aren't more than 10 images!
+                      if (radios[i].checked) defaultValue = Number(radios[i].getAttribute("value").match(/[0-9]/g));
+                    }
+                    return defaultValue;
+                  })();
+                  backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url("'+ this.children[0].getAttribute("src") +'")';
+                  clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
+                }
+                else {
+                  clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
+                  document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
+                }
                 // this.style.outline = "2px solid white";
                 this.classList.add("highlight-select-image");
               }
@@ -3720,26 +3775,32 @@ editionscript = """
           );
         }
       }
-      
-      
 
       interactionDiv.append(keyvalues);
       let backgroundImgSrc = checkForBackgroundImg();
       if (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc)) {
-        let srcName = backgroundImgSrc ? backgroundImgSrc[0].url : clickedElem.attributes[0].value;
+        let srcName = backgroundImgSrc ? backgroundImgSrc.relCSS.value[0].url : clickedElem.attributes[0].value;
 
         clickedElem.ondragover = function (e) {
           e.preventDefault();
         }
 
         clickedElem.ondrop = function (e) {
-          // upload and replace the image
+          // upload and replace the image 
           e.stopPropagation();
           e.preventDefault();
           var files = e.dataTransfer.files; // FileList object
           uploadImagesAtCursor(files, srcName);
         }
 
+        // radio buttons for cases when there are two background images
+        if(backgroundImgSrc && backgroundImgSrc.relCSS.value.length > 1) {
+          for(let i in backgroundImgSrc.value.relCSS) {
+            interactionDiv.append(el("span", {class: "insertOption"}, [
+              el("input", {type: "radio", class: "background-img-radio", id: `radio${i}`, name: "", value: `Image {i}`}, [], {checked: i === 0}),
+              el("label", {"for": "radio${i}"}, `Image {i}`)]),);
+          }         
+        }
         // upload image button
         interactionDiv.append(
           el("a", 
@@ -3747,14 +3808,14 @@ editionscript = """
             el(
               "input", {"id": "upload-image-btn-input", "type": "file", value: "Please upload images..."}, 
               [], 
-              { onchange: function(evt) { uploadImagesAtCursor(evt.target.files, srcName); }}
+              { onchange: function(evt) { uploadImagesAtCursor(evt.target.files, srcName, backgroundImgSrc); }}
             ), 
             {}
           )
         );
         
         // show lists of images in selected image's folder
-        showListsImages(srcName);
+        showListsImages(srcName, backgroundImgSrc);
       }
       let voidTags = {AREA: true, BASE: true, BR: true, COL: true, COMMANd: true, EMBED: true, HR: true, IMG: true, INPUT: true, KEYGEN: true, LINK: true, META: true, PARAM: true, SOURCE: true, TRACK: true, WBR: true};
       //interactionDiv.append(el("hr"));
