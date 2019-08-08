@@ -211,7 +211,6 @@ isTextFile path =
                 x -> x
             _ -> fs.read path
         )
-      |> Maybe.map applyDotEditor
       |> Maybe.withDefaultReplace (
         serverOwned "404 page" (if isTextFile path then
                if permissionToCreate then freeze """@path does not exist yet. Modify this page to create it!""" else """Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)"""
@@ -665,14 +664,14 @@ evaluatedPage =
   let isPhp = Regex.matchIn """\.php$""" path in
   let isHtml = Regex.matchIn """\.html?$""" path in
   if isHtml || isPhp then
-    let sourcecontent = if isHtml then sourcecontent else
+    let sourcecontent = if isHtml then applyDotEditor sourcecontent else
       let elmSourceContent = phpToElmFinal path sourcecontent in
       __evaluate__ (("$_GET", vars)::("$_SERVER", [("SCRIPT_NAME", "/" + path)])::("path", path)::("fs", fs)::preludeEnv) elmSourceContent |>
       case of
         Err msg -> serverOwned "error message" "<html><head></head><body><pre>Error elm-reinterpreted php: " + Regex.replace "<" "&lt;" msg + "</pre>Original computed source <pre>" +
           Regex.replace "<" "&lt;" elmSourceContent +
           "</pre></body></html>"
-        Ok sourcecontent -> sourcecontent
+        Ok sourcecontent -> applyDotEditor sourcecontent
     in
     let interpretableData =
           case Regex.extract """^\s*<!DOCTYPE(?:(?!>)[\s\S])*>([\s\S]*)$""" sourcecontent of
