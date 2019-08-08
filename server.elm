@@ -2618,17 +2618,41 @@ lastEditScript = """
     var folderSVG = mkSvg("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
     var reloadSVG = mkSvg("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
     var logSVG = mkSvg("M 17.24,16 A 1.24,2 0 0 1 16,18 1.24,2 0 0 1 14.76,16 1.24,2 0 0 1 16,14 1.24,2 0 0 1 17.24,16 Z M 20,16 21.24,16 21.24,16 A 1.24,2 0 0 1 20,18 1.24,2 0 0 1 18.76,16 1.24,2 0 0 1 20,14 1.33,2.16 0 0 1 21,15 M 12,14 12,18 14,18 M 10,12 23,12 23,20 10,20 Z M 23,6 23,11 28,11 M 14,6 14,12 10,12 10,20 14,20 14,25 28,25 28,11 23,6 14,6 Z");
+    var publishSVG = mkSvg("M 17.24,16 A 1.24,2 0 0 1 16,18 1.24,2 0 0 1 14.76,16 1.24,2 0 0 1 16,14 1.24,2 0 0 1 17.24,16 Z M 20,16 21.24,16 21.24,16 A 1.24,2 0 0 1 20,18 1.24,2 0 0 1 18.76,16 1.24,2 0 0 1 20,14 1.33,2.16 0 0 1 21,15 M 12,14 12,18 14,18 M 10,12 23,12 23,20 10,20 Z M 23,6 23,11 28,11 M 14,6 14,12 10,12 10,20 14,20 14,25 28,25 28,11 23,6 14,6 Z");
     var sourceSVG = mkSvg("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
     var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     var undoSVG = mkSvg("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
     var redoSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
+    var isDraftSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
     var escapeSVG = mkSvg("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
     var linkModeSVG = mkSvg("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
     var checkSVG = mkSvg("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor_model === "object";
     
+    if (!ifAlreadyRunning) {
+      var the_path;
+      var thaditor_files = [
+        "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
+        "ThaditorInstaller.htaccess", "composer.json", "credentials.json", "cacert.pem", "versions",
+        "vendor", "ssg",
+      ];
+    }
+    if (the_path == undefined) {
+      the_path = @(path |> jsCode.stringOf);
+    }
+    var verz = "Live";
+    if (ifAlreadyRunning) {
+      verz = editor_model.verz;
+    } else if (the_path.includes("Thaditor/versions/")) {
+      console.log ("in a draft");
+      verz = the_path.slice(the_path.lastIndexOf("versions/")+9, the_path.lastIndexOf("/"));
+      console.log ({verz});
+    }
+    /*(ifAlreadyRunning ? editor_model.version : 
+                 (the_path.includes("Thaditor/versions/") ? the_path.slice(the_path.lastIndexOf("versions/"), the_path.lastIndexOf("/"))));
+    */
     //hover mode functions for linkSelectMode
     function escapeLinkMode() {
       document.body.removeEventListener('mouseover', linkModeHover1, false);
@@ -2769,6 +2793,8 @@ lastEditScript = """
       uStackSaving: [],
       rStackSaving: [],
       isAfterSave: ifAlreadyRunning ? editor_model.isAferSave : false,
+      isDraftSwitcherVisible : ifAlreadyRunning ? editor_model.isDraftSwitcherVisible : false,
+      
       //observer to listen for muts
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //editor log
@@ -2790,7 +2816,8 @@ lastEditScript = """
                     @(case listDict.get "autosave" vars of
                       Just autosaveattr -> "true"
                       _ -> if boolVar "autosave" True then "true" else "false"),
-      path: ifAlreadyRunning ? editor_model.path : @(path |> jsCode.stringOf)
+      path: ifAlreadyRunning ? editor_model.path : @(path |> jsCode.stringOf),
+      version : verz,
     }
     function reorderCompatible (node1, node2){
       let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
@@ -2829,7 +2856,58 @@ lastEditScript = """
       document.body.addEventListener('mouseover', linkModeHover1, false);
       document.body.addEventListener('mouseout', linkModeHover2, false);
     }
+    function copy_website(source, dest) {
+      let website_files = JSON.parse(doReadServer("fullListDir", source));
+      let is_dest_valid = doReadServer("isdir", dest)
+      if (!website_files) throw "copy_website(): invalid source";
+      if (!is_dest_valid) throw "copy_website(): invalid dest";
       
+      //filter out Thaditor files
+      website_files = website_files.filter(val => !thaditor_files.includes(val[0]));
+      website_files = website_files.filter(val => val[0][0] != ".");
+      //cpy website_files to to dest
+      website_files.forEach(val => {
+        let [nm, isdir] = val;
+        console.log ({val});
+        doWriteServer("fullCopy", source + "/" + nm, dest + "/" + nm);
+        console.log ({nm, isdir});
+      });
+      let dh = doReadServer("read", source + "/.thaditor_meta");
+      dh = dh.slice(1, dh.length);
+      console.log ({dh});
+      let draft_history = (dh == "" ? undefined : JSON.parse(dh));
+      const get_date_meta = () => (new Date).toString();
+      console.log ({source, dest});
+      console.log ({draft_history});
+      console.log (draft_history);
+      if (draft_history == undefined) {
+        draft_history = ["live:" + get_date_meta()];
+      } else {
+        console.log ({draft_history});
+        draft_history.push(editor_model.version + ":" + get_date_meta());
+      }
+      doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
+      return 1;
+    }
+
+    function publishToLive() {
+      //Find which version we're at by examining editor_model.version and/or the path
+      //copy all of the files in the draft/ folder out to the public facing site.
+      //simple as thaditor_files.includes
+
+      const conf = window.confirm("Are you sure you want to publish " + editor_model.version + " to live?");
+      if (!conf) {
+        return;
+      }
+      if (!editor_model.path.includes("Thaditor/versions")) {
+        throw "Can't publish live to live";
+      }
+      let t_src = editor_model.path.slice(0, editor_model.path.lastIndexOf("/"));
+      copy_website(t_src, "");
+      editor_model.version = "Live";
+      navigateLocal("/?edit", true);
+    }
+
     updateInteractionDiv(); //outer lastEditScript
 
     function updateInteractionDiv() {
@@ -2979,6 +3057,18 @@ lastEditScript = """
             }
           }
         );
+        addPinnedModifyMenuIcon(isDraftSVG + "<span class='modify-menu-icon-label'>" + editor_model.version + "</span>",
+          {title:"IsDraft?"},
+          {onclick: function(event) {
+            
+            editor_model.isDraftSwitcherVisible = !editor_model.isDraftSwitcherVisible;
+            if (!document.querySelector("#modify-menu").classList.contains("visible")) {
+              document.querySelector("#modify-menu").classList.toggle("visible");
+              editor_model.isDraftSwitcherVisible = true;
+            }
+            editor_model.visible = true;
+            updateInteractionDiv();
+          }});
       }
       else {
         addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
@@ -3067,6 +3157,11 @@ lastEditScript = """
           {"class": "tagName", title: "Display the full log"},
             {onclick: function(e) {
               toggleEditorLog();
+            }});
+        addModifyMenuIcon(publishSVG,
+          {"class": "tagName", title:"Publish to live"},
+            {onclick: function(e) {
+              publishToLive();
             }});
         const isfulog = editor_model.show_log;
         if (editor_model.show_log) {
@@ -3314,6 +3409,73 @@ lastEditScript = """
           ])
         );
         document.querySelector("#modify-menu").classList.toggle("visible", true);
+      } else if (editor_model.isDraftSwitcherVisible) {
+        //Now we want to open some sort of draft-picker/creater UI inside the modify-menu
+        
+        const createNewDraft = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Create new draft", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        console.log ("event happ");
+                        /*
+                          Alright, for now, I'm going to launch the creation of versioning here.
+                          First, check to see if the versions folder exists. If it does, exit. 
+                          We don't want to overwrite anything.
+                        */
+                        const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
+                        if (!draft_name) {
+                          return;
+                        }
+                        const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
+                        console.log ({verzExist});
+                        if (!verzExist) {
+                          console.log ("making versions folder");
+                          doWriteServer("mkdir", "Thaditor/versions");
+                          console.log ("made versions folder?");
+                        }
+                        doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
+                        console.log(editor_model.path);
+                        const t_pth = editor_model.path.slice(0, editor_model.path.lastIndexOf("/"));
+                        console.log ({t_pth});
+                        const f_pth = (editor_model.path.includes("Thaditor/versions") ? editor_model.path.slice(0, editor_model.path.lastIndexOf("/")) : "");
+                        const success = copy_website(f_pth, "Thaditor/versions/" + draft_name);
+                        //change our URL to the versions/draft/
+                        editor_model.version = draft_name;
+                        navigateLocal("Thaditor/versions/" + draft_name + "/?edit", true);
+                        setTimeout( () => {
+                          sendNotification("Successfully created + switched to draft: " + draft_name);
+                        }, 0);
+                      }
+                    }
+                  );
+        };
+        const btnGetter = (name) => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, name, {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        navigateLocal("Thaditor/versions/" + name + "/?edit", true);
+                        setTimeout( () => {
+                          sendNotification("Successfully switched to draft: " + draft_name);
+                        }, 0);
+                      }
+                    }
+                  );
+        };
+        let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
+        if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
+          const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
+          vers.forEach(ver => {
+            draftListDiv.append(btnGetter(ver));
+          });
+        }
+        draftListDiv.append(createNewDraft());
+        modifyMenuDiv.append(draftListDiv);
       } else {
       if(clickedElem) {
         interactionDiv.classList.add("information-style");
