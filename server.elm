@@ -226,6 +226,11 @@ LUCA stands for "Last Universal Common Ancestor"
 
 luca = 
   [<script id="thaditor-luca">
+    function writeDocument(NC) {
+      document.open();
+      document.write(NC);
+      document.close();
+    }
     var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
     function doReadServer(action, name) {
       if (typeof readServer != "undefined") {
@@ -1577,92 +1582,92 @@ editor.remove = remove;
 
 -- Script added to the end of the page
 lastEditScript = """ 
-  console.log("lastEditScript running");
-   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
-  var buttonHeight = () => onMobile() ? 48 : 30;
-  var buttonWidth  = () => onMobile() ? 48 : 40;
-  
-  // Before saving, call this function to that it eventually triggers a save action to any file.
-  function addFileToSave(path, oldcontent, newcontent) {
-    var placement = document.querySelector("#editor-files-to-overwrite");
-    if(!placement) {
-      console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
-      return;
+    console.log("lastEditScript running");
+     var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
+    var buttonHeight = () => onMobile() ? 48 : 30;
+    var buttonWidth  = () => onMobile() ? 48 : 40;
+    
+    // Before saving, call this function to that it eventually triggers a save action to any file.
+    function addFileToSave(path, oldcontent, newcontent) {
+      var placement = document.querySelector("#editor-files-to-overwrite");
+      if(!placement) {
+        console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
+        return;
+      }
+      placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}));
     }
-    placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}));
-  }
-  
-  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
-  // Same for some attributes
-  function saveGhostAttributes() {
-    var ghostModified = document.querySelectorAll("[ghost-visible]");
-    var savedGhostAttributes = [];
-    for(var i = 0; i < ghostModified.length; i++) {
-      var elem = ghostModified[i];
-      savedGhostAttributes.push([editor.toTreasureMap(elem),
-          "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
-    }
-    function saveAttributes(name) {
-       var ghostAttributesModified = document.querySelectorAll("["+name+"]");
-      for(var i = 0; i < ghostAttributesModified.length; i++) {
-        var elem = ghostAttributesModified[i];
-        var toSave = elem.getAttribute(name).split(" ");
+    
+    // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
+    // Same for some attributes
+    function saveGhostAttributes() {
+      var ghostModified = document.querySelectorAll("[ghost-visible]");
+      var savedGhostAttributes = [];
+      for(var i = 0; i < ghostModified.length; i++) {
+        var elem = ghostModified[i];
+        savedGhostAttributes.push([editor.toTreasureMap(elem),
+            "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
+      }
+      function saveAttributes(name) {
+         var ghostAttributesModified = document.querySelectorAll("["+name+"]");
+        for(var i = 0; i < ghostAttributesModified.length; i++) {
+          var elem = ghostAttributesModified[i];
+          var toSave = elem.getAttribute(name).split(" ");
+          for(j in toSave) {
+            var key = toSave[j];
+            savedGhostAttributes.push([editor.toTreasureMap(elem), key, elem.getAttribute(key)]);
+          }
+        }
+      }
+      saveAttributes("save-ghost-attributes");
+      saveAttributes("save-ignored-attributes");  
+      
+      var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
+      var savedProperties = [];
+      for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
+        var elem = elemsWithAttributesToSave[i];
+        var toSave = elem.getAttribute("save-properties").split(" ");
         for(j in toSave) {
           var key = toSave[j];
-          savedGhostAttributes.push([editor.toTreasureMap(elem), key, elem.getAttribute(key)]);
+          savedProperties.push([dataToRecoverCaretPosition(elem), key, elem[key]])
+        }
+      }
+      var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
+      var parentsGhostNodes = [];
+      for(var i = 0; i < ghostElemsToReinsert.length; i++) {
+        var elem = ghostElemsToReinsert[i];
+        parentsGhostNodes.push({parent: editor.toTreasureMap(elem.parentNode), node: elem});
+      }
+      return [savedGhostAttributes, savedProperties, parentsGhostNodes];
+    }
+    function applyGhostAttributes(attrs) {
+      var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
+      for(var i in savedGhostAttributes) {
+        var [data, key, attr] = savedGhostAttributes[i];
+        var elem = editor.fromTreasureMap(data);
+        if(elem != null) {
+          elem.setAttribute(key, attr);
+        }
+      }
+      for(var i in savedProperties) {
+        var [data, key, value] = savedProperties[i];
+        var elem = editor.fromTreasureMap(id);
+        if(elem != null) {
+          elem[key] = value;
+        }
+      }
+      for(var i in parentsGhostNodes) {
+        var {parent: data, node: elem} = parentsGhostNodes[i];
+        var parent = editor.fromTreasureMap(data);
+        if(parent != null) {
+          if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
+            parent.appendChild(elem);
+          }
         }
       }
     }
-    saveAttributes("save-ghost-attributes");
-    saveAttributes("save-ignored-attributes");  
+   
     
-    var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
-    var savedProperties = [];
-    for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
-      var elem = elemsWithAttributesToSave[i];
-      var toSave = elem.getAttribute("save-properties").split(" ");
-      for(j in toSave) {
-        var key = toSave[j];
-        savedProperties.push([dataToRecoverCaretPosition(elem), key, elem[key]])
-      }
-    }
-    var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
-    var parentsGhostNodes = [];
-    for(var i = 0; i < ghostElemsToReinsert.length; i++) {
-      var elem = ghostElemsToReinsert[i];
-      parentsGhostNodes.push({parent: editor.toTreasureMap(elem.parentNode), node: elem});
-    }
-    return [savedGhostAttributes, savedProperties, parentsGhostNodes];
-  }
-  function applyGhostAttributes(attrs) {
-    var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
-    for(var i in savedGhostAttributes) {
-      var [data, key, attr] = savedGhostAttributes[i];
-      var elem = editor.fromTreasureMap(data);
-      if(elem != null) {
-        elem.setAttribute(key, attr);
-      }
-    }
-    for(var i in savedProperties) {
-      var [data, key, value] = savedProperties[i];
-      var elem = editor.fromTreasureMap(id);
-      if(elem != null) {
-        elem[key] = value;
-      }
-    }
-    for(var i in parentsGhostNodes) {
-      var {parent: data, node: elem} = parentsGhostNodes[i];
-      var parent = editor.fromTreasureMap(data);
-      if(parent != null) {
-        if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
-          parent.appendChild(elem);
-        }
-      }
-    }
-  }
- 
-  
-  function domNodeToNativeValue(n) {
+    function domNodeToNativeValue(n) {
       if(n.nodeType == 3) {
         return ["TEXT", n.textContent];
       } else if(n.nodeType == 8) {
@@ -1704,11 +1709,6 @@ lastEditScript = """
         editor_model.textareaSelectionStart = singleChildNodeContent.selectionStart;
         editor_model.textareaSelectionEnd = singleChildNodeContent.selectionEnd;
       }
-    }
-    function writeDocument(NC) {
-      document.open();
-      document.write(NC);
-      document.close();
     }
     function replaceContent(NC) {
       saveDisplayProperties();
