@@ -227,7 +227,7 @@ LUCA stands for "Last Universal Common Ancestor"
 luca = 
   [<script id="thaditor-luca">
     var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
-    var browser_side = @(if browserSide then "true" else "false");
+    var apache_server = @(if browserSide then "true" else "false");
     function doReadServer(action, name) {
       if (typeof readServer != "undefined") {
         console.log("reading server");
@@ -3056,7 +3056,7 @@ lastEditScript = """
             }
           }
         );
-        if (! browser_side) {
+        if (apache_server) {
           addPinnedModifyMenuIcon(isDraftSVG + "<span class='modify-menu-icon-label'>" + editor_model.version + "</span>",
             {title:"IsDraft?"},
             {onclick: function(event) {
@@ -3159,7 +3159,7 @@ lastEditScript = """
             {onclick: function(e) {
               toggleEditorLog();
             }});
-        if (! browser_side) {
+        if (apache_server) {
           addModifyMenuIcon(publishSVG,
             {"class": "tagName", title:"Publish to live"},
               {onclick: function(e) {
