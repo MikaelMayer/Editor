@@ -246,6 +246,11 @@ luca =
         }
       }
     }
+    function writeDocument(NC) {
+      document.open();
+      document.write(NC);
+      document.close();
+    }
     function doWriteServer(action, name, content) {
       if (typeof writeServer != "undefined") {
         console.log("about to write to server");
@@ -1140,7 +1145,7 @@ evaluatedPage =
         }
         //el(tag, attributes, children, properties)
         if (path != "") {
-          var link = "../" + "?ls=true&amp;edit";
+          var link = "../" + "?ls=true";
           form.append(fileItemDisplay(link, "..", true));
         }
         // directories before files, sorted case-insensitive
@@ -1149,7 +1154,7 @@ evaluatedPage =
           name1.toLowerCase() < name2.toLowerCase() ? -1 : 0);
         for (i = 0; i < files.length; i++) {
           var [name, isDir] = files[i];
-          var link = isDir ? name + "/?ls&" + "edit" : name;
+          var link = isDir ? name + "/?ls" : name + "/?edit";
           form.append(fileItemDisplay(link, name, isDir));
         }
 
@@ -1712,11 +1717,7 @@ lastEditScript = """
         editor_model.textareaSelectionEnd = singleChildNodeContent.selectionEnd;
       }
     }
-    function writeDocument(NC) {
-      document.open();
-      document.write(NC);
-      document.close();
-    }
+    
     function replaceContent(NC) {
       saveDisplayProperties();
       if(editor_model.caretPosition) {
@@ -2631,7 +2632,6 @@ lastEditScript = """
     var linkModeSVG = mkSvg("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
     var checkSVG = mkSvg("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor_model === "object";
-    
     if (!ifAlreadyRunning) {
       var the_path;
       var thaditor_files = [
@@ -2640,13 +2640,13 @@ lastEditScript = """
         "vendor", "ssg",
       ];
     }
-    if (the_path == undefined) {
-      the_path = @(path |> jsCode.stringOf);
+    the_path = @(path |> jsCode.stringOf);
+    if (isLive == undefined) {
+      var isLive = () => !(the_path.includes("Thaditor/versions/"));
     }
+
     var verz = "Live";
-    if (ifAlreadyRunning) {
-      verz = editor_model.verz;
-    } else if (the_path.includes("Thaditor/versions/")) {
+    if (!isLive()) {
       verz = the_path.slice(the_path.lastIndexOf("versions/")+9, the_path.lastIndexOf("/"));
     }
     //hover mode functions for linkSelectMode
@@ -2852,6 +2852,9 @@ lastEditScript = """
       document.body.addEventListener('mouseover', linkModeHover1, false);
       document.body.addEventListener('mouseout', linkModeHover2, false);
     }
+
+    
+
     function copy_website(source, dest) {
       let website_files = JSON.parse(doReadServer("fullListDir", source));
       let is_dest_valid = doReadServer("isdir", dest)
@@ -2894,7 +2897,7 @@ lastEditScript = """
       if (!conf) {
         return;
       }
-      if (!editor_model.path.includes("Thaditor/versions")) {
+      if (isLive()) {
         throw "Can't publish live to live";
       }
       let t_src = editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1);
@@ -3432,7 +3435,7 @@ lastEditScript = """
                         } else 
                         {
                           //we need to make sure we're not overwriting anothe draft
-                          let versionsList = doReadServer("fullListDir", "Thaditor/versions/");
+                          let versionsList = JSON.parse(doReadServer("fullListDir", "Thaditor/versions/"));
                           versionsList.forEach(val => {
                             let [nm, isdir] = val;
                             if (isdir) {
@@ -3447,12 +3450,11 @@ lastEditScript = """
 
                         doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
                         const t_pth = editor_model.path.slice(0, editor_model.path.lastIndexOf("/"));
-                        const f_pth = (editor_model.path.includes("Thaditor/versions") ? editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1) : "");
-
+                        const f_pth = (isLive() ? "" : editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1));
                         const success = copy_website(f_pth, "Thaditor/versions/" + draft_name + "/");
                         //change our URL to the versions/draft/
                         editor_model.version = draft_name;
-                        navigateLocal("Thaditor/versions/" + draft_name + "/?edit", true);
+                        navigateLocal("/Thaditor/versions/" + draft_name + "/?edit");
                         setTimeout( () => {
                           sendNotification("Successfully created + switched to draft: " + draft_name);
                         }, 0);
@@ -3467,7 +3469,7 @@ lastEditScript = """
                     ], 
                     {
                       onclick: (event) => {
-                        navigateLocal("Thaditor/versions/" + name + "/?edit", true);
+                        navigateLocal("/Thaditor/versions/" + name + "/?edit");
                         setTimeout( () => {
                           sendNotification("Successfully switched to draft: " + name);
                         }, 0);
@@ -3475,6 +3477,19 @@ lastEditScript = """
                     }
                   );
         };
+
+        const liveBtn = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Live", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        navigateLocal("/?edit");
+                      }
+                    });
+        };
+
         let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
         if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
           const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
@@ -3482,6 +3497,7 @@ lastEditScript = """
             draftListDiv.append(btnGetter(ver));
           });
         }
+        if (!isLive()) draftListDiv.append(liveBtn());
         draftListDiv.append(createNewDraft());
         modifyMenuDiv.append(draftListDiv);
       } else {
