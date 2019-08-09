@@ -2812,7 +2812,7 @@ lastEditScript = """
                     @(case listDict.get "autosave" vars of
                       Just autosaveattr -> "true"
                       _ -> if boolVar "autosave" True then "true" else "false"),
-      path: ifAlreadyRunning ? editor_model.path : @(path |> jsCode.stringOf),
+      path: @(path |> jsCode.stringOf),
       version : verz,
     }
     function reorderCompatible (node1, node2){
@@ -3424,11 +3424,27 @@ lastEditScript = """
                           return;
                         }
                         const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
+                        let fail = false;
                         if (!verzExist) {
                           console.log ("making versions folder");
                           doWriteServer("mkdir", "Thaditor/versions");
                           console.log ("made versions folder?");
+                        } else 
+                        {
+                          //we need to make sure we're not overwriting anothe draft
+                          let versionsList = doReadServer("fullListDir", "Thaditor/versions/");
+                          versionsList.forEach(val => {
+                            let [nm, isdir] = val;
+                            if (isdir) {
+                              if (nm == draft_name) {
+                                window.alert("Can't overwrite an existing draft!");
+                                fail = true;
+                              }
+                            }
+                          });
                         }
+                        if (fail) return;
+
                         doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
                         const t_pth = editor_model.path.slice(0, editor_model.path.lastIndexOf("/"));
                         const f_pth = (editor_model.path.includes("Thaditor/versions") ? editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1) : "");
@@ -3453,7 +3469,7 @@ lastEditScript = """
                       onclick: (event) => {
                         navigateLocal("Thaditor/versions/" + name + "/?edit", true);
                         setTimeout( () => {
-                          sendNotification("Successfully switched to draft: " + draft_name);
+                          sendNotification("Successfully switched to draft: " + name);
                         }, 0);
                       }
                     }
