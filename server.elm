@@ -3055,18 +3055,20 @@ lastEditScript = """
             }
           }
         );
-        addPinnedModifyMenuIcon(isDraftSVG + "<span class='modify-menu-icon-label'>" + editor_model.version + "</span>",
-          {title:"IsDraft?"},
-          {onclick: function(event) {
-            
-            editor_model.isDraftSwitcherVisible = !editor_model.isDraftSwitcherVisible;
-            if (!document.querySelector("#modify-menu").classList.contains("visible")) {
-              document.querySelector("#modify-menu").classList.toggle("visible");
-              editor_model.isDraftSwitcherVisible = true;
-            }
-            editor_model.visible = true;
-            updateInteractionDiv();
-          }});
+        if (! @(browserSide)) {
+          addPinnedModifyMenuIcon(isDraftSVG + "<span class='modify-menu-icon-label'>" + editor_model.version + "</span>",
+            {title:"IsDraft?"},
+            {onclick: function(event) {
+              
+              editor_model.isDraftSwitcherVisible = !editor_model.isDraftSwitcherVisible;
+              if (!document.querySelector("#modify-menu").classList.contains("visible")) {
+                document.querySelector("#modify-menu").classList.toggle("visible");
+                editor_model.isDraftSwitcherVisible = true;
+              }
+              editor_model.visible = true;
+              updateInteractionDiv();
+            }});
+        }
       }
       else {
         addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
@@ -3156,11 +3158,13 @@ lastEditScript = """
             {onclick: function(e) {
               toggleEditorLog();
             }});
-        addModifyMenuIcon(publishSVG,
-          {"class": "tagName", title:"Publish to live"},
-            {onclick: function(e) {
-              publishToLive();
-            }});
+        if (! @(browserSide)) {
+          addModifyMenuIcon(publishSVG,
+            {"class": "tagName", title:"Publish to live"},
+              {onclick: function(e) {
+                publishToLive();
+              }});
+        }
         const isfulog = editor_model.show_log;
         if (editor_model.show_log) {
           let log = document.getElementById("fullLog");
