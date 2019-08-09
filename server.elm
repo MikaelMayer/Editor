@@ -307,6 +307,7 @@ luca =
       let modifyMenuDiv = document.querySelector("#modify-menu");
       if (!modifyMenuDiv) {
         console.log("Notifications havent been set up for use outside of editor, like in the filesystem");
+        console.log (msg);
         return;
       }
       let notifBox = document.getElementById("notif-box");
@@ -2646,13 +2647,8 @@ lastEditScript = """
     if (ifAlreadyRunning) {
       verz = editor_model.verz;
     } else if (the_path.includes("Thaditor/versions/")) {
-      console.log ("in a draft");
       verz = the_path.slice(the_path.lastIndexOf("versions/")+9, the_path.lastIndexOf("/"));
-      console.log ({verz});
     }
-    /*(ifAlreadyRunning ? editor_model.version : 
-                 (the_path.includes("Thaditor/versions/") ? the_path.slice(the_path.lastIndexOf("versions/"), the_path.lastIndexOf("/"))));
-    */
     //hover mode functions for linkSelectMode
     function escapeLinkMode() {
       document.body.removeEventListener('mouseover', linkModeHover1, false);
@@ -2868,22 +2864,21 @@ lastEditScript = """
       //cpy website_files to to dest
       website_files.forEach(val => {
         let [nm, isdir] = val;
-        console.log ({val});
-        doWriteServer("fullCopy", source + "/" + nm, dest + "/" + nm);
-        console.log ({nm, isdir});
+        const s = (source + nm);
+        const d = (dest + nm);
+        if (isdir) {
+          doWriteServer("fullCopy", s, d);
+        } else {
+          doWriteServer("move", d, s);
+        }
       });
       let dh = doReadServer("read", source + "/.thaditor_meta");
       dh = dh.slice(1, dh.length);
-      console.log ({dh});
       let draft_history = (dh == "" ? undefined : JSON.parse(dh));
       const get_date_meta = () => (new Date).toString();
-      console.log ({source, dest});
-      console.log ({draft_history});
-      console.log (draft_history);
       if (draft_history == undefined) {
         draft_history = ["live:" + get_date_meta()];
       } else {
-        console.log ({draft_history});
         draft_history.push(editor_model.version + ":" + get_date_meta());
       }
       doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
@@ -2902,7 +2897,7 @@ lastEditScript = """
       if (!editor_model.path.includes("Thaditor/versions")) {
         throw "Can't publish live to live";
       }
-      let t_src = editor_model.path.slice(0, editor_model.path.lastIndexOf("/"));
+      let t_src = editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1);
       copy_website(t_src, "");
       editor_model.version = "Live";
       navigateLocal("/?edit", true);
@@ -3419,7 +3414,6 @@ lastEditScript = """
                     ], 
                     {
                       onclick: (event) => {
-                        console.log ("event happ");
                         /*
                           Alright, for now, I'm going to launch the creation of versioning here.
                           First, check to see if the versions folder exists. If it does, exit. 
@@ -3430,18 +3424,16 @@ lastEditScript = """
                           return;
                         }
                         const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
-                        console.log ({verzExist});
                         if (!verzExist) {
                           console.log ("making versions folder");
                           doWriteServer("mkdir", "Thaditor/versions");
                           console.log ("made versions folder?");
                         }
                         doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
-                        console.log(editor_model.path);
                         const t_pth = editor_model.path.slice(0, editor_model.path.lastIndexOf("/"));
-                        console.log ({t_pth});
-                        const f_pth = (editor_model.path.includes("Thaditor/versions") ? editor_model.path.slice(0, editor_model.path.lastIndexOf("/")) : "");
-                        const success = copy_website(f_pth, "Thaditor/versions/" + draft_name);
+                        const f_pth = (editor_model.path.includes("Thaditor/versions") ? editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1) : "");
+
+                        const success = copy_website(f_pth, "Thaditor/versions/" + draft_name + "/");
                         //change our URL to the versions/draft/
                         editor_model.version = draft_name;
                         navigateLocal("Thaditor/versions/" + draft_name + "/?edit", true);
