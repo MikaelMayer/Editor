@@ -951,7 +951,7 @@ evaluatedPage =
           return;
         }
         if (selected.filter((i) => i.id == "..").length != 0) {
-          window.alert("Can't change the up dir");
+          window.alert("Can't delete the parent dir");
           return;
         }
         var warningMsg = "Are you sure you want to delete the following file(s)?"
@@ -961,10 +961,10 @@ evaluatedPage =
         var conf = window.confirm(warningMsg);
         if (conf) {
           for (i = 0; i < selected.length; i++) {
-            var isfolder = folders.filter((j) => j[0] == selected[i].id);
+            var isfolder = folders.filter((j) => j[0] == selected[i].id); //optomizable
             console.log (isfolder);
             if (isfolder.length != 0) {
-              doWriteServer("rmdir", "@path" + selected[i].id);
+              doWriteServer("rmdir", "@path" + selected[i].id); //does this work on non-empty stuff? idts....
               continue;
             }
             doWriteServer("unlink", "@path" + selected[i].id);
@@ -1585,10 +1585,201 @@ editor.remove = remove;
 -- Script added to the end of the page
 lastEditScript = """ 
   console.log("lastEditScript running");
-   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
+  var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
   var buttonHeight = () => onMobile() ? 48 : 30;
   var buttonWidth  = () => onMobile() ? 48 : 40;
+
+  function off_state_visible() {
+      if (editor_model.state.includes("v")) {
+        if (editor_model.state.includes("a")) {
+          editor_model.state = editor_model.state.replace("a", "");
+        }
+        if (editor_model.state.includes("s")) {
+          editor_model.state = editor_model.state.replace("s", "");
+        }
+        editor_model.state = editor_model.state.replace("v", "");
+      } else {
+        throw "State shouldn't be trying to be closed when it's already closed";
+      }
+    }
+
+  function set_state_visible() {
+    if (!editor_model.state.includes("v")) {
+      editor_model.state = editor_model.state + "v";
+    }
+  }
+
+  function set_state_log() { //log needs visible to be on AND advanced to be on
+    if (!editor_model.state.includes("v")) throw "Shouldn't set state to log w/o v";
+    if (!editor_model.state.includes("a")) throw "Shouldn't set state to log w/o a";
+    if (editor_model.state.includes("a")) return;
+    editor_model.state = editor_model.state.replace("s", "");
+  }
+
+  function set_state_advanced() {
+    if (!editor_model.state.includes("v")) {
+      editor_model.state = editor_model.state + "v";
+      if (!editor_model.state.includes("a")) {
+        editor_model.state = editor_model.state + "a";
+      } else {
+        throw "Advanced state shouldn't be open when not visible";
+      }
+    } else { //is visible
+      if (editor_model.state.includes("a")) {
+        throw "Opening advanced state when it's already open";
+      } else {
+        if (editor_model.state.includes("d")) {
+          editor_model.state = editor_model.state.replace("d", "");
+        }
+        editor_model.state = editor_model.state + "a";
+      }
+    }
+  }
+
+  function set_state_linkselect() {
+    //linkselect state is definitely mututally exclusive with the menu being opened, at least.
+    //we can assume that those are turned off before turning linkselect on
+    if (editor_model.state.includes("v") || editor_model.state.includes("a")) {
+      throw "set_state_linkselect expects v + a to be off";
+    } else {
+      if (editor_model.state.includes("d")) throw "d was on without v what gives";
+      if (editor_model.state.includes("a")) throw "a was on without v what gives";
+      if (editor_model.state.includes("l")) {
+        //already in linkselectmode, do nothing.
+      } else {
+        editor_model.state = editor_model.state + "l";
+      }
+    }
+  }
+
+  function set_state_insert() {
+    if (editor_model.state.includes("i")) return;
+    editor_model.state = editor_model.state + "i";
+  }
+
+  function set_state_draftview() {
+    if (editor_model.state.includes("d")) return;
+    if (editor_model.state.includes("a")) {
+      editor_model.state = editor_model.state.replace("a", "");
+    }
+    if (!editor_model.state.includes("v")) {
+      editor_model.state = editor_model.state + v;
+    }
+    editor_model.state = editor_model.state + "d";
+  }
+
+  function off_state_draftview() {
+    if (!editor_model.state.includes("d")) sreturn;
+    editor_model.state = editor_model.state.replace("d", "");
+  }
+
+  function off_state_insert() {
+    if (!editor_model.state.includes("i")) return;
+    editor_model.state = editor_model.state.replace("i", "");
+  }
+
+  function off_state_advanced() {
+    if (!editor_model.state.includes("a")) return;
+    if (editor_model.state.includes("s")) {
+      editor_model.state = editor_model.state.replace("s", "");
+    }
+    editor_model.state = editor_model.state.replace("a", "");
+  }
+
+  function off_state_linkselect() {
+    if (!editor_model.state.includes("l")) return;
+    editor_model.state = editor_model.state.replace("l", "");
+  }
+
+  function off_state_visible() {
+    if (!editor_model.state.includes("v")) return;
+    if (editor_model.state.includes("a")) {
+      if (editor_model.state.includes("s")) {
+        editor_model.state = editor_model.state.replace("s", "");
+      }
+      editor_model.state = editor_model.state.replace("a", "");
+    }
+    if (editor_model.state.includes("d")) {
+      editor_model.state = editor_model.state.replace("d", "");
+    }
+    editor_model.state = editor_model.state.replace("v", "");
+  }
+
+  function off_state_log() {
+    if (!editor_model.state.includes("s")) return;
+    editor_model.state = editor_model.state.replace("s", "");
+  }
+
+  function toggle_visible_state() {
+    if (editor_model.state.includes("v")) { //open want to close
+      if (editor_model.state.includes("a")) { //close out of advanced
+        if (editor_model.state.includes("s")) {
+          editor_model.state = editor_model.state.replace("s", "");
+        }
+        editor_model.state = editor_model.state.replace("a", "");
+      }
+      if (editor_model.state.includes("d")) {
+        editor_model.state = editor_model.state.replace("d", "");
+      }
+      editor_model.state = editor_model.state.replace("v", "");
+    } else { //closed and we want to open
+      editor_model.state = editor_model.state + "v";
+    }
+  }
   
+  function toggle_advanced_state() { //can't be in advanced without visible
+    if (editor_model.state.includes("v")) {
+      //visible
+      if (editor_model.state.includes("a")) { //toggle it off
+        if (editor_model.state.includes("s")) {
+          editor_model.state = editor_model.state.replace("s", "");
+        }
+        editor_model.state = editor_model.state.replace("a", "");
+      } else { //toggle it on
+        if (editor_model.state.includes("d")) {
+          editor_model.state = editor_model.state.replace("d", "");
+        }
+        editor_model.state = editor_model.state + "a";
+      }
+    } else { //not visible
+      if (editor_model.state.includes("a")) { //can't be in advanced without visible
+        throw "model state shouldn't be in advanced when thing is not visible";
+      } //toggle advanced + visible
+      if (editor_mode.state.includes("i") || editor_model.state.includes("l")) {
+        console.err("I really don't think we should be able to toggle a while i or l are set. maybe i'm wrong? if so delete this");
+      }
+      editor_model.state = editor_model.state + "va";
+    }
+  }
+
+  function toggle_draftview_state() { //can't be in draftview when advanced is on
+
+    if (!editor_model.state.includes("v")) { //not visible
+      if (editor_model.state.includes("l")) { //we're in linkselectmode , we should return here.
+        console.log ("trying to toggle_draftview_state when in linkselect mode. returning before doing anything.");
+        return;
+      }
+      if (editor_model.state.includes("d")) { //in not visible state, it has draft on
+        throw "State shouldn't be in draft mode when not visible";
+      }
+      if (editor_model.state.includes("a")) { //also assertion; not in visible state but advanced is wrong
+        throw "State shouldn't be in a without v";
+      }
+      editor_model.state = editor_model.state + "vd"; //else visible needs to be on for draft to be on.
+    } else {
+      //is visible; toggle d
+      if (editor_model.state.includes("d")) {
+        editor_model.state = editor_model.state.replace("d", "");
+      } else { //if we're in advanced we want to turn that off + turn on d
+        if (editor_model.state.includes("a")) {
+          editor_model.state = editor_model.state.replace("a", "");
+        }
+        editor_model.state = editor_model.state + "d";
+      }
+    }
+  }
+
+
   // Before saving, call this function to that it eventually triggers a save action to any file.
   function addFileToSave(path, oldcontent, newcontent) {
     var placement = document.querySelector("#editor-files-to-overwrite");
@@ -1746,6 +1937,7 @@ lastEditScript = """
           editor_model.isSaving = false;
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
           var saved = saveGhostAttributes();
+          //return
           
           //source of the editing menu disappearing after reloading
           replaceContent(xmlhttp.responseText);
@@ -1802,6 +1994,7 @@ lastEditScript = """
             editor_model.link = undefined;
             editor_model.advanced = true; // Opens advanced mode.
             editor_model.visible = true;
+            set_state_advanced();
             //editor_model.displaySource: false, // Keep source opened or closed
             // TODO: Disable click or change in DOM until ambiguity is resolved.
           } else { //no ambiguity
@@ -1899,7 +2092,30 @@ lastEditScript = """
         xmlhttp.setRequestHeader("cancel-ambiguity", JSON.stringify(num));
       });
     }
-    
+    function sendModificationsToServerNode() {
+      if(document.getElementById("notification-menu") != null) {
+        //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
+        // TODO: Listen and gather subsequent modifications when it is loading
+        return;
+      }
+      editor_model.isSaving = true;
+      var newMenu = el("menuitem#notification-menu.to-be-selected", {isghost: true});
+      if(document.getElementById('lastaction')) {
+        document.getElementById('lastaction').remove();
+      }
+      if(document.getElementById("modify-menu")) {
+        document.getElementById("modify-menu").append(newMenu);
+      }
+      saveDisplayProperties();
+      updateInteractionDiv();
+      setTimeout( () => {
+        notifyServer(xmlhttp => {
+          xmlhttp.setRequestHeader("question", editor_model.askQuestions ? "true" : "false");
+          return JSON.stringify(domNodeToNativeValue(document.body.parentElement));
+        })
+      }, 0);
+    }
+
     function sendModificationsToServer() {
       
       if(document.getElementById("notification-menu") != null) {
@@ -1967,7 +2183,6 @@ lastEditScript = """
           */
           const ads = editor_model.actionsDuringSave;
           const adsLen = editor_model.actionsDuringSave.length;
-          editor_model.isAfterSave = true;
           ads.forEach((action) => {
             if (action == "undo") {
               undo();
@@ -1993,7 +2208,6 @@ lastEditScript = """
               throw new Error("unidentified action in actionsduringsave");
             }
           }
-          editor_model.isAfterSave = false;
           sendNotification("Save completed!");
         }
       }
@@ -2121,8 +2335,11 @@ lastEditScript = """
       }
       t = setTimeout(function() {
         t = undefined;
-        
-        sendModificationsToServer();
+        if (apache_server) {
+          sendModificationsToServer();
+        } else {
+          sendModificationsToServerNode();
+        }
       }, @editdelay)
     } //handleMutations
   
@@ -2462,7 +2679,8 @@ lastEditScript = """
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
-        if(editor_model.linkSelectMode) {
+        if (editor_model.state.includes("l")) {
+        //if(editor_model.linkSelectMode) {
           if(e.which == 27) {
             escapeLinkMode();
           }
@@ -2595,7 +2813,9 @@ lastEditScript = """
       editor_model.link = link;
       editor_model.link_href_source = aElement; // So that we can modify it
       editor_model.insertElement = false;
+      off_state_insert();
       editor_model.advanced = false;
+      off_state_advanced();
       editor_model.notextselection = false;
       updateInteractionDiv();
       // Check if the event.target matches some selector, and do things...
@@ -2657,7 +2877,9 @@ lastEditScript = """
       //removing the hovered element (which is retained if the escape key is hit)
       document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
       //editor_model.clickedElem = editor_model.linkFrom;
+      off_state_visible();
       editor_model.visible = false;
+      off_state_linkselect();
       editor_model.linkSelectMode = false;
       editor_model.linkSelectCallback = undefined;
       editor_model.linkSelectOtherMenus = undefined;
@@ -2769,9 +2991,22 @@ lastEditScript = """
       return undefined;
     }
     //(outer lastEditScript)
+    /*
+    State is currently (8/12) being kept track of in many variables. I'm setting out to condense that
+    into one variable, "state", a string describing the current state of the system. 
+    For the sake of clarity, I will list the current variables within the editor_model that are used to keep track of state
+
+      visible :v
+      advanced :a
+      show_log :s
+      insertElement :i //(not defined in our inital editor_model object)
+      linkSelectMode :l
+      isDraftSwitcherVisible :d
+    */
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
       //makes visibility of editor model consistent throughout reloads
-      visible: ifAlreadyRunning ? editor_model.visible : false,
+      state: ifAlreadyRunning ? editor_model.state : "",
+      visible: ifAlreadyRunning ? editor_model.visible : false, //here
       clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor_model.clickedElem) : undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
@@ -2779,25 +3014,22 @@ lastEditScript = """
       selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
       caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
-      advanced: ifAlreadyRunning ? editor_model.advanced : false,
+      advanced: ifAlreadyRunning ? editor_model.advanced : false, //here
       displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
-      disambiguationMenu: undefined,
+      disambiguationMenu: undefined, //here
       isSaving: false,
       //data structures to represent undo/redo "stack"
       undoStack: ifAlreadyRunning ? editor_model.undoStack : [],
       redoStack: ifAlreadyRunning ? editor_model.redoStack : [],
       actionsDuringSave: ifAlreadyRunning ? editor_model.actionsDuringSave : [],
-      uStackSaving: [],
-      rStackSaving: [],
-      isAfterSave: ifAlreadyRunning ? editor_model.isAferSave : false,
       isDraftSwitcherVisible : ifAlreadyRunning ? editor_model.isDraftSwitcherVisible : false,
       
       //observer to listen for muts
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
-      show_log: ifAlreadyRunning ? editor_model.show_log : false,
-      linkSelectMode: false,
+      show_log: ifAlreadyRunning ? editor_model.show_log : false, //here
+      linkSelectMode: false, //here
       linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
@@ -2816,6 +3048,9 @@ lastEditScript = """
       path: @(path |> jsCode.stringOf),
       version : verz,
     }
+
+    
+
     function reorderCompatible (node1, node2){
       let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
       return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
@@ -2841,7 +3076,10 @@ lastEditScript = """
     // callbackUI is invoked to render other buttons along with the confirmation button.
     function activateNodeSelectionMode(msg, callback, callbackUI) {
       editor_model.visible = false;
+      off_state_visible();
+      
       editor_model.linkSelectMode = true;
+      set_state_linkselect();
       editor_model.clickedElem = document.body; //"center" clicked element on document body
       //removes all context menu stuff 
       document.querySelector("#context-menu").classList.remove("visible");
@@ -2888,7 +3126,16 @@ lastEditScript = """
       doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
       return 1;
     }
-
+    function deleteCurrentDraft() {
+      if (editor_model.version == "Live") throw "Shouldn't be able to call deleteCurrentDraft when in Live";
+      const ans = window.confirm("Are you sure you want to permanently delete " + editor_model.version + "?");
+      if (!ans) return;
+      //the path of the folder we want to delete is and always will be Thaditor/versions/<editor_model.version>/
+      const pth_to_delete = "Thaditor/versions/" + editor_model.version + "/";
+      doWriteServer("deletermrf", pth_to_delete);
+      navigateLocal("/?edit");
+      sendNotification("Permanently deleted draft named: " + editor_model.version);
+    }
     function publishToLive() {
       //Find which version we're at by examining editor_model.version and/or the path
       //copy all of the files in the draft/ folder out to the public facing site.
@@ -2916,7 +3163,8 @@ lastEditScript = """
       var modifyMenuDiv = document.querySelector("#modify-menu");
       //if both are closed, just return 
       if(!modifyMenuDiv || !contextMenu) return;
-      modifyMenuDiv.classList.toggle("visible", editor_model.visible);
+      modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
+      //toggle_visible_state(); // is this right?
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
       if(clickedElem && clickedElem.nodeType === 1) {
         clickedElem.setAttribute("ghost-clicked", "true");
@@ -2993,12 +3241,14 @@ lastEditScript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      if(!editor_model.linkSelectMode) {
+      if (!editor_model.state.includes("l")) {
+      //if(!editor_model.linkSelectMode) {
         addPinnedModifyMenuIcon(
           panelOpenCloseIcon(),
           {title: "Open/close settings tab", "class": "inert" },
           {onclick: function(event) {
               document.querySelector("#modify-menu").classList.toggle("visible");
+              toggle_visible_state();
               editor_model.visible = !editor_model.visible;
               setTimeout(maybeRepositionContextMenu, 500);
               this.innerHTML = panelOpenCloseIcon();
@@ -3010,6 +3260,7 @@ lastEditScript = """
           },
           {onclick: (c => function(event) {
             //defaults to turning on advanced menu if the editor model is already visible, otherwise toggles advanced menu.
+            toggle_advanced_state();
             if(editor_model.visible) {
               editor_model.advanced = !editor_model.advanced;
             }
@@ -3019,24 +3270,6 @@ lastEditScript = """
             editor_model.visible = true;
             updateInteractionDiv();
           })(clickedElem)}
-        )
-        addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
-        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
-          id: "savebutton"  
-        },
-          {onclick: editor_model.disambiguationMenu ? 
-            ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
-              editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
-            : function(event) {
-              if (editor_model.isSaving) {
-                sendNotification("Can't save while save is being undertaken");
-              }else {
-                if(!this.classList.contains("disabled")) {
-                  sendModificationsToServer();
-                }
-              }
-            }
-          }
         )
         addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
           {"class": "inert", title: "Undo most recent change",
@@ -3056,15 +3289,40 @@ lastEditScript = """
             }
           }
         );
+        addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
+        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
+          id: "savebutton"  
+        },
+          {onclick: editor_model.disambiguationMenu ? 
+            ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
+              editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
+            : function(event) {
+              if (editor_model.isSaving) {
+                sendNotification("Can't save while save is being undertaken");
+              }else {
+                if(!this.classList.contains("disabled")) {
+                  if (apache_server) {
+                    sendModificationsToServer();
+                  } else {
+                    sendModificationsToServerNode();
+                  }
+                }
+              }
+            }
+          }
+        )
         if (apache_server) {
           addPinnedModifyMenuIcon(isDraftSVG + "<span class='modify-menu-icon-label'>" + editor_model.version + "</span>",
-            {title:"IsDraft?"},
+            {title:editor_model.version},
             {onclick: function(event) {
               
               editor_model.isDraftSwitcherVisible = !editor_model.isDraftSwitcherVisible;
+              set_state_visible();
+              toggle_draftview_state();
               if (!document.querySelector("#modify-menu").classList.contains("visible")) {
                 document.querySelector("#modify-menu").classList.toggle("visible");
                 editor_model.isDraftSwitcherVisible = true;
+                set_state_draftview();
               }
               editor_model.visible = true;
               updateInteractionDiv();
@@ -3095,7 +3353,8 @@ lastEditScript = """
           editor_model.linkSelectOtherMenus(addPinnedModifyMenuIcon)
         }
       }
-      if(model.advanced || model.disambiguationMenu) {
+      //if(model.advanced || model.disambiguationMenu) { //change here
+      if(editor_model.state.includes("a") && editor_model.state.includes("v")) {
         modifyMenuDiv.append(
           el("a", { class:"troubleshooter", href: "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
         modifyMenuIconsDiv.append(
@@ -3146,10 +3405,12 @@ lastEditScript = """
           logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
           if (log.style.display == 'block') {
             editor_model.show_log = false;
+            off_state_log();
             log.style.visibility = false;
             log.style.display = 'none';
           } else {
             editor_model.show_log = true;
+            set_state_log();
             log.style.visibility = true;
             log.style.display = 'block';
           }
@@ -3159,15 +3420,9 @@ lastEditScript = """
             {onclick: function(e) {
               toggleEditorLog();
             }});
-        if (apache_server) {
-          addModifyMenuIcon(publishSVG,
-            {"class": "tagName", title:"Publish to live"},
-              {onclick: function(e) {
-                publishToLive();
-              }});
-        }
-        const isfulog = editor_model.show_log;
-        if (editor_model.show_log) {
+        
+        //if (editor_model.show_log) {
+        if (editor_model.state.includes("s")) {
           let log = document.getElementById("fullLog");
           if (!log) {
             log = flog();
@@ -3181,6 +3436,7 @@ lastEditScript = """
           }
           logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
           editor_model.show_log = true;
+          set_state_log();
           log.style.visibility = true;
           log.style.display = 'block';
         }
@@ -3227,7 +3483,8 @@ lastEditScript = """
         )
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
-      } else if(model.insertElement)  {
+      //} else if(model.insertElement)  {
+      } else if (editor_model.state.includes("i")) {
         interactionDiv.classList.add("insert-information-style");
         interactionDiv.classList.add("information-style");
         interactionDiv.append(el("h1", {}, "Insert"));
@@ -3335,7 +3592,10 @@ lastEditScript = """
             }
           }
           editor_model.insertElement = false;
+          off_state_insert();
+          set_state_visible();
           editor_model.visible = true;
+          
           if(typeof newElement !== "string") {
             editor_model.clickedElem = newElement;
             updateInteractionDiv();
@@ -3361,6 +3621,7 @@ lastEditScript = """
                 innerHTML: linkModeSVG,
                 onclick: function(event) {
                   editor_model.insertElement = false;
+                  off_state_insert();
                   activateNodeSelectionMode(
                     "to move",
                     node => insertTag.call(this, event, node),
@@ -3412,13 +3673,16 @@ lastEditScript = """
           ])
         );
         document.querySelector("#modify-menu").classList.toggle("visible", true);
-      } else if (editor_model.isDraftSwitcherVisible) {
+      //} else if (editor_model.isDraftSwitcherVisible) {
+      } else if (editor_model.state.includes("v") && editor_model.state.includes("d")) {
         //Now we want to open some sort of draft-picker/creater UI inside the modify-menu
-        
+        if (!apache_server) {
+          throw "Should not have been able to enter into drafting mode when apache_server == false.";
+        }
         const createNewDraft = () => {
           return el("div", {"class": "childrenSelector"},
                     [
-                      el("div", {"class": "childrenSelectorName"}, "Create new draft", {}),
+                      el("div", {"class": "childrenSelectorName"}, "Create new draft off of " + editor_model.version, {}),
                     ], 
                     {
                       onclick: (event) => {
@@ -3494,6 +3758,30 @@ lastEditScript = """
                       }
                     });
         };
+        
+        const publishToLiveBtn = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Publish " + editor_model.version + " to live!", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        publishToLive();
+                      }
+                    });
+        };
+
+        const deleteCurrentDraftBtn = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Irreversibly delete " + editor_model.version + "!", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        deleteCurrentDraft();
+                      }
+                    });
+        };
 
         let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
         if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
@@ -3503,7 +3791,9 @@ lastEditScript = """
           });
         }
         if (!isLive()) draftListDiv.append(liveBtn());
+        if (!isLive()) draftListDiv.append(publishToLiveBtn());
         draftListDiv.append(createNewDraft());
+        if (!isLive()) draftListDiv.append(deleteCurrentDraftBtn());
         modifyMenuDiv.append(draftListDiv);
       } else {
       if(clickedElem) {
@@ -4101,8 +4391,8 @@ lastEditScript = """
         }
       }
     }
-    
-      if(!editor_model.linkSelectMode) {
+      if (!editor_model.state.includes("l")) {
+      //if(!editor_model.linkSelectMode) {
         contextMenu.innerHTML = "";
         var whereToAddContextButtons = contextMenu;
         var noContextMenu = false;
@@ -4225,6 +4515,7 @@ lastEditScript = """
                 let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
                 parent.insertBefore(insertedNode, nodeToInsertBefore);
                 document.querySelector("#modify-menu").classList.toggle("visible", true);
+                set_state_visible();
                 editor_model.visible = true;
                 editor_model.clickedElem = insertedNode;
                 updateInteractionDiv();
@@ -4238,6 +4529,7 @@ lastEditScript = """
                 editor_model.clickedElem = clickedElem;
                 editor_model.displayClickedElemAsMainElem = true;
                 editor_model.insertElement = true;
+                set_state_insert();
                 updateInteractionDiv();
                 restoreCaretPosition();
               }});
