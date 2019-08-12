@@ -3246,20 +3246,20 @@ editionscript = """
           */
           //CSS parser
           function findText(parsed, startIndex, endIndex) {
-            console.log("Start index is:", startIndex);
-            console.log("End index is:", endIndex);
+            //console.log("Start index is:", startIndex);
+            //console.log("End index is:", endIndex);
             var textSegment = "";
             for(; startIndex < endIndex; startIndex++) {
               textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[startIndex]]) :
                 parsed[0].directive ? CSSparser.unparseRules([parsed[startIndex]]) : "" : "";
-              console.log(textSegment);
+              //console.log(textSegment);
             }
             return textSegment;
           }
           
           if(!model.insertElement) { 
             let clickedElement = editor_model.clickedElem;
-            console.log("All style tags:", document.querySelectorAll("style"));
+            //console.log("All style tags:", document.querySelectorAll("style"));
             function linkCSSFile() {
               if(clickedElement.tagName === "LINK") {
                 clickedElement.getAttribute("href");
@@ -3277,16 +3277,16 @@ editionscript = """
             //parse relevant CSS, recording prior and post CSS text as well 
             function fullParseCSS() {
               var fullCSS = [];
-              console.log("All style tags:", document.querySelectorAll("style"));
+              //console.log("All style tags:", document.querySelectorAll("style"));
               document.querySelectorAll("style").forEach((e) => {
                 var curCSS = [];
                 var parsedCSS = CSSparser.parseCSS(e.textContent);
-                console.log("The parsed CSS is:", parsedCSS);
+                //console.log("The parsed CSS is:", parsedCSS);
                 for(let i in parsedCSS) {
                   if(parsedCSS[i].kind === 'cssBlock' && clickedElement.matches(parsedCSS[i].selector)) {
                     //calculating before and after text
                     curCSS.push({type: 'cssBlock', content: CSSparser.unparseCSS([parsedCSS[i]]), 
-                      before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number + 1, parsedCSS.length), orgTag: e});
+                      before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: e});
                   }
                   else if(parsedCSS[i].kind === '@media' && window.matchMedia(parsedCSS[i].selector).matches) {
                     //saving selector information 
@@ -3295,8 +3295,8 @@ editionscript = """
                       if(clickedElement.matches(parsedCSS.content[j].selector)) {
                         curMedia.content = CSSparser.unparseCSS([parsedCSS.content[j]]);
                         curCSS.push({type: '@media', content: curMedia, 
-                          innerBefore: findText(parsedCSS.content, 0, j), innerAfter: findText(parsedCSS.content, Number(j + 1), parsedCSS.content.length),
-                          before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i + 1), parsedCSS.length), orgTag: e});
+                          innerBefore: findText(parsedCSS.content, 0, j), innerAfter: findText(parsedCSS.content, Number(j) + 1, parsedCSS.content.length),
+                          before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: e});
                       }
                     }
                   }
@@ -3304,10 +3304,10 @@ editionscript = """
                     continue;
                   }
                   if(i === parsedCSS.length - 1 && !curCSS.length) {
-                    console.log("Nothing relevant in style tag: ", e);
+                    //console.log("Nothing relevant in style tag: ", e);
                   }
                 }
-                console.log("The parsed text looks like:", curCSS);
+                //console.log("The parsed text looks like:", curCSS);
                 if(curCSS.length) {
                   fullCSS.push(curCSS);
                 }
@@ -3315,13 +3315,13 @@ editionscript = """
               return fullCSS;
             }
             function fullUnparseCSS(fullCSS) {
-              console.log("Before unparse update:")
+              //console.log("Before unparse update:")
               document.querySelectorAll("style").forEach((e) => { 
-                console.log(CSSparser.parseCSS(e.textContent));
+                //console.log(CSSparser.parseCSS(e.textContent));
               });
               for(let i in fullCSS) {
-                console.log("current group is:", fullCSS);
-                console.log("current is:", fullCSS[i]);
+                //console.log("current group is:", fullCSS);
+                //console.log("current is:", fullCSS[i]);
                 let curTag = fullCSS[i][0].orgTag;
                 let CSSString = "";
                 for(let j = 0; j < fullCSS[i].length; j++) {
@@ -3336,9 +3336,9 @@ editionscript = """
                 }
                 curTag.textContent = CSSString;
               }
-              console.log("After");
+              //console.log("After");
               document.querySelectorAll("style").forEach((e) => { 
-                console.log(CSSparser.parseCSS(e.textContent));
+                //console.log(CSSparser.parseCSS(e.textContent));
               });
             }
             
@@ -3372,9 +3372,9 @@ editionscript = """
               }
               //rest of CSS
               editor_model.CSSState = fullParseCSS();
-              console.log("CSS state is:", editor_model.CSSState);
+              //console.log("CSS state is:", editor_model.CSSState);
               while(CSSarea.firstChild) {
-                console.log("Removed child:", CSSarea.firstChild);
+                //console.log("Removed child:", CSSarea.firstChild);
                 CSSarea.removeChild(CSSarea.firstChild);
               }
               for(let i in editor_model.CSSState) {
@@ -3388,7 +3388,7 @@ editionscript = """
                       onkeyup() {
                         let throwError = false;
                         curCSSState = CSSparser.parseCSS(this.value);
-                        console.log(curCSSState);
+                        //console.log(curCSSState);
                         //check to make sure CSS is still relevant to clicked element.
                         for(let i in curCSSState) {
                           if(curCSSState[i].kind === 'cssBlock' || curCSSState[i].kind === '@media') {
@@ -3406,7 +3406,7 @@ editionscript = """
                         }
                         else {
                           this.storedCSS.content = this.value;
-                          console.log("Other selectors under the same style tag is:", editor_model.CSSState[i]);
+                          //console.log("Other selectors under the same style tag is:", editor_model.CSSState[i]);
                           fullUnparseCSS(editor_model.CSSState);
                           //setCSSAreas();
                         }
@@ -3416,7 +3416,7 @@ editionscript = """
                     el("div", {"class": "delete-CSS"}, [], {
                       innerHTML: wasteBasketSVG,
                       onclick() {
-                        console.log(this.parentElement.childNodes);
+                        //console.log(this.parentElement.childNodes);
                         this.parentElement.childNodes[0].value = "";
                         this.parentElement.childNodes[0].storedCSS.content = this.parentElement.childNodes[0].value;
                         fullUnparseCSS(editor_model.CSSState);
@@ -3453,13 +3453,13 @@ editionscript = """
                               let addedStyles = document.getElementById("new-Style");
                               if(!addedStyles) { 
                                 document.head.appendChild(el("style", {id: "new-Style"}, [], {innerHTML: this.value}));
-                                console.log("Added new style tag", addedStyles);
+                                //console.log("Added new style tag", addedStyles);
                               } 
                               else {
                                 addedStyles.innerHTML += "\n" + this.value;
-                                console.log("Style tag exists:", addedStyles);
+                                //console.log("Style tag exists:", addedStyles);
                               }
-                              console.log("Added new style tag", addedStyles);
+                              //console.log("Added new style tag", addedStyles);
                               //reset to normal case (i.e. reconstruct all text areas)
                               setCSSAreas();
                               return;
@@ -3611,11 +3611,13 @@ editionscript = """
         var diffPics = styleStr.split(",");
         for(let k in diffPics) {
           //extracts only url(...)
-          var matches = diffPics[k].match(/url\((.*?)\)/);
+          var matches = diffPics[k].match(/url\((.*?)\)/g);
+          console.log("the matches are:", matches);
           //deepcopy string
           var remainStr = diffPics[k].slice(0); 
           for(let j in matches) {
             //from current understanding, there should only be one url(...) per split of ,
+            console.log("the current match is:", matches[j]);
             if(j == 1) {
               console.log(`Odd syntax, ${matches[j]} also matched!`);
             }
@@ -3623,7 +3625,7 @@ editionscript = """
             //extracting the rest of the string 
             afterStr = remainStr.slice(sIndex + matches[j].length);
             beforeStr = remainStr.slice(0, sIndex);
-            urls.append({remainderBefore: before, url: matches[j], remainderAfter: afterStr});  
+            urls.push({remainderBefore: beforeStr, url: matches[j], remainderAfter: afterStr});  
           }
         }
         return urls;
@@ -3671,7 +3673,7 @@ editionscript = """
         var textSegment = "";
         let valueText = "";
         for(let i in backImgObj.relCSS.value) {
-          valueText += (i !== 0 ? "," : "") + backImgObj.relCSS.value[i].remainderBefore + backImgObj.relCSS[i].url + backImgObj.relCSS[i].remainderAfter;
+          valueText += (i !== 0 ? "," : "") + backImgObj.relCSS.value[i].remainderBefore + backImgObj.relCSS.value[i].url + backImgObj.relCSS.value[i].remainderAfter;
         }
         backImgObj.relCSS.value = valueText;
         return findText(backImgObj.relCSS, 0, backImgObj.relCSS.length);
@@ -3718,6 +3720,8 @@ editionscript = """
       }
 
       function showListsImages(srcName, backImgObj) {
+        console.log("hello!");
+        console.log("Source name is:", srcName);
         srcName = relativeToAbsolute(srcName)
         let dir = "";
         for(let i = 0, arr = srcName.split(/\\|\//); i < arr.length - 1; ++i) {
@@ -3775,7 +3779,11 @@ editionscript = """
       interactionDiv.append(keyvalues);
       let backgroundImgSrc = checkForBackgroundImg();
       if (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc)) {
-        let srcName = backgroundImgSrc ? backgroundImgSrc.relCSS.value[0].url : clickedElem.attributes[0].value;
+        console.log("got here!");
+        console.log(backgroundImgSrc.relCSS.value[0].url.match(/\((.*?)\)/g));
+        console.log(backgroundImgSrc.relCSS.value[0])
+        var remParentheses = /\((.*?)\)/g;
+        let srcName = backgroundImgSrc ? remParentheses.exec(backgroundImgSrc.relCSS.value[0].url)[1] : clickedElem.attributes[0].value;
 
         //console.log(srcName);
         //console.log(backgroundImgSrc.relCSS.value[0].url);
@@ -3793,7 +3801,7 @@ editionscript = """
 
         // radio buttons for cases when there are two background images
         if(backgroundImgSrc && backgroundImgSrc.relCSS.value.length > 1) {
-          for(let i in backgroundImgSrc.value.relCSS) {
+          for(let i in backgroundImgSrc.relCSS.value) {
             interactionDiv.append(el("span", {class: "insertOption"}, [
               el("input", {type: "radio", class: "background-img-radio", id: `radio${i}`, name: "", value: `Image {i}`}, [], {checked: i === 0}),
               el("label", {"for": "radio${i}"}, `Image {i}`)]),);
