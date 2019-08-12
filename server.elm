@@ -225,7 +225,7 @@ LUCA stands for "Last Universal Common Ancestor"
 ----------------------------------------------------------------------------}
 
 luca = 
-  [<script id="thaditor-luca">
+  [<script id="thaditor-luca" class="editor-interface">
     function writeDocument(NC) {
       document.open();
       document.write(NC);
@@ -503,8 +503,9 @@ luca =
         x.append(children);
       }
       if(typeof properties == "object") {
-        for(let k in properties)
+        for(let k in properties) {
           x[k] = properties[k];
+        }
       }
       return x;
     }    
@@ -1233,15 +1234,14 @@ main =
               serverOwned "edit prelude when not in edit mode" []) ++
              bodyChildren ++
              Update.sizeFreeze [["div", [["id", "editor-files-to-overwrite"]], insertThereInstead insertedElementsToWriteFile True fileOperations]] ++
-             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder"> </div>, <script  id="thaditor-lastscript">@lastEditScript</script>] ++ insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
+             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder" class="editor-interface"> </div>, <script  id="thaditor-lastscript" class="editor-interface">@lastEditScript</script>] ++ insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
              )]
       ["head", headattrs, headChildren] ->
         let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
         ["head", headattrs,
            insertThereInstead identity True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
            serverOwned "initial script" initialScript ++
-           (serverOwned "viewport instructions" <meta name="viewport" content="width=device-width"> :: 
-            serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css"> :: headChildren)]
+           (serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface"> :: headChildren)]
       x -> x -- head
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -1278,7 +1278,7 @@ switchEditBox toEdit =
  } else {
    location.search = location.search.replace(/edit=@prev/, "edit=@next");
  }
-""">
+""" class="editor-interface">
 <style>#editbox {
   @(if toEdit then """position: fixed;
   margin-top: 2px;
@@ -1316,12 +1316,12 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu thesource = [
-<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
-<div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
-if iscloseable then <span dummy=""></span> else closeEditBox]
+<div class="editor-interface" id="modify-menu" list-ghost-attributes="style" list-ignored-attributes="class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
+<div class="editor-interface" id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
+if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
 
 initialScript = serverOwned "initial script" [
-<script>
+<script class="editor-interface">
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
@@ -1387,6 +1387,7 @@ editor.ignoredAttrs.push(n =>
     ((n && n.getAttribute && n.getAttribute("save-ignored-attributes")) || "").split(" ")).filter(a => a != "")
 )
 
+// Returns a method that, for each key name, return true if it is a ghost attribute for the node
 function isSpecificGhostAttributeKeyFromNode(n) {
   var additionalGhostAttributes = [];
   for(var k in editor.ghostAttrs) {
@@ -1395,6 +1396,7 @@ function isSpecificGhostAttributeKeyFromNode(n) {
   return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
 }
 
+// Returns a method that, for each key name, return true if it is an ignored attribute for the node
 function isIgnoredAttributeKeyFromNode(n) {
   var additionalIgnoredAttributes = [];
   for(var k in editor.ignoredAttrs) {
@@ -2866,8 +2868,16 @@ lastEditScript = """
         return f;
       })();
       function textPreview(element, maxLength) {
-        let x = element.innerText;
-        let result = "'" + x + "'";
+        let x = element.textContent;
+        let result = "'" + x + "'";;
+        if(x == "") {
+          if(element.tagName === "META") {
+            result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
+                    (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
+          } else if(element.tagName === "SCRIPT") {
+            result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+          }
+        }
         if(typeof maxLength !== "undefined" && result.length > maxLength) {
           return result.substring(0, maxLength) + "...'";
         }
@@ -3245,7 +3255,7 @@ lastEditScript = """
         let addElem = function(name, createParams) {
           interactionDiv.append(
             el("div", {"class": "tagName", title: createParams.title},
-              el("span", { "class": "templateengine"}, name, createParams), { onclick: insertTag }
+              el("span", { "class": "templateengine"}, name, {createParams: createParams}), { onclick: insertTag }
             )
           );
         }
@@ -3299,6 +3309,7 @@ lastEditScript = """
           for(let i = 1; i <= 6; i++) {
             addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }, title: "Insert <h"+i+">"});
           }
+          addElem("Newline", {tag: "br", title: "Insert <br>"});
         }
         addElem("Stylesheet", {tag:"style", children: "/*Your CSS there*/", title: "Insert <style>"});
         addElem("JavaScript", {tag:"script", children: "/*Your CSS below*/", title: "Insert <script>"});
@@ -3387,7 +3398,11 @@ lastEditScript = """
         let displayChildrenElem = function(elem) {
           let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
           childrenElemDiv.append(
-            el("div", {"class": "childrenSelector"},
+            el("div", {
+                 "class": "childrenSelector" + (elem.matches(".editor-interface") ? " editor-interface-dom-selector" : "") +
+                   (isGhostNode(elem) ? " editor-recorded-ghost-node" : ""),
+                 title: elem.matches(".editor-interface") ? "This is part of Editor" : (isGhostNode(elem) ? "(temporary) " : "") + textPreview(elem, 20)
+                 },
               [
                 el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
                 // el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
@@ -3524,7 +3539,7 @@ lastEditScript = """
                 let childrenElem = clickedElem.children;
                 for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
                   // prevent displaying editor itself
-                  if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu" || childrenElem[i].id === "editbox") {
+                  if (cnt === 0 && (childrenElem[i].matches(".editor-interface") || isGhostNode(childrenElem[i]))) {
                     continue;
                   }
                   displayChildrenElem(childrenElem[i]);
@@ -3656,93 +3671,101 @@ lastEditScript = """
               )
             ])
           );
-      }
-      for(let i = 0; clickedElem && clickedElem.attributes && i < clickedElem.attributes.length; i++) {
-        let name = clickedElem.attributes[i].name;
-        if(name === "ghost-clicked" || name === "ghost-hovered") continue;
-        let value = clickedElem.attributes[i].value;
-        if(false /*name == "style"*/) {
-          // Do something special for styles.
-        } else {
-          let isHref = name === "href" && clickedElem.tagName === "A";
-          keyvalues.append(
-            el("div", {"class": "keyvalue"}, [
-              el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
-              el("span", {class: "attribute-key-value"}, [
-                el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
-                    onkeyup: ((name, isHref) => function () {
-                        clickedElem.setAttribute(name, this.value);
-                        if(isHref) {
-                          let livelinks = document.querySelectorAll(".livelink");
-                          for(let livelink of livelinks) {
-                            let finalLink = livelink.matches("#context-menu *") ?
-                              `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
-                            livelink.setAttribute("href", finalLink);
-                            livelink.setAttribute("title", "Go to " + this.value);
+        let isGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(clickedElem);
+        let isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(clickedElem);
+
+        for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
+          let name = clickedElem.attributes[i].name;
+          if(name === "ghost-clicked" || name === "ghost-hovered") continue;
+          let value = clickedElem.attributes[i].value;
+          if(false /*name == "style"*/) {
+            // Do something special for styles.
+          } else {
+            let isGhost = isGhostAttributeKey(name);
+            let isIgnored = isIgnoredAttributeKey(name);
+            let isHref = name === "href" && clickedElem.tagName === "A";
+            keyvalues.append(
+              el("div", {"class": "keyvalue" + (isGhost ? " editor-recorded-ghost-attribute" : "")
+                                             + (isIgnored ? " editor-ignored-attribute" : ""),
+                         "title": isGhost ? "Key/value generated by a script" : isIgnored ? "key/value ignored after being modified by a script" : undefined
+              }, [
+                el("span", {title: "Element attribute name"}, name + ": "),
+                el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
+                  el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
+                      onkeyup: ((name, isHref) => function () {
+                          clickedElem.setAttribute(name, this.value);
+                          if(isHref) {
+                            let livelinks = document.querySelectorAll(".livelink");
+                            for(let livelink of livelinks) {
+                              let finalLink = livelink.matches("#context-menu *") ?
+                                `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
+                              livelink.setAttribute("href", finalLink);
+                              livelink.setAttribute("title", "Go to " + this.value);
+                            }
                           }
-                        }
-                    })(name, isHref)
-                  }),
-                isHref ? el("div", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [], {
-                  innerHTML: liveLinkSVG(model.link)
-                }) : undefined,
-                isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
-                  innerHTML: linkModeSVG,
-                  onclick: linkSelect
-                }) : undefined,
-                el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
-                  innerHTML: wasteBasketSVG,
-                  onclick: ((name) => function() {
-                    clickedElem.removeAttribute(name);
-                    editor_model.clickedElem = clickedElem;
-                    updateInteractionDiv();
-                    })(name)
-                  })
-                ]
-              )
-            ]
-          ));
+                      })(name, isHref)
+                    }),
+                  isHref ? el("div", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [], {
+                    innerHTML: liveLinkSVG(model.link)
+                  }) : undefined,
+                  isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
+                    innerHTML: linkModeSVG,
+                    onclick: linkSelect
+                  }) : undefined,
+                  el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
+                    innerHTML: wasteBasketSVG,
+                    onclick: ((name) => function() {
+                      clickedElem.removeAttribute(name);
+                      editor_model.clickedElem = clickedElem;
+                      updateInteractionDiv();
+                      })(name)
+                    })
+                  ]
+                )
+              ]
+            ));
+          }
         }
-      }
-      let highlightsubmit = function() {
-        let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
-        this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
-          attrName === "" || attrName.trim() !== attrName
-      }
+        let highlightsubmit = function() {
+          let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
+          this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
+            attrName === "" || attrName.trim() !== attrName
+        }
 
 
-      if(clickedElem && clickedElem.nodeType === 1) {
-        keyvalues.append(
-          el("div", {"class": "keyvalue keyvalueadder"}, [
-            el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
-            el("span", {class: "attribute-key-value"}, [
-              el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
-                onfocus: function() {
-                  let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
-                  if(keyInput && keyInput.value != "") {
-                    let name = document.querySelector("div.keyvalueadder input[name=name]").value;
+        if(clickedElem.nodeType === 1) {
+          keyvalues.append(
+            el("div", {"class": "keyvalue keyvalueadder"}, [
+              el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
+              el("span", {class: "attribute-key-value"}, [
+                el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
+                  onfocus: function() {
+                    let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
+                    if(keyInput && keyInput.value != "") {
+                      let name = document.querySelector("div.keyvalueadder input[name=name]").value;
+                      clickedElem.setAttribute(
+                        name,
+                        document.querySelector("div.keyvalueadder input[name=value]").value
+                      );
+                      updateInteractionDiv();
+                      let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
+                      if(d) d.focus();
+                    }
+                  },
+                  onkeyup: highlightsubmit})),
+                el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+                  disabled: true,
+                  onclick() {
                     clickedElem.setAttribute(
-                      name,
-                      document.querySelector("div.keyvalueadder input[name=value]").value
+                      this.parentElement.querySelector("[name=name]").value,
+                      this.parentElement.querySelector("[name=value]").value
                     );
                     updateInteractionDiv();
-                    let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
-                    if(d) d.focus();
-                  }
-                },
-                onkeyup: highlightsubmit})),
-              el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
-                disabled: true,
-                onclick() {
-                  clickedElem.setAttribute(
-                    this.parentElement.querySelector("[name=name]").value,
-                    this.parentElement.querySelector("[name=value]").value
-                  );
-                  updateInteractionDiv();
-                },
-                onkeyup: highlightsubmit })])
-          ])
-        );
+                  },
+                  onkeyup: highlightsubmit })])
+            ])
+          );
+        }
       }
 
       function uploadImagesAtCursor(files) {

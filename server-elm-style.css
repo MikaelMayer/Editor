@@ -533,6 +533,21 @@ div.childrenSelector:hover {
     filter: blur(125%);
 }
 
+div.editor-interface-dom-selector {
+  opacity: 0.5;
+  color: #ffe5b5;
+}
+div.editor-recorded-ghost-node {
+  opacity: 0.5;
+}
+div.editor-recorded-ghost-attribute {
+  opacity: 0.5;
+}
+div.editor-ignored-attribute {
+  background: #a2a2a2;
+}
+
+
 div.mainElem {
     height: 62px;
     position: relative;
