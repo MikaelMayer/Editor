@@ -76,13 +76,20 @@ input:checked+.slider:before {
     font-family: Arial;
 }
 .notifs {
-    background-color: #000000; /* black */
-    transform:translateX(48px);
+    background-color: var(--context-color);
+    transform:translateX(44px);
     position:fixed;
     top:5px;
     right:496px;
     width:256px;
     height:128px;
+    line-height: 120px;
+    font-size: 1.4rem;
+    resize: none;
+    text-align: center;
+    border: none;
+    border-radius: 0.4rem;
+    font-weight: bold;
 }
 .logger {
     background-color: #000000; /* black */
@@ -931,7 +938,7 @@ textarea.templateengine:focus {
     }
     /* mobile dom selector */
     div.dom-selector-style {
-        height: 45%;
+        height: 30%;
         margin: 0.15em;
         border-radius: 0.4em;
         margin: 2%;
@@ -941,15 +948,13 @@ textarea.templateengine:focus {
     }
     div.mainElem {
         margin-bottom: 0;
-        height: 40%;
+        height: 56%;
     }
     div.childrenSelector {
-        padding: 6px;
         font-size: 1.2em;
     }
     div.no-sibling {
         font-size: 1em;
-        padding-top: 20px;
     }
     /* mobile modify menu */
     div.tagname-summary {
