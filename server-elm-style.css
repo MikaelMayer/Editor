@@ -164,21 +164,6 @@ span.label-checkbox:hover {
     cursor: pointer;
 }
 
-@keyframes spin {
-    from {
-        outline-color: #FAA;
-    }
-    33% {
-        outline-color: #AFA;
-    }
-    66% {
-        outline-color: #AAF;
-    }
-    to {
-        outline-color: #FAA;
-    }
-}
-
 span#ambiguity-id {
     color: #9dff00;
     display: block;
@@ -191,11 +176,6 @@ span#ambiguity-id {
 
 .solution.selected {
     background: rgba(255, 255, 255, 0.2);
-}
-
-.to-be-selected {
-    outline: #FCC 2px solid;
-    animation: spin 1s linear infinite;
 }
 
 .solution:not(.selected):hover {
@@ -873,6 +853,22 @@ textarea.templateengine:focus {
 
 #modify-menu span.insertOption label {
   display: inline-block;
+}
+
+
+.to-be-selected {
+    animation: OrangeWait 3s linear infinite;
+    background: linear-gradient(90deg, orange 0%, gold 5%, gold 10%, orange 15%) !important;
+    background-size: 200% 100% !important;
+}
+
+@keyframes OrangeWait { 
+    0% { 
+      background-position: 30% 0%;
+    }
+    30%, 100% {
+      background-position: -100% 0%;
+    }
 }
 
 @media (pointer: coarse) {
