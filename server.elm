@@ -1368,7 +1368,7 @@ editor.customContextMenuButtons = [];
 // Creates an SVG icon from the given path. If fill is true, will have the path filled.
 function svgFromPath(path, fill) {
   return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
-        <path d="${path}" /></svg>`
+        <path d="${path}"></path></svg>`
 }
 editor.svgFromPath = svgFromPath;
 
@@ -1864,6 +1864,7 @@ lastEditScript = """
         }
       }
       var parentsGhostNodes = [];
+      var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
       for(var i = 0; i < ghostElemsToReinsert.length; i++) {
         var elem = ghostElemsToReinsert[i];
         parentsGhostNodes.push({parent: editor.toTreasureMap(elem.parentNode), node: elem});
@@ -2243,6 +2244,10 @@ lastEditScript = """
             }
           }
           sendNotification("Save completed!");
+        } else if(e.data.action == "message") {
+          sendNotification(e.data.message)
+        } else if(e.data.action == "reconnect") {
+          thaditor_reconnect();
         }
       }
       serverWorker.postMessage(data);
