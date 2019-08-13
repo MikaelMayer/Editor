@@ -1317,7 +1317,7 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu thesource = [
 <div class="editor-interface" id="modify-menu" list-ghost-attributes="style" list-ignored-attributes="class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
-<div class="editor-interface" id="context-menu" children-are-ghosts="true" list-ghost-attributes="style" list-ignored-attributes="class" contenteditable="false"></div>,
+<div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
 if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
 
 initialScript = serverOwned "initial script" [
