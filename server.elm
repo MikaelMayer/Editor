@@ -3152,7 +3152,6 @@ editionscript = """
               if (!clickedElem.tagName) {
                 return;
               }
-
               // When the main element in selector is clicked, selector switch to status 2 so that user can see its parent element
               editor_model.displayClickedElemAsMainElem = false;
               editor_model.clickedElem = clickedElem;
@@ -3249,9 +3248,13 @@ editionscript = """
             //console.log("Start index is:", startIndex);
             //console.log("End index is:", endIndex);
             var textSegment = "";
-            for(; startIndex < endIndex; startIndex++) {
-              textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[startIndex]]) :
-                parsed[0].directive ? CSSparser.unparseRules([parsed[startIndex]]) : "" : "";
+            //console.log("got to findtext");
+            //console.log("startIndex is:" + startIndex + " endIndex is:" + endIndex);
+            for(let i = startIndex; i < endIndex; i++) {
+              //console.log(parsed[0].directive);
+              //console.log(CSSparser.unparseRules([parsed[i]]));
+              textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[i]]) :
+                (parsed[0].directive ? CSSparser.unparseRules([parsed[i]]) : "") : "";
               //console.log(textSegment);
             }
             return textSegment;
@@ -3359,7 +3362,7 @@ editionscript = """
                       clickedElement.setAttribute("style", this.value);
                     }
                   }),
-                  el("div", {"class": "delete-CSS"}, [], {
+                  /*el("div", {"class": "delete-CSS"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick() {
                       let inline_CSS = document.querySelectorAll(".inline-CSS");
@@ -3367,7 +3370,7 @@ editionscript = """
                       clickedElement.setAttribute("style", inline_CSS.value);
                       setCSSAreas();
                     }
-                  })
+                  })*/
                 )
               }
               //rest of CSS
@@ -3430,7 +3433,7 @@ editionscript = """
             }
             setCSSAreas();
             interactionDiv.append(CSSarea);
-            interactionDiv.append(el("button", {"class": "CSSbutton", title: "Create new selector"}, [], {
+            /*interactionDiv.append(el("button", {"class": "CSSbutton", title: "Create new selector"}, [], {
               innerHTML: "New CSS",
               onclick() { 
                 CSSarea.append(el("div", {"class": "CSS-modify-unit"}, [
@@ -3473,7 +3476,7 @@ editionscript = """
                   })
                 ]));
               }
-            }));
+            }));*/
           }
         }
       }
@@ -3638,7 +3641,7 @@ editionscript = """
         //console.log("clicked element is:", clickedElem);
         //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
         var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
-        //console.log(clickedStyle);
+        console.log(clickedStyle);
         //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
         //former first, if it contains a url. for now, I am looping through the CSS rules twice.
         //console.log("^parsed rules ");
@@ -3647,7 +3650,9 @@ editionscript = """
             if(clickedStyle[i][j].directive === "background") {
               clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
               if(clickedStyle[i][j].value.length) {
-                return {relCSS: clickedStyle[i][j], imageSelection: 0};
+                console.log(clickedStyle[i][j]);
+                return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
+                  imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
               }
             }
           }
@@ -3659,7 +3664,8 @@ editionscript = """
               //console.log(clickedStyle[i][j].value);
               clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
               if(clickedStyle[i][j].value.length) {
-                return {relCSS: clickedStyle[i][j], imageSelection: 0};
+                return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
+                  imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
               }
             }
           }
@@ -3673,10 +3679,13 @@ editionscript = """
         var textSegment = "";
         let valueText = "";
         for(let i in backImgObj.relCSS.value) {
-          valueText += (i !== 0 ? "," : "") + backImgObj.relCSS.value[i].remainderBefore + backImgObj.relCSS.value[i].url + backImgObj.relCSS.value[i].remainderAfter;
+          valueText += (Number(i) !== 0 ? ", " : "") + backImgObj.relCSS.value[i].remainderBefore + backImgObj.relCSS.value[i].url + backImgObj.relCSS.value[i].remainderAfter;
+          //console.log(valueText);
         }
         backImgObj.relCSS.value = valueText;
-        return findText(backImgObj.relCSS, 0, backImgObj.relCSS.length);
+        console.log("Object about to be unparsed:");
+        console.log(backImgObj);
+        return backImgObj.beforeCSS + findText([backImgObj.relCSS], 0, 1) + backImgObj.afterCSS;
       }
 
       function uploadImagesAtCursor(files, srcName, backImgObj) {
@@ -3744,6 +3753,8 @@ editionscript = """
           interactionDiv.append(
             el("div", { class: "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
               onclick() {
+                console.log("At the beginning:");
+                console.log(JSON.stringify(backImgObj));
                 // highlight the selected image
                 let otherImages = document.querySelectorAll(".imgFolder");
                 for (let i = 0; i < otherImages.length; ++i) {
@@ -3761,8 +3772,27 @@ editionscript = """
                     }
                     return defaultValue;
                   })();
-                  backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url("'+ this.children[0].getAttribute("src") +'")';
+                  console.log("Here?");
+                  console.log(JSON.stringify(backImgObj));
+                  if(!(typeof backImgObj.relCSS.value === 'string')){
+                    console.log("Here?");
+                    console.log(JSON.stringify(backImgObj));
+                    console.log(backImgObj.relCSS.value.length);
+                    backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url('+ this.children[0].getAttribute("src") +')';
+                  }
+                  else {
+                    console.log("Second time around:");
+                    backImgObj = checkForBackgroundImg();
+                    backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url('+ this.children[0].getAttribute("src") +')';
+                  }
+                  console.log("current link", this.children[0].getAttribute("src"));
+                  //console.log("current section number is:", backImgObj.imageSelection);
+                  //console.log("current selection is:", backImgObj.relCSS.value[backImgObj.imageSelection].url); 
                   clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
+                  console.log("new style attribute is:", clickedElem.getAttribute("style"));
+
+                  console.log(JSON.stringify(backImgObj));
+
                 }
                 else {
                   clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
@@ -3781,7 +3811,7 @@ editionscript = """
       if (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc)) {
         console.log("got here!");
         console.log(backgroundImgSrc.relCSS.value[0].url.match(/\((.*?)\)/g));
-        console.log(backgroundImgSrc.relCSS.value[0])
+        console.log(backgroundImgSrc.relCSS);
         var remParentheses = /\((.*?)\)/g;
         let srcName = backgroundImgSrc ? remParentheses.exec(backgroundImgSrc.relCSS.value[0].url)[1] : clickedElem.attributes[0].value;
 
@@ -3803,7 +3833,7 @@ editionscript = """
         if(backgroundImgSrc && backgroundImgSrc.relCSS.value.length > 1) {
           for(let i in backgroundImgSrc.relCSS.value) {
             interactionDiv.append(el("span", {class: "insertOption"}, [
-              el("input", {type: "radio", class: "background-img-radio", id: `radio${i}`, name: "", value: `Image {i}`}, [], {checked: i === 0}),
+              el("input", {type: "radio", class: "background-img-radio", id: `radio${i}`, name: "", value: `Image {i}`}, [], {checked: Number(i) === 0}),
               el("label", {"for": "radio${i}"}, `Image {i}`)]),);
           }         
         }
