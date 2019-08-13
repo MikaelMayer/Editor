@@ -232,6 +232,7 @@ luca =
       document.close();
     }
     var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
+    var apache_server = @(if browserSide then "true" else "false");
     function doReadServer(action, name) {
       if (typeof readServer != "undefined") {
         console.log("reading server");
@@ -250,6 +251,11 @@ luca =
           return "";
         }
       }
+    }
+    function writeDocument(NC) {
+      document.open();
+      document.write(NC);
+      document.close();
     }
     function doWriteServer(action, name, content) {
       if (typeof writeServer != "undefined") {
@@ -312,6 +318,7 @@ luca =
       let modifyMenuDiv = document.querySelector("#modify-menu");
       if (!modifyMenuDiv) {
         console.log("Notifications havent been set up for use outside of editor, like in the filesystem");
+        console.log (msg);
         return;
       }
       let notifBox = document.getElementById("notif-box");
@@ -955,7 +962,7 @@ evaluatedPage =
           return;
         }
         if (selected.filter((i) => i.id == "..").length != 0) {
-          window.alert("Can't change the up dir");
+          window.alert("Can't delete the parent dir");
           return;
         }
         var warningMsg = "Are you sure you want to delete the following file(s)?"
@@ -965,10 +972,10 @@ evaluatedPage =
         var conf = window.confirm(warningMsg);
         if (conf) {
           for (i = 0; i < selected.length; i++) {
-            var isfolder = folders.filter((j) => j[0] == selected[i].id);
+            var isfolder = folders.filter((j) => j[0] == selected[i].id); //optomizable
             console.log (isfolder);
             if (isfolder.length != 0) {
-              doWriteServer("rmdir", "@path" + selected[i].id);
+              doWriteServer("rmdir", "@path" + selected[i].id); //does this work on non-empty stuff? idts....
               continue;
             }
             doWriteServer("unlink", "@path" + selected[i].id);
@@ -1150,7 +1157,7 @@ evaluatedPage =
         }
         //el(tag, attributes, children, properties)
         if (path != "") {
-          var link = "../" + "?ls=true&amp;edit";
+          var link = "../" + "?ls=true";
           form.append(fileItemDisplay(link, "..", true));
         }
         // directories before files, sorted case-insensitive
@@ -1159,7 +1166,7 @@ evaluatedPage =
           name1.toLowerCase() < name2.toLowerCase() ? -1 : 0);
         for (i = 0; i < files.length; i++) {
           var [name, isDir] = files[i];
-          var link = isDir ? name + "/?ls&" + "edit" : name;
+          var link = isDir ? name + "/?ls" : name + "/?edit";
           form.append(fileItemDisplay(link, name, isDir));
         }
 
@@ -1332,8 +1339,8 @@ if(typeof googleAuthIdToken == "undefined") {
 }
 
 function isGhostNode(elem) {
-  return elem && elem.nodeType == 1 &&
-    (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true");
+  return elem && elem.isghost || (elem.nodeType == 1 &&
+    (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true"));
 }
 
 function areChildrenGhosts(n) {
@@ -1483,15 +1490,19 @@ function handleScriptInsertion(mutations) {
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
-        if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.nodeType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
-         if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
-         insertedNode.isghost = true;
-        } else { // Record ignored attributes
-          if(insertedNode.nodeType == 1) {
-            var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(insertedNode);
-            for(var k = 0; k < insertedNode.attributes.length; k++) {
-              var attr = insertedNode.attributes[k];
-              isIgnoredAttributeKey(attr.name, attr.value);
+        if(hasGhostAncestor(insertedNode)) {
+          insertedNode.isghost = true;
+        } else {
+          if(typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.nodeType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
+           if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
+           insertedNode.isghost = true;
+          } else { // Record ignored attributes
+            if(insertedNode.nodeType == 1) {
+              var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(insertedNode);
+              for(var k = 0; k < insertedNode.attributes.length; k++) {
+                var attr = insertedNode.attributes[k];
+                isIgnoredAttributeKey(attr.name, attr.value);
+              }
             }
           }
         }
@@ -1611,44 +1622,247 @@ lastEditScript = """
         console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
         return;
       }
-      placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}));
+      placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}))   ;
     }
-    
-    // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
-    // Same for some attributes
-    function saveGhostAttributes() {
-      var ghostModified = document.querySelectorAll("[ghost-visible]");
-      var savedGhostAttributes = [];
-      for(var i = 0; i < ghostModified.length; i++) {
-        var elem = ghostModified[i];
-        savedGhostAttributes.push([editor.toTreasureMap(elem),
-            "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
-      }
-      function saveAttributes(name) {
-         var ghostAttributesModified = document.querySelectorAll("["+name+"]");
-        for(var i = 0; i < ghostAttributesModified.length; i++) {
-          var elem = ghostAttributesModified[i];
-          var toSave = elem.getAttribute(name).split(" ");
-          for(j in toSave) {
-            var key = toSave[j];
-            savedGhostAttributes.push([editor.toTreasureMap(elem), key, elem.getAttribute(key)]);
-          }
+    function off_state_visible() {
+      if (editor_model.state.includes("v")) {
+        if (editor_model.state.includes("a")) {
+          editor_model.state = editor_model.state.replace("a", "");
         }
+        if (editor_model.state.includes("s")) {
+          editor_model.state = editor_model.state.replace("s", "");
+        }
+        editor_model.state = editor_model.state.replace("v", "");
+      } else {
+        throw "State shouldn't be trying to be closed when it's already closed";
       }
+    }
+
+	  function set_state_visible() {
+	    if (!editor_model.state.includes("v")) {
+	      editor_model.state = editor_model.state + "v";
+	    }
+    }
+
+	  function set_state_log() { //log needs visible to be on AND advanced to be on
+	    if (!editor_model.state.includes("v")) throw "Shouldn't set state to log w/o v";
+	    if (!editor_model.state.includes("a")) throw "Shouldn't set state to log w/o a";
+	    if (editor_model.state.includes("a")) return;
+	    editor_model.state = editor_model.state.replace("s", "");
+	  }
+
+	  function set_state_advanced() {
+	    if (!editor_model.state.includes("v")) {
+	      editor_model.state = editor_model.state + "v";
+	      if (!editor_model.state.includes("a")) {
+	        editor_model.state = editor_model.state + "a";
+	      } else {
+	        throw "Advanced state shouldn't be open when not visible";
+	      }
+	    } else { //is visible
+	      if (editor_model.state.includes("a")) {
+	        throw "Opening advanced state when it's already open";
+	      } else {
+	        if (editor_model.state.includes("d")) {
+	          editor_model.state = editor_model.state.replace("d", "");
+	        }
+	        editor_model.state = editor_model.state + "a";
+	      }
+	    }
+	  }
+
+	  function set_state_linkselect() {
+	    //linkselect state is definitely mututally exclusive with the menu being opened, at least.
+	    //we can assume that those are turned off before turning linkselect on
+	    if (editor_model.state.includes("v") || editor_model.state.includes("a")) {
+	      throw "set_state_linkselect expects v + a to be off";
+	    } else {
+	      if (editor_model.state.includes("d")) throw "d was on without v what gives";
+	      if (editor_model.state.includes("a")) throw "a was on without v what gives";
+	      if (editor_model.state.includes("l")) {
+	        //already in linkselectmode, do nothing.
+	      } else {
+	        editor_model.state = editor_model.state + "l";
+	      }
+	    }
+	  }
+
+	  function set_state_insert() {
+	    if (editor_model.state.includes("i")) return;
+	    editor_model.state = editor_model.state + "i";
+	  }
+
+	  function set_state_draftview() {
+	    if (editor_model.state.includes("d")) return;
+	    if (editor_model.state.includes("a")) {
+	      editor_model.state = editor_model.state.replace("a", "");
+	    }
+	    if (!editor_model.state.includes("v")) {
+	      editor_model.state = editor_model.state + v;
+	    }
+	    editor_model.state = editor_model.state + "d";
+	  }
+
+	  function off_state_draftview() {
+	    if (!editor_model.state.includes("d")) sreturn;
+	    editor_model.state = editor_model.state.replace("d", "");
+	  }
+
+	  function off_state_insert() {
+	    if (!editor_model.state.includes("i")) return;
+	    editor_model.state = editor_model.state.replace("i", "");
+	  }
+
+	  function off_state_advanced() {
+	    if (!editor_model.state.includes("a")) return;
+	    if (editor_model.state.includes("s")) {
+	      editor_model.state = editor_model.state.replace("s", "");
+	    }
+	    editor_model.state = editor_model.state.replace("a", "");
+	  }
+
+	  function off_state_linkselect() {
+	    if (!editor_model.state.includes("l")) return;
+	    editor_model.state = editor_model.state.replace("l", "");
+	  }
+
+	  function off_state_visible() {
+	    if (!editor_model.state.includes("v")) return;
+	    if (editor_model.state.includes("a")) {
+	      if (editor_model.state.includes("s")) {
+	        editor_model.state = editor_model.state.replace("s", "");
+	      }
+	      editor_model.state = editor_model.state.replace("a", "");
+	    }
+	    if (editor_model.state.includes("d")) {
+	      editor_model.state = editor_model.state.replace("d", "");
+	    }
+	    editor_model.state = editor_model.state.replace("v", "");
+	  }
+
+	  function off_state_log() {
+	    if (!editor_model.state.includes("s")) return;
+	    editor_model.state = editor_model.state.replace("s", "");
+	  }
+
+	  function toggle_visible_state() {
+	    if (editor_model.state.includes("v")) { //open want to close
+	      if (editor_model.state.includes("a")) { //close out of advanced
+	        if (editor_model.state.includes("s")) {
+	          editor_model.state = editor_model.state.replace("s", "");
+	        }
+	        editor_model.state = editor_model.state.replace("a", "");
+	      }
+	      if (editor_model.state.includes("d")) {
+	        editor_model.state = editor_model.state.replace("d", "");
+	      }
+	      editor_model.state = editor_model.state.replace("v", "");
+	    } else { //closed and we want to open
+	      editor_model.state = editor_model.state + "v";
+	    }
+	  }
+  
+	  function toggle_advanced_state() { //can't be in advanced without visible
+	    if (editor_model.state.includes("v")) {
+	      //visible
+	      if (editor_model.state.includes("a")) { //toggle it off
+	        if (editor_model.state.includes("s")) {
+	          editor_model.state = editor_model.state.replace("s", "");
+	        }
+	        editor_model.state = editor_model.state.replace("a", "");
+	      } else { //toggle it on
+	        if (editor_model.state.includes("d")) {
+	          editor_model.state = editor_model.state.replace("d", "");
+	        }
+	        editor_model.state = editor_model.state + "a";
+	      }
+	    } else { //not visible
+	      if (editor_model.state.includes("a")) { //can't be in advanced without visible
+	        throw "model state shouldn't be in advanced when thing is not visible";
+	      } //toggle advanced + visible
+	      if (editor_mode.state.includes("i") || editor_model.state.includes("l")) {
+	        console.err("I really don't think we should be able to toggle a while i or l are set. maybe i'm wrong? if so delete this");
+	      }
+	      editor_model.state = editor_model.state + "va";
+	    }
+	  }
+
+	  function toggle_draftview_state() { //can't be in draftview when advanced is on
+
+	    if (!editor_model.state.includes("v")) { //not visible
+	      if (editor_model.state.includes("l")) { //we're in linkselectmode , we should return here.
+	        console.log ("trying to toggle_draftview_state when in linkselect mode. returning before doing anything.");
+	        return;
+	      }
+	      if (editor_model.state.includes("d")) { //in not visible state, it has draft on
+	        throw "State shouldn't be in draft mode when not visible";
+	      }
+	      if (editor_model.state.includes("a")) { //also assertion; not in visible state but advanced is wrong
+	        throw "State shouldn't be in a without v";
+	      }
+	      editor_model.state = editor_model.state + "vd"; //else visible needs to be on for draft to be on.
+	    } else {
+	      //is visible; toggle d
+	      if (editor_model.state.includes("d")) {
+	        editor_model.state = editor_model.state.replace("d", "");
+	      } else { //if we're in advanced we want to turn that off + turn on d
+	        if (editor_model.state.includes("a")) {
+	          editor_model.state = editor_model.state.replace("a", "");
+	        }
+	        editor_model.state = editor_model.state + "d";
+	      }
+	    }
+	  }
+
+
+	  // Before saving, call this function to that it eventually triggers a save action to any file.
+	  function addFileToSave(path, oldcontent, newcontent) {
+	    var placement = document.querySelector("#editor-files-to-overwrite");
+	    if(!placement) {
+	      console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
+	      return;
+	    }
+	    placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}));
+	  }
+    
+
+  
+	  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
+	  // Same for some attributes
+	  function saveGhostAttributes() {
+	    var ghostModified = document.querySelectorAll("[ghost-visible]");
+	    var savedGhostAttributes = [];
+	    for(var i = 0; i < ghostModified.length; i++) {
+	      var elem = ghostModified[i];
+	      savedGhostAttributes.push([editor.toTreasureMap(elem),
+	          "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
+	    }
+
+
+	    function saveAttributes(name) {
+	       var ghostAttributesModified = document.querySelectorAll("["+name+"]");
+	      for(var i = 0; i < ghostAttributesModified.length; i++) {
+	        var elem = ghostAttributesModified[i];
+	        var toSave = elem.getAttribute(name).split(" ");
+	        for(j in toSave) {
+	          var key = toSave[j];
+	          savedGhostAttributes.push([editor.toTreasureMap(elem), key, elem.getAttribute(key)]);
+	        }
+	      }
+	    }
       saveAttributes("save-ghost-attributes");
       saveAttributes("save-ignored-attributes");  
-      
+    
       var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
-      var savedProperties = [];
-      for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
-        var elem = elemsWithAttributesToSave[i];
-        var toSave = elem.getAttribute("save-properties").split(" ");
-        for(j in toSave) {
-          var key = toSave[j];
-          savedProperties.push([dataToRecoverCaretPosition(elem), key, elem[key]])
+	    var savedProperties = [];
+	    for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
+	      var elem = elemsWithAttributesToSave[i];
+	      var toSave = elem.getAttribute("save-properties").split(" ");
+	      for(j in toSave) {
+	        var key = toSave[j];
+	        savedProperties.push([editor.toTreasureMap(elem), key, elem[key]])
         }
       }
-      var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
       var parentsGhostNodes = [];
       for(var i = 0; i < ghostElemsToReinsert.length; i++) {
         var elem = ghostElemsToReinsert[i];
@@ -1719,6 +1933,8 @@ lastEditScript = """
         return [n.tagName.toLowerCase(), attributes, children];
       }
     }
+
+    //(outer lastEditScript)
     function saveDisplayProperties() {
       let singleChildNodeContent = document.querySelector("textarea#singleChildNodeContent");
       if(singleChildNodeContent) {
@@ -1727,6 +1943,7 @@ lastEditScript = """
         editor_model.textareaSelectionEnd = singleChildNodeContent.selectionEnd;
       }
     }
+    
     function replaceContent(NC) {
       saveDisplayProperties();
       if(editor_model.caretPosition) {
@@ -1754,6 +1971,7 @@ lastEditScript = """
           editor_model.isSaving = false;
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
           var saved = saveGhostAttributes();
+          //return
           
           //source of the editing menu disappearing after reloading
           replaceContent(xmlhttp.responseText);
@@ -1810,6 +2028,7 @@ lastEditScript = """
             editor_model.link = undefined;
             editor_model.advanced = true; // Opens advanced mode.
             editor_model.visible = true;
+            set_state_advanced();
             //editor_model.displaySource: false, // Keep source opened or closed
             // TODO: Disable click or change in DOM until ambiguity is resolved.
           } else { //no ambiguity
@@ -1907,7 +2126,30 @@ lastEditScript = """
         xmlhttp.setRequestHeader("cancel-ambiguity", JSON.stringify(num));
       });
     }
-    
+    function sendModificationsToServerNode() {
+      if(document.getElementById("notification-menu") != null) {
+        //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
+        // TODO: Listen and gather subsequent modifications when it is loading
+        return;
+      }
+      editor_model.isSaving = true;
+      var newMenu = el("menuitem#notification-menu.to-be-selected", {isghost: true});
+      if(document.getElementById('lastaction')) {
+        document.getElementById('lastaction').remove();
+      }
+      if(document.getElementById("modify-menu")) {
+        document.getElementById("modify-menu").append(newMenu);
+      }
+      saveDisplayProperties();
+      updateInteractionDiv();
+      setTimeout( () => {
+        notifyServer(xmlhttp => {
+          xmlhttp.setRequestHeader("question", editor_model.askQuestions ? "true" : "false");
+          return JSON.stringify(domNodeToNativeValue(document.body.parentElement));
+        })
+      }, 0);
+    }
+
     function sendModificationsToServer() {
       
       if(document.getElementById("notification-menu") != null) {
@@ -1975,7 +2217,6 @@ lastEditScript = """
           */
           const ads = editor_model.actionsDuringSave;
           const adsLen = editor_model.actionsDuringSave.length;
-          editor_model.isAfterSave = true;
           ads.forEach((action) => {
             if (action == "undo") {
               undo();
@@ -2001,9 +2242,7 @@ lastEditScript = """
               throw new Error("unidentified action in actionsduringsave");
             }
           }
-          editor_model.isAfterSave = false;
           sendNotification("Save completed!");
-
         }
       }
       serverWorker.postMessage(data);
@@ -2083,6 +2322,7 @@ lastEditScript = """
           } else {
             onlyGhosts = false;
             sendToUndo(mutation, cur_time);
+            // Please do not comment out this line until we get proper clever save.
             console.log("Attribute is not ghost", mutation);
           }
         } else if(mutation.type == "childList") {
@@ -2091,6 +2331,7 @@ lastEditScript = """
               if(!hasGhostAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
+                // Please do not comment out this line until we get proper clever save.
                 console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
               }
             }
@@ -2098,6 +2339,7 @@ lastEditScript = """
               if(!isGhostNode(mutation.removedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
+                // Please do not comment out this line until we get proper clever save.
                 console.log(`Removed node ${j} was not a ghost`, mutation);
               }
             }
@@ -2105,6 +2347,7 @@ lastEditScript = """
         } else {
           onlyGhosts = false;
           sendToUndo(mutation, cur_time);
+          // Please do not comment out this line until we get proper clever save.
           console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
         }
       }
@@ -2130,8 +2373,11 @@ lastEditScript = """
       }
       t = setTimeout(function() {
         t = undefined;
-        
-        sendModificationsToServer();
+        if (apache_server) {
+          sendModificationsToServer();
+        } else {
+          sendModificationsToServerNode();
+        }
       }, @editdelay)
     } //handleMutations
   
@@ -2471,7 +2717,8 @@ lastEditScript = """
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
-        if(editor_model.linkSelectMode) {
+        if (editor_model.state.includes("l")) {
+        //if(editor_model.linkSelectMode) {
           if(e.which == 27) {
             escapeLinkMode();
           }
@@ -2604,7 +2851,9 @@ lastEditScript = """
       editor_model.link = link;
       editor_model.link_href_source = aElement; // So that we can modify it
       editor_model.insertElement = false;
+      off_state_insert();
       editor_model.advanced = false;
+      off_state_advanced();
       editor_model.notextselection = false;
       updateInteractionDiv();
       // Check if the event.target matches some selector, and do things...
@@ -2632,11 +2881,29 @@ lastEditScript = """
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     var undoSVG = svgFromPath("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
     var redoSVG = svgFromPath("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
+
+    var isDraftSVG = svgFromPath("M 2,7 2,25 38,25 38,7 M 36,6 C 32,6 29.1,3.9 26.1,3.9 23.1,3.9 22,5 20,6 L 20,23 C 22,22 23.1,20.9 26.1,20.9 29.1,20.9 32,22.9 36,22.9 Z M 4,6 C 8,6 10.9,3.9 13.9,3.9 16.9,3.9 18,5 20,6 L 20,23 C 18,22 16.9,20.9 13.9,20.9 10.9,20.9 8,22.9 4,22.9 Z");
     var escapeSVG = svgFromPath("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
     var linkModeSVG = svgFromPath("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
     var checkSVG = svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor_model === "object";
-    
+    if (!ifAlreadyRunning) {
+      var the_path;
+      var thaditor_files = [
+        "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
+        "ThaditorInstaller.htaccess", "composer.json", "credentials.json", "cacert.pem", "versions",
+        "vendor", "ssg",
+      ];
+    }
+    the_path = @(path |> jsCode.stringOf);
+    if (isLive == undefined) {
+      var isLive = () => !(the_path.includes("Thaditor/versions/"));
+    }
+
+    var verz = "Live";
+    if (!isLive()) {
+      verz = the_path.slice(the_path.lastIndexOf("versions/")+9, the_path.lastIndexOf("/"));
+    }
     //hover mode functions for linkSelectMode
     function escapeLinkMode() {
       document.body.removeEventListener('mouseover', linkModeHover1, false);
@@ -2644,7 +2911,9 @@ lastEditScript = """
       //removing the hovered element (which is retained if the escape key is hit)
       document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
       //editor_model.clickedElem = editor_model.linkFrom;
+      off_state_visible();
       editor_model.visible = false;
+      off_state_linkselect();
       editor_model.linkSelectMode = false;
       editor_model.linkSelectCallback = undefined;
       editor_model.linkSelectOtherMenus = undefined;
@@ -2755,10 +3024,23 @@ lastEditScript = """
       if(!data) return;
       return undefined;
     }
-    
+    //(outer lastEditScript)
+    /*
+    State is currently (8/12) being kept track of in many variables. I'm setting out to condense that
+    into one variable, "state", a string describing the current state of the system. 
+    For the sake of clarity, I will list the current variables within the editor_model that are used to keep track of state
+
+      visible :v
+      advanced :a
+      show_log :s
+      insertElement :i //(not defined in our inital editor_model object)
+      linkSelectMode :l
+      isDraftSwitcherVisible :d
+    */
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
       //makes visibility of editor model consistent throughout reloads
-      visible: ifAlreadyRunning ? editor_model.visible : false,
+      state: ifAlreadyRunning ? editor_model.state : "",
+      visible: ifAlreadyRunning ? editor_model.visible : false, //here
       clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor_model.clickedElem) : undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
@@ -2766,23 +3048,22 @@ lastEditScript = """
       selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
       caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
-      advanced: ifAlreadyRunning ? editor_model.advanced : false,
+      advanced: ifAlreadyRunning ? editor_model.advanced : false, //here
       displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
-      disambiguationMenu: undefined,
+      disambiguationMenu: undefined, //here
       isSaving: false,
       //data structures to represent undo/redo "stack"
       undoStack: ifAlreadyRunning ? editor_model.undoStack : [],
       redoStack: ifAlreadyRunning ? editor_model.redoStack : [],
       actionsDuringSave: ifAlreadyRunning ? editor_model.actionsDuringSave : [],
-      uStackSaving: [],
-      rStackSaving: [],
-      isAfterSave: ifAlreadyRunning ? editor_model.isAferSave : false,
+      isDraftSwitcherVisible : ifAlreadyRunning ? editor_model.isDraftSwitcherVisible : false,
+      
       //observer to listen for muts
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
-      show_log: ifAlreadyRunning ? editor_model.show_log : false,
-      linkSelectMode: false,
+      show_log: ifAlreadyRunning ? editor_model.show_log : false, //here
+      linkSelectMode: false, //here
       linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
@@ -2798,8 +3079,12 @@ lastEditScript = """
                     @(case listDict.get "autosave" vars of
                       Just autosaveattr -> "true"
                       _ -> if boolVar "autosave" True then "true" else "false"),
-      path: ifAlreadyRunning ? editor_model.path : @(path |> jsCode.stringOf)
+      path: @(path |> jsCode.stringOf),
+      version : verz,
     }
+
+    
+
     function reorderCompatible (node1, node2){
       let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
       return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
@@ -2825,7 +3110,10 @@ lastEditScript = """
     // callbackUI is invoked to render other buttons along with the confirmation button.
     function activateNodeSelectionMode(msg, callback, callbackUI) {
       editor_model.visible = false;
+      off_state_visible();
+      
       editor_model.linkSelectMode = true;
+      set_state_linkselect();
       editor_model.clickedElem = document.body; //"center" clicked element on document body
       //removes all context menu stuff 
       document.querySelector("#context-menu").classList.remove("visible");
@@ -2837,8 +3125,70 @@ lastEditScript = """
       document.body.addEventListener('mouseover', linkModeHover1, false);
       document.body.addEventListener('mouseout', linkModeHover2, false);
     }
+
+    
+
+    function copy_website(source, dest) {
+      let website_files = JSON.parse(doReadServer("fullListDir", source));
+      let is_dest_valid = doReadServer("isdir", dest)
+      if (!website_files) throw "copy_website(): invalid source";
+      if (!is_dest_valid) throw "copy_website(): invalid dest";
       
-    updateInteractionDiv();
+      //filter out Thaditor files
+      website_files = website_files.filter(val => !thaditor_files.includes(val[0]));
+      website_files = website_files.filter(val => val[0][0] != ".");
+      //cpy website_files to to dest
+      website_files.forEach(val => {
+        let [nm, isdir] = val;
+        const s = (source + nm);
+        const d = (dest + nm);
+        if (isdir) {
+          doWriteServer("fullCopy", s, d);
+        } else {
+          doWriteServer("move", d, s);
+        }
+      });
+      let dh = doReadServer("read", source + "/.thaditor_meta");
+      dh = dh.slice(1, dh.length);
+      let draft_history = (dh == "" ? undefined : JSON.parse(dh));
+      const get_date_meta = () => (new Date).toString();
+      if (draft_history == undefined) {
+        draft_history = ["live:" + get_date_meta()];
+      } else {
+        draft_history.push(editor_model.version + ":" + get_date_meta());
+      }
+      doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
+      return 1;
+    }
+    function deleteCurrentDraft() {
+      if (editor_model.version == "Live") throw "Shouldn't be able to call deleteCurrentDraft when in Live";
+      const ans = window.confirm("Are you sure you want to permanently delete " + editor_model.version + "?");
+      if (!ans) return;
+      //the path of the folder we want to delete is and always will be Thaditor/versions/<editor_model.version>/
+      const pth_to_delete = "Thaditor/versions/" + editor_model.version + "/";
+      doWriteServer("deletermrf", pth_to_delete);
+      navigateLocal("/?edit");
+      sendNotification("Permanently deleted draft named: " + editor_model.version);
+    }
+    function publishToLive() {
+      //Find which version we're at by examining editor_model.version and/or the path
+      //copy all of the files in the draft/ folder out to the public facing site.
+      //simple as thaditor_files.includes
+
+      const conf = window.confirm("Are you sure you want to publish " + editor_model.version + " to live?");
+      if (!conf) {
+        return;
+      }
+      if (isLive()) {
+        throw "Can't publish live to live";
+      }
+      let t_src = editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1);
+      copy_website(t_src, "");
+      editor_model.version = "Live";
+      navigateLocal("/?edit", true);
+    }
+
+    updateInteractionDiv(); //outer lastEditScript
 
     function updateInteractionDiv() {
       let model = editor_model;
@@ -2847,7 +3197,8 @@ lastEditScript = """
       var modifyMenuDiv = document.querySelector("#modify-menu");
       //if both are closed, just return 
       if(!modifyMenuDiv || !contextMenu) return;
-      modifyMenuDiv.classList.toggle("visible", editor_model.visible);
+      modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
+      //toggle_visible_state(); // is this right?
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
       if(clickedElem && clickedElem.nodeType === 1) {
         clickedElem.setAttribute("ghost-clicked", "true");
@@ -2932,12 +3283,14 @@ lastEditScript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      if(!editor_model.linkSelectMode) {
+      if (!editor_model.state.includes("l")) {
+      //if(!editor_model.linkSelectMode) {
         addPinnedModifyMenuIcon(
           panelOpenCloseIcon(),
           {title: "Open/close settings tab", "class": "inert" },
           {onclick: function(event) {
               document.querySelector("#modify-menu").classList.toggle("visible");
+              toggle_visible_state();
               editor_model.visible = !editor_model.visible;
               setTimeout(maybeRepositionContextMenu, 500);
               this.innerHTML = panelOpenCloseIcon();
@@ -2949,6 +3302,7 @@ lastEditScript = """
           },
           {onclick: (c => function(event) {
             //defaults to turning on advanced menu if the editor model is already visible, otherwise toggles advanced menu.
+            toggle_advanced_state();
             if(editor_model.visible) {
               editor_model.advanced = !editor_model.advanced;
             }
@@ -2958,24 +3312,6 @@ lastEditScript = """
             editor_model.visible = true;
             updateInteractionDiv();
           })(clickedElem)}
-        )
-        addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
-        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
-          id: "savebutton"  
-        },
-          {onclick: editor_model.disambiguationMenu ? 
-            ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
-              editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
-            : function(event) {
-              if (editor_model.isSaving) {
-                sendNotification("Can't save while save is being undertaken");
-              }else {
-                if(!this.classList.contains("disabled")) {
-                  sendModificationsToServer();
-                }
-              }
-            }
-          }
         )
         addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
           {"class": "inert", title: "Undo most recent change",
@@ -2995,6 +3331,46 @@ lastEditScript = """
             }
           }
         );
+        if (apache_server) {
+          addPinnedModifyMenuIcon(isDraftSVG + "<span class='modify-menu-icon-label'>" + editor_model.version + "</span>",
+            {title: editor_model.version == "Live" ? "Saved edits are live" : "Edits saved to draft named '"+editor_model.version+"'",
+             "class": "inert"},
+            {onclick: function(event) {
+              
+              editor_model.isDraftSwitcherVisible = !editor_model.isDraftSwitcherVisible;
+              set_state_visible();
+              toggle_draftview_state();
+              if (!document.querySelector("#modify-menu").classList.contains("visible")) {
+                document.querySelector("#modify-menu").classList.toggle("visible");
+                editor_model.isDraftSwitcherVisible = true;
+                set_state_draftview();
+              }
+              editor_model.visible = true;
+              updateInteractionDiv();
+            }});
+        }
+        addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
+        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
+          id: "savebutton"  
+        },
+          {onclick: editor_model.disambiguationMenu ? 
+            ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
+              editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
+            : function(event) {
+              if (editor_model.isSaving) {
+                sendNotification("Can't save while save is being undertaken");
+              }else {
+                if(!this.classList.contains("disabled")) {
+                  if (apache_server) {
+                    sendModificationsToServer();
+                  } else {
+                    sendModificationsToServerNode();
+                  }
+                }
+              }
+            }
+          }
+        )
       }
       else {
         addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
@@ -3020,7 +3396,8 @@ lastEditScript = """
           editor_model.linkSelectOtherMenus(addPinnedModifyMenuIcon)
         }
       }
-      if(model.advanced || model.disambiguationMenu) {
+      //if(model.advanced || model.disambiguationMenu) { //change here
+      if(editor_model.state.includes("a") && editor_model.state.includes("v")) {
         modifyMenuDiv.append(
           el("a", { class:"troubleshooter", href: "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
         modifyMenuIconsDiv.append(
@@ -3071,10 +3448,12 @@ lastEditScript = """
           logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
           if (log.style.display == 'block') {
             editor_model.show_log = false;
+            off_state_log();
             log.style.visibility = false;
             log.style.display = 'none';
           } else {
             editor_model.show_log = true;
+            set_state_log();
             log.style.visibility = true;
             log.style.display = 'block';
           }
@@ -3084,8 +3463,9 @@ lastEditScript = """
             {onclick: function(e) {
               toggleEditorLog();
             }});
-        const isfulog = editor_model.show_log;
-        if (editor_model.show_log) {
+        
+        //if (editor_model.show_log) {
+        if (editor_model.state.includes("s")) {
           let log = document.getElementById("fullLog");
           if (!log) {
             log = flog();
@@ -3099,6 +3479,7 @@ lastEditScript = """
           }
           logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
           editor_model.show_log = true;
+          set_state_log();
           log.style.visibility = true;
           log.style.display = 'block';
         }
@@ -3145,7 +3526,8 @@ lastEditScript = """
         )
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
-      } else if(model.insertElement)  {
+      //} else if(model.insertElement)  {
+      } else if (editor_model.state.includes("i")) {
         interactionDiv.classList.add("insert-information-style");
         interactionDiv.classList.add("information-style");
         interactionDiv.append(el("h1", {}, "Insert"));
@@ -3247,6 +3629,8 @@ lastEditScript = """
             }
           }
           editor_model.insertElement = false;
+          off_state_insert();
+          set_state_visible();
           editor_model.visible = true;
           editor_model.clickedElem  = typeof newElement !== "string" && typeof newElement !== "undefined" ?
             newElement : clickedElem;
@@ -3268,6 +3652,7 @@ lastEditScript = """
                 innerHTML: linkModeSVG,
                 onclick: function(event) {
                   editor_model.insertElement = false;
+                  off_state_insert();
                   activateNodeSelectionMode(
                     "to move",
                     node => insertTag.call(this, event, node),
@@ -3326,6 +3711,128 @@ lastEditScript = """
           ])
         );
         document.querySelector("#modify-menu").classList.toggle("visible", true);
+      //} else if (editor_model.isDraftSwitcherVisible) {
+      } else if (editor_model.state.includes("v") && editor_model.state.includes("d")) {
+        //Now we want to open some sort of draft-picker/creater UI inside the modify-menu
+        if (!apache_server) {
+          throw "Should not have been able to enter into drafting mode when apache_server == false.";
+        }
+        const createNewDraft = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Create new draft off of " + editor_model.version, {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        /*
+                          Alright, for now, I'm going to launch the creation of versioning here.
+                          First, check to see if the versions folder exists. If it does, exit. 
+                          We don't want to overwrite anything.
+                        */
+                        const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
+                        if (!draft_name) {
+                          return;
+                        }
+                        const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
+                        let fail = false;
+                        if (!verzExist) {
+                          console.log ("making versions folder");
+                          doWriteServer("mkdir", "Thaditor/versions");
+                          console.log ("made versions folder?");
+                        } else 
+                        {
+                          //we need to make sure we're not overwriting anothe draft
+                          let versionsList = JSON.parse(doReadServer("fullListDir", "Thaditor/versions/"));
+                          versionsList.forEach(val => {
+                            let [nm, isdir] = val;
+                            if (isdir) {
+                              if (nm == draft_name) {
+                                window.alert("Can't overwrite an existing draft!");
+                                fail = true;
+                              }
+                            }
+                          });
+                        }
+                        if (fail) return;
+
+                        doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
+                        const t_pth = editor_model.path.slice(0, editor_model.path.lastIndexOf("/"));
+                        const f_pth = (isLive() ? "" : editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1));
+                        const success = copy_website(f_pth, "Thaditor/versions/" + draft_name + "/");
+                        //change our URL to the versions/draft/
+                        editor_model.version = draft_name;
+                        navigateLocal("/Thaditor/versions/" + draft_name + "/?edit");
+                        setTimeout( () => {
+                          sendNotification("Successfully created + switched to draft: " + draft_name);
+                        }, 0);
+                      }
+                    }
+                  );
+        };
+        const btnGetter = (name) => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, name, {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        navigateLocal("/Thaditor/versions/" + name + "/?edit");
+                        setTimeout( () => {
+                          sendNotification("Successfully switched to draft: " + name);
+                        }, 0);
+                      }
+                    }
+                  );
+        };
+
+        const liveBtn = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Live", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        navigateLocal("/?edit");
+                      }
+                    });
+        };
+        
+        const publishToLiveBtn = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Publish " + editor_model.version + " to live!", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        publishToLive();
+                      }
+                    });
+        };
+
+        const deleteCurrentDraftBtn = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Irreversibly delete " + editor_model.version + "!", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        deleteCurrentDraft();
+                      }
+                    });
+        };
+
+        let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
+        if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
+          const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
+          vers.forEach(ver => {
+            draftListDiv.append(btnGetter(ver));
+          });
+        }
+        if (!isLive()) draftListDiv.append(liveBtn());
+        if (!isLive()) draftListDiv.append(publishToLiveBtn());
+        draftListDiv.append(createNewDraft());
+        if (!isLive()) draftListDiv.append(deleteCurrentDraftBtn());
+        modifyMenuDiv.append(draftListDiv);
       } else {
       if(clickedElem) {
         interactionDiv.classList.add("information-style");
@@ -3934,8 +4441,8 @@ lastEditScript = """
         }
       }
     }
-    
-      if(!editor_model.linkSelectMode) {
+      if (!editor_model.state.includes("l")) {
+      //if(!editor_model.linkSelectMode) {
         contextMenu.innerHTML = "";
         var whereToAddContextButtons = contextMenu;
         var noContextMenu = false;
@@ -4058,6 +4565,7 @@ lastEditScript = """
                 let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
                 parent.insertBefore(insertedNode, nodeToInsertBefore);
                 document.querySelector("#modify-menu").classList.toggle("visible", true);
+                set_state_visible();
                 editor_model.visible = true;
                 editor_model.clickedElem = insertedNode;
                 updateInteractionDiv();
@@ -4071,6 +4579,7 @@ lastEditScript = """
                 editor_model.clickedElem = clickedElem;
                 editor_model.displayClickedElemAsMainElem = true;
                 editor_model.insertElement = true;
+                set_state_insert();
                 updateInteractionDiv();
                 restoreCaretPosition();
               }});
