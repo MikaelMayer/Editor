@@ -327,18 +327,20 @@ div#modify-menu #CSS-modification {
     flex: 1;
 }
 
-div#modify-menu #CSS-modification .CSS-modify-unit {
+
+
+div#modify-menu #CSS-modification>.CSS-modify-unit {
     display: flex;
     height: 15%;
     padding: 4px;
     align-items: center;
 }
 
-div#modify-menu #CSS-modification .CSS-modify-unit .delete-CSS:hover {
-   background-color: var(--context-button-color-hover);
+div#modify-menu #CSS-modification>.CSS-modify-unit .delete-CSS:hover {
+    background-color: var(--context-button-color-hover);
 }
 
-div#modify-menu #CSS-modification .CSS-modify-unit .CSS-selectors {
+div#modify-menu #CSS-modification>.CSS-modify-unit .CSS-selectors {
     width: 100%;
     height: 100px;
     overflow-y: auto;
@@ -392,7 +394,7 @@ div#modify-menu>div.modify-menu-icons.pinned {
 
 div#modify-menu>div.information {
     overflow-y: auto;
-    max-height: 65%;/*calc(100% - var(--context-menu-height));*/
+    max-height: calc(100% - var(--context-menu-height) - 15%);
     margin: 2%;
     margin-top: 0;
     border-radius: 0.3em;
@@ -456,7 +458,7 @@ div#modify-menu div.keyvalues>div.keyvalue .attribute-key-value {
 }
 
 div#modify-menu div.keyvalues>div.keyvalue .attribute-key {
-    width: 42%;
+    width: 39%;
 }
 
 div#modify-menu div.keyvalues>div.keyvalueadder {
@@ -472,9 +474,9 @@ div#modify-menu div.keyvalues>div.keyvalueadder .attribute-key-value{
     flex-direction: row;
 }
 
-div#modify-menu input {
+div#modify-menu div.keyvalue input {
     padding: 6px;
-    width: 100%;
+    width: 98%;
     color: black;
 }
 
@@ -513,7 +515,7 @@ div#modify-menu span.insertOption {
     display: block;
 }
 
-div.keyvalue>span>input {
+div.keyvalue span>input {
     border-radius: 4px;
     margin: 2px;
 }
@@ -745,6 +747,10 @@ div.tagName:hover {
 
 [ghost-clicked=true] {
     outline: 2px solid var(--context-color);
+}
+
+[wrong-selector=true]{
+    background-color: #fbcaca;
 }
 
 div#context-menu {
