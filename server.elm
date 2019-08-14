@@ -5074,32 +5074,30 @@ lastEditScript = """
          document.addEventListener('mousedown', onMouseDownGlobal, false);
       """
     else "")
-@(if iscloseable then """
-window.onbeforeunload = function (e) {
-    e = e || window.event;
 
-    var askConfirmation = document.getElementById("manualsync-menuitem") &&
-         document.getElementById("manualsync-menuitem").getAttribute("ghost-disabled") == "false";
-    const confirmation = 'You have unsaved modifications. Do you still want to exit?';
+    window.onbeforeunload = function (e) {
+        e = e || window.event;
 
-    // For IE and Firefox prior to version 4
-    if (e) {
-      if(askConfirmation) {
-        e.returnValue = confirmation;
-      }
-    }
-    if(askConfirmation) {
-      // For Safari
-      return confirmation;
-    } else {
-      var xmlhttp = new XHRequest();
-      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-      xmlhttp.open("POST", location.pathname + location.search, false); // Async
-      xmlhttp.setRequestHeader("close", "true");
-      xmlhttp.send("{\"a\":1}");
-    }
-}; //end of window.onbeforeload
-""" else "")
+        var askConfirmation = editor_model.canSave || editor_model.isSaving || editor_model.disambiguationMenu;
+        const confirmation = 'You have unsaved modifications. Do you still want to exit?';
+
+        // For IE and Firefox prior to version 4
+        if (e) {
+          if(askConfirmation) {
+            e.returnValue = confirmation;
+          }
+        }
+        if(askConfirmation) {
+          // For Safari
+          return confirmation;
+        } else {
+          var xmlhttp = new XHRequest();
+          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+          xmlhttp.open("POST", location.pathname + location.search, false); // Async
+          xmlhttp.setRequestHeader("close", "true");
+          xmlhttp.send("{\"a\":1}");
+        }
+    }; //end of window.onbeforeload
     if (typeof editor_model === "object" && typeof editor_model.outputObserver !== "undefined") {
       editor_model.outputObserver.disconnect();
     }
