@@ -1745,7 +1745,7 @@ lastEditScript = """
       if (editor_model.state.includes("a")) { //can't be in advanced without visible
         throw "model state shouldn't be in advanced when thing is not visible";
       } //toggle advanced + visible
-      if (editor_mode.state.includes("i") || editor_model.state.includes("l")) {
+      if (editor_model.state.includes("i") || editor_model.state.includes("l")) {
         console.err("I really don't think we should be able to toggle a while i or l are set. maybe i'm wrong? if so delete this");
       }
       editor_model.state = editor_model.state + "va";
