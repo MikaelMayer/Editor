@@ -1323,7 +1323,7 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu thesource = [
-<div class="editor-interface" id="modify-menu" list-ghost-attributes="style" list-ignored-attributes="class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
+<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
 if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
 
@@ -3206,6 +3206,7 @@ lastEditScript = """
       var modifyMenuDiv = document.querySelector("#modify-menu");
       //if both are closed, just return 
       if(!modifyMenuDiv || !contextMenu) return;
+      modifyMenuDiv.classList.toggle("editor-interface", true);
       modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
       //toggle_visible_state(); // is this right?
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
@@ -3412,12 +3413,6 @@ lastEditScript = """
         modifyMenuIconsDiv.append(
           el("span", { class:'filename', title:"the path of the file you are currently viewing"}, 
             editor_model.path ? editor_model.path : "[root folder]"));
-        // TODO: Ambiguity interaction (should be stored in the model)
-        // TODO: Current URL (can be changed) + reload button (double circular arrow) + list files button (folder icon)
-        // TODO: Stage/create draft (clone and save icon)
-        // TODO: Source code (expandable - can use Ace Editor)
-        // TODO: Options: Ask questions, Autosave.
-        // TODO: Report issue. About.
         addModifyMenuIcon(sourceSVG,
           {"class": "tagName" + (model.displaySource ? " selected" : ""), title: model.displaySource ? "Hide source" : "Show Source"},
             {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv(); } }
@@ -3535,6 +3530,20 @@ lastEditScript = """
         )
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
+        if(apache_server) {
+          modifyMenuDiv.append(
+            el("a", {href:"#", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
+              onclick() {
+                let onOk = () => thaditor_sign_out(thaditor_sign_in());
+                if(!gapi.auth2) {
+                  thaditor_gapi_onload(onOk);
+                } else {
+                  onOk();
+                }
+              }
+            })
+          );
+        }
       //} else if(model.insertElement)  {
       } else if (editor_model.state.includes("i")) {
         interactionDiv.classList.add("insert-information-style");
@@ -5085,32 +5094,28 @@ lastEditScript = """
          document.addEventListener('mousedown', onMouseDownGlobal, false);
       """
     else "")
-@(if iscloseable then """
-window.onbeforeunload = function (e) {
-    e = e || window.event;
 
-    var askConfirmation = document.getElementById("manualsync-menuitem") &&
-         document.getElementById("manualsync-menuitem").getAttribute("ghost-disabled") == "false";
-    const confirmation = 'You have unsaved modifications. Do you still want to exit?';
-
-    // For IE and Firefox prior to version 4
-    if (e) {
-      if(askConfirmation) {
-        e.returnValue = confirmation;
-      }
-    }
-    if(askConfirmation) {
-      // For Safari
-      return confirmation;
-    } else {
-      var xmlhttp = new XHRequest();
-      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-      xmlhttp.open("POST", location.pathname + location.search, false); // Async
-      xmlhttp.setRequestHeader("close", "true");
-      xmlhttp.send("{\"a\":1}");
-    }
-}; //end of window.onbeforeload
-""" else "")
+      window.onbeforeunload = function (e) {
+        e = e || window.event;
+        var askConfirmation = editor_model.canSave || editor_model.isSaving || editor_model.disambiguationMenu;
+        const confirmation = 'You have unsaved modifications. Do you still want to exit?';
+        // For IE and Firefox prior to version 4
+        if (e) {
+          if(askConfirmation) {
+            e.returnValue = confirmation;
+          }
+        }
+        if(askConfirmation) {
+          // For Safari
+          return confirmation;
+        } else {
+          var xmlhttp = new XHRequest();
+          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+          xmlhttp.open("POST", location.pathname + location.search, false); // Async
+          xmlhttp.setRequestHeader("close", "true");
+          xmlhttp.send("{\"a\":1}");
+        }
+    }; //end of window.onbeforeload
     if (typeof editor_model === "object" && typeof editor_model.outputObserver !== "undefined") {
       editor_model.outputObserver.disconnect();
     }
