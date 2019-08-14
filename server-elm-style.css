@@ -313,6 +313,38 @@ div.disambiguationMenu {
     }
 }
 
+div#modify-menu textarea.inline-CSS {
+    width: 98%;
+    height: 100px;
+    margin-left: 4px;
+    margin-bottom: 6px;
+    overflow-y: auto;
+}
+
+div#modify-menu #CSS-modification {
+    width: 100%;
+    overflow-y: auto;
+    flex: 1;
+}
+
+div#modify-menu #CSS-modification .CSS-modify-unit {
+    display: flex;
+    height: 15%;
+    padding: 4px;
+    align-items: center;
+}
+
+div#modify-menu #CSS-modification .CSS-modify-unit .delete-CSS:hover {
+   background-color: var(--context-button-color-hover);
+}
+
+div#modify-menu #CSS-modification .CSS-modify-unit .CSS-selectors {
+    width: 100%;
+    height: 100px;
+    overflow-y: auto;
+}
+
+
 .summary {
     color: green;
 }
@@ -360,13 +392,13 @@ div#modify-menu>div.modify-menu-icons.pinned {
 
 div#modify-menu>div.information {
     overflow-y: auto;
-    max-height: calc(100% - var(--context-menu-height));
+    max-height: 65%;/*calc(100% - var(--context-menu-height));*/
     margin: 2%;
     margin-top: 0;
     border-radius: 0.3em;
 }
 
-div.#modify-menu>div.information-style {
+div#modify-menu>div.information-style {
     padding: 0.4rem;
 }
 
@@ -392,6 +424,13 @@ div#modify-menu.visible {
 div#modify-menu h3 {
     margin-top: 2px;
     margin-bottom: 2px;
+}
+
+div#modify-menu button.CSSbutton {
+    width: 98%; 
+    height: 7%;
+    padding: 4px;
+    margin-left: 4px;
 }
 
 div#modify-menu div.keyvalues {
