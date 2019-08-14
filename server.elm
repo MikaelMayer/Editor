@@ -2848,7 +2848,7 @@ lastEditScript = """
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
     var undoSVG = mkSvg("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
     var redoSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
-    var isDraftSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
+    var isDraftSVG = mkSvg("M 2,7 2,25 38,25 38,7 M 36,6 C 32,6 29.1,3.9 26.1,3.9 23.1,3.9 22,5 20,6 L 20,23 C 22,22 23.1,20.9 26.1,20.9 29.1,20.9 32,22.9 36,22.9 Z M 4,6 C 8,6 10.9,3.9 13.9,3.9 16.9,3.9 18,5 20,6 L 20,23 C 18,22 16.9,20.9 13.9,20.9 10.9,20.9 8,22.9 4,22.9 Z");
     var escapeSVG = mkSvg("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
     var linkModeSVG = mkSvg("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
     var checkSVG = mkSvg("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
@@ -3291,6 +3291,24 @@ lastEditScript = """
             }
           }
         );
+        if (apache_server) {
+          addPinnedModifyMenuIcon(isDraftSVG + "<span class='modify-menu-icon-label'>" + editor_model.version + "</span>",
+            {title: editor_model.version == "Live" ? "Saved edits are live" : "Edits saved to draft named '"+editor_model.version+"'",
+             "class": "inert"},
+            {onclick: function(event) {
+              
+              editor_model.isDraftSwitcherVisible = !editor_model.isDraftSwitcherVisible;
+              set_state_visible();
+              toggle_draftview_state();
+              if (!document.querySelector("#modify-menu").classList.contains("visible")) {
+                document.querySelector("#modify-menu").classList.toggle("visible");
+                editor_model.isDraftSwitcherVisible = true;
+                set_state_draftview();
+              }
+              editor_model.visible = true;
+              updateInteractionDiv();
+            }});
+        }
         addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
         {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           id: "savebutton"  
@@ -3313,23 +3331,6 @@ lastEditScript = """
             }
           }
         )
-        if (apache_server) {
-          addPinnedModifyMenuIcon(isDraftSVG + "<span class='modify-menu-icon-label'>" + editor_model.version + "</span>",
-            {title:editor_model.version},
-            {onclick: function(event) {
-              
-              editor_model.isDraftSwitcherVisible = !editor_model.isDraftSwitcherVisible;
-              set_state_visible();
-              toggle_draftview_state();
-              if (!document.querySelector("#modify-menu").classList.contains("visible")) {
-                document.querySelector("#modify-menu").classList.toggle("visible");
-                editor_model.isDraftSwitcherVisible = true;
-                set_state_draftview();
-              }
-              editor_model.visible = true;
-              updateInteractionDiv();
-            }});
-        }
       }
       else {
         addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
