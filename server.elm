@@ -72,7 +72,7 @@ iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (free
 
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
-permissionToEditServer = userpermissions.admin -- should be possibly get from user authentication
+permissionToEditServer = boolVar "superadmin" False -- should be possibly get from user authentication
 -- List.contains ("sub", "102014571179481340426") user -- That's my Google user ID.
 
 canEditPage = userpermissions.pageowner && varedit && not varls
@@ -81,7 +81,7 @@ canEditPage = userpermissions.pageowner && varedit && not varls
 
 serverOwned what obj = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
 
-If you really intended to modify this, add ?admin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
+If you really intended to modify this, add ?superadmin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
 
 For debugging purposes, below is the new value that was pushed:
 <pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
@@ -140,10 +140,21 @@ isTextFile path =
         (if hydefilecache == Nothing then fs.read path else
           case hydefilecache of
             Just {file=hydefile} ->
+              let withoutPipeline = 
+                    case hydefilecache of
+                      Just {cacheContent} ->
+                        case evaluate cacheContent of
+                          {inputFiles, outputFiles} ->
+                            List.find (\e -> e == path || e == "/" + path) inputFiles == Nothing &&
+                            List.find (\e -> e == path || e == "/" + path) outputFiles == Nothing
+                          _ -> False
+                      _ -> False -- Need to recompute the cache anyway
+              in
+              if withoutPipeline then fs.read path else
               let source = fs.read hydefile |>
                       Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@hydefile' not found?!"]""")
                   source = source + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
-                  fileDirectory = Regex.replace "^/|/[^/]*$" "" hydefile
+                  fileDirectory = Regex.replace "/[^/]*$" "" hydefile
                   inDirectory name = if fileDirectory == "" then name else
                     fileDirectory  + "/" + name
                   fsReadRecord = 
@@ -183,16 +194,23 @@ isTextFile path =
                         (tuplesToWrite, joinedErrors))
                     |> Result.withDefaultMapError (\msg -> ([], msg))
               in
-              case listDict.get path generatedFilesDict of
-                Nothing -> if errors == "" then fs.read path else
-                  Just <|
-                  serverOwned "error recovery of hyde build tool" <|
-                  """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
-                  
+              let _ = cacheResult () in
+              --let _ = Debug.log "generatedFilesDict" generatedFilesDict in
+              case listDict.get ("/" + path) generatedFilesDict of
+                Nothing ->
+                  case listDict.get path generatedFilesDict of
+                    Nothing ->
+                      if errors == "" then
+                        let _ = Debug.log """Unable to read (/)@path from output of hydefile""" () in
+                        fs.read path
+                      else
+                        Just <|
+                        serverOwned "error recovery of hyde build tool" <|
+                        """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
+                    x -> x
                 x -> x
             _ -> fs.read path
         )
-      |> Maybe.map applyDotEditor
       |> Maybe.withDefaultReplace (
         serverOwned "404 page" (if isTextFile path then
                if permissionToCreate then freeze """@path does not exist yet. Modify this page to create it!""" else """Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)"""
@@ -207,15 +225,14 @@ LUCA stands for "Last Universal Common Ancestor"
 ----------------------------------------------------------------------------}
 
 luca = 
-  [<script>
-    var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
-
+  [<script id="thaditor-luca" class="editor-interface">
     function writeDocument(NC) {
       document.open();
       document.write(NC);
       document.close();
     }
-    
+    var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
+    var apache_server = @(if browserSide then "true" else "false");
     function doReadServer(action, name) {
       if (typeof readServer != "undefined") {
         console.log("reading server");
@@ -234,6 +251,11 @@ luca =
           return "";
         }
       }
+    }
+    function writeDocument(NC) {
+      document.open();
+      document.write(NC);
+      document.close();
     }
     function doWriteServer(action, name, content) {
       if (typeof writeServer != "undefined") {
@@ -271,6 +293,9 @@ luca =
       xmlhttp.open("POST", location.pathname + location.search);
       xmlhttp.setRequestHeader("reload", "true");
       xmlhttp.setRequestHeader("url", url);
+      if(googleAuthIdToken) {
+        xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
+      }
       console.log("setting url to ", url);
       xmlhttp.send("{\"a\":1}");
     }
@@ -282,8 +307,51 @@ luca =
           doReloadPage(location.pathname + location.search, true);
         }
     };
-
     //document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
+
+    function sendNotification(msg, timeout) {
+      /*
+        Pushes the notification msg to the log & displays it for 3 seconds directly left of the moidfymenu.
+        css for notification box is textarea .notif
+      */
+
+      let modifyMenuDiv = document.querySelector("#modify-menu");
+      if (!modifyMenuDiv) {
+        console.log("Notifications havent been set up for use outside of editor, like in the filesystem");
+        console.log (msg);
+        return;
+      }
+      let notifBox = document.getElementById("notif-box");
+      if (!notifBox) { //function el(tag, attributes, children, properties) 
+        notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
+        modifyMenuDiv.append(notifBox);
+      }
+      notifBox.style.value = msg;
+      notifBox.style.display = 'block';
+      notifBox.style.zIndex = 100;
+      notifBox.style.visibility = true;
+      editor_model.editor_log.push(msg);
+      const issaving = editor_model.isSaving;
+      let log = document.getElementById("fullLog");
+      if (log) {
+        let elog = editor_model.editor_log;
+        let logtxt = "";
+        for (let i = 0; i < editor_model.editor_log.length; i++) {
+          logtxt = logtxt + editor_model.editor_log[i] + "\n";
+        }
+        logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
+        log.style.display = 'block';
+      }
+      setTimeout(hideNotification, timeout ? timeout : 3000);
+    }
+
+    function hideNotification() {
+      let notifBox = document.getElementById("notif-box");
+      if (notifBox) {
+        notifBox.style.display = 'none';
+      }
+    }
+
     var uploadProgress = [];
 
     function initializeProgress(numFiles) {
@@ -311,11 +379,10 @@ luca =
     // Editor's API should be stored in the variable editor.
 
     editor = typeof editor === "object" ? editor : {};
-    editor.uploadFile = function(targetPathName, file, onOk, onError) {
-      
+    editor.uploadFile = function(targetPathName, file, onOk, onError, updateProgFunction) {
       var xhr = new XMLHttpRequest();
       xhr.onprogress = (e) => {
-        updateProgress(i, (e.loaded * 100.0 / e.total) || 100)
+        updateProgFunction(i, (e.loaded * 100.0 / e.total) || 100)
       }
       xhr.onreadystatechange = ((xhr, file) => () => {
         if (xhr.readyState == XMLHttpRequest.DONE) {
@@ -329,7 +396,7 @@ luca =
         var progbar = document.getElementById("progress-bar");
       })(xhr, file);
       @(if listDict.get "browserSide" defaultOptions == Just True then """
-      xhr.open("POST", "/TharzenEditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+      xhr.open("POST", "/Thaditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
       """ else """
       xhr.open("POST", targetPathName, false);
       xhr.setRequestHeader("write-file", file.type);
@@ -371,6 +438,47 @@ luca =
           return JSON.parse(doReadServer("listdir", dirname) || "[]");
 		    }
 	  };
+    editor.toTreasureMap = function(oldNode) {
+      if(!oldNode) return undefined;
+      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
+        return {id: oldNode.getAttribute("id")};
+      }
+      let tentativeSelector = [];
+      let t = oldNode;
+      let isText = false, textIndex = 0;
+      while(t && t.parentNode) {
+        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
+        if(t.nodeType === 1) {
+          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
+        } else {
+          isText = true;
+          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
+        }
+        t = t.parentNode;
+      }
+      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
+    }
+    // Returns the new node that matches the old node the closest.
+    // For text nodes, try to recover the text node, if not, returns the parent node;
+    editor.fromTreasureMap = function(data) {
+      if(!data) return undefined;
+      if(typeof data === "object" && data.id) {
+        return document.getElementById(data.id);
+      }
+      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
+        let tentativeSelector = data.tentativeSelector;
+        while(tentativeSelector.length >= 1) {
+          let newNode = document.querySelector(tentativeSelector.join(" "));
+          if(newNode) {
+            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+          }
+          tentativeSelector.shift();
+        }
+        return undefined;
+      }
+    }
+        
+    // Helper to create an element with attributes, children and properties
     function el(tag, attributes, children, properties) {
       let tagClassIds = tag.split(/(?=#|\.)/g);
       let x;
@@ -383,9 +491,14 @@ luca =
           x = document.createElement(attr);
         }
       }
-      if(typeof attributes == "object")
-        for(let k in attributes)
-          x.setAttribute(k, attributes[k]);
+      if(typeof attributes == "object") {
+        for(let k in attributes) {
+          let v = attributes[k];
+          if(typeof v != "undefined") {
+            x.setAttribute(k, v);
+          }
+        }
+      }
       if(Array.isArray(children)) {
         for(let child of children) {
           if(typeof child === "string") {
@@ -406,6 +519,76 @@ luca =
    </script>]
 
 
+-- Conversion of php script to elm script
+phpToElmFinal path string =
+  let includingFolder = Regex.replace """(/)[^/]*$""" (\{submatches=[slash]} -> slash) path in
+  let phpToElm string =
+        let echoRaw content = "\nob = ob + " + content in
+        let wrapStr content = freeze String.q3 + Regex.replace "@" (\{match=m} -> m + m) content + freeze String.q3 in
+        let echo content = echoRaw (wrapStr content) in
+        let phpStringToElmString =
+                (Regex.replace """(\")([^\"]*)(\")""" <| \m ->
+                  nth m.group 1 +
+                  (nth m.group 2
+                  |> Regex.replace """\$[0-9a-zA-Z_]*""" (\n ->
+                     freeze "\" + " + nth n.group 0 + freeze " + \"")) +
+                  nth m.group 3) >>
+                (Regex.replace """\$_GET\[([^\]]*)\]""" <| \m ->
+                  freeze "listDict.get "+ nth m.group 1 + freeze " $_GET |> Maybe.withDefaultReplace ''"
+                ) >>
+                (Regex.replace """\$_SERVER\[([^\]]*)\]""" <| \m ->
+                  freeze "listDict.get "+ nth m.group 1 + freeze " $_SERVER |> Maybe.withDefaultReplace ''"
+                )
+        in
+        if not (Regex.matchIn "<?php" string) then
+          echo string
+        else
+        Regex.replace """^((?:(?!<\?php)[\s\S])+?)(?=(<\?php))|(\?>)([\s\S]*?)(?=<\?php)|(\?>)([\s\S]*?)$|(^)(<\?php)([\s\S]*?)(?=\?>)|(<\?php)\s*if\s*\(([\s\S]*?)\s*\)\s*\{\s*\?>((?:(?!<\?php)[\s\S])+?)<\?php\s*\}\s*(?=\?>)|(<\?php)([\s\S]*?)(?=\?>)""" (
+             \{submatches=[content1, isRaw1, isRaw2, content2, isRaw3, content3, beginning1, isPhp1, code1, isPhpIf, condIf, codeIf, isPhp2, code2]} ->
+          if isPhp1 /= "" || isPhp2 /= "" || isPhpIf /= "" then
+            let prefix = if isPhp1 /= "" then echo beginning1 else freeze "" in
+            prefix +
+            if isPhpIf /= "" then
+              echoRaw <| "(if "+condIf+" then " + wrapStr codeIf + " else \"\")"
+            else
+            let code = if isPhp1 /= "" then code1 else code2 in
+            case Regex.extract """^\s*include\("([^"]*)"\)""" code of
+              Just [included] ->
+                phpToElm (fs.read (includingFolder + included) |> Maybe.withDefaultReplace ("\n[code to read " + included + " in " + includingFolder +"]"))
+              _ ->
+            case Regex.extract """^\s*switch\s*\(([^\)]*)\)\s*\{((?:\s*(?:case\s*[^:]*?\s*|default):((?:\s*\$[\w_]+\s*=\s*(?:(?!;\r?\n)[\s\S])*;)*)(?:\s*break\s*;)?)*)\s*\}\s*""" code of
+              Just [input, assignments, lastAssignment] ->
+                let vars = "(" + (Regex.find """(\$[\w_]+)\s*=""" lastAssignment |> List.map (\[_, name] -> name) |> String.join ", ") + ")" in
+                let results = assignments |> Regex.find """\s*(case\s*([^:]*?)\s*|default):((?:\s*\$[\w_]+\s*=\s*(?:(?!;\r?\n)[\s\S])*;)*)(?:\s*break\s*;)?""" |>
+                      List.map (\[whole, caseOrDefault, pattern, values] ->
+                        let tuple =
+                              Regex.find """\s*\$[\w_]+\s*=\s*((?:(?!;\r?\n)[\s\S])*?)\s*;""" values |>
+                              List.map (\[whole2, value2] -> phpStringToElmString value2) |> String.join ", "
+                        in
+                        let finalPattern = if caseOrDefault == "default" then "_" else pattern in
+                        "\n  " + finalPattern + " -> (" + tuple + ")"
+                      ) |> String.join ""
+                in
+                "\n" + vars + " = case " + phpStringToElmString input + " of"  + results
+              _ ->
+            case Regex.extract """\s*(?:echo|print)\s+([^;]+?);\s*""" code of
+              Just [content] -> echoRaw content
+              res ->
+                "\n[convert" + code + "]\n" + toString res
+          else
+          let content = if isRaw1 /= "" then
+                content1
+              else if isRaw2 /= "" then
+                content2
+              else -- if isRaw3 /= "" then
+                content3
+          in
+          echo content
+        ) string
+  in
+  flip (+) "\nob" <|
+  (+) "date _ = '2019'\nob = freeze ''" <| phpToElm string
+
 {---------------------------------------------------------------------------
  Evaluates the page according to the path extension.
  - Wraps html pages to parse them as raw html
@@ -416,43 +599,97 @@ evaluatedPage: Result String Html
 evaluatedPage = 
   if canEvaluate /= "true" then
     Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
-  else
+  else if isTextFile path || varraw then
+    Ok <html>
+        <head>
+        <title>@path</title>
+        <style type="text/css" media="screen">
+            #aceeditor { 
+                  height: 100%;
+                  width: 100%;
+                  border: 1px solid #DDD;
+                  border-radius: 4px;
+                  border-bottom-right-radius: 0px;
+                  margin-top: 5px;
+            }
+        </style>
+        <script>
+          function loadAceEditor() {
+            console.log("executing script");
+            var aceeditor = ace.edit("aceeditor");
+            var mode = path.match(/\.js$/) ? "ace/mode/javascript" :
+                       path.match(/\.html?$/) ? "ace/mode/html" :
+                       path.match(/\.css$/) ? "ace/mode/css" :
+                       path.match(/\.json$/) ? "ace/mode/json" :
+                       path.match(/\.leo$/) ? "ace/mode/elm" :
+                       path.match(/\.elm$/) ? "ace/mode/elm" :
+                       path.match(/\.php$/) ? "ace/mode/php" :
+                       "ace/mode/plain_text";
+            aceeditor.session.setMode({path: mode, v: Date.now()});
+            aceeditor.setOptions({
+              fontSize: "20pt"
+            });
+            aceeditor.setValue(document.getElementById("aceeditor").getAttribute("initdata"));
+            aceeditor.session.on('change', function(e) {
+              document.getElementById("aceeditor").setAttribute("initdata", aceeditor.getValue());
+            });
+            var callbackSelection = function() {
+              var anchor = aceeditor.selection.getSelectionAnchor();
+              var lead = aceeditor.selection.getSelectionLead();
+              var div = document.querySelector("#aceeditor");
+              div.setAttribute("ghost-anchor-row", anchor.row)
+              div.setAttribute("ghost-anchor-column", anchor.column)
+              div.setAttribute("ghost-lead-row", lead.row)
+              div.setAttribute("ghost-lead-column", lead.column)
+            }
+            aceeditor.selection.on("changeSelection", callbackSelection);
+            aceeditor.selection.on("changeCursor", callbackSelection);
+            var div = document.querySelector("#aceeditor");
+            aceeditor.selection.moveTo(div.getAttribute("ghost-anchor-row") || 0, div.getAttribute("ghost-anchor-column") || 0)
+            aceeditor.focus();
+          }
+        </script>
+        </head>
+        <body>
+        <div id="aceeditor" list-ghost-attributes="class draggable style" children-are-ghosts="true"
+          save-ghost-attributes="style ghost-anchor-column ghost-anchor-row ghost-lead-column ghost-lead-row" initdata=@sourcecontent></div>
+        <script>
+        editor.ghostNodes.push(node =>
+          node.tagName === "SCRIPT" && node.getAttribute("src") && node.getAttribute("src").match(/mode-(.*)\.js|libs\/ace\/.*\/ext-searchbox.js/)
+        );
+        
+        var script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/ace.js';
+        script.async = false;
+        script.setAttribute("isghost", "true");
+        ace = undefined;
+        document.head.appendChild(script);
+        var path = @(jsCode.stringOf path);
+        onAceLoaded = (delay) => () => {
+          if(typeof ace != "undefined") {
+            console.log("ace loaded.")
+            loadAceEditor();
+          } else {
+            console.log("ace not loaded. Retrying in " + (delay * 2) + "ms");
+            setTimeout(onAceLoaded(delay * 2), 100);
+          }
+        }
+        onAceLoaded(1)();
+        </script>
+        </body>
+        </html>
+  else 
   let isPhp = Regex.matchIn """\.php$""" path in
   let isHtml = Regex.matchIn """\.html?$""" path in
   if isHtml || isPhp then
-    let sourcecontent = if isHtml then sourcecontent else
-      let phpToElm =
-        let phpStringToElmString =
-          (Regex.replace """(\")([^\"]*)(\")""" <| \m ->
-            nth m.group 1 +
-            (nth m.group 2
-            |> Regex.replace """\$[0-9a-zA-Z_]*""" (\n ->
-               freeze "\" + " + nth n.group 0 + freeze " + \"")) +
-            nth m.group 3) >>
-          (Regex.replace """\$_GET\[([^\]]*)\]""" <| \m ->
-            freeze "listDict.get "+ nth m.group 1 + freeze " $_GET |> Maybe.withDefaultReplace ''"
-          )
-        in
-        \string ->
-        string |>
-        Regex.replace """<\?php\s+echo\s+([^;]+?);\s+\?>"""
-           (\m -> freeze "@(" + nth m.group 1 + freeze ")") |>
-        Regex.replace """^\s*<\?php(\s+(?:(?!\?>)[\s\S])*)\?>([\s\S]*)$"""
-          (\m ->
-            nth m.group 1 
-            |> Regex.replace """(\r?\n\s*)(\$[0-9a-zA-Z_]*\s*=\s*)((?:(?!;).)*)(;)"""
-                 (\assign -> (nth assign.group 1) +
-                   freeze "let " +
-                   (nth assign.group 2) +
-                   phpStringToElmString (nth assign.group 3) +
-                   freeze " in")
-            |> (\res -> res + freeze " " + String.q3 + nth m.group 2 + String.q3))
-      in
-      let elmSourceContent = phpToElm sourcecontent in
-      __evaluate__ (("$_GET", vars)::("path", path)::("fs", fs)::preludeEnv) elmSourceContent |>
+    let sourcecontent = if isHtml then applyDotEditor sourcecontent else
+      let elmSourceContent = phpToElmFinal path sourcecontent in
+      __evaluate__ (("$_GET", vars)::("$_SERVER", [("SCRIPT_NAME", "/" + path)])::("path", path)::("fs", fs)::preludeEnv) elmSourceContent |>
       case of
-        Err msg -> serverOwned "error message" "<html><head></head><body><pre>Error elm-reinterpreted php: " + msg + "</pre></body></html>"
-        Ok sourcecontent -> sourcecontent
+        Err msg -> serverOwned "error message" "<html><head></head><body><pre>Error elm-reinterpreted php: " + Regex.replace "<" "&lt;" msg + "</pre>Original computed source <pre>" +
+          Regex.replace "<" "&lt;" elmSourceContent +
+          "</pre></body></html>"
+        Ok sourcecontent -> applyDotEditor sourcecontent
     in
     let interpretableData =
           case Regex.extract """^\s*<!DOCTYPE(?:(?!>)[\s\S])*>([\s\S]*)$""" sourcecontent of
@@ -725,7 +962,7 @@ evaluatedPage =
           return;
         }
         if (selected.filter((i) => i.id == "..").length != 0) {
-          window.alert("Can't change the up dir");
+          window.alert("Can't delete the parent dir");
           return;
         }
         var warningMsg = "Are you sure you want to delete the following file(s)?"
@@ -735,10 +972,10 @@ evaluatedPage =
         var conf = window.confirm(warningMsg);
         if (conf) {
           for (i = 0; i < selected.length; i++) {
-            var isfolder = folders.filter((j) => j[0] == selected[i].id);
+            var isfolder = folders.filter((j) => j[0] == selected[i].id); //optomizable
             console.log (isfolder);
             if (isfolder.length != 0) {
-              doWriteServer("rmdir", "@path" + selected[i].id);
+              doWriteServer("rmdir", "@path" + selected[i].id); //does this work on non-empty stuff? idts....
               continue;
             }
             doWriteServer("unlink", "@path" + selected[i].id);
@@ -856,7 +1093,7 @@ evaluatedPage =
             }
           });
           if (isgud) {
-            editor.uploadFile("@path" + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err));
+            editor.uploadFile("@path" + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
             didUp = true;
           }
         });
@@ -920,7 +1157,7 @@ evaluatedPage =
         }
         //el(tag, attributes, children, properties)
         if (path != "") {
-          var link = "../" + "?ls=true&amp;edit";
+          var link = "../" + "?ls=true";
           form.append(fileItemDisplay(link, "..", true));
         }
         // directories before files, sorted case-insensitive
@@ -929,7 +1166,7 @@ evaluatedPage =
           name1.toLowerCase() < name2.toLowerCase() ? -1 : 0);
         for (i = 0; i < files.length; i++) {
           var [name, isDir] = files[i];
-          var link = isDir ? name + "/?ls&" + "edit" : name;
+          var link = isDir ? name + "/?ls" : name + "/?edit";
           form.append(fileItemDisplay(link, name, isDir));
         }
 
@@ -944,84 +1181,6 @@ evaluatedPage =
     window.addEventListener('drop', handleDrop, false);
     window.addEventListener('dragover', (e) => e.preventDefault(), false);
     </script></body></html>
-  else if isTextFile path || varraw then
-    Ok <html>
-        <head>
-        <title>@path</title>
-        <style type="text/css" media="screen">
-            #aceeditor { 
-                  height: 100%;
-                  width: 100%;
-                  border: 1px solid #DDD;
-                  border-radius: 4px;
-                  border-bottom-right-radius: 0px;
-                  margin-top: 5px;
-            }
-        </style>
-        <script>
-          function loadAceEditor() {
-            console.log("executing script");
-            var aceeditor = ace.edit("aceeditor");
-            var mode = path.match(/\.js$/) ? "ace/mode/javascript" :
-                       path.match(/\.html?$/) ? "ace/mode/html" :
-                       path.match(/\.css$/) ? "ace/mode/css" :
-                       path.match(/\.json$/) ? "ace/mode/json" :
-                       path.match(/\.leo$/) ? "ace/mode/elm" :
-                       path.match(/\.elm$/) ? "ace/mode/elm" :
-                       path.match(/\.php$/) ? "ace/mode/php" :
-                       "ace/mode/plain_text";
-            aceeditor.session.setMode({path: mode, v: Date.now()});
-            aceeditor.setOptions({
-              fontSize: "20pt"
-            });
-            aceeditor.setValue(document.getElementById("aceeditor").getAttribute("initdata"));
-            aceeditor.session.on('change', function(e) {
-              document.getElementById("aceeditor").setAttribute("initdata", aceeditor.getValue());
-            });
-            var callbackSelection = function() {
-              var anchor = aceeditor.selection.getSelectionAnchor();
-              var lead = aceeditor.selection.getSelectionLead();
-              var div = document.querySelector("#aceeditor");
-              div.setAttribute("ghost-anchor-row", anchor.row)
-              div.setAttribute("ghost-anchor-column", anchor.column)
-              div.setAttribute("ghost-lead-row", lead.row)
-              div.setAttribute("ghost-lead-column", lead.column)
-            }
-            aceeditor.selection.on("changeSelection", callbackSelection);
-            aceeditor.selection.on("changeCursor", callbackSelection);
-            var div = document.querySelector("#aceeditor");
-            aceeditor.selection.moveTo(div.getAttribute("ghost-anchor-row") || 0, div.getAttribute("ghost-anchor-column") || 0)
-            aceeditor.focus();
-          }
-        </script>
-        </head>
-        <body>
-        <div id="aceeditor" list-ghost-attributes="class draggable style" children-are-ghosts="true"
-          save-ghost-attributes="style ghost-anchor-column ghost-anchor-row ghost-lead-column ghost-lead-row" initdata=@sourcecontent></div>
-        <script>
-        editor.ghostNodes.push(node =>
-          node.tagName === "SCRIPT" && node.getAttribute("src") && node.getAttribute("src").match(/mode-(.*)\.js/)
-        );
-        var script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/ace.js';
-        script.async = false;
-        script.setAttribute("isghost", "true");
-        ace = undefined;
-        document.head.appendChild(script);
-        var path = @(jsCode.stringOf path);
-        onAceLoaded = (delay) => () => {
-          if(typeof ace != "undefined") {
-            console.log("ace loaded.")
-            loadAceEditor();
-          } else {
-            console.log("ace not loaded. Retrying in " + (delay * 2) + "ms");
-            setTimeout(onAceLoaded(delay * 2), 100);
-          }
-        }
-        onAceLoaded(1)();
-        </script>
-        </body>
-        </html>
   else 
     Ok <html><head></head><body>
       <p>Editor cannot open file because it does not recognize the extension.</p>
@@ -1041,6 +1200,15 @@ recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
     <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
   Ok page -> page
 
+jsEnabled = boolVar "js" True
+
+removeJS node = case node of
+  [text, content] -> node
+  [tag, attrs, children] ->
+    if tag == "script" then [tag, [], [["TEXT", "/*Script disabled by Thaditor*/"]]] else
+    [tag, attrs, List.map removeJS children]
+  _ -> []
+
 {---------------------------------------------------------------------------
  Instruments the resulting HTML page
  - Removes whitespace that are siblings of <head> and <body>
@@ -1058,29 +1226,48 @@ main =
   ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
     List.filter (case of [_, _] -> False; _ -> True) |>
     List.mapWithReverse identity (case of
-      ["body", bodyattrs, bodychildren] ->
+      ["body", bodyattrs, bodyChildren] ->
+        let bodyChildren = if jsEnabled then bodyChildren else List.map removeJS bodyChildren in
         ["body",
            (if canEditPage then
              [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
             else freeze []) ++
-           bodyattrs, luca ++
+           bodyattrs, insertThereInstead identity True bodyChildren ++ luca ++
           if not varedit || varls then
-            bodychildren
+            bodyChildren
           else 
              (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
               if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
               serverOwned "edit prelude when not in edit mode" []) ++
-             bodychildren ++
-             (serverOwned "synchronization script and placeholder" [<script>@editionscript</script>, <div class="bottom-placeholder"> </div>])]
+             bodyChildren ++
+             Update.sizeFreeze [["div", [["id", "editor-files-to-overwrite"]], insertThereInstead insertedElementsToWriteFile True fileOperations]] ++
+             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder editor-interface"> </div>, <script  id="thaditor-lastscript" class="editor-interface">@lastEditScript</script>] ++ insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
+             )]
       ["head", headattrs, headChildren] ->
+        let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
         ["head", headattrs,
+           insertThereInstead identity True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
            serverOwned "initial script" initialScript ++
-           (serverOwned "viewport instructions" <meta name="viewport" content="width=device-width"> :: 
-            serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css"> :: headChildren)]
+           (serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface"> :: headChildren)]
       x -> x -- head
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
+
+insertedElementsToWriteFile = List.map <| case of
+   [_, [["class", "file-overwrite"], ["name", name], ["oldcontent", oldcontent], ["newcontent", newcontent]], _] ->
+     (name, Write oldcontent newcontent (Update.diffs oldcontent newcontent |> Maybe.withDefault (VStringDiffs [])))
+   thisInstead ->
+     error """In #editor-files-to-overwrite, you should put attributes class="file-overwrite" name="[full path name]" oldcontent="[old file content]" newcontent="[new file content]"> in this order (even call the funciton addFileToSave(name, oldContent, newContent) fo simplicity. Got @thisInstead"""
+
+-- Returns an empty list. If elements are inserted, inserts them in the given list instead.
+insertThereInstead onInsert atBeginning list =
+  Update.lens {apply _ = [],
+    update {outputNew, input=list} =
+      Ok (InputsWithDiffs [(if atBeginning then onInsert outputNew ++ list else list ++ onInsert outputNew, Just <|
+        VListDiffs [(if atBeginning then 0 else List.length list, ListElemInsert (List.length outputNew))]
+      )])
+  } list
 
 {---------------------------------------------------------------------------
  Definitions for the pipeline above
@@ -1098,7 +1285,7 @@ switchEditBox toEdit =
  } else {
    location.search = location.search.replace(/edit=@prev/, "edit=@next");
  }
-""">
+""" class="editor-interface">
 <style>#editbox {
   @(if toEdit then """position: fixed;
   margin-top: 2px;
@@ -1136,13 +1323,14 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu thesource = [
-<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
+<div class="editor-interface" id="modify-menu" list-ghost-attributes="style" list-ignored-attributes="class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
-if iscloseable then <span dummy=""></span> else closeEditBox]
+if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
 
-initialScript = [
+initialScript = serverOwned "initial script" [
 <script type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js"></script>,
-<script>
+<script class="editor-interface">
+
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
 // https://stackoverflow.com/questions/32902734/how-to-make-google-sign-in-token-valid-for-longer-than-1-hour
@@ -1152,17 +1340,20 @@ if(typeof googleAuthIdToken == "undefined") {
 }
 
 function isGhostNode(elem) {
-  return elem && elem.nodeType == 1 &&
-    (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true");
+  return elem && elem.isghost || (elem.nodeType == 1 &&
+    (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true"));
 }
 
 function areChildrenGhosts(n) {
-  return n && n.getAttribute && n.getAttribute("children-are-ghosts") == "true";
+  return n && n.getAttribute && (
+    n.getAttribute("children-are-ghosts") == "true" ||
+    n.getAttribute("children-are-ghost") == "true"
+  );
 }
 function hasGhostAncestor(htmlElem) {
   if(htmlElem == null) return false;
   if(isGhostNode(htmlElem)) return true;
-  return areChildrenGhosts(htmlElem.parentNode) || hasGhostAncestor(htmlElem.parentNode);
+  return areChildrenGhosts(htmlElem.parentNode) || (htmlElem.parentNode == null && htmlElem.nodeType !== 9 /*document*/) || hasGhostAncestor(htmlElem.parentNode);
 }
 function isGhostAttributeKey(name) {
   return name.startsWith("ghost-");
@@ -1171,6 +1362,16 @@ function isGhostAttributeKey(name) {
 // Editor's API is stored in the variable editor.
 
 editor = typeof editor === "object" ? editor : {};
+
+// An array of (node => {innerHTML, attributes, properties}) that can be defined by plug-ins.
+editor.customContextMenuButtons = [];
+
+// Creates an SVG icon from the given path. If fill is true, will have the path filled.
+function svgFromPath(path, fill) {
+  return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
+        <path d="${path}"></path></svg>`
+}
+editor.svgFromPath = svgFromPath;
 
 // Array of functions on nodes returning an array of attributes that should be ghosts (i.e. removed on back-propagation)
 editor.ghostAttrs = [];
@@ -1194,6 +1395,7 @@ editor.ignoredAttrs.push(n =>
     ((n && n.getAttribute && n.getAttribute("save-ignored-attributes")) || "").split(" ")).filter(a => a != "")
 )
 
+// Returns a method that, for each key name, return true if it is a ghost attribute for the node
 function isSpecificGhostAttributeKeyFromNode(n) {
   var additionalGhostAttributes = [];
   for(var k in editor.ghostAttrs) {
@@ -1202,6 +1404,7 @@ function isSpecificGhostAttributeKeyFromNode(n) {
   return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
 }
 
+// Returns a method that, for each key name, return true if it is an ignored attribute for the node
 function isIgnoredAttributeKeyFromNode(n) {
   var additionalIgnoredAttributes = [];
   for(var k in editor.ignoredAttrs) {
@@ -1234,7 +1437,8 @@ editor.ghostNodes = [];
 editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
      (insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1 ||
-      insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1)
+      insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1 ||
+      insertedNode.getAttribute("src").indexOf("googletagmanager.com/gtm.js") != -1)
 );
 
 // For for ace styles in header
@@ -1257,10 +1461,11 @@ editor.ghostNodes.push(insertedNode =>
     insertedNode.getAttribute("id") == "ssIFrame_google")
 );
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
-editor.ghostNodes.push(insertedNode => 
-  insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
-  insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined" && (insertedNode.setAttribute("save-ghost", "true") || true)
-);
+ editor.ghostNodes.push(insertedNode => 
+   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
+   insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined"&& insertedNode.textContent.match("error_widget\\.ace_warning")
+   && (insertedNode.setAttribute("save-ghost", "true") || true)
+ );
 // For ace script for syntax highlight
 editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
@@ -1272,7 +1477,7 @@ editor.ghostNodes.push(insertedNode =>
 );
 // For the grammarly extension
 editor.ghostNodes.push(insertedNode =>
-  insertedNode.classList.contains("gr-top-z-index") || insertedNode.classList.contains("gr-top-zero")
+  insertedNode.nodeType === 1 && insertedNode.matches(".gr-top-z-index, .gr-top-zero")
 );
 
 function handleScriptInsertion(mutations) {
@@ -1286,15 +1491,19 @@ function handleScriptInsertion(mutations) {
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
-        if(!hasGhostAncestor(insertedNode) && typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.noteType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode))) {
-         if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
-         insertedNode.isghost = true;
-        } else { // Record ignored attributes
-          if(insertedNode.nodeType == 1) {
-            var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(insertedNode);
-            for(var k = 0; k < insertedNode.attributes.length; k++) {
-              var attr = insertedNode.attributes[k];
-              isIgnoredAttributeKey(attr.name, attr.value);
+        if(hasGhostAncestor(insertedNode)) {
+          insertedNode.isghost = true;
+        } else {
+          if(typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.nodeType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
+           if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
+           insertedNode.isghost = true;
+          } else { // Record ignored attributes
+            if(insertedNode.nodeType == 1) {
+              var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(insertedNode);
+              for(var k = 0; k < insertedNode.attributes.length; k++) {
+                var attr = insertedNode.attributes[k];
+                isIgnoredAttributeKey(attr.name, attr.value);
+              }
             }
           }
         }
@@ -1348,6 +1557,8 @@ function emptyTextContent(node) {
   }
   return node;
 }
+editor.emptyTextContent = emptyTextContent;
+
 function insertBefore(parent, node, beforeNode) {
   if(beforeNode == null) {
     parent.append(node);
@@ -1363,7 +1574,7 @@ function duplicate(node, options) {
     var parentInsertion = options.target ? options.target.parentElement : node.parentElement;
     var insertBeforeNode = options.after ? options.target ? options.target.nextSibling : node.nextSibling :
                                            options.target ? options.target             : node;
-    if(node.nextSibling != null && !options.target) {
+    if(node.nextSibling != null && !options.target && !options.ignoreText) {
       var next = node.nextSibling;
       if(next.nodeType == 3 && next.nextSibling != null &&
          next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
@@ -1381,8 +1592,11 @@ function duplicate(node, options) {
     return cloned;
   }
 }
-function remove(node) {
-  if(node.previousSibling != null) { // Remove whitespace as well
+editor.duplicate = duplicate;
+
+function remove(node, options) {
+  if(typeof options == "undefined") options = {}
+  if(node.previousSibling != null && !options.ignoreText) { // Remove whitespace as well
     var next = node.nextSibling;
     if(next.nodeType == 3 && next.nextSibling != null &&
        next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
@@ -1391,91 +1605,305 @@ function remove(node) {
   }
   node.remove();
 }
+editor.remove = remove;
 </script>
 ]
 
 -- Script added to the end of the page
-editionscript = """ 
-  console.log("editionscript running");
-   var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
-  var buttonHeight = () => onMobile() ? 48 : 30;
-  var buttonWidth  = () => onMobile() ? 48 : 40;
-
-  
-
-  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
-  // Same for some attributes
-  function saveGhostAttributes() {
-    var ghostModified = document.querySelectorAll("[ghost-visible]");
-    var savedGhostAttributes = [];
-    for(var i = 0; i < ghostModified.length; i++) {
-      var elem = ghostModified[i];
-      savedGhostAttributes.push([dataToRecoverElement(elem),
-          "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
-    }
-    function saveAttributes(name) {
-       var ghostAttributesModified = document.querySelectorAll("["+name+"]");
-      for(var i = 0; i < ghostAttributesModified.length; i++) {
-        var elem = ghostAttributesModified[i];
-        var toSave = elem.getAttribute(name).split(" ");
-        for(j in toSave) {
-          var key = toSave[j];
-          savedGhostAttributes.push([dataToRecoverElement(elem), key, elem.getAttribute(key)]);
-        }
-      }
-    }
-    saveAttributes("save-ghost-attributes")
-    saveAttributes("save-ignored-attributes")
+lastEditScript = """ 
+    console.log("lastEditScript running");
+     var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
+    var buttonHeight = () => onMobile() ? 48 : 30;
+    var buttonWidth  = () => onMobile() ? 48 : 40;
     
-    var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
-    var savedProperties = [];
-    for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
-      var elem = elemsWithAttributesToSave[i];
-      var toSave = elem.getAttribute("save-properties").split(" ");
-      for(j in toSave) {
-        var key = toSave[j];
-        savedProperties.push([dataToRecoverCaretPosition(elem), key, elem[key]])
+    // Before saving, call this function to that it eventually triggers a save action to any file.
+    function addFileToSave(path, oldcontent, newcontent) {
+      var placement = document.querySelector("#editor-files-to-overwrite");
+      if(!placement) {
+        console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
+        return;
+      }
+      placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}))   ;
+    }
+    function off_state_visible() {
+      if (editor_model.state.includes("v")) {
+        if (editor_model.state.includes("a")) {
+          editor_model.state = editor_model.state.replace("a", "");
+        }
+        if (editor_model.state.includes("s")) {
+          editor_model.state = editor_model.state.replace("s", "");
+        }
+        editor_model.state = editor_model.state.replace("v", "");
+      } else {
+        throw "State shouldn't be trying to be closed when it's already closed";
       }
     }
-    var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
-    var parentsGhostNodes = [];
-    for(var i = 0; i < ghostElemsToReinsert.length; i++) {
-      var elem = ghostElemsToReinsert[i];
-      parentsGhostNodes.push({parent: dataToRecoverElement(elem.parentNode), node: elem});
+
+	  function set_state_visible() {
+	    if (!editor_model.state.includes("v")) {
+	      editor_model.state = editor_model.state + "v";
+	    }
     }
-    return [savedGhostAttributes, savedProperties, parentsGhostNodes];
-  }
-  function applyGhostAttributes(attrs) {
-    var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
-    for(var i in savedGhostAttributes) {
-      var [data, key, attr] = savedGhostAttributes[i];
-      var elem = recoverElementFromData(data);
-      if(elem != null) {
-        elem.setAttribute(key, attr);
+
+	  function set_state_log() { //log needs visible to be on AND advanced to be on
+	    if (!editor_model.state.includes("v")) throw "Shouldn't set state to log w/o v";
+	    if (!editor_model.state.includes("a")) throw "Shouldn't set state to log w/o a";
+	    if (editor_model.state.includes("a")) return;
+	    editor_model.state = editor_model.state.replace("s", "");
+	  }
+
+	  function set_state_advanced() {
+	    if (!editor_model.state.includes("v")) {
+	      editor_model.state = editor_model.state + "v";
+	      if (!editor_model.state.includes("a")) {
+	        editor_model.state = editor_model.state + "a";
+	      } else {
+	        throw "Advanced state shouldn't be open when not visible";
+	      }
+	    } else { //is visible
+	      if (editor_model.state.includes("a")) {
+	        throw "Opening advanced state when it's already open";
+	      } else {
+	        if (editor_model.state.includes("d")) {
+	          editor_model.state = editor_model.state.replace("d", "");
+	        }
+	        editor_model.state = editor_model.state + "a";
+	      }
+	    }
+	  }
+
+	  function set_state_linkselect() {
+	    //linkselect state is definitely mututally exclusive with the menu being opened, at least.
+	    //we can assume that those are turned off before turning linkselect on
+	    if (editor_model.state.includes("v") || editor_model.state.includes("a")) {
+	      throw "set_state_linkselect expects v + a to be off";
+	    } else {
+	      if (editor_model.state.includes("d")) throw "d was on without v what gives";
+	      if (editor_model.state.includes("a")) throw "a was on without v what gives";
+	      if (editor_model.state.includes("l")) {
+	        //already in linkselectmode, do nothing.
+	      } else {
+	        editor_model.state = editor_model.state + "l";
+	      }
+	    }
+	  }
+
+	  function set_state_insert() {
+	    if (editor_model.state.includes("i")) return;
+	    editor_model.state = editor_model.state + "i";
+	  }
+
+	  function set_state_draftview() {
+	    if (editor_model.state.includes("d")) return;
+	    if (editor_model.state.includes("a")) {
+	      editor_model.state = editor_model.state.replace("a", "");
+	    }
+	    if (!editor_model.state.includes("v")) {
+	      editor_model.state = editor_model.state + v;
+	    }
+	    editor_model.state = editor_model.state + "d";
+	  }
+
+	  function off_state_draftview() {
+	    if (!editor_model.state.includes("d")) sreturn;
+	    editor_model.state = editor_model.state.replace("d", "");
+	  }
+
+	  function off_state_insert() {
+	    if (!editor_model.state.includes("i")) return;
+	    editor_model.state = editor_model.state.replace("i", "");
+	  }
+
+	  function off_state_advanced() {
+	    if (!editor_model.state.includes("a")) return;
+	    if (editor_model.state.includes("s")) {
+	      editor_model.state = editor_model.state.replace("s", "");
+	    }
+	    editor_model.state = editor_model.state.replace("a", "");
+	  }
+
+	  function off_state_linkselect() {
+	    if (!editor_model.state.includes("l")) return;
+	    editor_model.state = editor_model.state.replace("l", "");
+	  }
+
+	  function off_state_visible() {
+	    if (!editor_model.state.includes("v")) return;
+	    if (editor_model.state.includes("a")) {
+	      if (editor_model.state.includes("s")) {
+	        editor_model.state = editor_model.state.replace("s", "");
+	      }
+	      editor_model.state = editor_model.state.replace("a", "");
+	    }
+	    if (editor_model.state.includes("d")) {
+	      editor_model.state = editor_model.state.replace("d", "");
+	    }
+	    editor_model.state = editor_model.state.replace("v", "");
+	  }
+
+	  function off_state_log() {
+	    if (!editor_model.state.includes("s")) return;
+	    editor_model.state = editor_model.state.replace("s", "");
+	  }
+
+	  function toggle_visible_state() {
+	    if (editor_model.state.includes("v")) { //open want to close
+	      if (editor_model.state.includes("a")) { //close out of advanced
+	        if (editor_model.state.includes("s")) {
+	          editor_model.state = editor_model.state.replace("s", "");
+	        }
+	        editor_model.state = editor_model.state.replace("a", "");
+	      }
+	      if (editor_model.state.includes("d")) {
+	        editor_model.state = editor_model.state.replace("d", "");
+	      }
+	      editor_model.state = editor_model.state.replace("v", "");
+	    } else { //closed and we want to open
+	      editor_model.state = editor_model.state + "v";
+	    }
+	  }
+  
+	  function toggle_advanced_state() { //can't be in advanced without visible
+	    if (editor_model.state.includes("v")) {
+	      //visible
+	      if (editor_model.state.includes("a")) { //toggle it off
+	        if (editor_model.state.includes("s")) {
+	          editor_model.state = editor_model.state.replace("s", "");
+	        }
+	        editor_model.state = editor_model.state.replace("a", "");
+	      } else { //toggle it on
+	        if (editor_model.state.includes("d")) {
+	          editor_model.state = editor_model.state.replace("d", "");
+	        }
+	        editor_model.state = editor_model.state + "a";
+	      }
+	    } else { //not visible
+	      if (editor_model.state.includes("a")) { //can't be in advanced without visible
+	        throw "model state shouldn't be in advanced when thing is not visible";
+	      } //toggle advanced + visible
+	      if (editor_mode.state.includes("i") || editor_model.state.includes("l")) {
+	        console.err("I really don't think we should be able to toggle a while i or l are set. maybe i'm wrong? if so delete this");
+	      }
+	      editor_model.state = editor_model.state + "va";
+	    }
+	  }
+
+	  function toggle_draftview_state() { //can't be in draftview when advanced is on
+
+	    if (!editor_model.state.includes("v")) { //not visible
+	      if (editor_model.state.includes("l")) { //we're in linkselectmode , we should return here.
+	        console.log ("trying to toggle_draftview_state when in linkselect mode. returning before doing anything.");
+	        return;
+	      }
+	      if (editor_model.state.includes("d")) { //in not visible state, it has draft on
+	        throw "State shouldn't be in draft mode when not visible";
+	      }
+	      if (editor_model.state.includes("a")) { //also assertion; not in visible state but advanced is wrong
+	        throw "State shouldn't be in a without v";
+	      }
+	      editor_model.state = editor_model.state + "vd"; //else visible needs to be on for draft to be on.
+	    } else {
+	      //is visible; toggle d
+	      if (editor_model.state.includes("d")) {
+	        editor_model.state = editor_model.state.replace("d", "");
+	      } else { //if we're in advanced we want to turn that off + turn on d
+	        if (editor_model.state.includes("a")) {
+	          editor_model.state = editor_model.state.replace("a", "");
+	        }
+	        editor_model.state = editor_model.state + "d";
+	      }
+	    }
+	  }
+
+
+	  // Before saving, call this function to that it eventually triggers a save action to any file.
+	  function addFileToSave(path, oldcontent, newcontent) {
+	    var placement = document.querySelector("#editor-files-to-overwrite");
+	    if(!placement) {
+	      console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
+	      return;
+	    }
+	    placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}));
+	  }
+    
+
+  
+	  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
+	  // Same for some attributes
+	  function saveGhostAttributes() {
+	    var ghostModified = document.querySelectorAll("[ghost-visible]");
+	    var savedGhostAttributes = [];
+	    for(var i = 0; i < ghostModified.length; i++) {
+	      var elem = ghostModified[i];
+	      savedGhostAttributes.push([editor.toTreasureMap(elem),
+	          "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
+	    }
+
+
+	    function saveAttributes(name) {
+	       var ghostAttributesModified = document.querySelectorAll("["+name+"]");
+	      for(var i = 0; i < ghostAttributesModified.length; i++) {
+	        var elem = ghostAttributesModified[i];
+	        var toSave = elem.getAttribute(name).split(" ");
+	        for(j in toSave) {
+	          var key = toSave[j];
+	          savedGhostAttributes.push([editor.toTreasureMap(elem), key, elem.getAttribute(key)]);
+	        }
+	      }
+	    }
+      saveAttributes("save-ghost-attributes");
+      saveAttributes("save-ignored-attributes");  
+    
+      var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
+	    var savedProperties = [];
+	    for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
+	      var elem = elemsWithAttributesToSave[i];
+	      var toSave = elem.getAttribute("save-properties").split(" ");
+	      for(j in toSave) {
+	        var key = toSave[j];
+	        savedProperties.push([editor.toTreasureMap(elem), key, elem[key]])
+        }
       }
-    }
-    for(var i in savedProperties) {
-      var [data, key, value] = savedProperties[i];
-      var elem = recoverElementFromData(id);
-      if(elem != null) {
-        elem[key] = value;
+      var parentsGhostNodes = [];
+      var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
+      for(var i = 0; i < ghostElemsToReinsert.length; i++) {
+        var elem = ghostElemsToReinsert[i];
+        parentsGhostNodes.push({parent: editor.toTreasureMap(elem.parentNode), node: elem});
       }
+      return [savedGhostAttributes, savedProperties, parentsGhostNodes];
     }
-    for(var i in parentsGhostNodes) {
-      var {parent: data, node: elem} = parentsGhostNodes[i];
-      var parent = recoverElementFromData(data);
-      if(parent != null) {
-        if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
-          parent.appendChild(elem);
+    function applyGhostAttributes(attrs) {
+      var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
+      for(var i in savedGhostAttributes) {
+        var [data, key, attr] = savedGhostAttributes[i];
+        var elem = editor.fromTreasureMap(data);
+        if(elem != null) {
+          elem.setAttribute(key, attr);
+        }
+      }
+      for(var i in savedProperties) {
+        var [data, key, value] = savedProperties[i];
+        var elem = editor.fromTreasureMap(id);
+        if(elem != null) {
+          elem[key] = value;
+        }
+      }
+      for(var i in parentsGhostNodes) {
+        var {parent: data, node: elem} = parentsGhostNodes[i];
+        var parent = editor.fromTreasureMap(data);
+        if(parent != null) {
+          if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
+            parent.appendChild(elem);
+          }
         }
       }
     }
-  }
-  
-  function domNodeToNativeValue(n) {
-      if(n.nodeType == "3") {
+   
+    
+    function domNodeToNativeValue(n) {
+      if(n.nodeType == 3) {
         return ["TEXT", n.textContent];
-      } else if(n.nodeType == "8") {
+      } else if(n.nodeType == 8) {
         return ["COMMENT", n.textContent];
       } else {
         var attributes = [];
@@ -1492,16 +1920,23 @@ editionscript = """
           }
         }
         var children = [];
+        var childNodes = n.childNodes;
+        if(n.tagName.toLowerCase() === "noscript" && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
+          // We'll recover the associated HTML node
+          childNodes = el("div", {}, [], {innerHTML: n.childNodes[0].textContent, parentNode: n}).childNodes;
+        }
         if(!areChildrenGhosts(n)) {
-          for(i = 0; i < n.childNodes.length; i++) {
-            if(!isGhostNode(n.childNodes[i])) {
-              children.push(domNodeToNativeValue(n.childNodes[i]));
+          for(i = 0; i < childNodes.length; i++) {
+            if(!isGhostNode(childNodes[i])) {
+              children.push(domNodeToNativeValue(childNodes[i]));
             }
           }
         }
         return [n.tagName.toLowerCase(), attributes, children];
       }
     }
+
+    //(outer lastEditScript)
     function saveDisplayProperties() {
       let singleChildNodeContent = document.querySelector("textarea#singleChildNodeContent");
       if(singleChildNodeContent) {
@@ -1510,7 +1945,9 @@ editionscript = """
         editor_model.textareaSelectionEnd = singleChildNodeContent.selectionEnd;
       }
     }
-    function saveRecoverableProperties() {
+    
+    function replaceContent(NC) {
+      saveDisplayProperties();
       if(editor_model.caretPosition) {
         editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
       }
@@ -1518,12 +1955,8 @@ editionscript = """
         editor_model.selectionRange = dataToRecoverSelectionRange(editor_model.selectionRange);
       }
       if(editor_model.clickedElem) {
-        editor_model.clickedElem = dataToRecoverElement(editor_model.clickedElem);
+        editor_model.clickedElem = editor.toTreasureMap(editor_model.clickedElem);
       }
-    }
-    function replaceContent(NC) {
-      saveDisplayProperties();
-      saveRecoverableProperties();
       writeDocument(NC);
     }
     
@@ -1538,9 +1971,9 @@ editionscript = """
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           editor_model.isSaving = false;
-          //console.log("Received new content. Replacing the page.");
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
           var saved = saveGhostAttributes();
+          //return
           
           //source of the editing menu disappearing after reloading
           replaceContent(xmlhttp.responseText);
@@ -1556,8 +1989,8 @@ editionscript = """
           if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
              ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
              ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
-             
             var n = JSON.parse(ambiguityNumber);
+            console.log ("handleServerPOSTResponse ambiguity");
             var selected = JSON.parse(ambiguitySelected);
             var summaries = JSON.parse(ambiguitySummaries);
             
@@ -1597,11 +2030,12 @@ editionscript = """
             editor_model.link = undefined;
             editor_model.advanced = true; // Opens advanced mode.
             editor_model.visible = true;
+            set_state_advanced();
             //editor_model.displaySource: false, // Keep source opened or closed
             // TODO: Disable click or change in DOM until ambiguity is resolved.
-          } else {
+          } else { //no ambiguity
             editor_model.disambiguationMenu = undefined;
-            var opSummaryEncoded = xmlhttp.getResponseHeader("Operations-Summary");
+            let opSummaryEncoded = xmlhttp.getResponseHeader("Operations-Summary");
             if(opSummaryEncoded) {
               var opSummary = decodeURI(opSummaryEncoded);
               let newMenu = el("menuitem#lastaction", {},
@@ -1610,10 +2044,9 @@ editionscript = """
               var newmenutimeout = setTimeout(function() { editor_model.feedback = undefined; newMenu.remove(); }, 2000);
               newMenu.onclick = ((n) => () => clearTimeout(n))(newmenutimeout);
             }
-          }
-          
+          } // /noambiguity
           var strQuery = "";
-          if(newQueryStr !== null) {
+          if(newQueryStr != null) { //newQueryStr = undefined ==> (newQueryStr !== null) ==> false;
             var newQuery = JSON.parse(newQueryStr);
             for(var i = 0; i < newQuery.length; i++) {
               var {_1: key, _2: value} = newQuery[i];
@@ -1626,8 +2059,8 @@ editionscript = """
             window.history.replaceState({}, "Current page", strQuery);
           }
           updateInteractionDiv(); 
-        }
-    }
+        } //xhr.onreadystatechange == done
+    } //handleServerPOSTResponse
     
     window.onpopstate = function(e){
         console.log("onpopstate", e);
@@ -1695,8 +2128,7 @@ editionscript = """
         xmlhttp.setRequestHeader("cancel-ambiguity", JSON.stringify(num));
       });
     }
-    
-    function sendModificationsToServer() {
+    function sendModificationsToServerNode() {
       if(document.getElementById("notification-menu") != null) {
         //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
         // TODO: Listen and gather subsequent modifications when it is loading
@@ -1719,6 +2151,111 @@ editionscript = """
         })
       }, 0);
     }
+    
+    var serverWorker = new Worker("/Thaditor/editor.js");
+
+    function sendModificationsToServer() {
+      
+      if(document.getElementById("notification-menu") != null) {
+        //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
+        // TODO: Listen and gather subsequent modifications when it is loading
+        return;
+      }
+      editor_model.isSaving = true;
+      var newMenu = el("menuitem#notification-menu.to-be-selected", {isghost: true});
+      if(document.getElementById('lastaction')) {
+        document.getElementById('lastaction').remove();
+      }
+      if(document.getElementById("modify-menu")) {
+        document.getElementById("modify-menu").append(newMenu);
+      }
+      editor_model.actionsDuringSave = [];
+      updateInteractionDiv();
+      sendNotification("Beginning save!");
+      /*
+        Spawn new worker thread to 
+          (1) read SERVER_CONTENT. 
+            set up xmlhttp request over in a worker thread and wait for the promise to be fullfilled.
+          (2) save - also on worker thread
+            on message over here will be notified when the save it complete and will be given the new 
+            page content within the xmlhttp response. We need to rewrite the page with these data.
+      */
+      
+      //let serverWorker = new Worker("/Thaditor/editor.js");
+      const tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
+      let data = {action:"sendMods", 
+                  toSend:tosend,
+                  gaidt:googleAuthIdToken,
+                  aq:editor_model.askQuestions,
+                  loc:location.pathname + location.search,
+                  server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
+      serverWorker.onmessage = function(e) {
+        //handle confirmDone
+        if (e.data.action == "confirmDone") {
+          let xmlhttp = new XHRequest();
+          xmlhttp.response.setHeader("newLocalURL", e.data.newLocalURL);
+          xmlhttp.response.setHeader("newQueryStr", e.data.newQueryStr);
+          xmlhttp.response.setHeader("ambiguityKey", e.data.ambiguityKey);
+          xmlhttp.response.setHeader("ambiguityNumber", e.data.ambiguityNumber);
+          xmlhttp.response.setHeader("ambiguitySelected", e.data.ambiguitySelected);
+          xmlhttp.response.setHeader("ambiguityEnd", e.data.ambiguityEnd);
+          xmlhttp.response.setHeader("ambiguitySummaries", e.data.ambiguitySummaries);
+          xmlhttp.response.setHeader("opSummaryEncoded", e.data.opSummaryEncoded);
+          xmlhttp.response.text = e.data.text;
+          /*
+            We want to undo everything in the undo stack that has been done since the save began.
+            In the process of vanilla undoing this (using mark's function), the items will be
+            pushed onto the redoStack in the normal way, s.t. we can redo them in a moment.
+            Once we're at the state we were at when we began to save, we re-write the page
+            with the confirmed content that the worker gave us.
+            Once the confirmed content has been rewritten, we have undo/redo stacks that point,
+            as the undo/redo stacks are an array of array of MutationRecords, all of whose target
+            has just been erased and replaced with a new object. 
+            So we need to convert the old UR stacks to be pointing to the right objects.
+            We solve this in the undo()/redo() functions, by checking to see if the object
+            pointed to in the mutationrecord is still connected to the active DOM. if not,
+            we use the inactive node to record the path up the tree, and search for the
+            corresponding node in the newly active tree, replacing the MR.target with the active one.
+            Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
+            the state pre-update & post-save.
+          */
+          const ads = editor_model.actionsDuringSave;
+          const adsLen = editor_model.actionsDuringSave.length;
+          ads.forEach((action) => {
+            if (action == "undo") {
+              undo();
+            } else if (action == "redo") {
+              redo();
+            } else {
+              throw new Error("Unidentified action in restoring post-save state post-save");
+            }
+          });
+          
+          editor_model.outputObserver.disconnect();
+          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {});
+          xmlhttp.readyState = XMLHttpRequest.DONE
+          xmlhttp.onreadystatechange();
+          const newAds = editor_model.actionsDuringSave;
+          const newAdsLen = newAds.length;
+          for (let i = 0; i < adsLen; i++) {
+            if (newAds[i] == "undo") {
+              undo();
+            } else if (newAds[i] == "redo") {
+              redo();
+            } else {
+              throw new Error("unidentified action in actionsduringsave");
+            }
+          }
+          sendNotification("Save completed!");
+        } else if(e.data.action == "message") {
+          sendNotification(e.data.message)
+        } else if(e.data.action == "reconnect") {
+          thaditor_reconnect();
+        }
+      }
+      serverWorker.postMessage(data);
+    } //sendModificationsToServer
+
 
     //other possible approaches
     //add writable property (for oldValue) to mutation object
@@ -1727,9 +2264,8 @@ editionscript = """
      * adds writiable properties to the MutationRecord objects so the undo/redo functions
      * will actually function later on
      */
-    function sendToUndo(m, time) {  
-      //console.log("Undoable mutations:", m);
-      //console.log("parent node:", m.removedNodes[0].parentNode);
+     //sends info over to the undostack
+    function sendToUndo(m, time) {
       //for childLists, add mutable next/previous sibling properties
       if(m.type === "childList") {
           /*Object.defineProperty(m, 'rePrevSib', {value: m.previousSibling /*&& !(m.previousSibling.nodeType == 1)) ? 
@@ -1743,14 +2279,22 @@ editionscript = """
       else {
         Object.defineProperty(m, 'URValue', {value: m.oldValue, writable: true});
       }
-      Object.defineProperty(m, 'timestamp', {value: time})
+      //Object.defineProperty(m, 'timestamp', {value: time})
+      m.timestamp = time;
       //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
       //and should be combined together when undoing/redoing
-      let lastUndo = editor_model.undoStack[editor_model.undoStack.length-1]; 
-      console.log(lastUndo);
-      if(!lastUndo || (lastUndo[0].timestamp < (time - 10))) { 
+      
+      let lastUndo = editor_model.undoStack[editor_model.undoStack.length-1];
+      //makes single actions that are recorded as multiple mutations a single action
+      //true here ==> mutation is separate action
+      if(!lastUndo || (lastUndo[0].timestamp < (time - 10))) {  
+        if (editor_model.isSaving) {
+          editor_model.actionsDuringSave.unshift("undo");
+        }
         editor_model.undoStack.push([m]);
+        editor_model.redoStack = [];
       }
+      //false here ==> mutation is same action as last mutation
       //makes no sense for somethign that is first added then removed for those actions to be grouped together 
       //i.e. if i add text then get rid of it, it makes no sense for undo to revert the removal and addition direclty in sequence
       else {
@@ -1758,9 +2302,9 @@ editionscript = """
         lastUndo.push(m);
         editor_model.undoStack.push(lastUndo);
       }     
-    }
+    } //sendToUndo
     
-    function handleMutations(mutations) {
+    function handleMutations(mutations, observer) {
       var onlyGhosts = true;
       let cur_date = new Date();
       let cur_time = cur_date.getTime();
@@ -1772,7 +2316,7 @@ editionscript = """
         /*  
          * Add mutations to undo list if they are not ghosts and if they are really doing something.
          */
-        var mutation = mutations[i];
+        let mutation = mutations[i];
         if(hasGhostAncestor(mutation.target)) {
           continue;
         }
@@ -1786,6 +2330,7 @@ editionscript = """
           } else {
             onlyGhosts = false;
             sendToUndo(mutation, cur_time);
+            // Please do not comment out this line until we get proper clever save.
             console.log("Attribute is not ghost", mutation);
           }
         } else if(mutation.type == "childList") {
@@ -1794,6 +2339,7 @@ editionscript = """
               if(!hasGhostAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
+                // Please do not comment out this line until we get proper clever save.
                 console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
               }
             }
@@ -1801,6 +2347,7 @@ editionscript = """
               if(!isGhostNode(mutation.removedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation, cur_time);
+                // Please do not comment out this line until we get proper clever save.
                 console.log(`Removed node ${j} was not a ghost`, mutation);
               }
             }
@@ -1808,57 +2355,40 @@ editionscript = """
         } else {
           onlyGhosts = false;
           sendToUndo(mutation, cur_time);
+          // Please do not comment out this line until we get proper clever save.
           console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
         }
       }
       if(onlyGhosts) {
-        console.log("mutations are only ghosts, skipping");
         return;
       } // Send in post the new HTML along with the URL
       
-
       if(!editor_model.autosave) {
         if(editor_model.undoStack.length)
         {
           editor_model.canSave = true;
         }
-        console.log("canSave is:", editor_model.canSave);
         var saveButtons = document.querySelectorAll(".saveButton");
         // TODO: Can we regenerate the whole interface for consistency?
         for(let sb of saveButtons) {
           sb.classList.toggle("disabled", false);
         }
         return;
-      }
+      } 
+      //autosave is on
       if(typeof t !== "undefined") {
         clearTimeout(t);
       }
       t = setTimeout(function() {
         t = undefined;
-        
-        sendModificationsToServer();
+        if (apache_server) {
+          sendModificationsToServer();
+        } else {
+          sendModificationsToServerNode();
+        }
       }, @editdelay)
-    }
+    } //handleMutations
   
-    if (typeof outputValueObserver !== "undefined") {
-      // console.log("outputValueObserver.disconnect()");
-      outputValueObserver.disconnect();
-    }
-    
-    setTimeout(function() {
-      outputValueObserver = new MutationObserver(handleMutations);
-      outputValueObserver.observe
-       ( document.body.parentElement
-       , { attributes: true
-         , childList: true
-         , characterData: true
-         , attributeOldValue: true
-         , characterDataOldValue: true
-         , subtree: true
-         }
-       )
-     }, 10)
-    
     //debugging function for printing both teh undo and redo stacks.
     function printstacks() {
       console.log("-----------------------------");
@@ -1880,14 +2410,8 @@ editionscript = """
       console.log("-----------------------------");
     }
 
-    function popupMessage(m) {
-    	console.log(m);
-    }
-
     //undo function: handles undo feature
     function undo() {
-      printstacks();
-
       let undoElem = editor_model.undoStack.pop();
       //need to check if undoStack is empty s.t. we can set the "savability" of the document accurately
       if(undoElem == undefined) {
@@ -1897,17 +2421,22 @@ editionscript = """
       else if (!editor_model.undoStack.length) {
         editor_model.canSave = false;
       }
+      //TODO prevent pressing the undo button while save underway while letting Editor use the undo function. (just not the user);
       //need to disconnect the MutationObserver such that our undo does not get recorded as a mutation
-      outputValueObserver.disconnect();
+      editor_model.outputObserver.disconnect();
+      const quicker = node => recoverElementFromData(dataToRecoverElement(node));
       let k;
       for(k = undoElem.length - 1; k >= 0; k--) {
         let mutType = undoElem[k].type; 
-        let target = undoElem[k].target;
+        let qk = quicker(undoElem[k].target);
+        
+        let target = (undoElem[k].target.isConnected ? 
+                        undoElem[k].target :
+                        (qk == undefined ? undoElem[k].target : qk));
         //in each case, we reverse the change, setting the URValue/oldValue as the current value
         //at the target, and replacing the URValue/oldValue with the current value present in target
         if(mutType == "attributes") {
           let cur_attr = target.getAttribute(undoElem[k].attributeName);
-          console.log(cur_attr);
           if(undoElem[k].URValue === null) {
             target.removeAttribute(undoElem[k].attributeName); 
           }       
@@ -1917,11 +2446,10 @@ editionscript = """
           undoElem[k].URValue = cur_attr; 
         }
         else if(mutType == "characterData") {
-          let cur_data = target.data;
-          //console.log("cur_data:" + cur_data);
+          const cur_data = target.data;
           target.data = undoElem[k].URValue;
           undoElem[k].URValue = cur_data;
-          //console.log("old_value:" + undoElem.URValue);
+          //undoElem[k].isConnected ? undoElem[k].URValue : quicker(undoElem[k]).URValue = cur_data;
         }
         else {
           let uRemNodes = undoElem[k].removedNodes;
@@ -1944,20 +2472,26 @@ editionscript = """
                     continue;
                   }
                   target.appendChild(uRemNodes.item(i)); 
-                  console.log("Added", uRemNodes.item(i));
                 }
               }
             }
             for(j = 0; j < kidNodes.length; j++) {  
-              if(kidNodes.item(j) === undoElem[k].nextSibling && kidNodes.item(j).previousSibling === undoElem[k].previousSibling) {
+              let ns = undoElem[k].nextSibling && undoElem[k].nextSibling.isConnected ? undoElem[k].nextSibling : quicker(undoElem[k].nextSibling);
+              let ps = undoElem[k].previousSibling && undoElem[k].previousSibling.isConnected ? undoElem[k].previousSibling : quicker(undoElem[k].previousSibling);
+
+              let knode = kidNodes.item(j);
+              let knode_may = quicker(knode);
+              //if(kidNodes.item(j) === undoElem[k].nextSibling && kidNodes.item(j).previousSibling === undoElem[k].previousSibling) {
+              if ((knode == ns || knode_may == ns || ns == undefined) &&
+                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined)){
                 for(i = 0; i < uRemNodes.length; i++) { 
                   if(hasGhostAncestor(uRemNodes.item(i))) {
                     continue;
                   }
-                  target.insertBefore(uRemNodes.item(i), kidNodes.item(j)); 
-                  console.log("Added", uRemNodes.item(i));
+                  let uremnode = uRemNodes.item(i);
+                  let urn = quicker(uremnode);
+                  target.insertBefore(urn == undefined ? uremnode : urn, knode_may == undefined ? knode : knode_may); 
                 }
-
               }
             }
           }
@@ -1969,16 +2503,19 @@ editionscript = """
               console.log("The item you are trying to undo doesn't exist in the parent node.");
             }
             else {
-              console.log("Removing:", uAddNodes.item(i));
               target.removeChild(uAddNodes.item(i));
               
             }
           }
         }
-      }
+      } //mutation looper
       editor_model.redoStack.push(undoElem);
+      if (editor_model.isSaving) {
+        editor_model.actionsDuringSave.unshift("redo");
+      }
+      //TODO make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
       //turn MutationObserver back on
-      outputValueObserver.observe
+      editor_model.outputObserver.observe
        ( document.body.parentElement
        , { attributes: true
          , childList: true
@@ -1988,84 +2525,82 @@ editionscript = """
          , subtree: true
          }
        );
-      //console.log("data right before return:" + target.data);
-      printstacks();
-      //console.log("canSave is:", editor_model.canSave); 
-      //make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
       updateInteractionDiv();
       return 1;
-    }
+    } //undo
+
+    
 
     function redo() {
-      printstacks();
-      let redoable = false;
       let redoElem = editor_model.redoStack.pop();
-      console.log("Current redo element is:", redoElem);
       if(redoElem === undefined) {
         return 0;
       }
-      outputValueObserver.disconnect();
-     
+      editor_model.outputObserver.disconnect();
+      const quicker = node => recoverElementFromData(dataToRecoverElement(node));
       let k;
       for(k = 0; k < redoElem.length; k++) {
         let mutType = redoElem[k].type;
-        let target = redoElem[k].target;
+        let qk = quicker(redoElem[k].target);
+        let target = (redoElem[k].target.isConnected ? 
+                        redoElem[k].target : 
+                        (qk == undefined ? redoElem[k].target : qk));
         if(mutType == "attributes") {
           let cur_attr = target.getAttribute(redoElem[k].attributeName);
           if (redoElem[k].URValue === null) {
-
-          }
-          else { 
+            target.removeAttribute(redoElem[k].attributeName); 
+          } else { 
             target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
           }
           redoElem[k].URValue = cur_attr;
-          redoable = true;
-        }
-        else if(mutType == "characterData") {
-          //console.log("data b4:" + target.data);
+        } else if(mutType == "characterData") {
           let cur_data = target.data;
           target.data = redoElem[k].URValue;  
           redoElem[k].URValue = cur_data;
-          redoable = true;
-          //console.log("data after:" + target.data);
-        } 
-        else {
+          //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
+        } else {
           let rRemNodes = redoElem[k].removedNodes;
           let rAddNodes = redoElem[k].addedNodes;
           let i, j;
           let kidNodes = target.childNodes;
           if(rAddNodes.length) {
             for(j = 0; j < kidNodes.length; j++) {
-              if(kidNodes.item(j) === redoElem[k].nextSibling && kidNodes.item(j).previousSibling === redoElem[k].previousSibling) {
+              let knode = kidNodes.item(j);
+              let raddnode = rAddNodes.item(i);
+              let ran = quicker(raddnode);
+              let knode_may = quicker(knode);
+              //if(kidNodes.item(j) === redoElem[k].nextSibling && kidNodes.item(j).previousSibling === redoElem[k].previousSibling)
+              let ns = redoElem[k].nextSibling && redoElem[k].nextSibling.isConnected ? redoElem[k].nextSibling : quicker(redoElem[k].nextSibling);
+              let ps = redoElem[k].previousSibling && redoElem[k].previousSibling.isConnected ? redoElem[k].previousSibling : quicker(redoElem[k].previousSibling);
+              
+              if ((knode == ns || knode_may == ns || ns == undefined) &&
+                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined)) {
                 for(i = 0; i < rAddNodes.length; i++) {
                   if(hasGhostAncestor(rAddNodes.item(i))) {
                     continue;
                   }
-                  target.insertBefore(rAddNodes.item(i), kidNodes.item(j));
+                  target.insertBefore(ran == undefined ? rAddNodes.item(i) : ran, knode_may == undefined ? knode : knode_may);
                 }
               }
             }
           }
-          console.log("hi!", redoElem[k].removedNodes);
           for(i = 0; i < rRemNodes.length; i++) {
             if(hasGhostAncestor(rRemNodes.item(i))) {
               continue;
-            }
-            else if(!target.contains(rRemNodes.item(i))) {
+            } else if(!target.parentElement.contains(quicker(rRemNodes.item(i)))) { //bc the node in rRemNodes isn't necessarily connected, we need to rewrite this.
               console.log("The item you are trying to redo doesn't exist in the parent node.");
-            }
-            else 
-              console.log("Hello!");
-              //redoElem[k].prevSib = rRemNode.item(0).previousSibling;
-              //redoElem[k].prevSib = rRemNodes.item(rRemNodes.length - 1).nextSibling;
-              target.removeChild(rRemNodes.item(i));
-              //redoable = true;
+            } else {
+              target.removeChild(quicker(rRemNodes.item(i)));
             }
           }
-      }
+        }
+      } //mut looper
       editor_model.undoStack.push(redoElem);
+      if (editor_model.isSaving) {
+        editor_model.actionsDuringSave.unshift("undo");
+      }
       editor_model.canSave = true;
-      outputValueObserver.observe
+      editor_model.outputObserver.observe
        ( document.body.parentElement
        , { attributes: true
          , childList: true
@@ -2075,12 +2610,10 @@ editionscript = """
          , subtree: true
          }
        );
-      printstacks();   
-      //console.log("canSave is:", editor_model.canSave);
-      updateInteractionDiv();
-      
-      return 1;
-    }
+       updateInteractionDiv();
+       return 1;
+    } //end of redo
+
     
     
     function pasteHtmlAtCaret(html) {
@@ -2095,7 +2628,6 @@ editionscript = """
           if (sel.getRangeAt && sel.rangeCount) {
               range = sel.getRangeAt(0);
               range.deleteContents();
-
               // Range.createContextualFragment() would be useful here but is
               // only relatively recently standardized and is not supported in
               // some browsers (IE9, for one)
@@ -2106,7 +2638,6 @@ editionscript = """
                   lastNode = frag.appendChild(node);
               }
               range.insertNode(frag);
-
               // Preserve the selection
               if (lastNode) {
                   range = range.cloneRange();
@@ -2125,7 +2656,6 @@ editionscript = """
     function handleFileSelect(evt) {
       evt.stopPropagation();
       evt.preventDefault();
-
       var files = evt.dataTransfer.files; // FileList object
       uploadFilesAtCursor(files);
     }
@@ -2153,13 +2683,11 @@ editionscript = """
         });
       }
     }
-
     function handleDragOver(evt) {
       evt.stopPropagation();
       evt.preventDefault();
       evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
     }
-
     if(@(if varedit then "true" else "false")) {
       var dropZone = document.body;
       dropZone.addEventListener('dragover', handleDragOver, false);
@@ -2189,15 +2717,16 @@ editionscript = """
         }
         if(e.which == 90 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          if(!undo()) popupMessage("Nothing to undo!");
+          if(!undo()) sendNotification("Nothing to undo!");
         }
         if(e.which == 89 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          if(!redo()) popupMessage("Nothing to redo!");
+          if(!redo()) sendNotification("Nothing to redo!");
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
-        if(editor_model.linkSelectMode) {
+        if (editor_model.state.includes("l")) {
+        //if(editor_model.linkSelectMode) {
           if(e.which == 27) {
             escapeLinkMode();
           }
@@ -2275,14 +2804,14 @@ editionscript = """
         }
         tmp = tmp.parentElement;
       }
-    }
-    
+    }    
     var onClickGlobal = function (event) {
       if(editor_model.dismissNextClick) {
-        editor_model.dismissNextClick = false;
-        return;
+	      editor_model.dismissNextClick = false;
+	      return;
       }
       var clickedElem = event.target;
+      console.log(typeof event.target);
       var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
       var matchOptions = function(clickedElem) {
         var result = true;
@@ -2330,47 +2859,72 @@ editionscript = """
       editor_model.link = link;
       editor_model.link_href_source = aElement; // So that we can modify it
       editor_model.insertElement = false;
+      off_state_insert();
       editor_model.advanced = false;
+      off_state_advanced();
+      editor_model.notextselection = false;
       updateInteractionDiv();
       // Check if the event.target matches some selector, and do things...
     }
-
-    function mkSvg(path, fill) {
-      return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
-            <path d="${path}" /></svg>`
-    }
-    
-    var saveSVG = mkSvg("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
-    var openLeftSVG = mkSvg("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
-    var closeRightSVG = mkSvg("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
-    var openTopSVG = mkSvg("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
-    var closeBottomSVG = mkSvg("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
-    var wasteBasketSVG = mkSvg("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
-    var plusSVG = mkSvg("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
-    var liveLinkSVG = link => `<a class="livelink" href="javascript:navigateLocal(relativeToAbsolute('${link}'))">${mkSvg("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
-    var gearSVG = mkSvg("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
-    var folderSVG = mkSvg("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
-    var reloadSVG = mkSvg("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
-    var sourceSVG = mkSvg("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
+    var arrowDown = svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true);
+    var arrowRight = svgFromPath("M 21,25 18,22 22,18 8,18 8,12 22,12 18,8 21,5 31,15 Z", true);
+    var arrowUp = svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true);
+    var arrowLeft = svgFromPath("M 19,25 22,22 18,18 32,18 32,12 18,12 22,8 19,5 9,15 Z", true);
+    var cloneSVG = svgFromPath("M 19,8 31,8 31,26 19,26 Z M 11,4 23,4 23,8 19,8 19,22 11,22 Z");
+    var saveSVG = svgFromPath("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
+    var openLeftSVG = svgFromPath("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
+    var closeRightSVG = svgFromPath("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
+    var openTopSVG = svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
+    var closeBottomSVG = svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
+    var wasteBasketSVG = svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
+    var plusSVG = svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
+    var liveLinkSVG = link => `<a class="livelink" href="javascript:navigateLocal(relativeToAbsolute('${link}'))">${svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
+    var gearSVG = svgFromPath("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
+    var folderSVG = svgFromPath("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
+    var reloadSVG = svgFromPath("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
+    var logSVG = svgFromPath("M 17.24,16 A 1.24,2 0 0 1 16,18 1.24,2 0 0 1 14.76,16 1.24,2 0 0 1 16,14 1.24,2 0 0 1 17.24,16 Z M 20,16 21.24,16 21.24,16 A 1.24,2 0 0 1 20,18 1.24,2 0 0 1 18.76,16 1.24,2 0 0 1 20,14 1.33,2.16 0 0 1 21,15 M 12,14 12,18 14,18 M 10,12 23,12 23,20 10,20 Z M 23,6 23,11 28,11 M 14,6 14,12 10,12 10,20 14,20 14,25 28,25 28,11 23,6 14,6 Z");
+    var sourceSVG = svgFromPath("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
     var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
     var linkToEdit = @(if defaultVarEdit then "link => link" else 
      """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
-    var undoSVG = mkSvg("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
-    var redoSVG = mkSvg("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
-    var escapeSVG = mkSvg("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z");
-    var linkModeSVG = mkSvg("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
+    var undoSVG = svgFromPath("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
+    var redoSVG = svgFromPath("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
 
+    var isDraftSVG = svgFromPath("M 2,7 2,25 38,25 38,7 M 36,6 C 32,6 29.1,3.9 26.1,3.9 23.1,3.9 22,5 20,6 L 20,23 C 22,22 23.1,20.9 26.1,20.9 29.1,20.9 32,22.9 36,22.9 Z M 4,6 C 8,6 10.9,3.9 13.9,3.9 16.9,3.9 18,5 20,6 L 20,23 C 18,22 16.9,20.9 13.9,20.9 10.9,20.9 8,22.9 4,22.9 Z");
+    var escapeSVG = svgFromPath("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
+    var linkModeSVG = svgFromPath("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
+    var checkSVG = svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor_model === "object";
-    
+    if (!ifAlreadyRunning) {
+      var the_path;
+      var thaditor_files = [
+        "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
+        "ThaditorInstaller.htaccess", "composer.json", "credentials.json", "cacert.pem", "versions",
+        "vendor", "ssg",
+      ];
+    }
+    the_path = @(path |> jsCode.stringOf);
+    if (isLive == undefined) {
+      var isLive = () => !(the_path.includes("Thaditor/versions/"));
+    }
+
+    var verz = "Live";
+    if (!isLive()) {
+      verz = the_path.slice(the_path.lastIndexOf("versions/")+9, the_path.lastIndexOf("/"));
+    }
     //hover mode functions for linkSelectMode
     function escapeLinkMode() {
       document.body.removeEventListener('mouseover', linkModeHover1, false);
       document.body.removeEventListener('mouseout', linkModeHover2, false);
       //removing the hovered element (which is retained if the escape key is hit)
       document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
-      editor_model.clickedElem = editor_model.linkFrom;
+      //editor_model.clickedElem = editor_model.linkFrom;
+      off_state_visible();
+      editor_model.visible = false;
+      off_state_linkselect();
       editor_model.linkSelectMode = false;
-      editor_model.linkFrom = undefined;
+      editor_model.linkSelectCallback = undefined;
+      editor_model.linkSelectOtherMenus = undefined;
       updateInteractionDiv();
     }
     function noGhostHover (node) {
@@ -2422,6 +2976,7 @@ editionscript = """
       }
       return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
     }
+    
     // Returns the new node that matches the old node the closest.
     // For text nodes, try to recover the text node, if not, returns the parent node;
     function recoverElementFromData(data) {
@@ -2462,11 +3017,11 @@ editionscript = """
     }
     function dataToRecoverCaretPosition(caretPosition) {
       if(!caretPosition) return undefined;
-      return {target: dataToRecoverElement(caretPosition.startContainer), startOffset: caretPosition.startOffset};
+      return {target: editor.toTreasureMap(caretPosition.startContainer), startOffset: caretPosition.startOffset};
     }
     function recoverCaretPositionFromData(data) {
       if(!data) return;
-      let newTextNodeOrParent = recoverElementFromData(data.target);
+      let newTextNodeOrParent = editor.fromTreasureMap(data.target);
       if(newTextNodeOrParent) setCaretPositionIn(newTextNodeOrParent, data.startOffset)
     }
     function dataToRecoverSelectionRange(selectionRange) { // TODO
@@ -2477,26 +3032,47 @@ editionscript = """
       if(!data) return;
       return undefined;
     }
-    
+    //(outer lastEditScript)
+    /*
+    State is currently (8/12) being kept track of in many variables. I'm setting out to condense that
+    into one variable, "state", a string describing the current state of the system. 
+    For the sake of clarity, I will list the current variables within the editor_model that are used to keep track of state
+
+      visible :v
+      advanced :a
+      show_log :s
+      insertElement :i //(not defined in our inital editor_model object)
+      linkSelectMode :l
+      isDraftSwitcherVisible :d
+    */
     var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
       //makes visibility of editor model consistent throughout reloads
-      visible: ifAlreadyRunning ? editor_model.visible : false,
-      clickedElem: ifAlreadyRunning ? recoverElementFromData(editor_model.clickedElem) : undefined,
+      state: ifAlreadyRunning ? editor_model.state : "",
+      visible: ifAlreadyRunning ? editor_model.visible : false, //here
+      clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor_model.clickedElem) : undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
-      notextselection: false,
+      notextselection: false, // When using the relative DOM selector, set to true to avoid considering the caret (e.g. for insertions and deletions)
       selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
       caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
-      advanced: ifAlreadyRunning ? editor_model.advanced : false,
+      advanced: ifAlreadyRunning ? editor_model.advanced : false, //here
       displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
-      disambiguationMenu: undefined,
+      disambiguationMenu: undefined, //here
       isSaving: false,
       //data structures to represent undo/redo "stack"
-      undoStack: [],
-      redoStack: [],
-      linkSelectMode: false,
-      linkFrom: undefined,
+      undoStack: ifAlreadyRunning ? editor_model.undoStack : [],
+      redoStack: ifAlreadyRunning ? editor_model.redoStack : [],
+      actionsDuringSave: ifAlreadyRunning ? editor_model.actionsDuringSave : [],
+      isDraftSwitcherVisible : ifAlreadyRunning ? editor_model.isDraftSwitcherVisible : false,
+      
+      //observer to listen for muts
+      outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
+      //editor log
+      editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
+      show_log: ifAlreadyRunning ? editor_model.show_log : false, //here
+      linkSelectMode: false, //here
+      linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
@@ -2511,8 +3087,11 @@ editionscript = """
                     @(case listDict.get "autosave" vars of
                       Just autosaveattr -> "true"
                       _ -> if boolVar "autosave" True then "true" else "false"),
-      path: ifAlreadyRunning ? editor_model.path : @(path |> jsCode.stringOf)
+      path: @(path |> jsCode.stringOf),
+      version : verz,
     }
+
+    
 
     function reorderCompatible (node1, node2){
       let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
@@ -2524,7 +3103,6 @@ editionscript = """
       e = e || window.event;
       e.preventDefault();
     }
-    
     function restoreCaretPosition() {
       if(typeof editor_model.caretPosition != "undefined") {
         var sel = window.getSelection();
@@ -2535,10 +3113,90 @@ editionscript = """
         sel.addRange(range);
       }
     }
+    // This function activates the node selection mode, in which one DOM node can be selected,
+    // After clicking on confirm, the callback is called with the selected node.
+    // callbackUI is invoked to render other buttons along with the confirmation button.
+    function activateNodeSelectionMode(msg, callback, callbackUI) {
+      editor_model.visible = false;
+      off_state_visible();
+      
+      editor_model.linkSelectMode = true;
+      set_state_linkselect();
+      editor_model.clickedElem = document.body; //"center" clicked element on document body
+      //removes all context menu stuff 
+      document.querySelector("#context-menu").classList.remove("visible");
+      editor_model.linkSelectCallback = callback;
+      editor_model.linkSelectMsg = "Confirm " + msg;
+      editor_model.linkSelectOtherMenus = callbackUI;
+      updateInteractionDiv();
+      sendNotification(editor_model.linkSelectMsg);
+      document.body.addEventListener('mouseover', linkModeHover1, false);
+      document.body.addEventListener('mouseout', linkModeHover2, false);
+    }
 
-    updateInteractionDiv();
+    
 
+    function copy_website(source, dest) {
+      let website_files = JSON.parse(doReadServer("fullListDir", source));
+      let is_dest_valid = doReadServer("isdir", dest)
+      if (!website_files) throw "copy_website(): invalid source";
+      if (!is_dest_valid) throw "copy_website(): invalid dest";
+      
+      //filter out Thaditor files
+      website_files = website_files.filter(val => !thaditor_files.includes(val[0]));
+      website_files = website_files.filter(val => val[0][0] != ".");
+      //cpy website_files to to dest
+      website_files.forEach(val => {
+        let [nm, isdir] = val;
+        const s = (source + nm);
+        const d = (dest + nm);
+        if (isdir) {
+          doWriteServer("fullCopy", s, d);
+        } else {
+          doWriteServer("move", d, s);
+        }
+      });
+      let dh = doReadServer("read", source + "/.thaditor_meta");
+      dh = dh.slice(1, dh.length);
+      let draft_history = (dh == "" ? undefined : JSON.parse(dh));
+      const get_date_meta = () => (new Date).toString();
+      if (draft_history == undefined) {
+        draft_history = ["live:" + get_date_meta()];
+      } else {
+        draft_history.push(editor_model.version + ":" + get_date_meta());
+      }
+      doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
+      return 1;
+    }
+    function deleteCurrentDraft() {
+      if (editor_model.version == "Live") throw "Shouldn't be able to call deleteCurrentDraft when in Live";
+      const ans = window.confirm("Are you sure you want to permanently delete " + editor_model.version + "?");
+      if (!ans) return;
+      //the path of the folder we want to delete is and always will be Thaditor/versions/<editor_model.version>/
+      const pth_to_delete = "Thaditor/versions/" + editor_model.version + "/";
+      doWriteServer("deletermrf", pth_to_delete);
+      navigateLocal("/?edit");
+      sendNotification("Permanently deleted draft named: " + editor_model.version);
+    }
+    function publishToLive() {
+      //Find which version we're at by examining editor_model.version and/or the path
+      //copy all of the files in the draft/ folder out to the public facing site.
+      //simple as thaditor_files.includes
 
+      const conf = window.confirm("Are you sure you want to publish " + editor_model.version + " to live?");
+      if (!conf) {
+        return;
+      }
+      if (isLive()) {
+        throw "Can't publish live to live";
+      }
+      let t_src = editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1);
+      copy_website(t_src, "");
+      editor_model.version = "Live";
+      navigateLocal("/?edit", true);
+    }
+
+    updateInteractionDiv(); //outer lastEditScript
 
     function updateInteractionDiv() {
       let model = editor_model;
@@ -2548,7 +3206,8 @@ editionscript = """
       var modifyMenuDiv = document.querySelector("#modify-menu");
       //if both are closed, just return 
       if(!modifyMenuDiv || !contextMenu) return;
-      modifyMenuDiv.classList.toggle("visible", editor_model.visible);
+      modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
+      //toggle_visible_state(); // is this right?
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
       if(clickedElem && clickedElem.nodeType === 1) {
         clickedElem.setAttribute("ghost-clicked", "true");
@@ -2569,8 +3228,16 @@ editionscript = """
         return f;
       })();
       function textPreview(element, maxLength) {
-        let x = element.innerText;
-        let result = "'" + x + "'";
+        let x = element.textContent;
+        let result = "'" + x + "'";;
+        if(x == "") {
+          if(element.tagName === "META") {
+            result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
+                    (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
+          } else if(element.tagName === "SCRIPT") {
+            result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+          }
+        }
         if(typeof maxLength !== "undefined" && result.length > maxLength) {
           return result.substring(0, maxLength) + "...'";
         }
@@ -2596,10 +3263,7 @@ editionscript = """
       let interactionDiv = el("div", {"class": "information"});
       modifyMenuDiv.append(modifyMenuPinnedIconsDiv);
       let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
-      let tagNameSummary = el("div", {"class": "tagname-summary"});
-
       modifyMenuDiv.append(domSelector);
-      modifyMenuDiv.append(tagNameSummary);
       modifyMenuDiv.append(modifyMenuIconsDiv);
       modifyMenuDiv.append(interactionDiv);
       let createButton = function(innerHTML, attributes, properties) {
@@ -2628,13 +3292,16 @@ editionscript = """
         alwaysVisibleButtonIndex++;
         return result;
       }
-      if(!editor_model.linkSelectMode) {
+      if (!editor_model.state.includes("l")) {
+      //if(!editor_model.linkSelectMode) {
         addPinnedModifyMenuIcon(
           panelOpenCloseIcon(),
           {title: "Open/close settings tab", "class": "inert" },
           {onclick: function(event) {
               document.querySelector("#modify-menu").classList.toggle("visible");
+              toggle_visible_state();
               editor_model.visible = !editor_model.visible;
+              setTimeout(maybeRepositionContextMenu, 500);
               this.innerHTML = panelOpenCloseIcon();
             }
         });
@@ -2644,6 +3311,7 @@ editionscript = """
           },
           {onclick: (c => function(event) {
             //defaults to turning on advanced menu if the editor model is already visible, otherwise toggles advanced menu.
+            toggle_advanced_state();
             if(editor_model.visible) {
               editor_model.advanced = !editor_model.advanced;
             }
@@ -2654,26 +3322,12 @@ editionscript = """
             updateInteractionDiv();
           })(clickedElem)}
         )
-        addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
-        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
-          id: "savebutton"  
-        },
-          {onclick: editor_model.disambiguationMenu ? 
-            ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
-              editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
-            : function(event) {
-              if(!this.classList.contains("disabled")) {
-                sendModificationsToServer();
-              }
-            }
-          }
-        )
         addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
           {"class": "inert", title: "Undo most recent change",
             id: "undobutton"
           },
           {onclick: function(event) {
-            if(!undo()) popupMessage("Nothing to undo!");
+            if(!undo()) sendNotification("Nothing to undo!");
             }
           }   
         );
@@ -2682,55 +3336,82 @@ editionscript = """
             id: "redobutton"
           },
         	{onclick: function(event) {
-        	 if(!redo()) popupMessage("Nothing to redo!");
+        	 if(!redo()) sendNotification("Nothing to redo!");
             }
           }
         );
+        if (apache_server) {
+          addPinnedModifyMenuIcon(isDraftSVG + "<span class='modify-menu-icon-label'>" + editor_model.version + "</span>",
+            {title: editor_model.version == "Live" ? "Saved edits are live" : "Edits saved to draft named '"+editor_model.version+"'",
+             "class": "inert"},
+            {onclick: function(event) {
+              
+              editor_model.isDraftSwitcherVisible = !editor_model.isDraftSwitcherVisible;
+              set_state_visible();
+              toggle_draftview_state();
+              if (!document.querySelector("#modify-menu").classList.contains("visible")) {
+                document.querySelector("#modify-menu").classList.toggle("visible");
+                editor_model.isDraftSwitcherVisible = true;
+                set_state_draftview();
+              }
+              editor_model.visible = true;
+              updateInteractionDiv();
+            }});
+        }
+        addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
+        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
+          id: "savebutton"  
+        },
+          {onclick: editor_model.disambiguationMenu ? 
+            ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
+              editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
+            : function(event) {
+              if (editor_model.isSaving) {
+                sendNotification("Can't save while save is being undertaken");
+              }else {
+                if(!this.classList.contains("disabled")) {
+                  if (apache_server) {
+                    sendModificationsToServer();
+                  } else {
+                    sendModificationsToServerNode();
+                  }
+                }
+              }
+            }
+          }
+        )
       }
       else {
-        addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>ESCAPE</span>", 
+        addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
           {"class": "link-select-button", title: "Go back to original screen",
             id: "escapebutton"
           },
           {onclick: function(event) {
-            escapeLinkMode();
+              escapeLinkMode();
             }
           }
-        )
-        addPinnedModifyMenuIcon(plusSVG + "<span class='modify-menu-icon-label-link'>SELECT</span>", 
-          {"class": "link-select-button", title: "Select desired local link",
+        );
+        addPinnedModifyMenuIcon(checkSVG + "<span class='modify-menu-icon-label-link'>Select</span>", 
+          {"class": "link-select-button", title: editor_model.linkSelectMsg || "Select target",
             id: "selectbutton"
           },
           {onclick: function(event) {
-            let linkTo = editor_model.clickedElem,
-                targetID = linkTo.getAttribute("id");
-            //console.log("Target ID is:", targetID);
-            if(!targetID) {
-              targetID = "ID" + editor_model.idNum
-              linkTo.setAttribute("id", targetID);
-              editor_model.idNum += 1;
-              //console.log("here!");
-            }
-            else if(targetID.length > 100) {
-              targetID = targetID.trim();
-              linkTo.setAttribute("id", targetID);
-            }
-            //console.log("TargetID is now:", targetID);  
-            editor_model.linkFrom.setAttribute("href", "#" + targetID);
-            console.log(editor_model.linkFrom.getAttribute)
-            escapeLinkMode();
+              editor_model.linkSelectCallback(editor_model.clickedElem);
+              escapeLinkMode();
             }
           }
-        )
+        );
+        if(editor_model.linkSelectOtherMenus) {
+          editor_model.linkSelectOtherMenus(addPinnedModifyMenuIcon)
+        }
       }
-
-      if(model.advanced || model.disambiguationMenu) {
+      //if(model.advanced || model.disambiguationMenu) { //change here
+      if(editor_model.state.includes("a") && editor_model.state.includes("v")) {
         modifyMenuDiv.append(
           el("a", { class:"troubleshooter", href: "https://github.com/MikaelMayer/Editor/issues"}, "Help"));
         modifyMenuIconsDiv.append(
           el("span", { class:'filename', title:"the path of the file you are currently viewing"}, 
             editor_model.path ? editor_model.path : "[root folder]"));
-        
         // TODO: Ambiguity interaction (should be stored in the model)
         // TODO: Current URL (can be changed) + reload button (double circular arrow) + list files button (folder icon)
         // TODO: Stage/create draft (clone and save icon)
@@ -2744,10 +3425,8 @@ editionscript = """
         //when we click reload, it will save the current scroll position as the one it was at the beginning of the run
         addModifyMenuIcon(reloadSVG,
           {"class": "tagName", title: "Reload the current page"},
-            {onclick: function(event) {
-               editor_model.curScrollPos = (editor_model.displaySource ? document.getElementById("sourcecontentmodifier").scrollTop : 0);
-               reloadPage();
-              } }
+            {onclick: function(event) { editor_model.curScrollPos = (editor_model.displaySource ? document.getElementById("sourcecontentmodifier").scrollTop : 0);
+              reloadPage(); } }
         );
         addModifyMenuIcon(folderSVG,
           {"class": "tagName", title: "List files in current directory"},
@@ -2756,9 +3435,63 @@ editionscript = """
               u.pathname = u.pathname.replace(/[^\/]*$/, "");
               u.searchParams.set("ls", "true");
               navigateLocal(u.href);
-            } 
+            }
           }
-        );        
+        );
+        const flog = () => el("textarea", {id:"fullLog", class:"textarea logger", visibility:false, readonly:true, isghost:true}, [], {});
+        function toggleEditorLog() {
+          //function el(tag, attributes, children, properties) 
+          let log = document.getElementById("fullLog");
+          if (!log) {
+            log = flog();
+            log.style.zIndex = 100;
+            log.style.display = 'none';
+            modifyMenuDiv.append(log);
+          }
+          let logtxt = "";
+          const elog = editor_model.editor_log;
+          for (let i = 0; i < elog.length; i++) {
+            const l = elog[i];
+            logtxt = logtxt + l + "\n";
+          }
+          logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
+          if (log.style.display == 'block') {
+            editor_model.show_log = false;
+            off_state_log();
+            log.style.visibility = false;
+            log.style.display = 'none';
+          } else {
+            editor_model.show_log = true;
+            set_state_log();
+            log.style.visibility = true;
+            log.style.display = 'block';
+          }
+        }
+        addModifyMenuIcon(logSVG,
+          {"class": "tagName", title: "Display the full log"},
+            {onclick: function(e) {
+              toggleEditorLog();
+            }});
+        
+        //if (editor_model.show_log) {
+        if (editor_model.state.includes("s")) {
+          let log = document.getElementById("fullLog");
+          if (!log) {
+            log = flog();
+            modifyMenuDiv.append(log);
+          }
+          let logtxt = "";
+          const elog = editor_model.editor_log;
+          for (let i = 0; i < elog.length; i++) {
+            const l = elog[i];
+            logtxt = logtxt + l + "\n";
+          }
+          logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
+          editor_model.show_log = true;
+          set_state_log();
+          log.style.visibility = true;
+          log.style.display = 'block';
+        }
   
         if(editor_model.disambiguationMenu) {
           interactionDiv.append(editor_model.disambiguationMenu);
@@ -2802,56 +3535,56 @@ editionscript = """
         )
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
-      } else {
-      if(model.insertElement)  {
+      //} else if(model.insertElement)  {
+      } else if (editor_model.state.includes("i")) {
         interactionDiv.classList.add("insert-information-style");
         interactionDiv.classList.add("information-style");
         interactionDiv.append(el("h1", {}, "Insert"));
+        let insertOption = function(value, msg, checked, title) {
+          return el("span", {class: "insertOption"}, [
+            el("input", {type: "radio", id: "radioInsert" + value, name: "insertionPlace", value: value}, [], {checked: checked || false}),
+            el("label", {"for": "radioInsert" + value, title: title}, msg)], {onclick: restoreCaretPosition});
+        }
+        let t = clickedElem.tagName;
+        let isHTML = t === "HTML";
+        let isTop = isHTML || t === "BODY" || t === "HEAD";
+        let caretBlinks = model.caretPosition;
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
-          clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {class: "insertOption"}, [
-              el("input", {type: "radio", id: "radioInsertBeforeNode", name: "insertionPlace", value: "before"}),
-              el("label", {"for": "radioInsertBeforeNode"}, "Before node")]),
-          clickedElem.tagName === "HTML" ? undefined :
-            el("span", {class: "insertOption"}, [
-              el("input", {type: "radio", id: "radioInsertAtCaret", name: "insertionPlace", value: "caret"}, [], {checked: clickedElem.tagName === "BODY" || clickedElem.tagName === "HEAD" }),
-              el("label", {"for": "radioInsertAtCaret"}, model.caretPosition ? "At caret" : "As child")], {onclick: restoreCaretPosition}),
-          clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {class: "insertOption"}, [
-              el("input", {type: "radio", id: "radioInsertAfterNode", name: "insertionPlace", value: "after"}, [], {checked: clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD"  }),
-              el("label", {"for": "radioInsertAfterNode"}, "After node")]),
-          clickedElem.tagName === "BODY" || clickedElem.tagName === "HTML" || clickedElem.tagName === "HEAD" ? undefined :
-            el("span", {class: "insertOption"}, [
-              el("input", {type: "radio", id: "radioInsertWrapNode", name: "insertionPlace", value: "wrap"}),
-              el("label", {"for": "radioInsertWrapNode"}, "Wrap node")]),
+          isTop ? undefined : insertOption("before", "Before node"),
+          isHTML || !caretBlinks ? undefined : insertOption("first-child", "As first child"),
+          isHTML || !caretBlinks ? undefined : insertOption("caret", "At caret", !isTop && caretBlinks),
+          isHTML || !caretBlinks ? undefined : insertOption("last-child", "As last child", isTop || !caretBlinks),
+          isTop ? undefined : insertOption("after", "After node"),
+          isTop ? undefined : insertOption("wrap", "Wrap node", false, "Put the selected node inside the newly inserted node")
         ]));
-
-        let insertTag = function() {
-          let newElement = (() => {
+        let insertTag = function(event, newElement) {
+          newElement = newElement || (() => {
             let parent = this;
             while(parent && !parent.classList.contains("tagName")) parent = parent.parentElement;
             let m = parent.querySelector(".templateengine");
             if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
             return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
           })();
-          let insertionStyle = (() => {
+          var insertionStyle = (() => {
             let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
             let defaultValue = "after";
             for (let i = 0, length = radios.length; i < length; i++) {
               if (radios[i].checked) return radios[i].getAttribute("value");
-              defaultValue = radios[i].getAttribute("value")
-            }
+              defaultValue = radios[i].getAttribute("value");
+            } 
             return defaultValue;
           })();
           if(insertionStyle === "after") {
             if(typeof newElement === "string") {
               clickedElem.insertAdjacentHTML("afterend", newElement);
+              newElement = clickedElem.nextElementSibling;
             } else {
               clickedElem.parentElement.insertBefore(newElement, clickedElem.nextSibling);
             }
           } else if(insertionStyle === "before") {
             if(typeof newElement === "string") {
               clickedElem.insertAdjacentHTML("beforebegin", newElement);
+              newElement = clickedElem.previousElementSibling;
             } else {
               clickedElem.parentElement.insertBefore(newElement, clickedElem);
             }
@@ -2860,13 +3593,11 @@ editionscript = """
               clickedElem.insertAdjacentHTML("beforebegin", newElement);
               newElement = clickedElem.previousElementSibling;
             } else {
-              newElement.innerHTML = "";
               clickedElem.parentElement.insertBefore(newElement, clickedElem);
-              console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
             }
             newElement.appendChild(clickedElem);
             console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
-          } else if(typeof model.caretPosition !== "undefined") {
+          } else if(insertionStyle === "caret") {
             let s = model.caretPosition;
             let txt = s.startContainer;
             if(txt.textContent.length > s.startOffset && s.startOffset > 0) { // split
@@ -2878,68 +3609,108 @@ editionscript = """
               let tmpSpan = el("span");
               clickedElem.insertBefore(tmpSpan, txt.nextSibling)
               tmpSpan.insertAdjacentHTML("afterend", newElement);
+              newElement = tmpSpan.nextElementSibling;
               tmpSpan.remove();
             } else {
               clickedElem.insertBefore(newElement, txt.nextSibling)
             }
-          } else { // Insert at the end of the selected element, inside.
+          } else if(insertionStyle === "last-child") { // Insert at the end of the selected element, inside.
             if(typeof newElement === "string") {
-              // TODO: append at the element.
               let tmpSpan = el("span");
               clickedElem.insertBefore(tmpSpan, null);
-              tmpSpan.insertAdjacentHTML("afterend", newElement);
+              tmpSpan.insertAdjacentHTML("afterend", newElement); // afterend or beforeend same, tmpSpan to be removed.
+              newElement = tmpSpan.nextElementSibling;
               tmpSpan.remove();
             } else {
               // Insert at the end.
               clickedElem.insertBefore(newElement, null);
             }
+          } else if(insertionStyle === "first-child") { // Insert at the end of the selected element, inside.
+            if(typeof newElement === "string") {
+              let tmpSpan = el("span");
+              clickedElem.insertBefore(tmpSpan, clickedElem.children[0]);
+              tmpSpan.insertAdjacentHTML("afterend", newElement);// afterend or beforeend same, tmpSpan to be removed.
+              newElement = tmpSpan.nextElementSibling;
+              tmpSpan.remove();
+            } else {
+              // Insert at the beginning.
+              clickedElem.prepend(newElement);
+            }
           }
           editor_model.insertElement = false;
+          off_state_insert();
+          set_state_visible();
           editor_model.visible = true;
-          if(typeof newElement !== "string") {
-            editor_model.clickedElem = newElement;
-            updateInteractionDiv();
-          } else {
-            editor_model.clickedElem = clickedElem;
-            updateInteractionDiv();
-          }
+          editor_model.clickedElem  = typeof newElement !== "string" && typeof newElement !== "undefined" ?
+            newElement : clickedElem;
+          updateInteractionDiv();
         }
-
         let addElem = function(name, createParams) {
           interactionDiv.append(
-            el("div", {"class": "tagName"},
-              el("span", { "class": "templateengine"}, name, { createParams: createParams } ), { onclick: insertTag }
+            el("div", {"class": "tagName", title: createParams.title},
+              el("span", { "class": "templateengine"}, name, {createParams: createParams}), { onclick: insertTag }
             )
           );
         }
-
         if(clickedElem.tagName === "HEAD") {
-          addElem("<title>", {tag:"title", children: "Page_title" });
-          addElem("<style>", {tag:"style", children: "/*Your CSS there*/", props: {isghost: false}});
-          addElem("<script>", {tag:"script", children: "/*Your CSS below*/", props: {isghost: false} });
-        } else {
+          addElem("Title", {tag:"title", children: "Page_title", title: "Insert <title>"});
+        }
+        if(clickedElem.tagName !== "HEAD") {
+          interactionDiv.append(
+            el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
+                innerHTML: linkModeSVG,
+                onclick: function(event) {
+                  editor_model.insertElement = false;
+                  off_state_insert();
+                  activateNodeSelectionMode(
+                    "to move",
+                    node => insertTag.call(this, event, node),
+                    addPinnedModifyMenuIcon => {
+                      addPinnedModifyMenuIcon(cloneSVG + "<span class='modify-menu-icon-label-link'>Clone</span>", 
+                        {"class": "link-select-button", title: "Confirm to clone",
+                          id: "selectbutton"
+                        },
+                        {onclick: function(event) {
+                          let node = editor_model.clickedElem;
+                          let clonedNode = editor.duplicate(node, {ignoreText: true});
+                          insertTag.call(this, event, clonedNode);
+                          escapeLinkMode();
+                          editor_model.clickedElem = clonedNode;
+                          }
+                        }
+                      );
+                    }
+                  )
+                }
+              })
+          )
           interactionDiv.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
             onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
           );
-          // TODO: Filter and sort which one we can add
-          addElem("<li> List item", {tag:"li", props: { innerHTML: "<br>" }});
-          addElem("<ul> Bulleted list", {tag:"ul", props: { innerHTMLCreate: "<ul>\n<li><br></li>\n</ul>" }});
-          addElem("<ol> Numbered list", {tag:"ol", props: { innerHTMLCreate: "<ol>\n<li><br></li>\n</ol>" }});
-          addElem("<button> Button", {tag: "button", props: {innerHTML: "Name_your_button" }});
-
-          addElem("<a> Link", {tag: "a", props: { innerHTML: "Link name", href: "" }});
-          addElem("<p> Paragraph", {tag: "p", props: { innerHTML: "Inserted paragraph" }});
-          addElem("<img> Image", {tag: "img", attrs: { src: "", alt: "", title: "" }});
-          
+          // TODO: Filter and sort which one we can add, also depending on where to insert.
+          console.log("got here!");
+          addElem("List item", {tag:"li", props: { innerHTML: "<br>" }, title: "Insert <li>"});
+          addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }, title: "Insert <ul>"});
+          addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n<li><br></li>\n</ol>" }, title: "Insert <ol>"});
+          addElem("Button", {tag: "button", props: {innerHTML: "Name_your_button" }, title: "Insert <button>"});
+          // something is wrong with creating link and paragraph using childCreate
+          // addElem("Link", {tag:"a", childCreate: "Name_your_link"});
+          // addElem("Paragraph", {tag:"p", childCreate: "Inserted paragraph"});
+          addElem("Link", {tag: "a", props: { innerHTML: "Name_your_link", href: "" }, title: "Insert <a href=''>"});
+          addElem("Paragraph", {tag: "p", props: { innerHTML: "Insert_paragraph" }, title: "Insert <p>"});
+          addElem("Division content", {tag: "div", title: "Insert <div>"});
+          addElem("Preformatted text", {tag: "pre", title: "Insert <pre>"});
           for(let i = 1; i <= 6; i++) {
-            addElem("<h " + i + "> Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }});
+            addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }, title: "Insert <h"+i+">"});
           }
-          addElem("<style>", {tag:"style", children: "/*Your CSS there*/", props: {isghost: false}});
-          addElem("<script>", {tag:"script", children: "/*Your CSS below*/", props: {isghost: false} });
+          addElem("Newline", {tag: "br", title: "Insert <br>"});
         }
+        addElem("Stylesheet", {tag:"style", children: "/*Your CSS there*/", title: "Insert <style>"});
+        addElem("JavaScript", {tag:"script", children: "/*Your CSS below*/", title: "Insert <script>"});
 
+        
         interactionDiv.append(
-          el("div", {"class": "tagName"}, [
+          el("div", {"class": "tagName", id: "customHTML"}, [
             el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
             el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
                 innerHTML: plusSVG, 
@@ -2949,17 +3720,131 @@ editionscript = """
           ])
         );
         document.querySelector("#modify-menu").classList.toggle("visible", true);
-      }
+      //} else if (editor_model.isDraftSwitcherVisible) {
+      } else if (editor_model.state.includes("v") && editor_model.state.includes("d")) {
+        //Now we want to open some sort of draft-picker/creater UI inside the modify-menu
+        if (!apache_server) {
+          throw "Should not have been able to enter into drafting mode when apache_server == false.";
+        }
+        const createNewDraft = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Create new draft off of " + editor_model.version, {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        /*
+                          Alright, for now, I'm going to launch the creation of versioning here.
+                          First, check to see if the versions folder exists. If it does, exit. 
+                          We don't want to overwrite anything.
+                        */
+                        const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
+                        if (!draft_name) {
+                          return;
+                        }
+                        const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
+                        let fail = false;
+                        if (!verzExist) {
+                          console.log ("making versions folder");
+                          doWriteServer("mkdir", "Thaditor/versions");
+                          console.log ("made versions folder?");
+                        } else 
+                        {
+                          //we need to make sure we're not overwriting anothe draft
+                          let versionsList = JSON.parse(doReadServer("fullListDir", "Thaditor/versions/"));
+                          versionsList.forEach(val => {
+                            let [nm, isdir] = val;
+                            if (isdir) {
+                              if (nm == draft_name) {
+                                window.alert("Can't overwrite an existing draft!");
+                                fail = true;
+                              }
+                            }
+                          });
+                        }
+                        if (fail) return;
+
+                        doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
+                        const t_pth = editor_model.path.slice(0, editor_model.path.lastIndexOf("/"));
+                        const f_pth = (isLive() ? "" : editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1));
+                        const success = copy_website(f_pth, "Thaditor/versions/" + draft_name + "/");
+                        //change our URL to the versions/draft/
+                        editor_model.version = draft_name;
+                        navigateLocal("/Thaditor/versions/" + draft_name + "/?edit");
+                        setTimeout( () => {
+                          sendNotification("Successfully created + switched to draft: " + draft_name);
+                        }, 0);
+                      }
+                    }
+                  );
+        };
+        const btnGetter = (name) => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, name, {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        navigateLocal("/Thaditor/versions/" + name + "/?edit");
+                        setTimeout( () => {
+                          sendNotification("Successfully switched to draft: " + name);
+                        }, 0);
+                      }
+                    }
+                  );
+        };
+
+        const liveBtn = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Live", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        navigateLocal("/?edit");
+                      }
+                    });
+        };
+        
+        const publishToLiveBtn = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Publish " + editor_model.version + " to live!", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        publishToLive();
+                      }
+                    });
+        };
+
+        const deleteCurrentDraftBtn = () => {
+          return el("div", {"class": "childrenSelector"},
+                    [
+                      el("div", {"class": "childrenSelectorName"}, "Irreversibly delete " + editor_model.version + "!", {}),
+                    ], 
+                    {
+                      onclick: (event) => {
+                        deleteCurrentDraft();
+                      }
+                    });
+        };
+
+        let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
+        if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
+          const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
+          vers.forEach(ver => {
+            draftListDiv.append(btnGetter(ver));
+          });
+        }
+        if (!isLive()) draftListDiv.append(liveBtn());
+        if (!isLive()) draftListDiv.append(publishToLiveBtn());
+        draftListDiv.append(createNewDraft());
+        if (!isLive()) draftListDiv.append(deleteCurrentDraftBtn());
+        modifyMenuDiv.append(draftListDiv);
+      } else {
       if(clickedElem) {
         interactionDiv.classList.add("information-style");
-        tagNameSummary.append(el("div", {class: "tagname-input codefont"}, [
-              el("input", {"id":"newTagName", "class": "codefont inline-input", "type":"text", value: clickedElem.tagName.toLowerCase(), title:"This element's tag name"}, [], { onkeyup() {
-              document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
-            }}),
-            ]
-        ));
-        tagNameSummary.append(el("span", {"class": "tagname-info"}, textPreview(clickedElem, 50)));
-
         /*
           Build the DOM node selector:
           Two parts:
@@ -2968,7 +3853,6 @@ editionscript = """
           |-----------------------|
           |  children / siblings  |
           |-----------------------|
-
           Two status:
           editor_model.displayClickedElemAsMainElem = true
           Status 1 (default). Show current clicked element as main element on the top:
@@ -2977,16 +3861,13 @@ editionscript = """
           |-----------------------|
           |   children elements   |
           |-----------------------|
-
           Status 2. Show current clicked element's parent element as main element on the top:
           |-----------------------------------------------------|
           |                  parent element                     |
           |-----------------------------------------------------|  
           | previous sibling | clicked element* | next sibling  |
           |-----------------------------------------------------|
-
           All the HTML elements (except empty parts) in the selector can be clicked.
-
           Check parent: When the clicked element in status 1 is clicked in selector, the selector switches to status 2 (display its parent as main element in first level).
           Check parent: When the parent element in status 2 is clicked in selector, the selector remains status 2 while the parent element becomes current clicked element.
           
@@ -2995,17 +3876,13 @@ editionscript = """
           
           Check siblings: When the siblings in status 2 is clicked in selector, the sibling will become 'clicked element' but the selector won't switch status 1. 
           The siblings will be in the middle of second level of status 2. This is because we want user switching siblings in second level easily.
-
           When other elements in selector are clicked, change 'clicked element' to it. And it also follow rules above.
-
           Bonus feature (Memoization):
             When user select DOM nodes along DOM tree from bottom to top continuously, the selector will remember its traverse path.
             When user tries to traverse back through DOM tree from top to bottom, the selector will show previous visited children element with its parent element.
             img -> div -> body
             body -> div -> img
-
             The main point is to decide which child should be displayed in the middle of second part (children element part) of selector in status 1.
-
             Implementation:
               editor_model.previousVisitedElem = [], as a stack storing DOM node path
               
@@ -3024,7 +3901,6 @@ editionscript = """
           el("div", {"class": "mainElem"}, []),
           el("div", {"class": "childrenElem"}, [])
         );
-
         let displayMainElem = function(elem) {
           let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
           mainElemDiv.append(
@@ -3035,14 +3911,17 @@ editionscript = """
             el("div", {"class": "mainElemInfo"}, textPreview(elem, 50))
           );
         }
-
         let displayChildrenElem = function(elem) {
           let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
           childrenElemDiv.append(
-            el("div", {"class": "childrenSelector"},
+            el("div", {
+                 "class": "childrenSelector" + (elem.matches(".editor-interface") ? " editor-interface-dom-selector" : "") +
+                   (isGhostNode(elem) ? " editor-recorded-ghost-node" : ""),
+                 title: elem.matches(".editor-interface") ? "This is part of Editor" : (isGhostNode(elem) ? "(temporary) " : "") + textPreview(elem, 20)
+                 },
               [
                 el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
-                el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
+                // el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
               ], 
               {
                 onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
@@ -3051,7 +3930,6 @@ editionscript = """
             )
           );
         }
-
         // show attributes of element on the dom selector
         let displayElemAttr = function(targetDiv, elem) {
           for (let i = 0; elem && elem.attributes && i < elem.attributes.length; i++) {
@@ -3068,7 +3946,6 @@ editionscript = """
             );
           }
         }
-
         // display children and siblings in the second part of selector
         let displayChildrenSiblings = function(middleChild, selectMiddleChild) {
           // display clicked element's previous sibling, clicked element, clicked element's next sibling
@@ -3082,10 +3959,10 @@ editionscript = """
               if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
                 return;
               }
-
               // still in status 2, but clicked element change to previous sibling
               editor_model.displayClickedElemAsMainElem = false;
               editor_model.previousVisitedElem = []; // clear the stack
+              editor_model.clickedElem.removeAttribute("ghost-hovered");
               editor_model.clickedElem = c;
               editor_model.notextselection = true;
               updateInteractionDiv();
@@ -3093,11 +3970,10 @@ editionscript = """
           } else {
             let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
             childrenElemDiv.append(
-              el("div", {"class": "childrenSelector no-sibling"}, "no previous sibling")
+              el("div", {"class": "childrenSelector no-sibling"}, "no sibling")
             );
           }
           cnt++;
-
           // display certain child in the middle
           displayChildrenElem(middleChild);
           document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
@@ -3106,8 +3982,14 @@ editionscript = """
               return;
             }
 
-            // switch to status 1
-            editor_model.displayClickedElemAsMainElem = true;
+            if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
+               // still in status 2
+              editor_model.displayClickedElemAsMainElem = false;
+            } else {
+              // switch to status 1
+              editor_model.displayClickedElemAsMainElem = true;
+            }
+            editor_model.clickedElem.removeAttribute("ghost-hovered");
             editor_model.clickedElem = c;
             editor_model.notextselection = true;
             updateInteractionDiv();
@@ -3116,19 +3998,19 @@ editionscript = """
             document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].classList.add("selectedDom");
           }
           cnt++;
-
           // display next sibling
-          if (middleChild.nextElementSibling && (middleChild.nextElementSibling.id !== "context-menu" || middleChild.nextElementSibling.id !== "modify-menu" || middleChild.nextElementSibling.id !== "editbox")) {
+          if (middleChild.nextElementSibling && 
+             (middleChild.nextElementSibling.id !== "context-menu" || middleChild.nextElementSibling.id !== "modify-menu" || middleChild.nextElementSibling.id !== "editbox")) {
             displayChildrenElem(middleChild.nextElementSibling);
             document.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
               let c = middleChild.nextElementSibling;
               if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
                 return;
               }
-
               // still in status 2, but clicked element change to next sibling
               editor_model.displayClickedElemAsMainElem = false;
               editor_model.previousVisitedElem = []; // clear the stack
+              editor_model.clickedElem.removeAttribute("ghost-hovered");
               editor_model.clickedElem = c;
               editor_model.notextselection = true;
               updateInteractionDiv();
@@ -3136,13 +4018,15 @@ editionscript = """
           } else {
             let childrenElemDiv = document.querySelector(".dom-selector > .childrenElem");
             childrenElemDiv.append(
-              el("div", {"class": "childrenSelector no-sibling"}, "no next sibling")
+              el("div", {"class": "childrenSelector no-sibling"}, "no sibling")
             );
           }
         }
-
         // editor itself should be invisible
         if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
+          if (!clickedElem.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
+            editor_model.displayClickedElemAsMainElem = false;
+          }
           // status 1. display clicked element in main part
           if (editor_model.displayClickedElemAsMainElem) {
             let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
@@ -3154,12 +4038,12 @@ editionscript = """
               }
               // When the main element in selector is clicked, selector switch to status 2 so that user can see its parent element
               editor_model.displayClickedElemAsMainElem = false;
+              editor_model.clickedElem.removeAttribute("ghost-hovered");
               editor_model.clickedElem = clickedElem;
               editor_model.notextselection = true;
               updateInteractionDiv();
             }
             displayElemAttr(mainElemDiv, clickedElem);
-
             // display children, if no previous selected child, display first 3 children elements in second part of selector
             if (editor_model.previousVisitedElem.length < 2 ||
                 (editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1] != clickedElem)) {
@@ -3171,7 +4055,7 @@ editionscript = """
                 let childrenElem = clickedElem.children;
                 for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
                   // prevent displaying editor itself
-                  if (childrenElem[i].id === "context-menu" || childrenElem[i].id === "modify-menu" || childrenElem[i].id === "editbox") {
+                  if (cnt === 0 && (childrenElem[i].matches(".editor-interface") || isGhostNode(childrenElem[i]))) {
                     continue;
                   }
                   displayChildrenElem(childrenElem[i]);
@@ -3181,8 +4065,13 @@ editionscript = """
                       return;
                     }
 
-                    // still in status 1
-                    editor_model.displayClickedElemAsMainElem = true;
+                    if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
+                      editor_model.displayClickedElemAsMainElem = false;
+                    } else {
+                      // still in status 1
+                      editor_model.displayClickedElemAsMainElem = true;
+                    }
+                    editor_model.clickedElem.removeAttribute("ghost-hovered");
                     editor_model.clickedElem = c;
                     editor_model.notextselection = true;
                     updateInteractionDiv();
@@ -3190,9 +4079,9 @@ editionscript = """
                   cnt++;
                 }
               } else {
-                document.querySelector(".childrenElem").append(
-                    el("div", {"class": "no-children"}, "No Children")
-                );
+                // document.querySelector(".childrenElem").append(
+                //     el("div", {"class": "no-children"}, "No Children")
+                // );
               }
             } else {
               editor_model.previousVisitedElem.pop();
@@ -3202,7 +4091,6 @@ editionscript = """
           } else {
             // status 2. display clicked element's parent element in main part
             let mainElemDiv = document.querySelector(".dom-selector > .mainElem");
-
             // <html> has no parent element
             if(clickedElem.parentElement) {
               displayMainElem(clickedElem.parentElement);
@@ -3210,7 +4098,6 @@ editionscript = """
                 if (!clickedElem.parentElement.tagName) {
                   return;
                 }
-
                 // still in status 2 while current clicked element's parent element becomes clicked element so that user can see grandparent element
                 editor_model.displayClickedElemAsMainElem = false;
                 // memoization. when user click parent element:
@@ -3224,6 +4111,7 @@ editionscript = """
                     editor_model.previousVisitedElem = []; // clear the stack
                   }
                 }
+                editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = clickedElem.parentElement;
                 editor_model.notextselection = true;
                 updateInteractionDiv();
@@ -3480,133 +4368,163 @@ editionscript = """
           }
         }
       }
-
-      //    |--  |\ |  |--
-      //    |--  | \|  |  | of DOM SELECTOR
-      //    |--  |  |  |--
-
       
-      let linkSelect = function() {
-        editor_model.visible = false;
-        editor_model.linkSelectMode = true;
-        editor_model.linkFrom = editor_model.clickedElem;
-        //"center" clicked element on document body
-        editor_model.clickedElem = document.body;
-        //removes all context menu stuff 
-        document.querySelector("#context-menu").classList.remove("visible");
-        updateInteractionDiv();
-        popupMessage("Please select an element to link to.");
+        // _______ .__   __.  _______  
+        // |   ____||  \ |  | |       \ 
+        // |  |__   |   \|  | |  .--.  |
+        // |   __|  |  . `  | |  |  |  |  of DOM SELECTOR
+        // |  |____ |  |\   | |  '--'  |
+        // |_______||__| \__| |_______/ 
 
-        document.body.addEventListener('mouseover', linkModeHover1, false);
-        document.body.addEventListener('mouseout', linkModeHover2, false);
-
-      }
-
-
-      interactionDiv.append(el("input", {"type": "button", id: "applyNewTagName", value: "Apply new tag name"}, [], {onclick() {
-            let newel = el(document.querySelector("#newTagName").value);
-            let elements = clickedElem.childNodes;
-            while(elements.length) {
-              newel.append(elements[0]);
+      var linkSelect = function() {
+        activateNodeSelectionMode("to link to",
+          (linkFrom => linkTo => {
+            let targetID = linkTo.getAttribute("id");
+            if(!targetID) {
+              targetID = "ID" + editor_model.idNum
+              linkTo.setAttribute("id", targetID);
+              editor_model.idNum += 1;
             }
-            for(let i = 0; i < clickedElem.attributes.length; i++) {
-              newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+            else if(targetID.length > 100) {
+              targetID = targetID.trim();
+              linkTo.setAttribute("id", targetID);
             }
-            clickedElem.parentElement.insertBefore(newel, clickedElem);
-            clickedElem.remove();
-            editor_model.clickedElem = newel;
-            updateInteractionDiv();
-          }
-        }
-      )); 
-      
-      let keyvalues = el("div", {"class":"keyvalues"});
-      for(let i = 0; clickedElem && clickedElem.attributes && i < clickedElem.attributes.length; i++) {
-        let name = clickedElem.attributes[i].name;
-        if(name === "ghost-clicked" || name === "ghost-hovered") continue;
-        let value = clickedElem.attributes[i].value;
-        if(false /*name == "style"*/) {
-          // Do something special for styles.
-        } else {
-          let isHref = name === "href" && clickedElem.tagName === "A";
-          keyvalues.append(
-            el("div", {"class": "keyvalue"}, [
-              el("span", {title: "This element has attribute name '" + name + "'"}, name + ": "),
-              el("span", {},
-                el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, 
-                  [], {
-                    onkeyup: ((name, isHref) => function () {
-                        clickedElem.setAttribute(name, this.value);
-                        if(isHref) {
-                          let livelinks = document.querySelectorAll(".livelink");
-                          for(let livelink of livelinks) {
-                            let finalLink = livelink.matches("#context-menu *") ?
-                              `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
-                            livelink.setAttribute("href", finalLink);
-                            livelink.setAttribute("title", "Go to " + this.value);
-                          }
-                        }
-                      })(name, isHref)
-                  })
-              ),
-              isHref ? el("span", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [],
-                        {innerHTML: liveLinkSVG(model.link)}): undefined,
-              isHref ? el("div", {"class":"modify-menu-icon", id: "internalLinkMode", title: "Activate internal link mode"}, [], {
-                innerHTML: linkModeSVG,
-                onclick: linkSelect
-              }): undefined,
-              el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
-                innerHTML: wasteBasketSVG,
-                onclick: ((name) => function() {
-                  clickedElem.removeAttribute(name);
-                  editor_model.clickedElem = clickedElem;
-                  updateInteractionDiv();
-                })(name)
-              }),
-            ]
-          ));
-        }
-      }
-
-      let highlightsubmit = function() {
-        let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
-        this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
-          attrName === "" || attrName.trim() !== attrName
-      }
-
-
-      if(clickedElem && clickedElem.nodeType === 1) {
-        keyvalues.append(
-          el("div", {"class": "keyvalue keyvalueadder"}, [
-            el("span", {}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
-            el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
-              onfocus: function() {
-                let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
-                if(keyInput && keyInput.value != "") {
-                  let name = document.querySelector("div.keyvalueadder input[name=name]").value;
-                  clickedElem.setAttribute(
-                    name,
-                    document.querySelector("div.keyvalueadder input[name=value]").value
-                  );
-                  updateInteractionDiv();
-                  let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
-                  if(d) d.focus();
-                }
-              },
-              onkeyup: highlightsubmit})),
-            el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
-              disabled: true,
-              onclick() {
-                clickedElem.setAttribute(
-                  this.parentElement.querySelector("[name=name]").value,
-                  this.parentElement.querySelector("[name=value]").value
-                );
-                updateInteractionDiv();
-              }
-            })
-          ])
+            linkFrom.setAttribute("href", "#" + targetID);
+          })(editor_model.clickedElem)
         );
       }
+
+      let keyvalues = el("div", {"class":"keyvalues"});
+      if (clickedElem) {
+        // modify tagname
+          keyvalues.append(
+            el("div", {"class": "keyvalue"}, [
+              el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "tag: "),
+              el("span", {class:"attribute-key-value"}, [
+                el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
+                  [], {
+                    onkeyup() {
+                       document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+                    }
+                  }),
+                  el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
+                        let newel = el(document.querySelector("#newTagName").value);
+                        let elements = clickedElem.childNodes;
+                        while(elements.length) {
+                          newel.append(elements[0]);
+                        }
+                        for(let i = 0; i < clickedElem.attributes.length; i++) {
+                          newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+                        }
+                        clickedElem.parentElement.insertBefore(newel, clickedElem);
+                        clickedElem.remove();
+                        editor_model.clickedElem = newel;
+                        updateInteractionDiv();
+                      }
+                    }
+                  ),
+                  el("div", {id:"newtagname-align-placeholder"}, " ")
+                ]
+              )
+            ])
+          );
+        let isGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(clickedElem);
+        let isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(clickedElem);
+
+        for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
+          let name = clickedElem.attributes[i].name;
+          if(name === "ghost-clicked" || name === "ghost-hovered") continue;
+          let value = clickedElem.attributes[i].value;
+          if(false /*name == "style"*/) {
+            // Do something special for styles.
+          } else {
+            let isGhost = isGhostAttributeKey(name);
+            let isIgnored = isIgnoredAttributeKey(name);
+            let isHref = name === "href" && clickedElem.tagName === "A";
+            keyvalues.append(
+              el("div", {"class": "keyvalue" + (isGhost ? " editor-recorded-ghost-attribute" : "")
+                                             + (isIgnored ? " editor-ignored-attribute" : ""),
+                         "title": isGhost ? "Key/value generated by a script" : isIgnored ? "key/value ignored after being modified by a script" : undefined
+              }, [
+                el("span", {title: "Element attribute name"}, name + ": "),
+                el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
+                  el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
+                      onkeyup: ((name, isHref) => function () {
+                          clickedElem.setAttribute(name, this.value);
+                          if(isHref) {
+                            let livelinks = document.querySelectorAll(".livelink");
+                            for(let livelink of livelinks) {
+                              let finalLink = livelink.matches("#context-menu *") ?
+                                `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
+                              livelink.setAttribute("href", finalLink);
+                              livelink.setAttribute("title", "Go to " + this.value);
+                            }
+                          }
+                      })(name, isHref)
+                    }),
+                  isHref ? el("div", {title: "Go to " + model.link, "class": "modify-menu-icon inert"}, [], {
+                    innerHTML: liveLinkSVG(model.link)
+                  }) : undefined,
+                  isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
+                    innerHTML: linkModeSVG,
+                    onclick: linkSelect
+                  }) : undefined,
+                  el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
+                    innerHTML: wasteBasketSVG,
+                    onclick: ((name) => function() {
+                      clickedElem.removeAttribute(name);
+                      editor_model.clickedElem = clickedElem;
+                      updateInteractionDiv();
+                      })(name)
+                    })
+                  ]
+                )
+              ]
+            ));
+          }
+        }
+        let highlightsubmit = function() {
+          let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
+          this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
+            attrName === "" || attrName.trim() !== attrName
+        }
+
+
+        if(clickedElem.nodeType === 1) {
+          keyvalues.append(
+            el("div", {"class": "keyvalue keyvalueadder"}, [
+              el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
+              el("span", {class: "attribute-key-value"}, [
+                el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
+                  onfocus: function() {
+                    let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
+                    if(keyInput && keyInput.value != "") {
+                      let name = document.querySelector("div.keyvalueadder input[name=name]").value;
+                      clickedElem.setAttribute(
+                        name,
+                        document.querySelector("div.keyvalueadder input[name=value]").value
+                      );
+                      updateInteractionDiv();
+                      let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
+                      if(d) d.focus();
+                    }
+                  },
+                  onkeyup: highlightsubmit})),
+                el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+                  disabled: true,
+                  onclick() {
+                    clickedElem.setAttribute(
+                      this.parentElement.querySelector("[name=name]").value,
+                      this.parentElement.querySelector("[name=value]").value
+                    );
+                    updateInteractionDiv();
+                  },
+                  onkeyup: highlightsubmit })])
+            ])
+          );
+        }
+      }
+
 
       //extract url and extraneous text from specified CSS value (which is originally part of a rule)
       function findURLS(styleStr) {
@@ -3709,21 +4627,23 @@ editionscript = """
               document.getElementById("dom-attr-src").setAttribute("value", file.name);
               clickedElem.setAttribute("src", targetPathName);
             }
+            // adapt to HTML5 new attribute 'srcset'
+            // IF website use 'srcset', we force to set this attribute to null then replace image using 'src'
+            if (clickedElem.getAttribute("srcset") != undefined) {
+              clickedElem.setAttribute("srcset", "");
+            }
           });
         }
-
         // refresh images list
-        showListsImages(srcName);
-
+        showListsImages(targetPathName);  // targetPathName is the last file of files array, but it seems that user can only upload one file once
         // automatically select upload image
-        let selectedImage = document.querySelectorAll(".imgFolder");
+        let selectedImage = document.querySelectorAll(".imgFolder > img");
         for (let i = 0; i < selectedImage.length; ++i) {
-          if (selectedImage[i].getAttribute("src") === files[files.length - 1]) {
-            // selectedImage[i].style.outline = "2px solid white";
-            selectedImage[i].classList.add("highlight-select-image");
+          let imgName = selectedImage[i].getAttribute("src").split("/").pop();
+          if (imgName === files[files.length - 1].name) {
+            selectedImage[i].parentElement.classList.add("highlight-select-image");
           } else {
-            // selectedImage[i].style.outline = "none";
-            selectedImage[i].classList.remove("highlight-select-image");
+            selectedImage[i].parentElement.classList.remove("highlight-select-image");
           }
         }
       }
@@ -3738,20 +4658,37 @@ editionscript = """
         }
         files = editor.fs.listdir(dir);
         
-        images = [];
+        let images = [];
+        let currentSelectedImage;
         files.forEach(file => {
           let ext = file.split('.').pop().toLowerCase();
-          if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif') {
-            images.push(file);
+          if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif' || ext == 'svg' || ext == 'bmp') {
+            if (file.split('/').pop() === srcName.split("/").pop().split("?")[0]) {   // note that srcName maybe "/1.jpg?raw=true"
+              currentSelectedImage = file;
+            } else {
+              images.push(file);
+            }
           }
         });
+        // sometimes website use 'srcset' as the url of image, we cannot find currentSelectedImage precisely
+        if (currentSelectedImage != null) {
+          images.unshift(currentSelectedImage);   // currentSelectedImage should be placed as the first one
+        }
+
         // init: clear image list
         let selectedImage = document.querySelectorAll(".imgFolder");
         selectedImage.forEach(e => e.remove());
 
+        let imgDiv = el("div", { "id": "imgGallery" });
+        if (!document.getElementById("imgGallery")) {
+          interactionDiv.append(imgDiv);
+        } else {
+          imgDiv = document.getElementById("imgGallery");
+        }
+
         for (let i = 0; i < images.length; ++i) {
-          interactionDiv.append(
-            el("div", { class: "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
+          imgDiv.append(
+            el("div", { "class": "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
               onclick() {
                 console.log("At the beginning:");
                 console.log(JSON.stringify(backImgObj));
@@ -3759,7 +4696,6 @@ editionscript = """
                 let otherImages = document.querySelectorAll(".imgFolder");
                 for (let i = 0; i < otherImages.length; ++i) {
                   otherImages[i].classList.remove("highlight-select-image");
-                  // otherImages[i].style.outline = "none";
                 }
                 // replace image
                 if(backImgObj) {
@@ -3794,6 +4730,11 @@ editionscript = """
                   console.log(JSON.stringify(backImgObj));
 
                 }
+                // adapt to HTML5 new attribute 'srcset'
+                // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
+                else if (clickedElem.getAttribute("srcset") != undefined) {
+                  clickedElem.setAttribute("srcset", "");
+                }
                 else {
                   clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
                   document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
@@ -3803,6 +4744,9 @@ editionscript = """
               }
             })
           );
+        }
+        if (currentSelectedImage != null) {
+          document.querySelectorAll(".imgFolder")[0].classList.add("highlight-select-image");
         }
       }
 
@@ -3820,13 +4764,14 @@ editionscript = """
         clickedElem.ondragover = function (e) {
           e.preventDefault();
         }
-
         clickedElem.ondrop = function (e) {
           // upload and replace the image 
           e.stopPropagation();
           e.preventDefault();
           var files = e.dataTransfer.files; // FileList object
-          uploadImagesAtCursor(files, srcName);
+          if (files && files[0]) {
+            uploadImagesAtCursor(files);
+          }
         }
 
         // radio buttons for cases when there are two background images
@@ -3853,6 +4798,7 @@ editionscript = """
         // show lists of images in selected image's folder
         showListsImages(srcName, backgroundImgSrc);
       }
+
       let voidTags = {AREA: true, BASE: true, BR: true, COL: true, COMMANd: true, EMBED: true, HR: true, IMG: true, INPUT: true, KEYGEN: true, LINK: true, META: true, PARAM: true, SOURCE: true, TRACK: true, WBR: true};
       //interactionDiv.append(el("hr"));
       // Nodes only with 1 text child
@@ -3871,7 +4817,6 @@ editionscript = """
           txt.selectionStart = editor_model.textareaSelectionStart;
         })(txt), 0);
       }
-
       // let user modify button content
       if(clickedElem && (clickedElem.tagName === "BUTTON")) {
         // provide the onclick attribute to users so user can modify it in modify-menu
@@ -3885,8 +4830,8 @@ editionscript = """
         }
       }
     }
-    
-      if(!editor_model.linkSelectMode) {
+      if (!editor_model.state.includes("l")) {
+      //if(!editor_model.linkSelectMode) {
         contextMenu.innerHTML = "";
         var whereToAddContextButtons = contextMenu;
         var noContextMenu = false;
@@ -3908,11 +4853,11 @@ editionscript = """
           addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
             {title: "Go to " + model.link, "class": "inert"});
         }
-
+        var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
+        var isDisplayInline = computedStyle && computedStyle.display.startsWith("inline");
         if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
-          addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="m 10,14 3,3 4,-4 0,14 6,0 0,-14 4,4 3,-3 L 20,4 Z"/></svg>`,
-          {title: "Move selected element up"},
+          addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
+          {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
           {onclick: (c => event => {
               let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
                 c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
@@ -3927,9 +4872,8 @@ editionscript = """
           });
         }
         if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
-          addContextMenuButton(`<svg class="context-menu-icon fill" width="40" height="30">
-            <path d="m 10,17 3,-3 4,4 0,-14 6,0 0,14 4,-4 3,3 -10,10 z"/></svg>`,
-          {title: "Move selected element down"},
+          addContextMenuButton(isDisplayInline ? arrowRight : arrowDown,
+          {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
           {onclick: (c => (event) => {
               let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 && 
                 c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
@@ -3944,9 +4888,7 @@ editionscript = """
           });
         }
         if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
-          addContextMenuButton(`<svg class="context-menu-icon" width="40" height="30">
-              <path d="m 11,4 12,0 0,4 -4,0 0,14 -8,0 z" />
-              <path d="m 19,8 12,0 0,18 -12,0 z" /></svg>`,
+          addContextMenuButton(cloneSVG,
             {title: "Clone selected element"},
             {onclick: ((c, contextMenu) => event => {
                 c.removeAttribute("ghost-clicked");
@@ -3967,8 +4909,6 @@ editionscript = """
             });
         }
         if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer)) {
-          // There should be different ways to wrap the selection:
-          // a href, span, div.
           addContextMenuButton(plusSVG,
               {title: "Wrap selection"},
               {onclick: (s => event => {
@@ -4014,6 +4954,7 @@ editionscript = """
                 let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
                 parent.insertBefore(insertedNode, nodeToInsertBefore);
                 document.querySelector("#modify-menu").classList.toggle("visible", true);
+                set_state_visible();
                 editor_model.visible = true;
                 editor_model.clickedElem = insertedNode;
                 updateInteractionDiv();
@@ -4027,9 +4968,24 @@ editionscript = """
                 editor_model.clickedElem = clickedElem;
                 editor_model.displayClickedElemAsMainElem = true;
                 editor_model.insertElement = true;
+                set_state_insert();
                 updateInteractionDiv();
                 restoreCaretPosition();
               }});
+        }
+        if(model.clickedElem) {
+          // Thaditor-defined custom context menu buttons
+          if(typeof thaditor === "object") {
+            for(let button of thaditor.customContextMenuButtons(model.clickedElem)) {
+              addContextMenuButton(button.innerHTML, button.attributes, button.properties)
+            }
+          }
+          // Page-defined custom context menu buttons
+          for(let custom of editor.customContextMenuButtons) {
+            for(let button of custom(model.clickedElem)) {
+              addContextMenuButton(button.innerHTML, button.attributes, button.properties)
+            }
+          }
         }
 
         let baseElem = clickedElem;
@@ -4061,15 +5017,40 @@ editionscript = """
           contextMenu.style.top = desiredTop + "px";
           contextMenu.style.width = desiredWidth + "px";
           contextMenu.classList.add("visible");
+          setTimeout(maybeRepositionContextMenu, 0);
         }
         if(noContextMenu) {
           contextMenu.classList.remove("visible");
         }
       }
       return true;
+
+    } //end of updateInteractionDiv
+
+    function maybeRepositionContextMenu() {
+      //move the context menu if overlaps with modify-menu
+       let contextMenu = document.querySelector("#context-menu");
+       let modifyMenuDiv = document.querySelector("#modify-menu");
+       let pinnedIcons = document.querySelector(".modify-menu-icons.pinned")
+       let pcr = pinnedIcons.getBoundingClientRect();
+       let ccr = contextMenu.getBoundingClientRect();
+       let mcr = modifyMenuDiv.getBoundingClientRect();
+       if(onMobile()) {
+         if(ccr.bottom > pcr.top) {
+           contextMenu.style.top = (ccr.y - (ccr.bottom - pcr.top)) + "px"
+         } else if(ccr.bottom > mcr.top) {
+           contextMenu.style.top = (ccr.y - (ccr.bottom - mcr.top)) + "px"
+         }
+       } else {
+         if(ccr.right > pcr.left && ccr.top < pcr.bottom) { // Overlap with icons.
+           contextMenu.style.left = (ccr.x - (ccr.right - pcr.left)) + "px"
+         } else if(ccr.right > mcr.left) {
+           contextMenu.style.left = (ccr.x - (ccr.right - mcr.left)) + "px"
+         }
+       }
     }
+
     
-    // Links edition - Might be empty.
     @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then
       -- Special case when ?edit=false but the default behavior is edit=true if nothing is set.
       """document.onclick = function (e) {
@@ -4116,9 +5097,24 @@ window.onbeforeunload = function (e) {
       xmlhttp.setRequestHeader("close", "true");
       xmlhttp.send("{\"a\":1}");
     }
-};
+}; //end of window.onbeforeload
 """ else "")
-"""
+    if (typeof editor_model === "object" && typeof editor_model.outputObserver !== "undefined") {
+      editor_model.outputObserver.disconnect();
+    }
+
+    editor_model.outputObserver = new MutationObserver(handleMutations);
+    editor_model.outputObserver.observe
+      ( document.body.parentElement
+      , { attributes: true
+        , childList: true
+        , characterData: true
+        , attributeOldValue: true
+        , characterDataOldValue: true
+        , subtree: true
+        }
+      );
+"""--end of lastEditionScript
 
 googlesigninbutton = serverOwned "the google sign-in button" [
 <style>

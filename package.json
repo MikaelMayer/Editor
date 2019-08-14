@@ -1,6 +1,6 @@
 {
   "name": "http-server-editor",
-  "version": "1.0.73",
+  "version": "1.0.77",
   "description": "HTTP server that accepts user-triggered changes to static HTML & Markdown pages and dynamic .elm pages.",
   "main": "bin/server-npm-package.js",
   "scripts": {
@@ -26,7 +26,7 @@
     "get-port": "^4.1.0",
     "google-auth-library": "^4.2.5",
     "opn": "^5.4.0",
-    "sketch-n-sketch": "^1.2.30"
+    "sketch-n-sketch": "^1.2.33"
   },
   "bin": {
     "http-server-editor": "bin/server-run.js",

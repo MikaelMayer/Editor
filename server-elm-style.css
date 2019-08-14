@@ -6,6 +6,7 @@
     width: 30px;
     height: 17px;
     vertical-align: middle;
+    margin-left: 0.6rem;
 }
 
 /* Hide default HTML checkbox */
@@ -53,6 +54,7 @@
     -webkit-user-select: text;
     outline-color: transparent;
     box-shadow: none;
+    color: var(--context-button-color-inert);
 }
 
 input:checked+.slider {
@@ -67,6 +69,34 @@ input:checked+.slider:before {
     -webkit-transform: translateX(13px);
     -ms-transform: translateX(13px);
     transform: translateX(13px);
+}
+
+.textarea {
+    color: white;
+    font-family: Arial;
+}
+.notifs {
+    background-color: var(--context-color);
+    transform:translateX(44px);
+    position:fixed;
+    top:5px;
+    right:496px;
+    width:256px;
+    height:128px;
+    line-height: 120px;
+    font-size: 1.4rem;
+    resize: none;
+    text-align: center;
+    border: none;
+    border-radius: 0.4rem;
+    font-weight: bold;
+}
+.logger {
+    background-color: #000000; /* black */
+    position:fixed;
+    width: 400px;
+    top:128px;
+    height:128px;
 }
 
 /* Rounded sliders */
@@ -90,22 +120,29 @@ input:checked+.slider:before {
     padding-left: 3px;
     vertical-align: top;
     display: block;
+    font-weight: bold;
+    font-size: 1.2rem;
 }
 
 div.imgFolder {
-    display: inline-block;
-    margin: 0.2em;
+    text-align: center;
+    padding: 0.6em;
 }
 
-div.imgFolder>img {
+div.imgFolder > img {
     max-width: 100%;
     min-width: 2em;
 }
 
 a.troubleshooter {
     position: absolute;
-    top: calc(100% - 3em);
+    top: 1rem;
+    /* top: calc(100% - 3em); */
     display: inline-block;
+    right: 2em;
+    text-decoration: none;
+    color: white;
+    font-weight: bold;
 }
 
 .editor-menu {
@@ -134,21 +171,6 @@ span.label-checkbox:hover {
     cursor: pointer;
 }
 
-@keyframes spin {
-    from {
-        outline-color: #FAA;
-    }
-    33% {
-        outline-color: #AFA;
-    }
-    66% {
-        outline-color: #AAF;
-    }
-    to {
-        outline-color: #FAA;
-    }
-}
-
 span#ambiguity-id {
     color: #9dff00;
     display: block;
@@ -161,11 +183,6 @@ span#ambiguity-id {
 
 .solution.selected {
     background: rgba(255, 255, 255, 0.2);
-}
-
-.to-be-selected {
-    outline: #FCC 2px solid;
-    animation: spin 1s linear infinite;
 }
 
 .solution:not(.selected):hover {
@@ -364,6 +381,7 @@ div#modify-menu {
 div#modify-menu>div.modify-menu-icons:not(.pinned) {
     width: 100%;
     overflow-x: auto;
+    margin: 0.4rem;
 }
 
 div#modify-menu>div.modify-menu-icons.pinned {
@@ -376,11 +394,23 @@ div#modify-menu>div.information {
     overflow-y: auto;
     max-height: 65%;/*calc(100% - var(--context-menu-height));*/
     margin: 2%;
+    margin-top: 0;
     border-radius: 0.3em;
 }
 
 div#modify-menu>div.information-style {
     padding: 0.4rem;
+}
+
+/* information part scroll bar */
+.information.information-style::-webkit-scrollbar {
+    background: transparent;
+    width: 8px;
+}
+
+.information.information-style::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 10px;
 }
 
 div.information>textarea {
@@ -405,19 +435,28 @@ div#modify-menu button.CSSbutton {
 
 div#modify-menu div.keyvalues {
     margin-top: 6px;
-    display: table;
+    display: flex;
+    flex-direction: column;
     width: 100%;
-    table-layout: fixed;
 }
 
 div#modify-menu div.keyvalues>div.keyvalue {
-    display: table-row;
+    padding: 2px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    width: 98%;
 }
 
-div#modify-menu div.keyvalues>div.keyvalue>* {
-    display: table-cell;
-    padding: 4px;
-    vertical-align: middle;
+div#modify-menu div.keyvalues>div.keyvalue .attribute-key-value {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+div#modify-menu div.keyvalues>div.keyvalue .attribute-key {
+    width: 42%;
 }
 
 div#modify-menu div.keyvalues>div.keyvalueadder {
@@ -428,9 +467,15 @@ div#modify-menu div.keyvalues>div.keyvalueadder:hover {
     opacity: 1;
 }
 
+div#modify-menu div.keyvalues>div.keyvalueadder .attribute-key-value{
+    display: flex;
+    flex-direction: row;
+}
+
 div#modify-menu input {
     padding: 6px;
     width: 100%;
+    color: black;
 }
 
 div#modify-menu .codefont {
@@ -491,13 +536,15 @@ div.tagname-summary {
 
 div.dom-selector-style {
     margin: 2%;
+    margin-bottom: 0;
     border-radius: 0.4em;
     padding: 0.4rem;
 }
 
 div.childrenElem {
     display: flex;
-    height: 80px;
+    height: 30px;
+    margin-top: 4px;
 }
 
 div.mainElemName {
@@ -515,7 +562,7 @@ div.childrenSelector {
     flex: 1;
     text-align: center;
     overflow: hidden;
-    padding: 10px;
+    padding: 2px;
     margin: 2px;
     border-radius: 0.3rem;
     background-color: var(--context-dom-children-selector-color);
@@ -532,18 +579,36 @@ div.childrenSelector:hover {
     filter: blur(125%);
 }
 
+div.editor-interface-dom-selector {
+  opacity: 0.5;
+  color: #ffe5b5;
+}
+div.editor-recorded-ghost-node {
+  opacity: 0.5;
+}
+div.editor-recorded-ghost-attribute {
+  opacity: 0.5;
+}
+div.editor-ignored-attribute {
+  background: #a2a2a2;
+}
+
+
 div.mainElem {
-    height: 90px;
-    padding-bottom: 6px;
+    height: 62px;
     position: relative;
     text-align: center;
-    font-size: 1.6em;
-    margin-bottom: 0.5em;
+    overflow: hidden;
+    font-size: 1.3em;
+    text-overflow: ellipsis;
 }
 
 div.mainElemInfo {
     font-size: 0.6em;
     color: var(--context-dom-text-color);
+    height: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 div.childrenSelectorInfo {
@@ -555,7 +620,9 @@ div.childrenSelectorInfo {
 }
 
 div.elementAttr {
-    font-size: 0.5em;
+    margin-left: 6px;
+    display: inline-block;
+    font-size: 0.6em;
     line-height: 1.02em;
     text-overflow: ellipsis;
     overflow: hidden;
@@ -568,11 +635,9 @@ div.no-children, div.no-parent {
     text-align: center;
     text-transform: uppercase;
     color: black;
-    padding: 10px;
-    margin: 2px;
     border-radius: 0.3rem;
     font-weight: bold;
-    line-height: 50px;
+    line-height: 36px;
     font-size: 0.8rem;
     pointer-events: none;
 }
@@ -586,11 +651,10 @@ div.no-sibling {
     color: black;
     width: 20%;
     text-transform: uppercase;
-    font-size: 0.8rem;
-    line-height: 15px;
+    font-size: 0.7rem;
+    line-height: 20px;
     font-weight: bold;
     min-width: 50px;
-    padding-top: 20px;
     pointer-events: none;
 }
 
@@ -611,12 +675,13 @@ div.no-sibling {
 }
 
 #upload-image-btn-a {
-    margin: 10%;
-    padding: 4px 10px;
+    margin-left: 0;
+    margin-top: 10px;
+    margin-bottom: 10px;
     height: 20px;
     position: relative;
-    color: #888;
-    background: #fafafa;
+    color: black;
+    background: transparent;
     border-radius: 4px;
     display: inline-block;
     height: 20px;
@@ -625,7 +690,7 @@ div.no-sibling {
 
 #upload-image-btn-input {
     position: absolute;
-    top: 0;
+    top: -7px; /* alignment */
     left: 0;
     width: 100%;
 }
@@ -633,7 +698,8 @@ div.no-sibling {
 /* highlight selected image */
 
 div.highlight-select-image {
-    box-shadow: 2px 2px 3px black;
+    border: 1px solid white;
+    border-radius: 0.76em;
 }
 
 :root {
@@ -655,14 +721,22 @@ div.highlight-select-image {
 }
 
 div.tagName {
-    padding: 4px;
+    margin-top: 0.24rem;
+    /* padding: 4px; */
     cursor: pointer;
-    background: var(--context-button-color);
+    /* background: var(--context-button-color); */
     vertical-align: text-bottom;
 }
 
 div.tagName:hover {
     background: var(--context-button-color-hover);
+}
+
+#customHTML {
+    height: 6%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
 }
 
 [ghost-hovered=true] {
@@ -693,6 +767,16 @@ div#context-menu .context-menu-button, div#modify-menu .modify-menu-button, div#
     display: inline-block;
     width: var(--context-menu-button-width);
     cursor: pointer;
+}
+
+div.modify-menu-icons:not(.pinned) > div.modify-menu-button {
+    background-color: transparent !important;
+    border-radius: 0.4rem;
+    margin-right: 0.2rem;
+}
+
+div.modify-menu-icons:not(.pinned) > div.modify-menu-button:hover {
+    background-color: var(--context-button-color) !important;
 }
 
 div#context-menu .context-menu-button, div#modify-menu .modify-menu-icons:not(.pinned) .modify-menu-button {
@@ -757,7 +841,6 @@ svg.context-menu-icon>path {
 svg.context-menu-icon.fill>path {
     fill: #FFFFFF;
     fill-rule: evenodd;
-    stroke-width: 1px;
 }
 
 div#context-menu .context-menu-button:hover, div#modify-menu .modify-menu-button:hover:not(.disabled) {
@@ -768,17 +851,84 @@ div#context-menu .context-menu-button.inert:hover, div#modify-menu .modify-menu-
     background: var(--context-button-color-inert-hover)
 }
 
-#applyNewTagName {
+div#modify-menu div.keyvalues>div.keyvalue #applyNewTagName {
     display: none;
 }
 
-#applyNewTagName.visible {
-    display: inline-block;
+div#modify-menu div.keyvalues>div.keyvalue #applyNewTagName.visible {
+    display: flex;
+    width: var(--context-menu-button-width);
+    padding: 4px;
+}
+div#modify-menu div.keyvalues>div.keyvalue #newTagName {
+    background: none;
+    color: white;
+}
+
+div#modify-menu div.keyvalues>div.keyvalue #newTagName:focus {
+    background: white;
+    color: initial;
+}
+
+
+div#modify-menu div.keyvalues>div.keyvalue #applyNewTagName + div#newtagname-align-placeholder {
+  display: flex;
+  width: calc(var(--context-menu-button-width) - 8px);
+  padding: 4px;
+  margin: 2px;
+  border-radius: 4px;
+  border-width: 2px;
+}
+
+div#modify-menu div.keyvalues>div.keyvalue #applyNewTagName.visible + div#newtagname-align-placeholder {
+  display: none;
 }
 
 textarea#singleChildNodeContent {
     width: 100%;
     height: 50%;
+    border-radius: 0.4em;
+    border: 0;
+    margin-top: 6px;
+    padding: 10px;
+    color: black;
+}
+
+textarea.templateengine {
+    width: 100%;
+    height: 100%;
+    color: black;
+    border-radius: 0.4rem;
+    border: 0;
+    padding: 0.4rem;
+    font: normal 0.84rem Consolas, Monaco, monospace;
+    resize: none;
+    opacity: 0.8;
+}
+
+textarea.templateengine:focus {
+    outline: none;
+    opacity: 1;
+}
+
+#modify-menu span.insertOption label {
+  display: inline-block;
+}
+
+
+.to-be-selected {
+    animation: OrangeWait 3s linear infinite;
+    background: linear-gradient(90deg, orange 0%, gold 5%, gold 10%, orange 15%) !important;
+    background-size: 200% 100% !important;
+}
+
+@keyframes OrangeWait { 
+    0% { 
+      background-position: 30% 0%;
+    }
+    30%, 100% {
+      background-position: -100% 0%;
+    }
 }
 
 @media (pointer: coarse) {
@@ -808,6 +958,12 @@ textarea#singleChildNodeContent {
     div#modify-menu>div.modify-menu-icons.pinned span.modify-menu-icon-label {
         display: none;
     }
+    div#modify-menu>div.modify-menu-icons.pinned >div.modify-menu-button {
+        height: 50px;
+    }
+    div#modify-menu>div.modify-menu-icons.pinned svg {
+        height: 50px;
+    }
     div.bottom-placeholder {
         width: 100%;
         height: 30%;
@@ -820,7 +976,7 @@ textarea#singleChildNodeContent {
     }
     /* mobile dom selector */
     div.dom-selector-style {
-        height: 45%;
+        height: 30%;
         margin: 0.15em;
         border-radius: 0.4em;
         margin: 2%;
@@ -830,15 +986,13 @@ textarea#singleChildNodeContent {
     }
     div.mainElem {
         margin-bottom: 0;
-        height: 40%;
+        height: 56%;
     }
     div.childrenSelector {
-        padding: 6px;
         font-size: 1.2em;
     }
     div.no-sibling {
         font-size: 1em;
-        padding-top: 20px;
     }
     /* mobile modify menu */
     div.tagname-summary {
@@ -855,6 +1009,15 @@ textarea#singleChildNodeContent {
         border-radius: 0.3em;
         border: none;
         padding: 1.5%;
+    }
+    textarea.templateengine {
+        width: 100%;
+        height: 100%;
+        color: black;
+        font-size: 1.4rem;
+        border-radius: 0.4rem;
+        border: 0;
+        padding: 0.4rem;
     }
     div.insert-information-style {
         max-height: 400px;
