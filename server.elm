@@ -1323,7 +1323,7 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu thesource = [
-<div class="editor-interface" id="modify-menu" list-ghost-attributes="style" list-ignored-attributes="class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
+<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
 if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
 
@@ -3206,6 +3206,7 @@ lastEditScript = """
       var modifyMenuDiv = document.querySelector("#modify-menu");
       //if both are closed, just return 
       if(!modifyMenuDiv || !contextMenu) return;
+      modifyMenuDiv.classList.toggle("editor-interface", true);
       modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
       //toggle_visible_state(); // is this right?
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
