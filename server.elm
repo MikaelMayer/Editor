@@ -2150,6 +2150,8 @@ lastEditScript = """
         })
       }, 0);
     }
+    
+    var serverWorker = new Worker("/Thaditor/editor.js");
 
     function sendModificationsToServer() {
       
@@ -2178,14 +2180,14 @@ lastEditScript = """
             page content within the xmlhttp response. We need to rewrite the page with these data.
       */
       
-      let serverWorker = new Worker("/Thaditor/editor.js");
+      //let serverWorker = new Worker("/Thaditor/editor.js");
       const tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
       let data = {action:"sendMods", 
-                      toSend:tosend,
-                      gaidt:googleAuthIdToken,
-                      aq:editor_model.askQuestions,
-                      loc:location.pathname + location.search,
-                      server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
+                  toSend:tosend,
+                  gaidt:googleAuthIdToken,
+                  aq:editor_model.askQuestions,
+                  loc:location.pathname + location.search,
+                  server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
       serverWorker.onmessage = function(e) {
         //handle confirmDone
         if (e.data.action == "confirmDone") {
