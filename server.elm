@@ -1781,7 +1781,7 @@ lastEditScript = """
 	      if (editor_model.state.includes("a")) { //can't be in advanced without visible
 	        throw "model state shouldn't be in advanced when thing is not visible";
 	      } //toggle advanced + visible
-	      if (editor_mode.state.includes("i") || editor_model.state.includes("l")) {
+	      if (editor_model.state.includes("i") || editor_model.state.includes("l")) {
 	        console.err("I really don't think we should be able to toggle a while i or l are set. maybe i'm wrong? if so delete this");
 	      }
 	      editor_model.state = editor_model.state + "va";
@@ -3413,12 +3413,6 @@ lastEditScript = """
         modifyMenuIconsDiv.append(
           el("span", { class:'filename', title:"the path of the file you are currently viewing"}, 
             editor_model.path ? editor_model.path : "[root folder]"));
-        // TODO: Ambiguity interaction (should be stored in the model)
-        // TODO: Current URL (can be changed) + reload button (double circular arrow) + list files button (folder icon)
-        // TODO: Stage/create draft (clone and save icon)
-        // TODO: Source code (expandable - can use Ace Editor)
-        // TODO: Options: Ask questions, Autosave.
-        // TODO: Report issue. About.
         addModifyMenuIcon(sourceSVG,
           {"class": "tagName" + (model.displaySource ? " selected" : ""), title: model.displaySource ? "Hide source" : "Show Source"},
             {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv(); } }
@@ -3536,6 +3530,21 @@ lastEditScript = """
         )
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
+        if(apache_server) {
+          modifyMenuDiv.append(
+            el("a", {href:"#", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
+              onclick() {
+                let onOk = () => thaditor_sign_out(thaditor_sign_in());
+                if(!gapi.auth2) {
+                  thaditor_gapi_onload(onOk);
+                } else {
+                  onOk();
+                }
+              }
+            })
+          );
+        }
+
       //} else if(model.insertElement)  {
       } else if (editor_model.state.includes("i")) {
         interactionDiv.classList.add("insert-information-style");
