@@ -2143,7 +2143,7 @@ lastEditScript = """
             page content within the xmlhttp response. We need to rewrite the page with these data.
       */
       
-      let serverWorker = new Worker("/Thaditor/editor.js");
+      //let serverWorker = new Worker("/Thaditor/editor.js");
       const tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
       let data = {action:"sendMods", 
                       toSend:tosend,
@@ -2151,7 +2151,7 @@ lastEditScript = """
                       aq:editor_model.askQuestions,
                       loc:location.pathname + location.search,
                       server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
-      serverWorker.onmessage = function(e) {
+      editor_model.serverWorker.onmessage = function(e) {
         //handle confirmDone
         if (e.data.action == "confirmDone") {
           let xmlhttp = new XHRequest();
@@ -2211,7 +2211,7 @@ lastEditScript = """
           sendNotification("Save completed!");
         }
       }
-      serverWorker.postMessage(data);
+      editor_model.serverWorker.postMessage(data);
     } //sendModificationsToServer
 
 
@@ -3026,6 +3026,8 @@ lastEditScript = """
       
       //observer to listen for muts
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
+      //worker to interface with server
+      serverWorker : ifAlreadyRunning ? editor_model.serverWorker : new Worker("/Thaditor/editor.js"),
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
       show_log: ifAlreadyRunning ? editor_model.show_log : false, //here
