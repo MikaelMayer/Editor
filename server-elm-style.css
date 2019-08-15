@@ -77,20 +77,40 @@ input:checked+.slider:before {
 }
 .notifs {
     background-color: var(--context-color);
-    transform:translateX(44px);
-    position:fixed;
-    top:5px;
-    right:496px;
+    /* transform: translateX(44px); */
+    position: absolute;
+    top: 0px;
     width:256px;
     height:128px;
-    line-height: 120px;
     font-size: 1.4rem;
     resize: none;
     text-align: center;
     border: none;
     border-radius: 0.4rem;
     font-weight: bold;
+    padding-top: 1em;
+    animation: notifs-invisible 0.5s forwards, fadeOut 0.5s forwards;
 }
+.notifs.visible {
+  animation: notifs-visible 0.5s forwards, fadeIn 0.5s forwards;
+}
+@keyframes notifs-visible {
+  0% {transform:translateX(-128px);}
+  100% {transform: translateX(calc(-256px - 48px));}
+}
+@keyframes notifs-invisible {
+  0% {transform:translateX(calc(-256px - 48px));}
+  100% {transform: translateX(-128px);}
+}
+@keyframes fadeIn {
+  0% {opacity:0;}
+  100% {opacity: 1;}
+}
+@keyframes fadeOut {
+  0% {opacity:1;}
+  100% {opacity: 0;}
+}
+
 .logger {
     background-color: #000000; /* black */
     position:fixed;
@@ -285,7 +305,7 @@ div.disambiguationMenu {
     height: 600px;
 }
 
-@media screen and (pointer: coarse) {
+@media screen and (orientation: portrait) {
     body {
         font-size: 48px;
     }
@@ -311,6 +331,15 @@ div.disambiguationMenu {
         width: 100%;
         height: 600px;
     }
+    @keyframes notifs-visible {
+      0% {transform:translateY(-64px);}
+      100% {transform: translateY(calc(-128px - 48px));}
+    }
+    @keyframes notifs-invisible {
+      0% {transform:translateY(calc(-128px - 48px));}
+      100% {transform: translateY(-64px);}
+    }
+
 }
 
 div#modify-menu textarea.inline-CSS {

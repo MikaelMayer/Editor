@@ -326,8 +326,9 @@ luca =
         notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
         modifyMenuDiv.append(notifBox);
       }
-      notifBox.style.value = msg;
-      notifBox.style.display = 'block';
+      notifBox.value = msg;
+      notifBox.style.display = "block";
+      notifBox.classList.toggle("visible", true);
       notifBox.style.zIndex = 100;
       notifBox.style.visibility = true;
       editor_model.editor_log.push(msg);
@@ -348,7 +349,7 @@ luca =
     function hideNotification() {
       let notifBox = document.getElementById("notif-box");
       if (notifBox) {
-        notifBox.style.display = 'none';
+        notifBox.classList.toggle("visible", false);
       }
     }
 
@@ -1612,7 +1613,7 @@ editor.remove = remove;
 -- Script added to the end of the page
 lastEditScript = """ 
     console.log("lastEditScript running");
-     var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
+    var onMobile = () => window.matchMedia("(orientation: portrait)").matches;
     var buttonHeight = () => onMobile() ? 48 : 30;
     var buttonWidth  = () => onMobile() ? 48 : 40;
     
@@ -4476,7 +4477,7 @@ lastEditScript = """
                       }
                     }
                     if(throwError) {
-                      sendNotification("CSS selector not relevant!");
+                      sendNotification("CSS selector does not match");
                       this.setAttribute("wrong-selector", true);
                       this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
                     }
