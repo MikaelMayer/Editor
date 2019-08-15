@@ -325,14 +325,11 @@ div#modify-menu #CSS-modification {
     width: 100%;
     overflow-y: auto;
     flex: 1;
+    padding: 4px;
 }
-
-
 
 div#modify-menu #CSS-modification>.CSS-modify-unit {
     display: flex;
-    height: 15%;
-    padding: 4px;
     align-items: center;
 }
 
@@ -345,7 +342,6 @@ div#modify-menu #CSS-modification>.CSS-modify-unit .CSS-selectors {
     height: 100px;
     overflow-y: auto;
 }
-
 
 .summary {
     color: green;

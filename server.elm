@@ -4444,8 +4444,8 @@ lastEditScript = """
           //console.log("CSS state is:", editor_model.CSSState);
           for(let i in editor_model.CSSState) {
             for(let j in editor_model.CSSState[i]) {
-              let headerStr = clickedElem.tagName;
-              for(let curElem = clickedElem.parentElement; curElem; curElem = curElem.parentElement) {
+              let headerStr = editor_model.CSSState[i][j].orgTag.tagName;
+              for(let curElem = editor_model.CSSState[i][j].orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName + " > " + headerStr; 
               }
               CSSarea.append(el("span", {}, [], {innerHTML: headerStr}));
@@ -4464,15 +4464,19 @@ lastEditScript = """
                       if(curCSSState[i].kind === 'cssBlock' || curCSSState[i].kind === '@media') {
                         if(!(curCSSState[i].kind === 'cssBlock' ? clickedElem.matches(curCSSState[i].selector) : 
                         (window.matchMedia(curCSSState[i].selector).matches ? clickedElem.matches(curCSSState[i].content.selector) : false))) {
-                          sendNotification("CSS selector not relevant!");
-                          this.setAttribute("wrong-selector", true);
-                          this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
-                          return;
+                          throwError = true;
                         }
                       }
                     }
-                    this.setAttribute("wrong-selector", false);
-                    this.removeAttribute("title");
+                    if(throwError) {
+                      sendNotification("CSS selector not relevant!");
+                      this.setAttribute("wrong-selector", true);
+                      this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
+                    }
+                    else {
+                      this.setAttribute("wrong-selector", false);
+                      this.removeAttribute("title");
+                    }
                     //when a change is made, write first to stored 
                     //"semi-parsed" CSS (CSS that contains location information)
                     //then write to original style tag
