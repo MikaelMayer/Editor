@@ -4321,45 +4321,38 @@ lastEditScript = """
         !model.insertElement) {
         console.log("here for now!");
         //console.log("All style tags:", document.querySelectorAll("style"));
-        function linkCSSFile() {
-          if(clickedElem.tagName === "LINK") {
-            clickedElem.getAttribute("href");
-            interactionDiv.append(el("textarea", {"class": "CSS-selectors"}, [], {
-              defaultValue: "Placeholder",
-              onkeyup() {
-                clickedElem.parentNode.appendChild(el("style", {"isghost": true}, [], {
-                  value: this.value
-                }));
-              }
-            }));
-          }
-        }
+    
 
         //parse relevant CSS, recording prior and post CSS text as well 
         function fullParseCSS() {
-          var fullCSS = [];
+          var fullCSS = [], keyframes = [];
           console.log("All style tags:", document.querySelectorAll("style"));
           document.querySelectorAll("style").forEach((e) => {
-            var curCSS = [];
             var parsedCSS = CSSparser.parseCSS(e.textContent);
             //console.log("The parsed CSS is:", parsedCSS);
             for(let i in parsedCSS) {
               if(parsedCSS[i].kind === 'cssBlock' && clickedElem.matches(parsedCSS[i].selector)) {
                 //calculating before and after text
-                curCSS.push({type: 'cssBlock', content: CSSparser.unparseCSS([parsedCSS[i]]), 
+                fullCSS.push({type: 'cssBlock', content: CSSparser.unparseCSS([parsedCSS[i]]), 
                   before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: e});
               }
               else if(parsedCSS[i].kind === '@media' && window.matchMedia(parsedCSS[i].selector).matches) {
                 //saving selector information 
                 let curMedia = parsedCSS[i];
-                for(let j in parsedCSS.content) {
-                  if(clickedElem.matches(parsedCSS.content[j].selector)) {
-                    curMedia.content = CSSparser.unparseCSS([parsedCSS.content[j]]);
-                    curCSS.push({type: '@media', content: curMedia, 
-                      innerBefore: findText(parsedCSS.content, 0, j), innerAfter: findText(parsedCSS.content, Number(j) + 1, parsedCSS.content.length),
-                      before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: e});
+                for(let j in curMedia.content) {
+                  if(clickedElem.matches(curMedia.content[j].selector)) {
+                    var insertMedia = {type: '@media', content: curMedia, 
+                      innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
+                      before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: e};
+                    curMedia.content = CSSparser.unparseCSS([curMedia.content[j]]);
+                    insertMedia.content = curMedia.content;
+                    fullCSS.push(insertMedia);
                   }
                 }
+              }
+              else if(parsedCSS[i].kind === '@keyframes') {
+                keyframes.push({type: 'keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
+                  before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: e});
               }
               else if(parsedCSS[i].kind === 'whitespace') { 
                 continue;
@@ -4369,12 +4362,29 @@ lastEditScript = """
               }
             }
             //console.log("The parsed text looks like:", curCSS);
-            if(curCSS.length) {
-              fullCSS.push(curCSS);
-            }
           });
+          for(i in keyframes) {
+            let selector = CSSparser.parseCSS(keyframes[i].content).selector;
+            let animationName = selector.slice(selector.indexOf("@keyframes") + 10).trim();
+            for(j in fullCSS) {
+              let parsedSection = CSSparser.parseCSS(fullCSS[j].content);
+              if(k in parsedSection.content) {
+                for(l in parsedSection.content[k].rules) {
+                  if(Number(parsedSection.content[k].rules[l].search(animationName)) >= 0) {
+                    fullCSS.push(keyframes[i]);
+                  }
+                }
+              }
+              for(k in parsedSection.rules) {
+                if(Number(parsedSection.rules[k].search(animationName)) >= 0) {
+                  fullCSS.push(keyframes[i]);
+                }
+              }
+            }
+          }
           return fullCSS;
         }
+        
         function fullUnparseCSS(curCSS) {
           //console.log("Before unparse update:")
           //document.querySelectorAll("style").forEach((e) => { 
@@ -4400,7 +4410,7 @@ lastEditScript = """
             //console.log(CSSparser.parseCSS(e.textContent));
           });
         }
-        
+
         var CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
         var curCSSWindow = undefined;
         //CSSState = fullParseCSS();
@@ -4409,6 +4419,34 @@ lastEditScript = """
             //console.log("Removed child:", CSSarea.firstChild);
             CSSarea.removeChild(CSSarea.firstChild);
           }
+
+          //if there is linked CSS text
+          if(clickedElem.tagName === "LINK" || clickedElem.type === "text/CSS") {
+            let CSSFilePath = relativeToAbsolute(clickedElem.getAttribute("href"));
+            let CSSvalue = doReadServer("read", CSSFilePath);
+            CSSarea.append(
+              el("div", {"class": "CSS-modify-unit"}, [
+              el("textarea", {"class": "linked-CSS"}, [], {
+                defaultValue: CSSvalue,
+                onfocusout() {
+                  setCSSAreas();
+                },
+                oninput() {
+                  clickedElem.setAttribute("style", this.value);
+                }
+              }),
+              el("div", {"class": "delete-CSS"}, [], {
+                innerHTML: wasteBasketSVG,
+                onclick() {
+                  let linked_CSS = document.querySelectorAll(".linked-CSS");
+                  linked_CSS.value = "";
+                  clickedElem.setAttribute("style", linked_CSS.value);
+                  setCSSAreas();
+                }
+              })
+            ]));
+          }
+
           //inline styles 
           var inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
           if(inline) {
