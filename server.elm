@@ -4375,29 +4375,27 @@ lastEditScript = """
           });
           return fullCSS;
         }
-        function fullUnparseCSS(fullCSS) {
+        function fullUnparseCSS(curCSS) {
           //console.log("Before unparse update:")
-          document.querySelectorAll("style").forEach((e) => { 
+          //document.querySelectorAll("style").forEach((e) => { 
             //console.log(CSSparser.parseCSS(e.textContent));
-          });
-          for(let i in fullCSS) {
-            //console.log("current group is:", fullCSS);
-            //console.log("current is:", fullCSS[i]);
-            let curTag = fullCSS[i][0].orgTag;
-            let CSSString = "";
-            for(let j = 0; j < fullCSS[i].length; j++) {
-              if(fullCSS[i][j].type === 'cssBlock') {
-                CSSString = fullCSS[i][j].before + fullCSS[i][j].content + fullCSS[i][j].after;
-              }
-              else if(fullCSS[i][j].type === '@media') { 
-                let curMedia = CSSparser.parseCSS(fullCSS[i][j].content);
-                curMedia.content = fullCSS[i][j].beforeInner + fullCSS[i][j].content.content + fullCSS[i][j].afterInner;
-                CSSString = CSSparser.unparseCSS([curMedia]);        
-              }
-            }
-            curTag.textContent = CSSString;
+          //});
+          let curTag = curCSS.orgTag;
+          let CSSString = "";
+          if(curCSS.type === 'cssBlock') {
+            console.log(curCSS.content);
+            CSSString = curCSS.before + curCSS.content + curCSS.after;
+            console.log(CSSString);
           }
-          //console.log("After");
+          else if(curCSS.type === '@media') { 
+            let curMedia = CSSparser.parseCSS(curCSS.content);
+            curMedia.content = curCSS.beforeInner + curCSS.content.content + curCSS.afterInner;
+            CSSString = CSSparser.unparseCSS([curMedia]);        
+          }
+          console.log("Text is:" + CSSString);
+          curTag.textContent = CSSString;
+          //debugger
+          //consolw.log("After");
           document.querySelectorAll("style").forEach((e) => { 
             //console.log(CSSparser.parseCSS(e.textContent));
           });
@@ -4482,7 +4480,8 @@ lastEditScript = """
                     //then write to original style tag
                     this.storedCSS.content = this.value;
                     //console.log("Other selectors under the same style tag is:", editor_model.CSSState[i]);
-                    fullUnparseCSS(editor_model.CSSState);
+                    fullUnparseCSS(this.storedCSS);
+                    console.log("The updated CSS is now:", editor_model.CSSState);
                     //setCSSAreas();
                   },
                   storedCSS: editor_model.CSSState[i][j]
