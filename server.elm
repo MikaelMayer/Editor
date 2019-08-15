@@ -3532,11 +3532,11 @@ lastEditScript = """
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
         if(apache_server) {
           modifyMenuDiv.append(
-            el("a", {href:"javascript:void", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
+            el("a", {href:"javascript:0", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
               onclick() {
                 let onOk = () => thaditor_sign_out(() => {
                   modifyMenuDiv.append(
-                    el("a", {href:"#", id:"thaditor-google-log-in-button", style:"display:block"}, "Sign in with Google",
+                    el("a", {href:"javascript:0", id:"thaditor-google-log-in-button", style:"display:block"}, "Sign in with Google",
                     {onclick: thaditor_sign_in()}));
                   document.querySelector("#thaditor-sign-out-button").remove();
                 });
