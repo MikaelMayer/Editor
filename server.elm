@@ -1329,7 +1329,7 @@ editionmenu thesource = [
 if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
 
 initialScript = serverOwned "initial script" [
-<script type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js"></script>,
+<script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js"></script>,
 <script class="editor-interface">
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
@@ -3094,11 +3094,12 @@ lastEditScript = """
 
     
 
-    function reorderCompatible (node1, node2){
+    function reorderCompatible(node1, node2){
       let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
+      let metaOrderableTags = {META:1, TITLE:1, SCRIPT: 1, LINK: 1, STYLE: 1};
       return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
-        topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
-        ; 
+        topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName] ||
+        metaOrderableTags[node1.tagName] && metaOrderableTags[node2.tagName];
     }
     function preventTextDeselection(e){
       e = e || window.event;
@@ -3236,8 +3237,10 @@ lastEditScript = """
           if(element.tagName === "META") {
             result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
                     (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
-          } else if(element.tagName === "SCRIPT") {
+          } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
             result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+          } else if(element.tagName === "LINK") {
+            result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
           }
         }
         if(typeof maxLength !== "undefined" && result.length > maxLength) {
@@ -3664,12 +3667,17 @@ lastEditScript = """
         let addElem = function(name, createParams) {
           interactionDiv.append(
             el("div", {"class": "tagName", title: createParams.title},
-              el("span", { "class": "templateengine"}, name, {createParams: createParams}), { onclick: insertTag }
+              el("span", { "class": "templateengine"}, name, {createParams: createParams}), {
+                  onclick: function(event) {
+                    let insertionStyle = getInsertionPlace();
+                    insertTag.call(this, event, undefined, insertionStyle);
+                }}
             )
           );
         }
         if(clickedElem.tagName === "HEAD") {
           addElem("Title", {tag:"title", children: "Page_title", title: "Insert <title>"});
+          addElem("Meta", {tag:"meta", attrs:{name:"", content: ""}, props: {}, title: "Insert <meta>"});
         }
         if(clickedElem.tagName !== "HEAD") {
           interactionDiv.append(
@@ -4888,7 +4896,7 @@ lastEditScript = """
         }
         var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
         var isDisplayInline = computedStyle && computedStyle.display.startsWith("inline");
-        if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
           addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
           {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
           {onclick: (c => event => {
@@ -4904,7 +4912,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
           addContextMenuButton(isDisplayInline ? arrowRight : arrowDown,
           {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
           {onclick: (c => (event) => {
