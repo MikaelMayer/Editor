@@ -3532,16 +3532,20 @@ lastEditScript = """
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
         if(apache_server) {
           modifyMenuDiv.append(
-            el("a", {href:"#", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
+            el("a", {href:"javascript:void", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
               onclick() {
-                let onOk = () => thaditor_sign_out(thaditor_sign_in());
+                let onOk = () => thaditor_sign_out(() => {
+                  modifyMenuDiv.append(
+                    el("a", {href:"#", id:"thaditor-google-log-in-button", style:"display:block"}, "Sign in with Google",
+                    {onclick: thaditor_sign_in()}));
+                  document.querySelector("#thaditor-sign-out-button").remove();
+                });
                 if(!gapi.auth2) {
                   thaditor_gapi_onload(onOk);
                 } else {
                   onOk();
                 }
-              }
-            })
+              }})
           );
         }
       //} else if(model.insertElement)  {
@@ -3560,28 +3564,28 @@ lastEditScript = """
         let caretBlinks = model.caretPosition;
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           isTop ? undefined : insertOption("before", "Before node"),
-          isHTML || !caretBlinks ? undefined : insertOption("first-child", "As first child"),
+          isHTML ? undefined : insertOption("first-child", "As first child"),
           isHTML || !caretBlinks ? undefined : insertOption("caret", "At caret", !isTop && caretBlinks),
-          isHTML || !caretBlinks ? undefined : insertOption("last-child", "As last child", isTop || !caretBlinks),
+          isHTML ? undefined : insertOption("last-child", "As last child", isTop || !caretBlinks),
           isTop ? undefined : insertOption("after", "After node"),
           isTop ? undefined : insertOption("wrap", "Wrap node", false, "Put the selected node inside the newly inserted node")
         ]));
-        let insertTag = function(event, newElement) {
+        let getInsertionPlace = () => {
+          let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
+          let value = "after";
+          for (let i = 0, length = radios.length; i < length; i++) {
+            if (radios[i].checked) return radios[i].getAttribute("value");
+            value = radios[i].getAttribute("value");
+          }
+          return value;
+        };
+        let insertTag = function(event, newElement, insertionStyle) {
           newElement = newElement || (() => {
             let parent = this;
             while(parent && !parent.classList.contains("tagName")) parent = parent.parentElement;
             let m = parent.querySelector(".templateengine");
             if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
             return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
-          })();
-          var insertionStyle = (() => {
-            let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
-            let defaultValue = "after";
-            for (let i = 0, length = radios.length; i < length; i++) {
-              if (radios[i].checked) return radios[i].getAttribute("value");
-              defaultValue = radios[i].getAttribute("value");
-            } 
-            return defaultValue;
           })();
           if(insertionStyle === "after") {
             if(typeof newElement === "string") {
@@ -3631,6 +3635,7 @@ lastEditScript = """
               newElement = tmpSpan.nextElementSibling;
               tmpSpan.remove();
             } else {
+              console.log("insert at the end");
               // Insert at the end.
               clickedElem.insertBefore(newElement, null);
             }
@@ -3642,6 +3647,7 @@ lastEditScript = """
               newElement = tmpSpan.nextElementSibling;
               tmpSpan.remove();
             } else {
+              console.log("insert at the beginning");
               // Insert at the beginning.
               clickedElem.prepend(newElement);
             }
@@ -3671,9 +3677,10 @@ lastEditScript = """
                 onclick: function(event) {
                   editor_model.insertElement = false;
                   off_state_insert();
+                  let insertionStyle = getInsertionPlace();
                   activateNodeSelectionMode(
                     "to move",
-                    node => insertTag.call(this, event, node),
+                    node => insertTag.call(this, event, node, insertionStyle),
                     addPinnedModifyMenuIcon => {
                       addPinnedModifyMenuIcon(cloneSVG + "<span class='modify-menu-icon-label-link'>Clone</span>", 
                         {"class": "link-select-button", title: "Confirm to clone",
@@ -3682,7 +3689,7 @@ lastEditScript = """
                         {onclick: function(event) {
                           let node = editor_model.clickedElem;
                           let clonedNode = editor.duplicate(node, {ignoreText: true});
-                          insertTag.call(this, event, clonedNode);
+                          insertTag.call(this, event, clonedNode, insertionStyle);
                           escapeLinkMode();
                           editor_model.clickedElem = clonedNode;
                           }
@@ -4923,8 +4930,9 @@ lastEditScript = """
           addContextMenuButton(wasteBasketSVG,
             {title: "Delete selected element"},
             {onclick: (c => event => {
+                if(editor_model.clickedElem.nextElementSibling) editor_model.clickedElem = editor_model.clickedElem.nextElementSibling;
+                else editor_model.clickedElem = editor_model.clickedElem.previousElementSibling;
                 c.remove();
-                editor_model.clickedElem = undefined;
                 updateInteractionDiv();
               })(clickedElem)
             });
