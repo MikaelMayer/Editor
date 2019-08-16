@@ -3804,7 +3804,7 @@ lastEditScript = """
                         navigateLocal("/Thaditor/versions/" + draft_name + "/?edit");
                         setTimeout( () => {
                           sendNotification("Successfully created + switched to draft: " + draft_name);
-                        }, 0);
+                        }, 1500);
                       }
                     }
                   );
