@@ -4302,6 +4302,8 @@ lastEditScript = """
         > ^ <
       */
       //CSS parser
+
+
       function findText(parsed, startIndex, endIndex) {
         //console.log("Start index is:", startIndex);
         //console.log("End index is:", endIndex);
@@ -4321,12 +4323,15 @@ lastEditScript = """
         !model.insertElement) {
         console.log("here for now!");
         //console.log("All style tags:", document.querySelectorAll("style"));
-    
-
         //parse relevant CSS, recording prior and post CSS text as well 
         function fullParseCSS() {
           var fullCSS = [], keyframes = [];
           console.log("All style tags:", document.querySelectorAll("style"));
+          document.querySelectorAll("link").forEach((e) => {
+            if(e.getAttribute("type") === text/css) {
+              
+            }
+          });
           document.querySelectorAll("style").forEach((e) => {
             var parsedCSS = CSSparser.parseCSS(e.textContent);
             //console.log("The parsed CSS is:", parsedCSS);
@@ -4421,9 +4426,11 @@ lastEditScript = """
           }
 
           //if there is linked CSS text
-          if(clickedElem.tagName === "LINK" || clickedElem.type === "text/CSS") {
+          console.log("The type attribute of the clickedElem is:" + clickedElem.getAttribute("type"));
+          if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css") {
             let CSSFilePath = relativeToAbsolute(clickedElem.getAttribute("href"));
-            let CSSvalue = doReadServer("read", CSSFilePath);
+            let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
+            console.log(CSSvalue);
             CSSarea.append(
               el("div", {"class": "CSS-modify-unit"}, [
               el("textarea", {"class": "linked-CSS"}, [], {
@@ -4432,16 +4439,24 @@ lastEditScript = """
                   setCSSAreas();
                 },
                 oninput() {
-                  clickedElem.setAttribute("style", this.value);
+                  let nextSibGhostCSS = clickedElem.nextSibling;
+                  if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "ghost-CSS")) {
+                    nextSibGhostCSS.innerHTML = this.value;
+                  }
+                  else {
+                    clickedElem.parentElement.insertBefore(el("style", {"isghost": true, "class": "ghost-CSS"}, [], {
+                        innerHTML: this.value;
+                      }), 
+                      nextSibGhostCSS);
+                  }
                 }
               }),
-              el("div", {"class": "delete-CSS"}, [], {
-                innerHTML: wasteBasketSVG,
+              el("div", {"class": "delete-CSS", "title": "Update the CSS"}, [], {
+                innerHTML: plusSVG,
                 onclick() {
                   let linked_CSS = document.querySelectorAll(".linked-CSS");
-                  linked_CSS.value = "";
-                  clickedElem.setAttribute("style", linked_CSS.value);
-                  setCSSAreas();
+                  addFileToSave(CSSFilePath, CSSvalue, linked_CSS.value);
+                  //setCSSAreas();
                 }
               })
             ]));
@@ -4473,7 +4488,7 @@ lastEditScript = """
             ]);
             CSSarea.append(el("span", {}, [], {innerHTML: "Inline styles:"}));
             CSSarea.append(inlineCSS);
-            debugger;
+            //debugger;
           }
           //rest of CSS
           editor_model.CSSState = fullParseCSS();
@@ -4539,7 +4554,7 @@ lastEditScript = """
             }
           }
         }
-        setCSSAreas() ;   
+        setCSSAreas();   
         interactionDiv.append(CSSarea);
         /*interactionDiv.append(el("button", {"class": "CSSbutton", title: "Create new selector"}, [], {
           innerHTML: "New CSS",
@@ -4574,7 +4589,7 @@ lastEditScript = """
                           //reset to normal case (i.e. reconstruct all text areas)
                           setCSSAreas();
                           return;
-                        }
+                          }
                       }
                       popupMessage("Unparsable atm!");
                     }
