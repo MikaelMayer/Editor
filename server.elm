@@ -326,8 +326,9 @@ luca =
         notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
         modifyMenuDiv.append(notifBox);
       }
-      notifBox.style.value = msg;
-      notifBox.style.display = 'block';
+      notifBox.value = msg;
+      notifBox.style.display = "block";
+      notifBox.classList.toggle("visible", true);
       notifBox.style.zIndex = 100;
       notifBox.style.visibility = true;
       editor_model.editor_log.push(msg);
@@ -348,7 +349,7 @@ luca =
     function hideNotification() {
       let notifBox = document.getElementById("notif-box");
       if (notifBox) {
-        notifBox.style.display = 'none';
+        notifBox.classList.toggle("visible", false);
       }
     }
 
@@ -1323,12 +1324,12 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu thesource = [
-<div class="editor-interface" id="modify-menu" list-ghost-attributes="style" list-ignored-attributes="class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
+<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
 if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
 
 initialScript = serverOwned "initial script" [
-<script type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js"></script>,
+<script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js"></script>,
 <script class="editor-interface">
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
@@ -1612,7 +1613,7 @@ editor.remove = remove;
 -- Script added to the end of the page
 lastEditScript = """ 
     console.log("lastEditScript running");
-     var onMobile = () => window.matchMedia("(pointer: coarse)").matches;
+    var onMobile = () => window.matchMedia("(orientation: portrait)").matches;
     var buttonHeight = () => onMobile() ? 48 : 30;
     var buttonWidth  = () => onMobile() ? 48 : 40;
     
@@ -3093,11 +3094,12 @@ lastEditScript = """
 
     
 
-    function reorderCompatible (node1, node2){
+    function reorderCompatible(node1, node2){
       let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
+      let metaOrderableTags = {META:1, TITLE:1, SCRIPT: 1, LINK: 1, STYLE: 1};
       return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
-        topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName]
-        ; 
+        topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName] ||
+        metaOrderableTags[node1.tagName] && metaOrderableTags[node2.tagName];
     }
     function preventTextDeselection(e){
       e = e || window.event;
@@ -3206,6 +3208,7 @@ lastEditScript = """
       var modifyMenuDiv = document.querySelector("#modify-menu");
       //if both are closed, just return 
       if(!modifyMenuDiv || !contextMenu) return;
+      modifyMenuDiv.classList.toggle("editor-interface", true);
       modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
       //toggle_visible_state(); // is this right?
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
@@ -3234,8 +3237,10 @@ lastEditScript = """
           if(element.tagName === "META") {
             result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
                     (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
-          } else if(element.tagName === "SCRIPT") {
+          } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
             result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+          } else if(element.tagName === "LINK") {
+            result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
           }
         }
         if(typeof maxLength !== "undefined" && result.length > maxLength) {
@@ -3412,12 +3417,6 @@ lastEditScript = """
         modifyMenuIconsDiv.append(
           el("span", { class:'filename', title:"the path of the file you are currently viewing"}, 
             editor_model.path ? editor_model.path : "[root folder]"));
-        // TODO: Ambiguity interaction (should be stored in the model)
-        // TODO: Current URL (can be changed) + reload button (double circular arrow) + list files button (folder icon)
-        // TODO: Stage/create draft (clone and save icon)
-        // TODO: Source code (expandable - can use Ace Editor)
-        // TODO: Options: Ask questions, Autosave.
-        // TODO: Report issue. About.
         addModifyMenuIcon(sourceSVG,
           {"class": "tagName" + (model.displaySource ? " selected" : ""), title: model.displaySource ? "Hide source" : "Show Source"},
             {onclick: function(event) { editor_model.displaySource = !editor_model.displaySource; updateInteractionDiv(); } }
@@ -3535,6 +3534,24 @@ lastEditScript = """
         )
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
+        if(apache_server) {
+          modifyMenuDiv.append(
+            el("a", {href:"javascript:0", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
+              onclick() {
+                let onOk = () => thaditor_sign_out(() => {
+                  modifyMenuDiv.append(
+                    el("a", {href:"javascript:0", id:"thaditor-google-log-in-button", style:"display:block"}, "Sign in with Google",
+                    {onclick: thaditor_sign_in()}));
+                  document.querySelector("#thaditor-sign-out-button").remove();
+                });
+                if(!gapi.auth2) {
+                  thaditor_gapi_onload(onOk);
+                } else {
+                  onOk();
+                }
+              }})
+          );
+        }
       //} else if(model.insertElement)  {
       } else if (editor_model.state.includes("i")) {
         interactionDiv.classList.add("insert-information-style");
@@ -3551,28 +3568,28 @@ lastEditScript = """
         let caretBlinks = model.caretPosition;
         interactionDiv.append(el("div", {id: "insertionPlace"}, [
           isTop ? undefined : insertOption("before", "Before node"),
-          isHTML || !caretBlinks ? undefined : insertOption("first-child", "As first child"),
+          isHTML ? undefined : insertOption("first-child", "As first child"),
           isHTML || !caretBlinks ? undefined : insertOption("caret", "At caret", !isTop && caretBlinks),
-          isHTML || !caretBlinks ? undefined : insertOption("last-child", "As last child", isTop || !caretBlinks),
+          isHTML ? undefined : insertOption("last-child", "As last child", isTop || !caretBlinks),
           isTop ? undefined : insertOption("after", "After node"),
           isTop ? undefined : insertOption("wrap", "Wrap node", false, "Put the selected node inside the newly inserted node")
         ]));
-        let insertTag = function(event, newElement) {
+        let getInsertionPlace = () => {
+          let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
+          let value = "after";
+          for (let i = 0, length = radios.length; i < length; i++) {
+            if (radios[i].checked) return radios[i].getAttribute("value");
+            value = radios[i].getAttribute("value");
+          }
+          return value;
+        };
+        let insertTag = function(event, newElement, insertionStyle) {
           newElement = newElement || (() => {
             let parent = this;
             while(parent && !parent.classList.contains("tagName")) parent = parent.parentElement;
             let m = parent.querySelector(".templateengine");
             if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
             return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
-          })();
-          var insertionStyle = (() => {
-            let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
-            let defaultValue = "after";
-            for (let i = 0, length = radios.length; i < length; i++) {
-              if (radios[i].checked) return radios[i].getAttribute("value");
-              defaultValue = radios[i].getAttribute("value");
-            } 
-            return defaultValue;
           })();
           if(insertionStyle === "after") {
             if(typeof newElement === "string") {
@@ -3622,6 +3639,7 @@ lastEditScript = """
               newElement = tmpSpan.nextElementSibling;
               tmpSpan.remove();
             } else {
+              console.log("insert at the end");
               // Insert at the end.
               clickedElem.insertBefore(newElement, null);
             }
@@ -3633,6 +3651,7 @@ lastEditScript = """
               newElement = tmpSpan.nextElementSibling;
               tmpSpan.remove();
             } else {
+              console.log("insert at the beginning");
               // Insert at the beginning.
               clickedElem.prepend(newElement);
             }
@@ -3648,12 +3667,17 @@ lastEditScript = """
         let addElem = function(name, createParams) {
           interactionDiv.append(
             el("div", {"class": "tagName", title: createParams.title},
-              el("span", { "class": "templateengine"}, name, {createParams: createParams}), { onclick: insertTag }
+              el("span", { "class": "templateengine"}, name, {createParams: createParams}), {
+                  onclick: function(event) {
+                    let insertionStyle = getInsertionPlace();
+                    insertTag.call(this, event, undefined, insertionStyle);
+                }}
             )
           );
         }
         if(clickedElem.tagName === "HEAD") {
           addElem("Title", {tag:"title", children: "Page_title", title: "Insert <title>"});
+          addElem("Meta", {tag:"meta", attrs:{name:"", content: ""}, props: {}, title: "Insert <meta>"});
         }
         if(clickedElem.tagName !== "HEAD") {
           interactionDiv.append(
@@ -3662,9 +3686,10 @@ lastEditScript = """
                 onclick: function(event) {
                   editor_model.insertElement = false;
                   off_state_insert();
+                  let insertionStyle = getInsertionPlace();
                   activateNodeSelectionMode(
                     "to move",
-                    node => insertTag.call(this, event, node),
+                    node => insertTag.call(this, event, node, insertionStyle),
                     addPinnedModifyMenuIcon => {
                       addPinnedModifyMenuIcon(cloneSVG + "<span class='modify-menu-icon-label-link'>Clone</span>", 
                         {"class": "link-select-button", title: "Confirm to clone",
@@ -3673,7 +3698,7 @@ lastEditScript = """
                         {onclick: function(event) {
                           let node = editor_model.clickedElem;
                           let clonedNode = editor.duplicate(node, {ignoreText: true});
-                          insertTag.call(this, event, clonedNode);
+                          insertTag.call(this, event, clonedNode, insertionStyle);
                           escapeLinkMode();
                           editor_model.clickedElem = clonedNode;
                           }
@@ -4435,8 +4460,8 @@ lastEditScript = """
           //console.log("CSS state is:", editor_model.CSSState);
           for(let i in editor_model.CSSState) {
             for(let j in editor_model.CSSState[i]) {
-              let headerStr = clickedElem.tagName;
-              for(let curElem = clickedElem.parentElement; curElem; curElem = curElem.parentElement) {
+              let headerStr = editor_model.CSSState[i][j].orgTag.tagName;
+              for(let curElem = editor_model.CSSState[i][j].orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName + " > " + headerStr; 
               }
               CSSarea.append(el("span", {}, [], {innerHTML: headerStr}));
@@ -4455,15 +4480,19 @@ lastEditScript = """
                       if(curCSSState[i].kind === 'cssBlock' || curCSSState[i].kind === '@media') {
                         if(!(curCSSState[i].kind === 'cssBlock' ? clickedElem.matches(curCSSState[i].selector) : 
                         (window.matchMedia(curCSSState[i].selector).matches ? clickedElem.matches(curCSSState[i].content.selector) : false))) {
-                          sendNotification("CSS selector not relevant!");
-                          this.setAttribute("wrong-selector", true);
-                          this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
-                          return;
+                          throwError = true;
                         }
                       }
                     }
-                    this.setAttribute("wrong-selector", false);
-                    this.removeAttribute("title");
+                    if(throwError) {
+                      sendNotification("CSS selector does not match");
+                      this.setAttribute("wrong-selector", true);
+                      this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
+                    }
+                    else {
+                      this.setAttribute("wrong-selector", false);
+                      this.removeAttribute("title");
+                    }
                     //when a change is made, write first to stored 
                     //"semi-parsed" CSS (CSS that contains location information)
                     //then write to original style tag
@@ -4867,7 +4896,7 @@ lastEditScript = """
         }
         var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
         var isDisplayInline = computedStyle && computedStyle.display.startsWith("inline");
-        if(!model.selectionRange && clickedElem && clickedElem.previousElementSibling && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
           addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
           {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
           {onclick: (c => event => {
@@ -4883,7 +4912,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.nextElementSibling && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
           addContextMenuButton(isDisplayInline ? arrowRight : arrowDown,
           {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
           {onclick: (c => (event) => {
@@ -4914,8 +4943,9 @@ lastEditScript = """
           addContextMenuButton(wasteBasketSVG,
             {title: "Delete selected element"},
             {onclick: (c => event => {
+                if(editor_model.clickedElem.nextElementSibling) editor_model.clickedElem = editor_model.clickedElem.nextElementSibling;
+                else editor_model.clickedElem = editor_model.clickedElem.previousElementSibling;
                 c.remove();
-                editor_model.clickedElem = undefined;
                 updateInteractionDiv();
               })(clickedElem)
             });
@@ -5085,32 +5115,28 @@ lastEditScript = """
          document.addEventListener('mousedown', onMouseDownGlobal, false);
       """
     else "")
-@(if iscloseable then """
-window.onbeforeunload = function (e) {
-    e = e || window.event;
 
-    var askConfirmation = document.getElementById("manualsync-menuitem") &&
-         document.getElementById("manualsync-menuitem").getAttribute("ghost-disabled") == "false";
-    const confirmation = 'You have unsaved modifications. Do you still want to exit?';
-
-    // For IE and Firefox prior to version 4
-    if (e) {
-      if(askConfirmation) {
-        e.returnValue = confirmation;
-      }
-    }
-    if(askConfirmation) {
-      // For Safari
-      return confirmation;
-    } else {
-      var xmlhttp = new XHRequest();
-      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-      xmlhttp.open("POST", location.pathname + location.search, false); // Async
-      xmlhttp.setRequestHeader("close", "true");
-      xmlhttp.send("{\"a\":1}");
-    }
-}; //end of window.onbeforeload
-""" else "")
+      window.onbeforeunload = function (e) {
+        e = e || window.event;
+        var askConfirmation = editor_model.canSave || editor_model.isSaving || editor_model.disambiguationMenu;
+        const confirmation = 'You have unsaved modifications. Do you still want to exit?';
+        // For IE and Firefox prior to version 4
+        if (e) {
+          if(askConfirmation) {
+            e.returnValue = confirmation;
+          }
+        }
+        if(askConfirmation) {
+          // For Safari
+          return confirmation;
+        } else {
+          var xmlhttp = new XHRequest();
+          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+          xmlhttp.open("POST", location.pathname + location.search, false); // Async
+          xmlhttp.setRequestHeader("close", "true");
+          xmlhttp.send("{\"a\":1}");
+        }
+    }; //end of window.onbeforeload
     if (typeof editor_model === "object" && typeof editor_model.outputObserver !== "undefined") {
       editor_model.outputObserver.disconnect();
     }
