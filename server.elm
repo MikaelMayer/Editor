@@ -1782,7 +1782,7 @@ lastEditScript = """
 	      if (editor_model.state.includes("a")) { //can't be in advanced without visible
 	        throw "model state shouldn't be in advanced when thing is not visible";
 	      } //toggle advanced + visible
-	      if (editor_mode.state.includes("i") || editor_model.state.includes("l")) {
+	      if (editor_model.state.includes("i") || editor_model.state.includes("l")) {
 	        console.err("I really don't think we should be able to toggle a while i or l are set. maybe i'm wrong? if so delete this");
 	      }
 	      editor_model.state = editor_model.state + "va";
@@ -2153,7 +2153,7 @@ lastEditScript = """
       }, 0);
     }
     
-    var serverWorker = new Worker("/Thaditor/editor.js");
+    //var serverWorker = new Worker("/Thaditor/editor.js");
 
     function sendModificationsToServer() {
       
@@ -2190,7 +2190,7 @@ lastEditScript = """
                   aq:editor_model.askQuestions,
                   loc:location.pathname + location.search,
                   server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
-      serverWorker.onmessage = function(e) {
+      editor_model.serverWorker.onmessage = function(e) {
         //handle confirmDone
         if (e.data.action == "confirmDone") {
           let xmlhttp = new XHRequest();
@@ -2247,6 +2247,7 @@ lastEditScript = """
               throw new Error("unidentified action in actionsduringsave");
             }
           }
+          updateInteractionDiv();
           sendNotification("Save completed!");
         } else if(e.data.action == "message") {
           sendNotification(e.data.message)
@@ -2254,7 +2255,7 @@ lastEditScript = """
           thaditor_reconnect();
         }
       }
-      serverWorker.postMessage(data);
+      editor_model.serverWorker.postMessage(data);
     } //sendModificationsToServer
 
 
@@ -3066,9 +3067,10 @@ lastEditScript = """
       redoStack: ifAlreadyRunning ? editor_model.redoStack : [],
       actionsDuringSave: ifAlreadyRunning ? editor_model.actionsDuringSave : [],
       isDraftSwitcherVisible : ifAlreadyRunning ? editor_model.isDraftSwitcherVisible : false,
-      
       //observer to listen for muts
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
+      //worker for interface with the server
+      serverWorker: ifAlreadyRunning ? editor_model.serverWorker : new Worker("/Thaditor/editor.js"),
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
       show_log: ifAlreadyRunning ? editor_model.show_log : false, //here
@@ -3194,8 +3196,12 @@ lastEditScript = """
       }
       let t_src = editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1);
       copy_website(t_src, "");
+      const oldver = editor_model.version;
       editor_model.version = "Live";
       navigateLocal("/?edit", true);
+      updateInteractionDiv();
+      sendNotification("Successfully published " + oldver + " to live.");
+      setTimeout (() => sendNotification("Switched to live."), 1500)
     }
 
     updateInteractionDiv(); //outer lastEditScript
@@ -3811,9 +3817,11 @@ lastEditScript = """
                     {
                       onclick: (event) => {
                         navigateLocal("/Thaditor/versions/" + name + "/?edit");
+                        updateInteractionDiv();
                         setTimeout( () => {
                           sendNotification("Successfully switched to draft: " + name);
-                        }, 0);
+                        }, 1500);
+                        
                       }
                     }
                   );
@@ -3827,6 +3835,10 @@ lastEditScript = """
                     {
                       onclick: (event) => {
                         navigateLocal("/?edit");
+                        updateInteractionDiv();
+                        setTimeout( () => {
+                          sendNotification("Switched to live");
+                        }, 1500);
                       }
                     });
         };
