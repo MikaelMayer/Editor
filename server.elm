@@ -3678,6 +3678,7 @@ lastEditScript = """
         if(clickedElem.tagName === "HEAD") {
           addElem("Title", {tag:"title", children: "Page_title", title: "Insert <title>"});
           addElem("Meta", {tag:"meta", attrs:{name:"", content: ""}, props: {}, title: "Insert <meta>"});
+          addElem("Link", {tag:"link", attrs:{rel:"", href: ""}, props: {}, title: "Insert <link>"});
         }
         if(clickedElem.tagName !== "HEAD") {
           interactionDiv.append(
