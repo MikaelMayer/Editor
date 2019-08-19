@@ -4325,21 +4325,31 @@ lastEditScript = """
         //console.log("All style tags:", document.querySelectorAll("style"));
         //parse relevant CSS, recording prior and post CSS text as well 
         function fullParseCSS() {
-          var fullCSS = [], keyframes = [];
+          var fullCSS = [], keyframes = [], rawCSS = [];
           console.log("All style tags:", document.querySelectorAll("style"));
           document.querySelectorAll("link").forEach((e) => {
-            if(e.getAttribute("type") === text/css) {
-              
+            if(e.getAttribute("type") === "text/css" && e.getAttribute("href")) {
+              let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
+              let CSSvalue = doReadServer("read", CSSFilePath);
+              console.log(CSSFilePath.match(/server-elm-style/g));
+              if(!(CSSFilePath.match(/server-elm-style/g)) && CSSvalue) {
+                console.log("Found string is:" + CSSvalue);
+                CSSvalue = CSSvalue.slice(1);
+                rawCSS.push({text: CSSvalue, tag: e});
+              }
             }
           });
           document.querySelectorAll("style").forEach((e) => {
-            var parsedCSS = CSSparser.parseCSS(e.textContent);
+            rawCSS.push({text: e.textContent, tag: e});
+          });
+          for(let z in rawCSS) {  
+            var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
             //console.log("The parsed CSS is:", parsedCSS);
             for(let i in parsedCSS) {
               if(parsedCSS[i].kind === 'cssBlock' && clickedElem.matches(parsedCSS[i].selector)) {
                 //calculating before and after text
                 fullCSS.push({type: 'cssBlock', content: CSSparser.unparseCSS([parsedCSS[i]]), 
-                  before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: e});
+                  before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
               }
               else if(parsedCSS[i].kind === '@media' && window.matchMedia(parsedCSS[i].selector).matches) {
                 //saving selector information 
@@ -4348,7 +4358,7 @@ lastEditScript = """
                   if(clickedElem.matches(curMedia.content[j].selector)) {
                     var insertMedia = {type: '@media', content: curMedia, 
                       innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
-                      before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: e};
+                      before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag};
                     curMedia.content = CSSparser.unparseCSS([curMedia.content[j]]);
                     insertMedia.content = curMedia.content;
                     fullCSS.push(insertMedia);
@@ -4356,24 +4366,25 @@ lastEditScript = """
                 }
               }
               else if(parsedCSS[i].kind === '@keyframes') {
+                console.log(parsedCSS[i]);
                 keyframes.push({type: 'keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
-                  before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: e});
+                  before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
               }
               else if(parsedCSS[i].kind === 'whitespace') { 
                 continue;
               }
               if(i === parsedCSS.length - 1 && !curCSS.length) {
-                //console.log("Nothing relevant in style tag: ", e);
+                console.log("Nothing relevant in style tag: ", rawCSS[z].tag);
               }
             }
             //console.log("The parsed text looks like:", curCSS);
-          });
+          }
+          console.log(keyframes);
           for(i in keyframes) {
-            let selector = CSSparser.parseCSS(keyframes[i].content).selector;
-            let animationName = selector.slice(selector.indexOf("@keyframes") + 10).trim();
+            let animationName = CSSparser.parseCSS(keyframes[i].content).atNameValue;
             for(j in fullCSS) {
               let parsedSection = CSSparser.parseCSS(fullCSS[j].content);
-              if(k in parsedSection.content) {
+              for(k in parsedSection.content) {
                 for(l in parsedSection.content[k].rules) {
                   if(Number(parsedSection.content[k].rules[l].search(animationName)) >= 0) {
                     fullCSS.push(keyframes[i]);
@@ -4387,6 +4398,7 @@ lastEditScript = """
               }
             }
           }
+          console.log(fullCSS);
           return fullCSS;
         }
         
@@ -4427,39 +4439,40 @@ lastEditScript = """
 
           //if there is linked CSS text
           console.log("The type attribute of the clickedElem is:" + clickedElem.getAttribute("type"));
-          if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css") {
+          if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("hreff")) {
             let CSSFilePath = relativeToAbsolute(clickedElem.getAttribute("href"));
             let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
             console.log(CSSvalue);
             CSSarea.append(
               el("div", {"class": "CSS-modify-unit"}, [
-              el("textarea", {"class": "linked-CSS"}, [], {
-                defaultValue: CSSvalue,
-                onfocusout() {
-                  setCSSAreas();
-                },
-                oninput() {
-                  let nextSibGhostCSS = clickedElem.nextSibling;
-                  if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "ghost-CSS")) {
-                    nextSibGhostCSS.innerHTML = this.value;
+                el("textarea", {"class": "linked-CSS"}, [], {
+                  defaultValue: CSSvalue,
+                  onfocusout() {
+                    setCSSAreas();
+                  },
+                  oninput() {
+                    let nextSibGhostCSS = clickedElem.nextSibling;
+                    if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "ghost-CSS")) {
+                      nextSibGhostCSS.innerHTML = this.value;
+                    }
+                    else {
+                      clickedElem.parentElement.insertBefore(el("style", {"isghost": true, "class": "ghost-CSS"}, [], {
+                          innerHTML: this.value
+                        }), 
+                        nextSibGhostCSS);
+                    }
                   }
-                  else {
-                    clickedElem.parentElement.insertBefore(el("style", {"isghost": true, "class": "ghost-CSS"}, [], {
-                        innerHTML: this.value;
-                      }), 
-                      nextSibGhostCSS);
+                }),
+                el("div", {"class": "delete-CSS", "title": "Update the CSS"}, [], {
+                  innerHTML: plusSVG,
+                  onclick() {
+                    let linked_CSS = document.querySelectorAll(".linked-CSS");
+                    addFileToSave(CSSFilePath, CSSvalue, linked_CSS.value);
+                    //setCSSAreas();
                   }
-                }
-              }),
-              el("div", {"class": "delete-CSS", "title": "Update the CSS"}, [], {
-                innerHTML: plusSVG,
-                onclick() {
-                  let linked_CSS = document.querySelectorAll(".linked-CSS");
-                  addFileToSave(CSSFilePath, CSSvalue, linked_CSS.value);
-                  //setCSSAreas();
-                }
-              })
-            ]));
+                })
+              ])
+            );
           }
 
           //inline styles 
@@ -4492,21 +4505,21 @@ lastEditScript = """
           }
           //rest of CSS
           editor_model.CSSState = fullParseCSS();
-          //console.log("CSS state is:", editor_model.CSSState);
+          console.log("CSS state is:", editor_model.CSSState);
           for(let i in editor_model.CSSState) {
-            for(let j in editor_model.CSSState[i]) {
-              let headerStr = editor_model.CSSState[i][j].orgTag.tagName;
-              for(let curElem = editor_model.CSSState[i][j].orgTag.parentElement; curElem; curElem = curElem.parentElement) {
-                headerStr =  curElem.tagName + " > " + headerStr; 
-              }
-              CSSarea.append(el("span", {}, [], {innerHTML: headerStr}));
-              let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
-                el("textarea", {"class": "CSS-selectors" }, [], {
-                  defaultValue: editor_model.CSSState[i][j].content,
-                  onfocusout() {
-                    setCSSAreas();
-                  },
-                  oninput() {
+            let headerStr = editor_model.CSSState[i].orgTag.tagName;
+            for(let curElem = editor_model.CSSState[i].orgTag.parentElement; curElem; curElem = curElem.parentElement) {
+              headerStr =  curElem.tagName + " > " + headerStr; 
+            }
+            CSSarea.append(el("span", {}, [], {innerHTML: headerStr}));
+            let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
+              el("textarea", {"class": "CSS-selectors" }, [], {
+                defaultValue: editor_model.CSSState[i].content,
+                onfocusout() {
+                  setCSSAreas();
+                },
+                oninput() {
+                  if(this.orgTag.tagName != "LINK") {
                     let throwError = false;
                     curCSSState = CSSparser.parseCSS(this.value);
                     //console.log(curCSSState);
@@ -4536,9 +4549,33 @@ lastEditScript = """
                     fullUnparseCSS(this.storedCSS);
                     console.log("The updated CSS is now:", editor_model.CSSState);
                     //setCSSAreas();
-                  },
-                  storedCSS: editor_model.CSSState[i][j]
-                }),
+                  }
+                  else {
+                    this.storedCSS.content = this.value;
+                    let nextSibGhostCSS = this.storedCSS.orgTag.nextSibling;
+                    if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "ghost-CSS")) {
+                      nextSibGhostCSS.innerHTML = this.value;
+                    }
+                    else {
+                      this.storedCSS.orgTag.parentElement.insertBefore(el("style", {"isghost": true, "class": "ghost-CSS"}, [], {
+                          innerHTML: this.value
+                        }), 
+                        nextSibGhostCSS);
+                    }
+                  }
+                },
+                storedCSS: editor_model.CSSState[i]
+              }),
+              editor_model.CSSState[i].orgTag.tagName === "LINK" ?
+                el("div", {"class": "delete-CSS", "title": "Update the CSS once save is clicked"}, [], {
+                  innerHTML: plusSVG,
+                  onclick() {
+                    let linked_CSS = document.querySelectorAll(".linked-CSS");
+                    let CSSFilePath = relativeToAbsolute(this.parentElement.childNodes[0].storedCSS.orgTag.getAttribute("href"));
+                    let CSSvalue = doReadServer("read", CSSFilePath);
+                    addFileToSave(CSSFilePath, CSSvalue, linked_CSS.value);
+                  }
+                }) :
                 el("div", {"class": "delete-CSS"}, [], {
                   innerHTML: wasteBasketSVG,
                   onclick() {
@@ -4549,9 +4586,8 @@ lastEditScript = """
                     setCSSAreas();
                   }
                 })
-              ]);
-              CSSarea.append(eachCSS);
-            }
+            ]);
+            CSSarea.append(eachCSS);
           }
         }
         setCSSAreas();   
