@@ -3758,6 +3758,62 @@ lastEditScript = """
         if (!apache_server) {
           throw "Should not have been able to enter into drafting mode when apache_server == false.";
         }
+        /*
+
+          Okay, new plan. Top thing non-clickabel label or whatever
+          which clearly tells the user which version they're editing.
+          Include a clone button and, if on a draft, include a delete btn.
+          If we're editing a draft, put "Publish to live" here.
+          Each of the drafts has a btn for switching to it, cloning it
+          and deleting it. Should probably skip the draft we're on if 
+          we're not live.
+        */
+
+
+/*el ("div", {"class": "childrenSelectorName"}, "Currently editing live"),
+                      el ("button", {}, "Clone Live"),
+                      el ("button", {}, "Can't delete the live site!"),*/
+        const get_top_ln_live = () => {
+          return 1;
+        };
+/*
+        const get_top_ln_draft = () => {
+          return el("div" {"class": "childrenSelector"},
+                    [
+                      el ("div", {"class": "childrenSelectorName"}, "Currently editing draft: "),
+                      el ("button", {}, "Clone"),
+                      el ("button", {}, "Delete"),
+                    ],
+                    {});
+        };
+
+        let draftListDiv = el("div", {"class": ".childrenElem"}, [], {});
+        draftListDiv.append(get_top_ln_draft());
+        modifyMenuDiv.append(draftListDiv);*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        /*
         const createNewDraft = () => {
           return el("div", {"class": "childrenSelector"},
                     [
@@ -3765,11 +3821,7 @@ lastEditScript = """
                     ], 
                     {
                       onclick: (event) => {
-                        /*
-                          Alright, for now, I'm going to launch the creation of versioning here.
-                          First, check to see if the versions folder exists. If it does, exit. 
-                          We don't want to overwrite anything.
-                        */
+                        
                         const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
                         if (!draft_name) {
                           return;
@@ -3813,17 +3865,32 @@ lastEditScript = """
         const btnGetter = (name) => {
           return el("div", {"class": "childrenSelector"},
                     [
-                      el("div", {"class": "childrenSelectorName"}, name, {}),
+                      el("button", {}, name, 
+                      {
+                        onclick: (event) => {
+                          navigateLocal("/Thaditor/versions/" + name + "/?edit");
+                          updateInteractionDiv();
+                          setTimeout( () => {
+                            sendNotification("Successfully switched to draft: " + name);
+                          }, 1500);
+                          
+                        }
+                      }),
+                      el("button", {}, "Clone", 
+                      {
+                        onclick: (event) => {
+                          //TODO clone 
+                        }
+                      }),
+                      el("button", {}, "Delete", 
+                      {
+                        onclick: (event) => {
+                          //TODO delete
+                        }
+                      }),
                     ], 
                     {
-                      onclick: (event) => {
-                        navigateLocal("/Thaditor/versions/" + name + "/?edit");
-                        updateInteractionDiv();
-                        setTimeout( () => {
-                          sendNotification("Successfully switched to draft: " + name);
-                        }, 1500);
-                        
-                      }
+                      
                     }
                   );
         };
@@ -3879,7 +3946,7 @@ lastEditScript = """
         if (!isLive()) draftListDiv.append(publishToLiveBtn());
         draftListDiv.append(createNewDraft());
         if (!isLive()) draftListDiv.append(deleteCurrentDraftBtn());
-        modifyMenuDiv.append(draftListDiv);
+        modifyMenuDiv.append(draftListDiv);*/
       } else {
       if(clickedElem) {
         interactionDiv.classList.add("information-style");
