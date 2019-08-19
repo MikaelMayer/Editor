@@ -357,6 +357,11 @@ div#modify-menu #CSS-modification {
     padding: 4px;
 }
 
+div#modify-menu #CSS-modification .linked-CSS {
+    width: 100%;
+    height: 250px;
+}
+
 div#modify-menu #CSS-modification>.CSS-modify-unit {
     display: flex;
     align-items: center;
@@ -473,13 +478,13 @@ div#modify-menu div.keyvalues>div.keyvalue {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    width: 98%;
 }
 
 div#modify-menu div.keyvalues>div.keyvalue .attribute-key-value {
     display: flex;
     flex-direction: row;
     align-items: center;
+    width: 60%;
 }
 
 div#modify-menu div.keyvalues>div.keyvalue .attribute-key {
