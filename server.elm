@@ -1828,7 +1828,12 @@ lastEditScript = """
 	      console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
 	      return;
 	    }
-	    placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}));
+      let existingDiv = placement.querySelector("div[name='"+path+"']");
+      if(existingDiv) {
+        existingDiv.setAttribute("newcontent", newcontent);
+      } else {
+	      placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}));
+      }
 	  }
     
 
@@ -4504,9 +4509,12 @@ lastEditScript = """
             //console.log("The parsed CSS is:", parsedCSS);
             for(let i in parsedCSS) {
               if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector)) {
+                let content = CSSparser.unparseCSS([parsedCSS[i]]);
+                let wsBefore = content.replace(/^(\s*)[\s\S]*$/g, (m, ws) => ws);
+                let contentTrimmed = content.replace(/^\s*/,"");
                 //calculating before and after text
-                fullCSS.push({type: 'cssBlock', content: CSSparser.unparseCSS([parsedCSS[i]]), 
-                  before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
+                fullCSS.push({type: 'cssBlock', content: contentTrimmed, 
+                  before: findText(parsedCSS, 0, i) + wsBefore, after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
               }
               else if(parsedCSS[i].kind === '@media' && window.matchMedia(parsedCSS[i].selector).matches) {
                 //saving selector information 
@@ -4663,15 +4671,22 @@ lastEditScript = """
           //rest of CSS
           editor_model.CSSState = fullParseCSS();
           console.log("CSS state is:", editor_model.CSSState);
+          const count = (str) => {
+            const re = /\n/g
+            return ((str || '').match(re) || []).length
+          }
           for(let i in editor_model.CSSState) {
-            let headerStr = editor_model.CSSState[i].orgTag.tagName;
-            for(let curElem = editor_model.CSSState[i].orgTag.parentElement; curElem; curElem = curElem.parentElement) {
-              headerStr =  curElem.tagName + " > " + headerStr; 
+            let cssState = editor_model.CSSState[i];
+            let orgTag = cssState.orgTag;
+            console.log("cssState", cssState);
+            let headerStr = orgTag.tagName.toLowerCase() + (orgTag.tagName === "LINK" ? " (" + orgTag.getAttribute("href")+":" + (count(cssState.before) + 1) + ")" : "");
+            for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
+              headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
             }
             CSSarea.append(el("span", {}, [], {innerHTML: headerStr}));
             let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
               el("textarea", {"class": "CSS-selectors" }, [], {
-                defaultValue: editor_model.CSSState[i].content,
+                defaultValue: cssState.content,
                 onfocusout() {
                   setCSSAreas();
                 },
@@ -4721,9 +4736,9 @@ lastEditScript = """
                     }
                   }
                 },
-                storedCSS: editor_model.CSSState[i]
+                storedCSS: cssState
               }),
-              editor_model.CSSState[i].orgTag.tagName === "LINK" ?
+              orgTag.tagName === "LINK" ?
                 el("div", {"class": "delete-CSS", "title": "Update the CSS once save is clicked"}, [], {
                   innerHTML: plusSVG,
                   onclick() {
