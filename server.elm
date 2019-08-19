@@ -252,11 +252,6 @@ luca =
         }
       }
     }
-    function writeDocument(NC) {
-      document.open();
-      document.write(NC);
-      document.close();
-    }
     function doWriteServer(action, name, content) {
       if (typeof writeServer != "undefined") {
         console.log("about to write to server");
@@ -403,9 +398,6 @@ luca =
       xhr.setRequestHeader("write-file", file.type);
       """);
       xhr.send(file);
-    }
-    editor.matches = function (elem, selector) {
-      return elem && elem.matches && elem.matches(selector);
     }
     // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
     editor.getStorageFolder = function(file) {
@@ -1367,6 +1359,17 @@ function isGhostAttributeKey(name) {
 
 editor = typeof editor === "object" ? editor : {};
 
+editor.matches = function(elem, selector) {
+  if(elem && elem.matches) {
+    try {
+      return elem.matches(selector);
+    } catch(e) {
+      return false;
+    }
+  }
+  return false;
+}
+    
 // An array of (node => {innerHTML, attributes, properties}) that can be defined by plug-ins.
 editor.customContextMenuButtons = [];
 
@@ -1439,7 +1442,7 @@ editor.ghostNodes = [];
 
 // Analytics scripts
 editor.ghostNodes.push(insertedNode =>
-  insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
+  editor.matches(insertedNode, "script[src]") &&
      (insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1 ||
       insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1 ||
       insertedNode.getAttribute("src").indexOf("googletagmanager.com/gtm.js") != -1)
@@ -1459,10 +1462,8 @@ editor.ghostNodes.push(insertedNode => {
 );
 // For Google sign-in buttons and i-frames
 editor.ghostNodes.push(insertedNode =>
-  (insertedNode.tagName == "DIV" &&
-    insertedNode.classList.contains("abcRioButton")) ||
-  (insertedNode.tagName == "IFRAME" &&
-    insertedNode.getAttribute("id") == "ssIFrame_google")
+  editor.matches(insertedNode, "div.abcRioButton") ||
+  editor.matches(insertedNode, "iframe#ssIFrame_google")
 );
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
  editor.ghostNodes.push(insertedNode => 
@@ -1472,7 +1473,7 @@ editor.ghostNodes.push(insertedNode =>
  );
 // For ace script for syntax highlight
 editor.ghostNodes.push(insertedNode =>
-  insertedNode.tagName == "SCRIPT" && typeof insertedNode.getAttribute("src") == "string" &&
+  editor.matches(insertedNode, "script[src]") &&
      insertedNode.getAttribute("src").startsWith("https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/mode-j")
 );
 // For ace script for syntax highlight
@@ -1481,7 +1482,7 @@ editor.ghostNodes.push(insertedNode =>
 );
 // For the grammarly extension
 editor.ghostNodes.push(insertedNode =>
-  insertedNode.nodeType === 1 && insertedNode.matches(".gr-top-z-index, .gr-top-zero")
+  editor.matches(insertedNode, ".gr-top-z-index, .gr-top-zero")
 );
 
 function handleScriptInsertion(mutations) {
@@ -2824,10 +2825,10 @@ lastEditScript = """
           let negativeSelector = editorSelectOptions[i].getAttribute("editor-noselect"),
               positiveSelector = editorSelectOptions[i].getAttribute("editor-doselect");
           if(result && negativeSelector) {
-            result = !clickedElem.matches(negativeSelector);
+            result = !editor.matches(clickedElem, negativeSelector);
           }
           if(!result && positiveSelector) {
-            result = clickedElem.matches(positiveSelector);
+            result = editor.matches(clickedElem, positiveSelector);
           }
         }
         return result;
@@ -3664,7 +3665,7 @@ lastEditScript = """
               onchange: function() { editor_model.autosave = this.checked; },
             checked: editor_model.autosave}),
              el("span", {class:"slider round"})])
-        )
+        );
         modifyMenuDiv.append(
           el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
         if(apache_server) {
@@ -4502,7 +4503,7 @@ lastEditScript = """
             var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
             //console.log("The parsed CSS is:", parsedCSS);
             for(let i in parsedCSS) {
-              if(parsedCSS[i].kind === 'cssBlock' && clickedElem.matches(parsedCSS[i].selector)) {
+              if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector)) {
                 //calculating before and after text
                 fullCSS.push({type: 'cssBlock', content: CSSparser.unparseCSS([parsedCSS[i]]), 
                   before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
@@ -4511,7 +4512,7 @@ lastEditScript = """
                 //saving selector information 
                 let curMedia = parsedCSS[i];
                 for(let j in curMedia.content) {
-                  if(clickedElem.matches(curMedia.content[j].selector)) {
+                  if(editor.matches(clickedElem, curMedia.content[j].selector)) {
                     var insertMedia = {type: '@media', content: curMedia, 
                       innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
                       before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag};
@@ -4682,8 +4683,8 @@ lastEditScript = """
                     //check to make sure CSS is still relevant to clicked element.
                     for(let i in curCSSState) {
                       if(curCSSState[i].kind === 'cssBlock' || curCSSState[i].kind === '@media') {
-                        if(!(curCSSState[i].kind === 'cssBlock' ? clickedElem.matches(curCSSState[i].selector) : 
-                        (window.matchMedia(curCSSState[i].selector).matches ? clickedElem.matches(curCSSState[i].content.selector) : false))) {
+                        if(!(curCSSState[i].kind === 'cssBlock' ? editor.matches(clickedElem, curCSSState[i].selector) : 
+                        (window.matchMedia(curCSSState[i].selector).matches ? editor.matches(clickedElem, curCSSState[i].content.selector) : false))) {
                           throwError = true;
                         }
                       }
@@ -4765,8 +4766,8 @@ lastEditScript = """
                     let parsedNewCSS = CSSparser.parseCSS(this.value);
                     for(let i in parsedNewCSS) {
                       if(parsedNewCSS[i] && parsedNewCSS[i].kind != 'whitespace') {
-                        if(parsedNewCSS[i].kind == 'cssBlock' ? clickedElem.matches(parsedNewCSS[i].selector) :
-                        (window.matchMedia(parsedNewCSS[i].selector).matches ? clickedElem.matches(parsedNewCSS[i].content.selector) : false))
+                        if(parsedNewCSS[i].kind == 'cssBlock' ? editor.matches(clickedElem, parsedNewCSS[i].selector) :
+                        (window.matchMedia(parsedNewCSS[i].selector).matches ? editor.matches(clickedElem, parsedNewCSS[i].content.selector) : false))
                         {
                           let addedStyles = document.getElementById("new-Style");
                           if(!addedStyles) { 
