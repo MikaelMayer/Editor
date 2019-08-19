@@ -962,6 +962,40 @@ textarea.templateengine:focus {
     }
 }
 
+div.editor-container {
+  border: 1px solid #5f5f5f;
+  margin-top: 3px;
+}
+div.editor-container.minimized div.editor-container-content {
+  display: none;
+}
+div.editor-container.disabled div.editor-container-title {
+  color: #BBB;
+}
+div.editor-container div.editor-container-title div.editor-container-icon svg.context-menu-icon.fill>path {
+  fill: #BBB;
+  stroke-width: 0px;
+}
+div.editor-container div.editor-container-title div.editor-container-icon:hover svg.context-menu-icon.fill>path {
+  fill: white;
+}
+div.editor-container-title {
+  height: 30px;
+  background: gray;
+  cursor: pointer;
+}
+div.editor-container-content {
+  padding: 3px;
+  border-left: 3px solid gray;
+}
+div.editor-container div.editor-container-title div.editor-container-icon {
+  float: right;
+}
+div.editor-container.minimized div.editor-container-title div.editor-container-icon#displayArrow {
+  transform: rotate(180deg);
+  transform-origin: 50% 50%;
+}
+
 @media (pointer: coarse) {
     div#modify-menu {
         -webkit-box-shadow: none;

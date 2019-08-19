@@ -404,6 +404,9 @@ luca =
       """);
       xhr.send(file);
     }
+    editor.matches = function (elem, selector) {
+      return elem && elem.matches && elem.matches(selector);
+    }
     // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
     editor.getStorageFolder = function(file) {
       var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
@@ -3092,6 +3095,59 @@ lastEditScript = """
                       _ -> if boolVar "autosave" True then "true" else "false"),
       path: @(path |> jsCode.stringOf),
       version : verz,
+      interfaces: ifAlreadyRunning ? editor_model.interfaces : []
+    }
+    
+    // First time: We add the interface containers.
+    if(!ifAlreadyRunning) {
+      /*
+      editor_model.interfaces.push({
+        title: "Dummy content",
+        minimized: true,
+        priority(editor_model) {
+          return undefined;
+        },
+        enabled(editor_model) {
+          false;
+        },
+        render: function render(editor_model, innerBox) {
+          return "Can never be enabled";
+        }
+      });
+      editor_model.interfaces.push({
+        title: "Wrap text nodes in divs",
+        minimized: true,
+        priority(editor_model) {
+          return this.enabled(editor_model) ? 1 : undefined;
+        },
+        enabled(editor_model) {
+          if(!editor.matches(editor_model.clickedElem, "div"))
+            return false;
+          for(let c of editor_model.clickedElem.childNodes) {
+            if(c.nodeType === 3 && c.textContent.trim() != "") return true;
+          }
+          return false;
+        },
+        render: function render(editor_model, innerBox) {
+          if(!this.enabled(editor_model)) {
+            return "Click on a div containing text nodes to wrap them.";
+          }
+          return el("div", {}, [
+            el("span.description", {}, "This div contain wrappable text nodes"),
+            el("button", {}, "Wrap text nodes", {
+              onclick: event => {
+                let div = editor_model.clickedElem;
+                for(let c of editor_model.clickedElem.childNodes) {
+                  if(c.nodeType === 3 && c.textContent.trim() != "") {
+                    let p = el("p");
+                    c.parentNode.insertBefore(p, c);
+                    p.appendChild(c);
+                  }
+                }
+                updateInteractionDiv();
+              }})]);
+        }
+      });*/
     }
 
     
@@ -3207,20 +3263,26 @@ lastEditScript = """
     updateInteractionDiv(); //outer lastEditScript
 
     function updateInteractionDiv() {
+      
+      // Set up
       let model = editor_model;
       var clickedElem = model.clickedElem;
       var CSSparser = new losslesscssjs();
       var contextMenu = document.querySelector("#context-menu");
       var modifyMenuDiv = document.querySelector("#modify-menu");
-      //if both are closed, just return 
       if(!modifyMenuDiv || !contextMenu) return;
       modifyMenuDiv.classList.toggle("editor-interface", true);
+
+      // Display the interface or not
       modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
-      //toggle_visible_state(); // is this right?
+
+      // Make sure at most one element is marked as ghost-clicked.
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
       if(clickedElem && clickedElem.nodeType === 1) {
         clickedElem.setAttribute("ghost-clicked", "true");
       }
+      
+      // Recover selection if it exists
       model.selectionRange = model.notextselection ? undefined : (() => {
         let selection = window.getSelection();
         if(!selection || !selection.rangeCount) return;
@@ -3229,6 +3291,8 @@ lastEditScript = """
             f.startOffset === f.endOffset && f.startContainer === f.endContainer) return;
         return f;
       })();
+      
+      // Recover caret position if it exists
       model.caretPosition = model.notextselection || clickedElem && clickedElem.tagName === "HEAD" ? undefined : (() => {
         let selection = window.getSelection();
         if(!selection || !selection.rangeCount) return;
@@ -3236,6 +3300,8 @@ lastEditScript = """
         if(!f || f.startOffset !== f.endOffset && f.startContainer !== f.endContainer) return;
         return f;
       })();
+      
+      // Helpers: Text preview and summary
       function textPreview(element, maxLength) {
         let x = element.textContent;
         let result = "'" + x + "'";;
@@ -3268,14 +3334,75 @@ lastEditScript = """
         summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
         return summary;
       }
+      
+      // We render the content of modifyMenuDiv from scratch
       modifyMenuDiv.innerHTML = "";
-      let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned"});
-      let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"});
-      let interactionDiv = el("div", {"class": "information"});
-      modifyMenuDiv.append(modifyMenuPinnedIconsDiv);
+      let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned"}); // Icons always visible
+      let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"}); // Top-level icons on the top bar
       let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
-      modifyMenuDiv.append(domSelector);
-      modifyMenuDiv.append(modifyMenuIconsDiv);
+      let interactionDiv = el("div", {"class": "information"}); // Everything else for now
+      modifyMenuDiv.append(modifyMenuPinnedIconsDiv); // Keep this one as it.
+      modifyMenuDiv.append(modifyMenuIconsDiv);       // TODO: Move to editor_model.interfaces
+      modifyMenuDiv.append(domSelector);              // TODO: Move to editor_model.interfaces
+      
+      for(let i = 1; i < editor_model.interfaces.length; i++) {
+        let x = editor_model.interfaces[i];
+        let priority = x.priority(editor_model);
+        if(i > 0 && typeof priority === "number") {
+          let previous = editor_model.interfaces[i-1]
+          let beforePriority = previous.priority(editor_model);
+          if(typeof beforePriority === "undefined" && (!previous.enabled(editor_model) || previous.minimized)) {
+            var tmp = editor_model.interfaces[i];
+            editor_model.interfaces[i] = editor_model.interfaces[i-1];
+            editor_model.interfaces[i-1] = tmp;
+            i--; // Bubble up
+          }
+        }
+      }
+      for(let i = 0; i < editor_model.interfaces.length; i++) {
+        let x = editor_model.interfaces[i];
+        let priority = x.priority(editor_model);
+        let initMinimized = typeof priority == "number" ? false :
+                            x.enabled(editor_model) ? x.minimized : true;
+        let renderedContent = x.render(editor_model);
+        let menu = el("div", {
+          class:"editor-container" + (x.enabled(editor_model) ? "" : " disabled") + (initMinimized ? " minimized" : "")}, [
+          el("div.editor-container-title", {
+            title: typeof renderedContent === "string" ? renderedContent : undefined
+         }, [el("span", {title: "Expand menu"}, x.title),
+             el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: openTopSVG}),
+             i >= editor_model.interfaces.length - 1 ? undefined :
+             el("div.editor-container-icon", {title: "Move menu down"}, [], {innerHTML: arrowDown,
+               onclick: (i => event => {
+                 var tmp = editor_model.interfaces[i];
+                 editor_model.interfaces[i] = editor_model.interfaces[i+1];
+                 editor_model.interfaces[i+1] = tmp;
+                 updateInteractionDiv();
+               })(i)}),
+             i == 0 ? undefined :
+             el("div.editor-container-icon", {title: "Move menu up"}, [], {innerHTML: arrowUp,
+               onclick: (i => event => {
+                 var tmp = editor_model.interfaces[i];
+                 editor_model.interfaces[i] = editor_model.interfaces[i-1];
+                 editor_model.interfaces[i-1] = tmp;
+                 updateInteractionDiv();
+               })(i)})
+            ], {
+            onclick: ((x, initMinimized) => event => {
+              let target = event.target;
+              while(!target.matches(".editor-container")) target = target.parentNode;
+              console.log("onclick", event.target);
+              x.minimized = target.classList.contains("minimized");
+              x.minimized = !x.minimized;
+              target.classList.toggle("minimized", x.minimized);
+            })(x, initMinimized)
+          }),
+          el("div.editor-container-content", {}, renderedContent),
+        ]);
+        modifyMenuDiv.append(menu);
+      }
+      // TODO: Migrate the content of interfactionDiv to editor_model.interfaces
+      
       modifyMenuDiv.append(interactionDiv);
       let createButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
