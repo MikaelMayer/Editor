@@ -4510,8 +4510,8 @@ lastEditScript = """
             for(let i in parsedCSS) {
               if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector)) {
                 let content = CSSparser.unparseCSS([parsedCSS[i]]);
-                let wsBefore = content.replace(/^(\s*)[\s\S]*$/g, (m, ws) => ws);
-                let contentTrimmed = content.replace(/^\s*/,"");
+                let wsBefore = content.replace(/^(\s*\n)[\s\S]*$/g, (m, ws) => ws);
+                let contentTrimmed = content.replace(/^\s*\n/,"");
                 //calculating before and after text
                 fullCSS.push({type: 'cssBlock', content: contentTrimmed, 
                   before: findText(parsedCSS, 0, i) + wsBefore, after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
