@@ -4692,6 +4692,7 @@ lastEditScript = """
                 },
                 oninput() {
                   if(this.orgTag.tagName != "LINK") {
+                  if(this.storedCSS.orgTag.tagName != "LINK") {
                     let throwError = false;
                     curCSSState = CSSparser.parseCSS(this.value);
                     //console.log(curCSSState);
@@ -4724,7 +4725,7 @@ lastEditScript = """
                   }
                   else {
                     this.storedCSS.content = this.value;
-                    let nextSibGhostCSS = this.storedCSS.orgTag.nextSibling;
+                    let nextSibGhostCSS = this.storedCSS.orgTag.nextSiblingElement;
                     if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "ghost-CSS")) {
                       nextSibGhostCSS.innerHTML = this.value;
                     }
