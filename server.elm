@@ -4691,7 +4691,6 @@ lastEditScript = """
                   setCSSAreas();
                 },
                 oninput() {
-                  if(this.orgTag.tagName != "LINK") {
                   if(this.storedCSS.orgTag.tagName != "LINK") {
                     let throwError = false;
                     curCSSState = CSSparser.parseCSS(this.value);
