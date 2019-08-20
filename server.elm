@@ -3104,11 +3104,19 @@ lastEditScript = """
       interfaces: ifAlreadyRunning ? editor_model.interfaces : []
     }
     
-    // First time: We add the interface containers.
-    if(!ifAlreadyRunning) {
-      /*
+    function init_interfaces() {
+      let createButton = function(innerHTML, attributes, properties) {
+        let button = el("div", attributes, [], properties);
+        button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
+        button.classList.add("modify-menu-button");
+        button.innerHTML = innerHTML;
+        return button;
+      } //you can append a createbutton to the element returning in render
+      let add_btn_to_div = (div, innerHTML, attributes, properties) => {
+        div.append(createButton(innerHTML, attributes, properties));
+      };
       editor_model.interfaces.push({
-        title: "Dummy content",
+        title: "Advanced",
         minimized: true,
         priority(editor_model) {
           return undefined;
@@ -3117,45 +3125,73 @@ lastEditScript = """
           false;
         },
         render: function render(editor_model, innerBox) {
-          return "Can never be enabled";
+          let retDiv = el("div", {"class":"modify-menu-icons"});
+          //We need 3 btns: refresh, filesystem + help.
+          add_btn_to_div(retDiv, reloadSVG,
+            {"class": "tagName", title: "Reload the current page"},
+              {onclick: function(event) { editor_model.curScrollPos = (editor_model.displaySource ? document.getElementById("sourcecontentmodifier").scrollTop : 0);
+                reloadPage(); } }
+            );
+          add_btn_to_div(retDiv, folderSVG,
+            {"class": "tagName", title: "List files in current directory"},
+              {onclick: function(event) {
+                let u =  new URL(location.href);
+                u.pathname = u.pathname.replace(/[^\/]*$/, "");
+                u.searchParams.set("ls", "true");
+                navigateLocal(u.href);
+              }
+            }
+          );
+          
+          return retDiv;
         }
       });
+      
       editor_model.interfaces.push({
-        title: "Wrap text nodes in divs",
+        title: "Log",
         minimized: true,
         priority(editor_model) {
           return this.enabled(editor_model) ? 1 : undefined;
         },
         enabled(editor_model) {
-          if(!editor.matches(editor_model.clickedElem, "div"))
-            return false;
-          for(let c of editor_model.clickedElem.childNodes) {
-            if(c.nodeType === 3 && c.textContent.trim() != "") return true;
-          }
           return false;
         },
         render: function render(editor_model, innerBox) {
-          if(!this.enabled(editor_model)) {
-            return "Click on a div containing text nodes to wrap them.";
+          let retDiv = el("div", {"class":"modify-menu-icons"});
+          let log = document.getElementById("fullLog");
+          if (!log) {
+            log = el("textarea", {id:"fullLog", class:"textarea logger", readonly:true, isghost:true, value:"(no log)"}, [], {});
           }
-          return el("div", {}, [
-            el("span.description", {}, "This div contain wrappable text nodes"),
-            el("button", {}, "Wrap text nodes", {
-              onclick: event => {
-                let div = editor_model.clickedElem;
-                for(let c of editor_model.clickedElem.childNodes) {
-                  if(c.nodeType === 3 && c.textContent.trim() != "") {
-                    let p = el("p");
-                    c.parentNode.insertBefore(p, c);
-                    p.appendChild(c);
-                  }
-                }
-                updateInteractionDiv();
-              }})]);
+          let logtxt = "";
+          const elog = editor_model.editor_log;
+          for (let i = 0; i < elog.length; i++) {
+            const l = elog[i];
+            logtxt = logtxt + l + "\n";
+          }
+          logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
+          retDiv.append(log);
+          return retDiv;
         }
-      });*/
+      });
+      editor_model.interfaces.push({
+        title: "Source",
+        minimized: true,
+        priority(editor_model) {
+          return this.enabled(editor_model) ? 1 : undefined;
+        },
+        enabled(editor_model) {
+          return false;
+        },
+        render: function render(editor_model, innerBox) {
+          return "pass";
+        }
+      });
     }
-
+    
+    // First time: We add the interface containers.
+    if(!ifAlreadyRunning) {
+      init_interfaces();
+    }
     
 
     function reorderCompatible(node1, node2){
@@ -3265,8 +3301,12 @@ lastEditScript = """
       sendNotification("Successfully published " + oldver + " to live.");
       setTimeout (() => sendNotification("Switched to live."), 1500)
     }
+    
+    
 
     updateInteractionDiv(); //outer lastEditScript
+
+    
 
     function updateInteractionDiv() {
       
@@ -3351,6 +3391,10 @@ lastEditScript = """
       modifyMenuDiv.append(modifyMenuIconsDiv);       // TODO: Move to editor_model.interfaces
       modifyMenuDiv.append(domSelector);              // TODO: Move to editor_model.interfaces
       
+      /*
+        Render interfaces / containers
+      */
+
       for(let i = 1; i < editor_model.interfaces.length; i++) {
         let x = editor_model.interfaces[i];
         let priority = x.priority(editor_model);
@@ -3397,7 +3441,7 @@ lastEditScript = """
             onclick: ((x, initMinimized) => event => {
               let target = event.target;
               while(!target.matches(".editor-container")) target = target.parentNode;
-              console.log("onclick", event.target);
+              //console.log("onclick", event.target);
               x.minimized = target.classList.contains("minimized");
               x.minimized = !x.minimized;
               target.classList.toggle("minimized", x.minimized);
@@ -3693,6 +3737,7 @@ lastEditScript = """
         }
       //} else if(model.insertElement)  {
       } else if (editor_model.state.includes("i")) {
+        //insert?
         interactionDiv.classList.add("insert-information-style");
         interactionDiv.classList.add("information-style");
         interactionDiv.append(el("h1", {}, "Insert"));
@@ -4324,8 +4369,10 @@ lastEditScript = """
             linkFrom.setAttribute("href", "#" + targetID);
           })(editor_model.clickedElem)
         );
-      }
-
+      } 
+      /*
+        Attribute box
+      */
       let keyvalues = el("div", {"class":"keyvalues"});
       if (clickedElem) {
         // modify tagname
@@ -4504,7 +4551,7 @@ lastEditScript = """
           document.querySelectorAll("style").forEach((e) => {
             rawCSS.push({text: e.textContent, tag: e});
           });
-          for(let z in rawCSS) {  
+          for(let z in rawCSS) {
             var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
             //console.log("The parsed CSS is:", parsedCSS);
             for(let i in parsedCSS) {
@@ -5038,6 +5085,7 @@ lastEditScript = """
       
       let backgroundImgSrc = checkForBackgroundImg();
       if (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc)) {
+        //image replacement
         //console.log("got here!");
         //console.log(backgroundImgSrc.relCSS.value[0].url.match(/\((.*?)\)/g));
         //console.log(backgroundImgSrc.relCSS);
@@ -5088,6 +5136,7 @@ lastEditScript = """
       //interactionDiv.append(el("hr"));
       // Nodes only with 1 text child
       if(clickedElem && clickedElem.children.length === 0 && !voidTags[clickedElem.tagname]) {
+        //Text editing when one text child node
         // interactionDiv.append(el("hr"));
         let txt = el("textarea", {id:"singleChildNodeContent"},
           [], {
@@ -5104,6 +5153,7 @@ lastEditScript = """
       }
       // let user modify button content
       if(clickedElem && (clickedElem.tagName === "BUTTON")) {
+        //not working yet
         // provide the onclick attribute to users so user can modify it in modify-menu
         if (!clickedElem.hasAttribute("onclick")) {
           clickedElem.setAttribute("onclick", "");
