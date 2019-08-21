@@ -343,9 +343,8 @@ div.disambiguationMenu {
 }
 
 div#modify-menu textarea.inline-CSS {
-    width: 98%;
+    width: 100%;
     height: 100px;
-    margin-left: 4px;
     margin-bottom: 6px;
     overflow-y: auto;
 }

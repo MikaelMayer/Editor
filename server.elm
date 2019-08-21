@@ -1621,6 +1621,26 @@ lastEditScript = """
     var buttonHeight = () => onMobile() ? 48 : 30;
     var buttonWidth  = () => onMobile() ? 48 : 40;
     
+    setTimeout(() => {document.querySelectorAll("link").forEach((e) => {
+      let nextSibGhostCSS = e.nextElementSibling;
+      if(nextSibGhostCSS && nextSibGhostCSS.tagName === "STYLE" && nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS") {
+        console.log("There is already a ghost CSS node here!");
+      }
+      else {
+        let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
+        let CSSvalue = doReadServer("read", CSSFilePath);
+        //console.log(CSSFilePath.match(/server-elm-style/g));
+        if(!(CSSFilePath.match(/server-elm-style/g)) && CSSvalue) {
+          CSSvalue = CSSvalue.slice(1);
+          e.parentElement.insertBefore(el("style", {"isghost": true, "class": "editor-interface ghost-CSS"}, [], {
+              textContent: CSSvalue
+            }), 
+            nextSibGhostCSS);
+        }
+      }
+    });}, 500);
+
+
     // Before saving, call this function to that it eventually triggers a save action to any file.
     function addFileToSave(path, oldcontent, newcontent) {
       var placement = document.querySelector("#editor-files-to-overwrite");
@@ -4473,17 +4493,10 @@ lastEditScript = """
 
 
       function findText(parsed, startIndex, endIndex) {
-        //console.log("Start index is:", startIndex);
-        //console.log("End index is:", endIndex);
         var textSegment = "";
-        //console.log("got to findtext");
-        //console.log("startIndex is:" + startIndex + " endIndex is:" + endIndex);
         for(let i = startIndex; i < endIndex; i++) {
-          //console.log(parsed[0].directive);
-          //console.log(CSSparser.unparseRules([parsed[i]]));
           textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[i]]) :
             (parsed[0].directive ? CSSparser.unparseRules([parsed[i]]) : "") : "";
-          //console.log(textSegment);
         }
         return textSegment;
       }      
@@ -4500,6 +4513,7 @@ lastEditScript = """
                 //for all intents and purposes, the ghost style node will be the same as the link style CSS
                 rawCSS.push({text: e.nextElementSibling, tag: e})
               }
+              //this should be removed soon
               else {
                 let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
                 let CSSvalue = doReadServer("read", CSSFilePath);
@@ -4595,7 +4609,6 @@ lastEditScript = """
             CSSString = CSSparser.unparseCSS([curMedia]);        
           }
           if(curTag.tagName === "LINK") {
-            console.log("hi!");
             return CSSString;
           }
           //console.log("Text is:" + CSSString);
@@ -4614,7 +4627,6 @@ lastEditScript = """
           }
 
           //if there is linked CSS text
-          console.log("The type attribute of the clickedElem is:" + clickedElem.getAttribute("type"));
           if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("href")) {
             let CSSFilePath = relativeToAbsolute(clickedElem.getAttribute("href"));
             let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
@@ -4626,12 +4638,12 @@ lastEditScript = """
                     setCSSAreas();
                   },
                   oninput() {
-                    let nextSibGhostCSS = clickedElem.nextSibling;
-                    if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface")) {
+                    let nextSibGhostCSS = clickedElem.nextElementSibling;
+                    if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
                       nextSibGhostCSS.textContent = this.value;
                     }
                     else {
-                      clickedElem.parentElement.insertBefore(el("style", {"isghost": true, "class": "editor-interface"}, [], {
+                      clickedElem.parentElement.insertBefore(el("style", {"isghost": true, "class": "editor-interface ghost-CSS"}, [], {
                           textContent: this.value
                         }), 
                         nextSibGhostCSS);
@@ -4647,6 +4659,7 @@ lastEditScript = """
           var inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
           if(inline) {
             //debugger;
+            console.log("We have inline CSS!");
             let inlineCSS = el("div", {"class": "CSS-modify-unit"}, [
               el("textarea", {"class": "inline-CSS"}, [], {
                 defaultValue: inline,
@@ -4668,7 +4681,7 @@ lastEditScript = """
               })
             ]);
             CSSarea.append(el("span", {}, [], {innerHTML: "Inline styles:"}));
-            CSSarea.append(inline_CSS);
+            CSSarea.append(inlineCSS);
             //debugger;
           }
           //rest of CSS
@@ -4734,12 +4747,12 @@ lastEditScript = """
                     let nextSibGhostCSS = this.storedCSS.orgTag.nextElementSibling;
                     console.log(nextSibGhostCSS);
                     if(nextSibGhostCSS) console.log(nextSibGhostCSS.getAttribute("class"));
-                    if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface")) {
+                    if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
                       nextSibGhostCSS.textContent = fullUnparseCSS(this.storedCSS);
                     }
                     else {
                       console.log("now inserting a new ghost style");
-                      this.storedCSS.orgTag.parentElement.insertBefore(el("style", {"isghost": true, class: "editor-interface"}, [], {
+                      this.storedCSS.orgTag.parentElement.insertBefore(el("style", {"isghost": true, class: "editor-interface ghost-CSS"}, [], {
                           textContent: fullUnparseCSS(this.storedCSS)
                         }), 
                         nextSibGhostCSS);
