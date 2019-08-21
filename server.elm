@@ -2420,6 +2420,9 @@ lastEditScript = """
       }
       console.log("-----------------------------");
     }
+    function canUndo() {
+      return editor_model.undoStack.length > 0;
+    }
 
     //undo function: handles undo feature
     function undo() {
@@ -2541,7 +2544,10 @@ lastEditScript = """
     } //undo
 
     
-
+    function canRedo() {
+      return editor_model.redoStack.length > 0;
+    }
+    
     function redo() {
       let redoElem = editor_model.redoStack.pop();
       if(redoElem === undefined) {
@@ -2910,8 +2916,8 @@ lastEditScript = """
       var the_path;
       var thaditor_files = [
         "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
-        "ThaditorInstaller.htaccess", "composer.json", "credentials.json", "cacert.pem", "versions",
-        "vendor", "ssg",
+        "ThaditorInstaller.htaccess", "composer.json", "composer.lock", "credentials.json", "cacert.pem", "versions",
+        "vendor", "ssg", "cache"
       ];
     }
     the_path = @(path |> jsCode.stringOf);
@@ -3210,7 +3216,7 @@ lastEditScript = """
       
       //filter out Thaditor files
       website_files = website_files.filter(val => !thaditor_files.includes(val[0]));
-      website_files = website_files.filter(val => val[0][0] != ".");
+      website_files = website_files.filter(val => val[0] != "." && val[0] != "..");
       //cpy website_files to to dest
       website_files.forEach(val => {
         let [nm, isdir] = val;
@@ -3467,7 +3473,7 @@ lastEditScript = """
           })(clickedElem)}
         )
         addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
-          {"class": "inert", title: "Undo most recent change",
+          {"class": "inert" + (!canUndo() ? " disabled" : ""), title: "Undo most recent change",
             id: "undobutton"
           },
           {onclick: function(event) {
@@ -3476,7 +3482,7 @@ lastEditScript = """
           }   
         );
         addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
-          {"class": "inert", title: "Redo most recent undo",
+          {"class": "inert" + (!canRedo() ? " disabled" : ""), title: "Redo most recent undo",
             id: "redobutton"
           },
         	{onclick: function(event) {
