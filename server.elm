@@ -2373,6 +2373,8 @@ lastEditScript = """
       if(onlyGhosts) {
         return;
       } // Send in post the new HTML along with the URL
+      // Set undo/redo state
+      syncUndoRedoButtons();
       
       if(!editor_model.autosave) {
         if(editor_model.undoStack.length)
@@ -2631,7 +2633,12 @@ lastEditScript = """
        return 1;
     } //end of redo
 
-    
+    function syncUndoRedoButtons() {
+      let undoButton = document.querySelector("#undobutton");
+      let redoButton = document.querySelector("#redoButton");
+      if(undoButton) undoButton.classList.toggle("disabled", !canUndo());
+      if(redoButton) redoButton.classList.toggle("disabled", !canRedo());
+    }
     
     function pasteHtmlAtCaret(html) {
       var sel, range;
