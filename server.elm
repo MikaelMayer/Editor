@@ -2911,7 +2911,7 @@ lastEditScript = """
       var thaditor_files = [
         "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
         "ThaditorInstaller.htaccess", "composer.json", "credentials.json", "cacert.pem", "versions",
-        "vendor", "ssg",
+        "vendor", "ssg","cache"
       ];
     }
     the_path = @(path |> jsCode.stringOf);
