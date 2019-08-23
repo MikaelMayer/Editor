@@ -3970,7 +3970,7 @@ lastEditScript = """
           
           }
           let remParentheses = /\((.*?)\)/g;
-          let srcName = backgroundImgSrc ? remParentheses.exec(backgroundImgSrc.relCSS.value[0].url)[1] : clickedElem.attributes[0].value;
+          let srcName = backgroundImgSrc ? remParentheses.exec(backgroundImgSrc.relCSS.value[0].url)[1] : clickedElem.getAttribute("src");
 
           //console.log(srcName);
           //console.log(backgroundImgSrc.relCSS.value[0].url);
@@ -4695,13 +4695,14 @@ lastEditScript = """
         let x = editor_model.interfaces[i];
         let priority = x.priority(editor_model);
         if(i > 0 && typeof priority === "number") {
+          x.minimized = false;
           let previous = editor_model.interfaces[i-1]
           let beforePriority = previous.priority(editor_model);
           if(typeof beforePriority === "undefined" && (!previous.enabled(editor_model) || previous.minimized)) {
             var tmp = editor_model.interfaces[i];
             editor_model.interfaces[i] = editor_model.interfaces[i-1];
             editor_model.interfaces[i-1] = tmp;
-            i--; // Bubble up
+            i -= 2; // Bubble up
           }
         }
       }
