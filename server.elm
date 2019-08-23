@@ -233,10 +233,10 @@ luca =
     }
     var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
     var apache_server = @(if browserSide then "true" else "false");
-    function doReadServer(action, name) {
+    function doReadServer(action, name, onOk, onErr) {
       if (typeof readServer != "undefined") {
         console.log("reading server");
-        return readServer(action, name);
+        return readServer(action, name, onOk, onErr);
       } else {
         var request = new XMLHttpRequest();
         var url = "/";
@@ -252,10 +252,10 @@ luca =
         }
       }
     }
-    function doWriteServer(action, name, content) {
+    function doWriteServer(action, name, content, onOk, onErr) {
       if (typeof writeServer != "undefined") {
         console.log("about to write to server");
-        return writeServer(action, name, content);
+        return writeServer(action, name, content, onOk, onErr);
       } else {
         var request = new XMLHttpRequest();
         request.open('POST', url, false);  // `false` makes the request synchronous
@@ -263,7 +263,7 @@ luca =
         request.setRequestHeader("name", name);
         request.send(content);
         if(request.status == 200) {
-          return "";
+          return request.responseText;
         } else if(request.status == 500) {
           return request.responseText;
         } else {
@@ -1868,7 +1868,6 @@ lastEditScript = """
             editor_model.notextselection = false;
             editor_model.caretPosition = undefined;
             editor_model.link = undefined;
-            editor_model.advanced = true; // Opens advanced mode.
             editor_model.visible = true;
             set_state_advanced();
             //editor_model.displaySource: false, // Keep source opened or closed
@@ -2713,7 +2712,6 @@ lastEditScript = """
       editor_model.link = link;
       editor_model.link_href_source = aElement; // So that we can modify it
       editor_model.insertElement = false;
-      editor_model.advanced = false;
       editor_model.notextselection = false;
       updateInteractionDiv();
       // Check if the event.target matches some selector, and do things...
@@ -2907,7 +2905,6 @@ lastEditScript = """
       selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
       caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
-      advanced: ifAlreadyRunning ? editor_model.advanced : false, //here
       displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
       disambiguationMenu: undefined, //here
       isSaving: false,
@@ -4421,6 +4418,17 @@ lastEditScript = """
           );
           retDiv.append(el("br"));
           retDiv.append(
+            el("button", {type:""}, "Update Thaditor", {onclick() {
+              if(confirm("Are you ready to upgrade Thaditor?")) {
+                doWriteServer("updateversion", "latest", "", response => {
+                  console.log("Result from Updating Thaditor to latest:");
+                  console.log(response);
+                });
+              }
+            } })
+          );
+          retDiv.append(el("br"));
+          retDiv.append(
             el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
               [el("input", {class: "global-setting", id: "input-question", type: "checkbox"}, [], {
                 onchange: function() { editor_model.askQuestions = this.checked; },
@@ -4428,6 +4436,7 @@ lastEditScript = """
               el("span", {class:"slider round"})]));
           retDiv.append(
             el("label", {"for": "input-question", class: "label-checkbox"}, "Ask questions"));
+          retDiv.append(el("br"));
           retDiv.append(
             el("label", {class:"switch", title: "If on, changes are automatically propagated 1 second after the last edit"}, [
               el("input", {class: "global-setting", id: "input-autosave", type:"checkbox"}, [], {
@@ -4437,6 +4446,7 @@ lastEditScript = """
           );
           retDiv.append(
             el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
+          retDiv.append(el("br"));
           if(apache_server) {
             retDiv.append(
               el("a", {href:"javascript:0", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
