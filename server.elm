@@ -1324,7 +1324,7 @@ editionmenu thesource = [
 if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
 
 initialScript = serverOwned "initial script" [
-<script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js"></script>,
+<script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js" list-ghost-attributes="gapi_processed"></script>,
 <script class="editor-interface">
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
@@ -2944,41 +2944,42 @@ lastEditScript = """
       interfaces: ifAlreadyRunning ? editor_model.interfaces : []
     }
     
+    
+    // Helpers: Text preview and summary
+    function textPreview(element, maxLength) {
+      let x = element.textContent;
+      let result = "'" + x + "'";;
+      if(x == "") {
+        if(element.tagName === "META") {
+          result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
+                  (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
+        } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
+          result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+        } else if(element.tagName === "LINK") {
+          result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+        }
+      }
+      if(typeof maxLength !== "undefined" && result.length > maxLength) {
+        return result.substring(0, maxLength) + "...'";
+      }
+      return result;
+    }
+    function summary(element, idAndClasses, maxLength) {
+      var summary = element.tagName.toLowerCase();
+      if(idAndClasses && element.getAttribute("id")) {
+        summary += "#" + element.getAttribute("id");
+      }
+      var elemClass = element.getAttribute("class");
+      if(idAndClasses && elemClass && elemClass.trim().length) {
+        summary += "." + elemClass.split(/\s+/g).join(".");
+      }
+      summary += " " + textPreview(element);
+      maxLength = maxLength || 80;
+      summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
+      return summary;
+    }
 
     function init_interfaces() {
-      // Helpers: Text preview and summary
-      function textPreview(element, maxLength) {
-        let x = element.textContent;
-        let result = "'" + x + "'";;
-        if(x == "") {
-          if(element.tagName === "META") {
-            result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
-                    (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
-          } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
-            result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          } else if(element.tagName === "LINK") {
-            result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          }
-        }
-        if(typeof maxLength !== "undefined" && result.length > maxLength) {
-          return result.substring(0, maxLength) + "...'";
-        }
-        return result;
-      }
-      function summary(element, idAndClasses, maxLength) {
-        var summary = element.tagName.toLowerCase();
-        if(idAndClasses && element.getAttribute("id")) {
-          summary += "#" + element.getAttribute("id");
-        }
-        var elemClass = element.getAttribute("class");
-        if(idAndClasses && elemClass && elemClass.trim().length) {
-          summary += "." + elemClass.split(/\s+/g).join(".");
-        }
-        summary += " " + textPreview(element);
-        maxLength = maxLength || 80;
-        summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
-        return summary;
-      }
       function findText(parsed, startIndex, endIndex) { //for css + img replacement
         //console.log("Start index is:", startIndex);
         //console.log("End index is:", endIndex);
@@ -3026,15 +3027,15 @@ lastEditScript = """
         title: "Selected Element Tree",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
           let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
           const clickedElem = editor_model.clickedElem;
-          if (!clickedElem) return domSelector;
+          if (!clickedElem) return "Click on an element to view its tree";
           domSelector.classList.add("dom-selector-style");
           let mainElemDiv = el("div", {"class": "mainElem"}, []);
           let childrenElemDiv = el("div", {"class": "childrenElem"}, []);
@@ -3276,140 +3277,139 @@ lastEditScript = """
         title: "Attributes",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
           let keyvalues = el("div", {"class":"keyvalues"});
           const clickedElem = editor_model.clickedElem;
-          if (clickedElem) {
-            // modify tagname
+          if (!clickedElem) return "Click on an element to see its attributes";
+          // modify tagname
+          keyvalues.append(
+            el("div", {"class": "keyvalue"}, [
+              el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "tag: "),
+              el("span", {class:"attribute-key-value"}, [
+                el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
+                  [], {
+                    onkeyup() {
+                      document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+                    }
+                  }),
+                  el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
+                        let newel = el(document.querySelector("#newTagName").value);
+                        let elements = clickedElem.childNodes;
+                        while(elements.length) {
+                          newel.append(elements[0]);
+                        }
+                        for(let i = 0; i < clickedElem.attributes.length; i++) {
+                          newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+                        }
+                        clickedElem.parentElement.insertBefore(newel, clickedElem);
+                        clickedElem.remove();
+                        editor_model.clickedElem = newel;
+                        updateInteractionDiv();
+                      }
+                    }
+                  ),
+                  el("div", {id:"newtagname-align-placeholder"}, " ")
+                ]
+              )
+            ])
+          );
+          let isGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(clickedElem);
+          let isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(clickedElem);
+
+          for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
+            let name = clickedElem.attributes[i].name;
+            if(name === "ghost-clicked" || name === "ghost-hovered") continue;
+            let value = clickedElem.attributes[i].value;
+            // Inline styles incoporated into CSS display editor
+            if(name !== "style") {
+              let isGhost = isGhostAttributeKey(name);
+              let isIgnored = isIgnoredAttributeKey(name);
+              let isHref = name === "href" && clickedElem.tagName === "A";
               keyvalues.append(
-                el("div", {"class": "keyvalue"}, [
-                  el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "tag: "),
-                  el("span", {class:"attribute-key-value"}, [
-                    el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
-                      [], {
-                        onkeyup() {
-                          document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
-                        }
+                el("div", {"class": "keyvalue" + (isGhost ? " editor-recorded-ghost-attribute" : "")
+                                              + (isIgnored ? " editor-ignored-attribute" : ""),
+                          "title": isGhost ? "Key/value generated by a script" : isIgnored ? "key/value ignored after being modified by a script" : undefined
+                }, [
+                  el("span", {title: "Element attribute name"}, name + ": "),
+                  el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
+                    el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
+                        onkeyup: ((name, isHref) => function () {
+                            clickedElem.setAttribute(name, this.value);
+                            if(isHref) {
+                              let livelinks = document.querySelectorAll(".livelink");
+                              for(let livelink of livelinks) {
+                                let finalLink = livelink.matches("#context-menu *") ?
+                                  `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
+                                livelink.setAttribute("href", finalLink);
+                                livelink.setAttribute("title", "Go to " + this.value);
+                              }
+                            }
+                        })(name, isHref)
                       }),
-                      el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
-                            let newel = el(document.querySelector("#newTagName").value);
-                            let elements = clickedElem.childNodes;
-                            while(elements.length) {
-                              newel.append(elements[0]);
-                            }
-                            for(let i = 0; i < clickedElem.attributes.length; i++) {
-                              newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-                            }
-                            clickedElem.parentElement.insertBefore(newel, clickedElem);
-                            clickedElem.remove();
-                            editor_model.clickedElem = newel;
-                            updateInteractionDiv();
-                          }
-                        }
-                      ),
-                      el("div", {id:"newtagname-align-placeholder"}, " ")
+                    isHref ? el("div", {title: "Go to " + editor_model.link, "class": "modify-menu-icon inert"}, [], {
+                      innerHTML: liveLinkSVG(editor_model.link)
+                    }) : undefined,
+                    isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
+                      innerHTML: linkModeSVG,
+                      onclick: linkSelect
+                    }) : undefined,
+                    el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
+                      innerHTML: wasteBasketSVG,
+                      onclick: ((name) => function() {
+                        clickedElem.removeAttribute(name);
+                        editor_model.clickedElem = clickedElem;
+                        updateInteractionDiv();
+                        })(name)
+                      })
                     ]
                   )
-                ])
-              );
-            let isGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(clickedElem);
-            let isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(clickedElem);
-
-            for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
-              let name = clickedElem.attributes[i].name;
-              if(name === "ghost-clicked" || name === "ghost-hovered") continue;
-              let value = clickedElem.attributes[i].value;
-              // Inline styles incoporated into CSS display editor
-              if(name !== "style") {
-                let isGhost = isGhostAttributeKey(name);
-                let isIgnored = isIgnoredAttributeKey(name);
-                let isHref = name === "href" && clickedElem.tagName === "A";
-                keyvalues.append(
-                  el("div", {"class": "keyvalue" + (isGhost ? " editor-recorded-ghost-attribute" : "")
-                                                + (isIgnored ? " editor-ignored-attribute" : ""),
-                            "title": isGhost ? "Key/value generated by a script" : isIgnored ? "key/value ignored after being modified by a script" : undefined
-                  }, [
-                    el("span", {title: "Element attribute name"}, name + ": "),
-                    el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
-                      el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
-                          onkeyup: ((name, isHref) => function () {
-                              clickedElem.setAttribute(name, this.value);
-                              if(isHref) {
-                                let livelinks = document.querySelectorAll(".livelink");
-                                for(let livelink of livelinks) {
-                                  let finalLink = livelink.matches("#context-menu *") ?
-                                    `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
-                                  livelink.setAttribute("href", finalLink);
-                                  livelink.setAttribute("title", "Go to " + this.value);
-                                }
-                              }
-                          })(name, isHref)
-                        }),
-                      isHref ? el("div", {title: "Go to " + editor_model.link, "class": "modify-menu-icon inert"}, [], {
-                        innerHTML: liveLinkSVG(editor_model.link)
-                      }) : undefined,
-                      isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
-                        innerHTML: linkModeSVG,
-                        onclick: linkSelect
-                      }) : undefined,
-                      el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
-                        innerHTML: wasteBasketSVG,
-                        onclick: ((name) => function() {
-                          clickedElem.removeAttribute(name);
-                          editor_model.clickedElem = clickedElem;
-                          updateInteractionDiv();
-                          })(name)
-                        })
-                      ]
-                    )
-                  ]
-                ));
-              }
+                ]
+              ));
             }
-            let highlightsubmit = function() {
-              let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
-              this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
-                attrName === "" || attrName.trim() !== attrName
-            }
+          }
+          let highlightsubmit = function() {
+            let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
+            this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
+              attrName === "" || attrName.trim() !== attrName
+          }
 
-            if(clickedElem.nodeType === 1) {
-              keyvalues.append(
-                el("div", {"class": "keyvalue keyvalueadder"}, [
-                  el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
-                  el("span", {class: "attribute-key-value"}, [
-                    el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
-                      onfocus: function() {
-                        let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
-                        if(keyInput && keyInput.value != "") {
-                          let name = document.querySelector("div.keyvalueadder input[name=name]").value;
-                          clickedElem.setAttribute(
-                            name,
-                            document.querySelector("div.keyvalueadder input[name=value]").value
-                          );
-                          updateInteractionDiv();
-                          let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
-                          if(d) d.focus();
-                        }
-                      },
-                      onkeyup: highlightsubmit})),
-                    el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
-                      disabled: true,
-                      onclick() {
+          if(clickedElem.nodeType === 1) {
+            keyvalues.append(
+              el("div", {"class": "keyvalue keyvalueadder"}, [
+                el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
+                el("span", {class: "attribute-key-value"}, [
+                  el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
+                    onfocus: function() {
+                      let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
+                      if(keyInput && keyInput.value != "") {
+                        let name = document.querySelector("div.keyvalueadder input[name=name]").value;
                         clickedElem.setAttribute(
-                          this.parentElement.querySelector("[name=name]").value,
-                          this.parentElement.querySelector("[name=value]").value
+                          name,
+                          document.querySelector("div.keyvalueadder input[name=value]").value
                         );
                         updateInteractionDiv();
-                      },
-                      onkeyup: highlightsubmit })])
-                ])
-              );
-            }
+                        let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
+                        if(d) d.focus();
+                      }
+                    },
+                    onkeyup: highlightsubmit})),
+                  el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+                    disabled: true,
+                    onclick() {
+                      clickedElem.setAttribute(
+                        this.parentElement.querySelector("[name=name]").value,
+                        this.parentElement.querySelector("[name=value]").value
+                      );
+                      updateInteractionDiv();
+                    },
+                    onkeyup: highlightsubmit })])
+              ])
+            );
           }
           return keyvalues;
         }
@@ -3418,14 +3418,17 @@ lastEditScript = """
         title: "Style",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
           //id="CSS-modification"
           const clickedElem = editor_model.clickedElem;
+          if(!clickedElem) {
+            return "Click on an element to see its style";
+          }
           const do_css = (clickedElem && clickedElem.id !== "context-menu" && clickedElem.id !== "modify-menu" && clickedElem.id !== "editbox" &&
                           !editor_model.insertElement);
           let CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
@@ -3721,82 +3724,89 @@ lastEditScript = """
         title: "Image Tools",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return this.enabled(editor_model) ? 1 : undefined; // It's likely we want to modify this image above all.
+        },
+        findURLS(styleStr) {
+          var urls = [];
+          var diffPics = styleStr.split(",");
+          for(let k in diffPics) {
+            //extracts only url(...)
+            var matches = diffPics[k].match(/url\((.*?)\)/g);
+            console.log("the matches are:", matches);
+            //deepcopy string
+            var remainStr = diffPics[k].slice(0); 
+            for(let j in matches) {
+              //from current understanding, there should only be one url(...) per split of ,
+              console.log("the current match is:", matches[j]);
+              if(j == 1) {
+                console.log(`Odd syntax, ${matches[j]} also matched!`);
+              }
+              let sIndex = diffPics[k].indexOf(matches[j]);
+              //extracting the rest of the string 
+              afterStr = remainStr.slice(sIndex + matches[j].length);
+              beforeStr = remainStr.slice(0, sIndex);
+              urls.push({remainderBefore: beforeStr, url: matches[j], remainderAfter: afterStr});  
+            }
+          }
+          return urls;
+        },
+        //checks the inline CSS of the clicked node/element to see if background or background-image is a rule, and if 
+        //a link to an image is provided as part of the value for this rule;
+        //TODO: expand the set of CSS being checked to any style tags as well.
+        checkForBackgroundImg(clickedElem) {
+          //console.log("clicked element is:", clickedElem);
+          //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
+          var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
+          //console.log(clickedStyle);
+          //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
+          //former first, if it contains a url. for now, I am looping through the CSS rules twice.
+          //console.log("^parsed rules ");
+          for(let i in clickedStyle) {
+            for(let j in clickedStyle[i]) {
+              if(clickedStyle[i][j].directive === "background") {
+                clickedStyle[i][j].value = this.findURLS(clickedStyle[i][j].value);  
+                if(clickedStyle[i][j].value.length) {
+                  //console.log(clickedStyle[i][j]);
+                  return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
+                    imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
+                }
+              }
+            }
+          }
+          for(let i in clickedStyle) {
+            for(let j in clickedStyle[i]) {
+              if(clickedStyle[i][j].directive === "background-image") {
+                //console.log("hello?");
+                //console.log(clickedStyle[i][j].value);
+                clickedStyle[i][j].value = this.findURLS(clickedStyle[i][j].value);  
+                if(clickedStyle[i][j].value.length) {
+                  return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
+                    imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
+                }
+              }
+            }
+          } 
+          //console.log("unsuccessful");
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          let clickedElem = editor_model.clickedElem;
+          let backgroundImgSrc = this.checkForBackgroundImg(clickedElem);
+          const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
+          this.backgroundImgSrc = backgroundImgSrc;
+          return do_img_rpl;
         },
+        
+        // enabled has been called before, clickedElem is not empty and it contains a background image
         render: function render(editor_model, innerBox) {
+          if(!this.enabled(editor_model)) {
+            return "Click an element with a background image.";
+          }
           //extract url and extraneous text from specified CSS value (which is originally part of a rule)
           const clickedElem = editor_model.clickedElem;
           let ret = el("div", {"class": "information"});
-          if (!clickedElem) ret;
-          function findURLS(styleStr) {
-            var urls = [];
-            var diffPics = styleStr.split(",");
-            for(let k in diffPics) {
-              //extracts only url(...)
-              var matches = diffPics[k].match(/url\((.*?)\)/g);
-              console.log("the matches are:", matches);
-              //deepcopy string
-              var remainStr = diffPics[k].slice(0); 
-              for(let j in matches) {
-                //from current understanding, there should only be one url(...) per split of ,
-                console.log("the current match is:", matches[j]);
-                if(j == 1) {
-                  console.log(`Odd syntax, ${matches[j]} also matched!`);
-                }
-                let sIndex = diffPics[k].indexOf(matches[j]);
-                //extracting the rest of the string 
-                afterStr = remainStr.slice(sIndex + matches[j].length);
-                beforeStr = remainStr.slice(0, sIndex);
-                urls.push({remainderBefore: beforeStr, url: matches[j], remainderAfter: afterStr});  
-              }
-            }
-            return urls;
-          }
-          //checks the inline CSS of the clicked node/element to see if background or background-image is a rule, and if 
-          //a link to an image is provided as part of the value for this rule;
-          //TODO: expand the set of CSS being checked to any style tags as well.
-          function checkForBackgroundImg() {
-            //console.log("clicked element is:", clickedElem);
-            //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
-            var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
-            //console.log(clickedStyle);
-            //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
-            //former first, if it contains a url. for now, I am looping through the CSS rules twice.
-            //console.log("^parsed rules ");
-            for(let i in clickedStyle) {
-              for(let j in clickedStyle[i]) {
-                if(clickedStyle[i][j].directive === "background") {
-                  clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
-                  if(clickedStyle[i][j].value.length) {
-                    //console.log(clickedStyle[i][j]);
-                    return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
-                      imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
-                  }
-                }
-              }
-            }
-            for(let i in clickedStyle) {
-              for(let j in clickedStyle[i]) {
-                if(clickedStyle[i][j].directive === "background-image") {
-                  //console.log("hello?");
-                  //console.log(clickedStyle[i][j].value);
-                  clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
-                  if(clickedStyle[i][j].value.length) {
-                    return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
-                      imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
-                  }
-                }
-              }
-            } 
-            //console.log("unsuccessful");
-            return undefined;
-          }
-          let backgroundImgSrc = checkForBackgroundImg();
-          const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
-          if (!do_img_rpl) return ret;
+          if (!clickedElem) return ret;
+          let backgroundImgSrc = this.backgroundImgSrc;
           //unparse the background/background-image object
           function unparseBackgroundImg(backImgObj) {
             var textSegment = "";
@@ -3923,7 +3933,7 @@ lastEditScript = """
                       }
                       else {
                         console.log("Second time around:");
-                        backImgObj = checkForBackgroundImg();
+                        backImgObj = this.checkForBackgroundImg(clickedElem);
                         backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url('+ this.children[0].getAttribute("src") +')';
                       }
                       //console.log("current link", this.children[0].getAttribute("src"));
@@ -4010,14 +4020,21 @@ lastEditScript = """
           return this.enabled(editor_model) ? 1 : undefined;
         },
         enabled(editor_model) {
-          return false;
-        },
-        render: function render(editor_model, innerBox) {
           //textarea singleChildNodeContent
           let voidTags = {AREA: true, BASE: true, BR: true, COL: true, COMMANd: true, EMBED: true, HR: true, IMG: true, INPUT: true, KEYGEN: true, LINK: true, META: true, PARAM: true, SOURCE: true, TRACK: true, WBR: true};
           const clickedElem = editor_model.clickedElem;
-          const do_edit = (clickedElem && clickedElem.children.length === 0 && !voidTags[clickedElem.tagname]);
-          if (!do_edit) return el("div", {}, [], {});
+          const do_edit = (clickedElem  && clickedElem.children && clickedElem.children.length === 0 && !voidTags[clickedElem.tagName]);
+          return do_edit;
+        },
+        render: function render(editor_model, innerBox) {
+          if(!this.enabled(editor_model)) {
+            return "Click on an element containing just text.";
+          }
+          const clickedElem = editor_model.clickedElem;
+          if(!this.enabled(editor_model)) {
+            return "Click on a button or a node containing only text.";
+          }
+          //textarea singleChildNodeContent
           let txt = el("textarea", {id:"singleChildNodeContent"},
             [], {
               value: clickedElem.innerText,
@@ -4036,12 +4053,15 @@ lastEditScript = """
         title: "Insert",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return editor_model.inserting;
         },
         enabled(editor_model) {
-          return false;
+          return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
+          if(!this.enabled(editor_model)) {
+            return "Click on an element to view insert options.";
+          }
           let ret = el("div", {"class": "information"});
           const clickedElem = editor_model.clickedElem;
           if (!clickedElem) return ret;
@@ -4241,10 +4261,10 @@ lastEditScript = """
           title: "Drafts",
           minimized: true,
           priority(editor_model) {
-            return this.enabled(editor_model) ? 1 : undefined;
+            return undefined;
           },
           enabled(editor_model) {
-            return false;
+            return true;
           },
           render: function render(editor_model, innerBox) {
             const createNewDraft = () => {
@@ -4379,7 +4399,7 @@ lastEditScript = """
           return undefined;
         },
         enabled(editor_model) {
-          false;
+          return true;
         },
         render: function render(editor_model, innerBox) {
           let retDiv = el("div", {"class":"modify-menu-icons"});
@@ -4443,10 +4463,10 @@ lastEditScript = """
         title: "Log",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return true;
         },
         render: function render(editor_model, innerBox) {
           let retDiv = el("div", {"class":"modify-menu-icons"});
@@ -4469,10 +4489,10 @@ lastEditScript = """
         title: "Source",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return true;
         },
         render: function render(editor_model, innerBox) {
           let source = document.querySelector("#modify-menu").getAttribute("sourcecontent");
@@ -4658,40 +4678,6 @@ lastEditScript = """
         return f;
       })();
       
-      // Helpers: Text preview and summary
-      function textPreview(element, maxLength) {
-        let x = element.textContent;
-        let result = "'" + x + "'";;
-        if(x == "") {
-          if(element.tagName === "META") {
-            result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
-                    (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
-          } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
-            result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          } else if(element.tagName === "LINK") {
-            result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          }
-        }
-        if(typeof maxLength !== "undefined" && result.length > maxLength) {
-          return result.substring(0, maxLength) + "...'";
-        }
-        return result;
-      }
-      function summary(element, idAndClasses, maxLength) {
-        var summary = element.tagName.toLowerCase();
-        if(idAndClasses && element.getAttribute("id")) {
-          summary += "#" + element.getAttribute("id");
-        }
-        var elemClass = element.getAttribute("class");
-        if(idAndClasses && elemClass && elemClass.trim().length) {
-          summary += "." + elemClass.split(/\s+/g).join(".");
-        }
-        summary += " " + textPreview(element);
-        maxLength = maxLength || 80;
-        summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
-        return summary;
-      }
-      
       // We render the content of modifyMenuDiv from scratch
       modifyMenuDiv.innerHTML = "";
       let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned"}); // Icons always visible
@@ -4705,7 +4691,6 @@ lastEditScript = """
       /*
         Render interfaces / containers
       */
-
       for(let i = 1; i < editor_model.interfaces.length; i++) {
         let x = editor_model.interfaces[i];
         let priority = x.priority(editor_model);
@@ -4725,6 +4710,7 @@ lastEditScript = """
         let priority = x.priority(editor_model);
         let initMinimized = typeof priority == "number" ? false :
                             x.enabled(editor_model) ? x.minimized : true;
+        console.log("render", x.title);
         let renderedContent = x.render(editor_model);
         let class_str = x.title.replace(" ", "_");
         let menu = el("div", {
