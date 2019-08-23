@@ -4714,40 +4714,57 @@ lastEditScript = """
         console.log("render", x.title);
         let renderedContent = x.render(editor_model);
         let class_str = x.title.replace(" ", "_");
-        let menu = el("div", {
-          class:"editor-container" + (x.enabled(editor_model) ? "" : " disabled") + (x.minimized ? " minimized" : "") + " " + class_str}, [
-          el("div.editor-container-title", {
-            title: typeof renderedContent === "string" ? renderedContent : undefined
-         }, [el("span", {title: "Expand menu"}, x.title),
-             el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: openTopSVG}),
-             i >= editor_model.interfaces.length - 1 ? undefined :
-             el("div.editor-container-icon", {title: "Move menu down"}, [], {innerHTML: arrowDown,
-               onclick: (i => event => {
-                 var tmp = editor_model.interfaces[i];
-                 editor_model.interfaces[i] = editor_model.interfaces[i+1];
-                 editor_model.interfaces[i+1] = tmp;
-                 updateInteractionDiv();
-               })(i)}),
-             i == 0 ? undefined :
-             el("div.editor-container-icon", {title: "Move menu up"}, [], {innerHTML: arrowUp,
-               onclick: (i => event => {
-                 var tmp = editor_model.interfaces[i];
-                 editor_model.interfaces[i] = editor_model.interfaces[i-1];
-                 editor_model.interfaces[i-1] = tmp;
-                 updateInteractionDiv();
-               })(i)})
-            ], {
-            onclick: ((x, initMinimized) => event => {
-              let target = event.target;
-              while(!target.matches(".editor-container")) target = target.parentNode;
-              //console.log("onclick", event.target);
-              x.minimized = target.classList.contains("minimized");
-              x.minimized = !x.minimized;
-              target.classList.toggle("minimized", x.minimized);
-            })(x, initMinimized)
-          }),
-          el("div.editor-container-content", {}, renderedContent),
-        ]);
+        let menu = el(
+          "div", {
+            class:"editor-container" + (x.enabled(editor_model) ? "" : " disabled") + (x.minimized ? " minimized" : "") + " " + class_str},
+          [ el("div.editor-container-title", {
+                 title: typeof renderedContent === "string" ? renderedContent : undefined
+               },
+               [ el("span", {title: "Expand menu"}, x.title),
+                 el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: openTopSVG}),
+                 el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: arrowDown,
+                   onclick: function(event) {
+                     let d = this.parentElement.parentElement;
+                     var tmp = editor_model.interfaces[d.i];
+                     editor_model.interfaces[d.i] = editor_model.interfaces[d.i+1];
+                     editor_model.interfaces[d.i+1] = tmp;
+                     d.nextElementSibling.i = d.i;
+                     d.i = d.i + 1;
+                     d.parentElement.insertBefore(d.nextElementSibling, d);
+                     event.preventDefault();
+                     event.stop = true;
+                     return false;
+                   }}),
+                 el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: arrowUp,
+                   i: i,
+                   onclick: function(event) {
+                     let d = this.parentElement.parentElement;
+                     var tmp = editor_model.interfaces[d.i];
+                     editor_model.interfaces[d.i] = editor_model.interfaces[d.i-1];
+                     editor_model.interfaces[d.i-1] = tmp;
+                     d.previousElementSibling.i = d.i;
+                     d.i = d.i - 1;
+                     d.parentElement.insertBefore(d, d.previousElementSibling);
+                     event.preventDefault();
+                     event.stop = true;
+                     return false;
+                   }})
+               ],
+               {
+                onclick: ((x) => event => {
+                  console.log(event);
+                  if(event.stop) return;
+                  let target = event.target;
+                  while(!target.matches(".editor-container")) target = target.parentNode;
+                  //console.log("onclick", event.target);
+                  x.minimized = target.classList.contains("minimized");
+                  x.minimized = !x.minimized;
+                  target.classList.toggle("minimized", x.minimized);
+                })(x)
+               }),
+            el("div.editor-container-content", {}, renderedContent),
+          ],
+        {i: i});
         modifyMenuHolder.append(menu);
       }
       if (do_interfaces) {

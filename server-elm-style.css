@@ -979,6 +979,9 @@ div.editor-container {
   border: 1px solid #5f5f5f;
   margin-top: 3px;
 }
+div.editor-container:first-of-type div.arrowup, div.editor-container:last-of-type div.arrowdown {
+  visibility: hidden;
+}
 div.editor-container.minimized div.editor-container-content {
   display: none;
 }
