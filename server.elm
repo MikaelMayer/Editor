@@ -5079,12 +5079,12 @@ lastEditScript = """
       // Nodes only with 1 text child
       if(clickedElem && clickedElem.children.length === 0 && !voidTags[clickedElem.tagname]) {
         // interactionDiv.append(el("hr"));
-        let txt = el("textarea", {id:"singleChildNodeContent"},
+        let txt = el("div", {id: "singleChildNodeContentDiv"}, [el("textarea", {id:"singleChildNodeContent"},
           [], {
             value: clickedElem.innerText,
             onkeyup: function () { clickedElem.textContent = this.value; },
             onscroll: function() { editor_model.textareaScroll = this.scrollTop },
-          });
+          })]);
         interactionDiv.append(txt);
         setTimeout((txt => () => {
           txt.scrollTop = editor_model.textareaScroll;
