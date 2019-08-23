@@ -4205,6 +4205,130 @@ lastEditScript = """
             return false;
           },
           render: function render(editor_model, innerBox) {
+            let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
+
+            const get_current_label = () => {
+              return el("div", {"class":"childrenSelector"},
+                      [
+                        el("label", {}, [editor_model.version], {}),
+                        el("button", {}, ["Clone"], 
+                        {
+                          onclick: (event) => {
+                            //todo
+                          }
+                        }),
+                        (editor_model.version == "Live" ? el("label", {}, ["Can't delete live"]):
+                                                          el("button", {}, ["Delete"],
+                                                          {
+                                                            onclick: (event) => {
+                                                              deleteDraft(editor_model.version);
+                                                            }
+                                                          }))
+                      ],
+                      {
+                        onclick: (event) => {
+                          //pass
+                        },
+                      })
+            };
+
+            const get_switch_btn_for = (nm) => {
+              return el("button", {"class":""}, [nm], 
+              {
+                onclick: (event) => {
+                  editor_model.version = nm;
+                  navigateLocal("/Thaditor/versions/" + nm + "/?edit");
+                }
+              });
+            };
+
+            const get_clone_btn_for = (nm) => {
+              return el("button", {"class":""}, ["Clone"],
+              {
+                onclick: (event) => {
+                  //TODO clone each
+                }
+              })  
+            }
+
+            const get_delete_btn_for = (nm) => {
+              return el("button", {"class":""}, ["Delete"],
+              {
+                onclick: (event) => {
+                  deleteDraft(nm);
+                }
+              })  
+            }
+
+            const get_publish_btn_for = (nm) => {
+              return el("button", {}, ["Publish"],
+              {
+                onclick: (event) => {
+                  publishDraft(nm);
+                }
+              })
+            }
+
+            const get_row_for_draft = (nm) => {
+              return el("div", {"class": ""},
+              [
+                get_switch_btn_for(nm),
+                get_clone_btn_for(nm),
+                get_delete_btn_for(nm),
+              ]);
+            };
+
+            const get_row_for_live = () => {
+              return el("div", {}, 
+              [
+                el("button", {}, ["Live"], 
+                {
+                  onclick: (event) => {
+                    editor_model.version = "Live";
+                    navigateLocal("/?edit");
+                  }
+                }),
+                el("button", {}, ["Clone"],
+                {
+                  onclick: (event) => {
+
+                  }
+                })
+              ])
+            }
+
+
+
+            draftListDiv.append(get_current_label());
+
+            if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
+              const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
+              vers.forEach(ver => {
+                if (ver == editor_model.version){
+
+                } else {
+                  draftListDiv.append(get_row_for_draft(ver));
+                }
+              });
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
             const createNewDraft = () => {
               return el("div", {"class": "childrenSelector"},
                         [
@@ -4315,7 +4439,7 @@ lastEditScript = """
                         });
             };
 
-            let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
+            /*
             if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
               const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
               vers.forEach(ver => {
@@ -4325,9 +4449,9 @@ lastEditScript = """
             if (!isLive()) draftListDiv.append(liveBtn());
             if (!isLive()) draftListDiv.append(publishToLiveBtn());
             draftListDiv.append(createNewDraft());
-            if (!isLive()) draftListDiv.append(deleteCurrentDraftBtn());
+            if (!isLive()) draftListDiv.append(deleteCurrentDraftBtn());*/
             return draftListDiv;
-          }
+          } //end of draft container render
         });
       }
       editor_model.interfaces.push({ 
@@ -4548,6 +4672,18 @@ lastEditScript = """
       navigateLocal("/?edit");
       sendNotification("Permanently deleted draft named: " + editor_model.version);
     }
+
+    function deleteDraft(nm) {
+      if (editor_model.version == "Live") throw "Shouldn't be able to call deleteDraft on live";
+      const ans = window.confirm("Are you sure you want to permanently delete " + editor_model.version + "?");
+      if (!ans) return;
+      //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
+      const pth_to_delete = "Thaditor/versions/" + nm + "/";
+      doWriteServer("deletermrf", pth_to_delete);
+      navigateLocal("/?edit");
+      sendNotification("Permanently deleted draft named: " + nm);
+    }
+
     function publishToLive() {
       //Find which version we're at by examining editor_model.version and/or the path
       //copy all of the files in the draft/ folder out to the public facing site.
@@ -4570,6 +4706,21 @@ lastEditScript = """
       setTimeout (() => sendNotification("Switched to live."), 1500)
     }
     
+    function publishDraft(nm) {
+      //We're copying out Thaditor/versions/$nm/ to "".
+      if (nm == "Live") throw "Can't publish live to live";
+      const conf = window.confirm("Are you sure you want to publish " + editor_model.version + " to live?");
+      if (!conf) {
+        return;
+      }
+      let t_src = nm.slice(0, editor_model.path.lastIndexOf("/")+1);
+      copy_website(t_src, "");
+      editor_model.version = "Live";
+      navigateLocal("/?edit", true);
+      updateInteractionDiv();
+      sendNotification("Successfully published " + oldver + " to live.");
+      setTimeout (() => sendNotification("Switched to live."), 1500)
+    }
     
 
     updateInteractionDiv(); //outer lastEditScript
