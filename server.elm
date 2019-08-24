@@ -4266,33 +4266,10 @@ lastEditScript = """
           render: function render(editor_model, innerBox) {
             let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
 
-            const get_current_label = () => {
-              return el("div", {"class":"childrenSelector"},
-                      [
-                        el("label", {}, [editor_model.version], {}),
-                        el("button", {}, ["Clone"], 
-                        {
-                          onclick: (event) => {
-                            //todo
-                          }
-                        }),
-                        (editor_model.version == "Live" ? el("label", {}, ["Can't delete live"]):
-                                                          el("button", {}, ["Delete"],
-                                                          {
-                                                            onclick: (event) => {
-                                                              deleteDraft(editor_model.version);
-                                                            }
-                                                          }))
-                      ],
-                      {
-                        onclick: (event) => {
-                          //pass
-                        },
-                      })
-            };
+            const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
 
             const get_switch_btn_for = (nm) => {
-              return el("button", {"class":""}, [nm], 
+              return el("button", {"class":"draft-switch"}, [nm], 
               {
                 onclick: (event) => {
                   editor_model.version = nm;
@@ -4301,17 +4278,58 @@ lastEditScript = """
               });
             };
 
-            const get_clone_btn_for = (nm) => {
-              return el("button", {"class":""}, ["Clone"],
+            const get_switch_btn_live = () => {
+              return el("button", {class:"draft-switch-live"}, ["Live"],
               {
                 onclick: (event) => {
-                  //TODO clone each
+                  editor_model.version = "Live";
+                  navigateLocal("/?edit");
+                }
+              })
+            }
+
+            const get_clone_btn_for = (nm) => {
+              return el("button", {"class":"draft-clone"}, ["Clone"],
+              {
+                onclick: (event) => {
+                  //verzExist tells us if we need to mkdir versions
+                  //nm could be live or any draft ==> make f_pth
+                  const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
+                  if (!draft_name) {
+                    return;
+                  }
+                  let fail = false;
+                  if (!verzExist) {
+                    doWriteServer("mkdir", "Thaditor/versions");
+                  } else {
+                    let versionsList = JSON.parse(doReadServer("fullListDir", "Thaditor/versions/"));
+                    versionsList.forEach(val => {
+                      let [nm, isdir] = val;
+                      if (isdir) {
+                        if (nm == draft_name) {
+                          fail = window.confirm("Overwrite existing draft?");
+                        }
+                      }
+                    });
+                  }
+                  if (fail) return;
+                  doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
+                  let org_pth = editor_model.path;
+                  const t_pth = org_pth.slice(0, org_pth.lastIndexOf("/"));
+                  const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
+                  const success = copy_website(f_pth, "Thaditor/versions/" + draft_name + "/");
+                  //change our URL to the versions/draft/
+                  editor_model.version = draft_name;
+                  navigateLocal("/Thaditor/versions/" + draft_name + "/?edit");
+                  setTimeout( () => {
+                    sendNotification("Successfully created + switched to draft: " + draft_name);
+                  }, 1500);
                 }
               })  
             }
 
             const get_delete_btn_for = (nm) => {
-              return el("button", {"class":""}, ["Delete"],
+              return el("button", {"class":"draft-delete"}, ["Delete"],
               {
                 onclick: (event) => {
                   deleteDraft(nm);
@@ -4320,7 +4338,7 @@ lastEditScript = """
             }
 
             const get_publish_btn_for = (nm) => {
-              return el("button", {}, ["Publish"],
+              return el("button", {"class":"draft-publish"}, ["Publish"],
               {
                 onclick: (event) => {
                   publishDraft(nm);
@@ -4328,38 +4346,51 @@ lastEditScript = """
               })
             }
 
+            const get_current_label = () => {
+              return el("div", {"class":"draft-row"},
+                      [
+                        el("label", {}, [editor_model.version], {}),
+                        (isLive() ? el("label", {}, [""]) : get_publish_btn_for(editor_model.version)),
+                        get_clone_btn_for("Live"),
+                        (isLive() ? el("label", {}, ["Can't delete live"]):
+                                                          el("button", {}, ["Delete"],
+                                                          {
+                                                            onclick: (event) => {
+                                                              deleteDraft(editor_model.version);
+                                                            }
+                                                          }))
+
+                      ],
+                      {
+                        onclick: (event) => {
+                          //pass
+                        },
+                      })
+            };
+
             const get_row_for_draft = (nm) => {
-              return el("div", {"class": ""},
+              return el("div", {"class": "draft-row"},
               [
                 get_switch_btn_for(nm),
+                get_publish_btn_for(nm),
                 get_clone_btn_for(nm),
                 get_delete_btn_for(nm),
               ]);
             };
 
             const get_row_for_live = () => {
-              return el("div", {}, 
+              return el("div", {"class": "draft-row"},
               [
-                el("button", {}, ["Live"], 
-                {
-                  onclick: (event) => {
-                    editor_model.version = "Live";
-                    navigateLocal("/?edit");
-                  }
-                }),
-                el("button", {}, ["Clone"],
-                {
-                  onclick: (event) => {
-
-                  }
-                })
+                get_switch_btn_live(),
+                get_clone_btn_for("Live")
               ])
             }
 
 
-
             draftListDiv.append(get_current_label());
-
+            if (!isLive()) {
+              draftListDiv.append(get_row_for_live());
+            }
             if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
               const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
               vers.forEach(ver => {
@@ -4512,7 +4543,7 @@ lastEditScript = """
             return draftListDiv;
           } //end of draft container render
         });
-      }
+       }
       editor_model.interfaces.push({ 
         title: "Advanced",
         minimized: true,
@@ -4746,14 +4777,15 @@ lastEditScript = """
     }
 
     function deleteDraft(nm) {
-      if (editor_model.version == "Live") throw "Shouldn't be able to call deleteDraft on live";
-      const ans = window.confirm("Are you sure you want to permanently delete " + editor_model.version + "?");
+      if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
+      const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
       if (!ans) return;
       //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
       const pth_to_delete = "Thaditor/versions/" + nm + "/";
       doWriteServer("deletermrf", pth_to_delete);
-      navigateLocal("/?edit");
+      if (editor_model.version == nm) navigateLocal("/?edit");
       sendNotification("Permanently deleted draft named: " + nm);
+      updateInteractionDiv();
     }
 
     function publishToLive() {
@@ -4781,16 +4813,16 @@ lastEditScript = """
     function publishDraft(nm) {
       //We're copying out Thaditor/versions/$nm/ to "".
       if (nm == "Live") throw "Can't publish live to live";
-      const conf = window.confirm("Are you sure you want to publish " + editor_model.version + " to live?");
+      const conf = window.confirm("Are you sure you want to publish " + nm + " to live?");
       if (!conf) {
         return;
       }
-      let t_src = nm.slice(0, editor_model.path.lastIndexOf("/")+1);
+      let t_src = "Thaditor/versions/" + nm + "/";
       copy_website(t_src, "");
       editor_model.version = "Live";
       navigateLocal("/?edit", true);
       updateInteractionDiv();
-      sendNotification("Successfully published " + oldver + " to live.");
+      sendNotification("Successfully published " + nm + " to live.");
       setTimeout (() => sendNotification("Switched to live."), 1500)
     }
     
@@ -4872,7 +4904,6 @@ lastEditScript = """
         let priority = x.priority(editor_model);
         let initMinimized = typeof priority == "number" ? false :
                             x.enabled(editor_model) ? x.minimized : true;
-        console.log("render", x.title);
         let renderedContent = x.render(editor_model);
         let class_str = x.title.replace(" ", "_");
         let menu = el(
