@@ -233,10 +233,10 @@ luca =
     }
     var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
     var apache_server = @(if browserSide then "true" else "false");
-    function doReadServer(action, name) {
+    function doReadServer(action, name, onOk, onErr) {
       if (typeof readServer != "undefined") {
         console.log("reading server");
-        return readServer(action, name);
+        return readServer(action, name, onOk, onErr);
       } else {
         var request = new XMLHttpRequest();
         var url = "/";
@@ -252,10 +252,10 @@ luca =
         }
       }
     }
-    function doWriteServer(action, name, content) {
+    function doWriteServer(action, name, content, onOk, onErr) {
       if (typeof writeServer != "undefined") {
         console.log("about to write to server");
-        return writeServer(action, name, content);
+        return writeServer(action, name, content, onOk, onErr);
       } else {
         var request = new XMLHttpRequest();
         request.open('POST', url, false);  // `false` makes the request synchronous
@@ -263,7 +263,7 @@ luca =
         request.setRequestHeader("name", name);
         request.send(content);
         if(request.status == 200) {
-          return "";
+          return request.responseText;
         } else if(request.status == 500) {
           return request.responseText;
         } else {
@@ -1324,7 +1324,7 @@ editionmenu thesource = [
 if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
 
 initialScript = serverOwned "initial script" [
-<script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js"></script>,
+<script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js" list-ghost-attributes="gapi_processed"></script>,
 <script class="editor-interface">
 
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
@@ -1868,7 +1868,6 @@ lastEditScript = """
             editor_model.notextselection = false;
             editor_model.caretPosition = undefined;
             editor_model.link = undefined;
-            editor_model.advanced = true; // Opens advanced mode.
             editor_model.visible = true;
             set_state_advanced();
             //editor_model.displaySource: false, // Keep source opened or closed
@@ -2713,7 +2712,6 @@ lastEditScript = """
       editor_model.link = link;
       editor_model.link_href_source = aElement; // So that we can modify it
       editor_model.insertElement = false;
-      editor_model.advanced = false;
       editor_model.notextselection = false;
       updateInteractionDiv();
       // Check if the event.target matches some selector, and do things...
@@ -2907,7 +2905,6 @@ lastEditScript = """
       selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
       caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
-      advanced: ifAlreadyRunning ? editor_model.advanced : false, //here
       displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
       disambiguationMenu: undefined, //here
       isSaving: false,
@@ -2944,41 +2941,42 @@ lastEditScript = """
       interfaces: ifAlreadyRunning ? editor_model.interfaces : []
     }
     
+    
+    // Helpers: Text preview and summary
+    function textPreview(element, maxLength) {
+      let x = element.textContent;
+      let result = "'" + x + "'";;
+      if(x == "") {
+        if(element.tagName === "META") {
+          result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
+                  (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
+        } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
+          result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+        } else if(element.tagName === "LINK") {
+          result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+        }
+      }
+      if(typeof maxLength !== "undefined" && result.length > maxLength) {
+        return result.substring(0, maxLength) + "...'";
+      }
+      return result;
+    }
+    function summary(element, idAndClasses, maxLength) {
+      var summary = element.tagName.toLowerCase();
+      if(idAndClasses && element.getAttribute("id")) {
+        summary += "#" + element.getAttribute("id");
+      }
+      var elemClass = element.getAttribute("class");
+      if(idAndClasses && elemClass && elemClass.trim().length) {
+        summary += "." + elemClass.split(/\s+/g).join(".");
+      }
+      summary += " " + textPreview(element);
+      maxLength = maxLength || 80;
+      summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
+      return summary;
+    }
 
     function init_interfaces() {
-      // Helpers: Text preview and summary
-      function textPreview(element, maxLength) {
-        let x = element.textContent;
-        let result = "'" + x + "'";;
-        if(x == "") {
-          if(element.tagName === "META") {
-            result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
-                    (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
-          } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
-            result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          } else if(element.tagName === "LINK") {
-            result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          }
-        }
-        if(typeof maxLength !== "undefined" && result.length > maxLength) {
-          return result.substring(0, maxLength) + "...'";
-        }
-        return result;
-      }
-      function summary(element, idAndClasses, maxLength) {
-        var summary = element.tagName.toLowerCase();
-        if(idAndClasses && element.getAttribute("id")) {
-          summary += "#" + element.getAttribute("id");
-        }
-        var elemClass = element.getAttribute("class");
-        if(idAndClasses && elemClass && elemClass.trim().length) {
-          summary += "." + elemClass.split(/\s+/g).join(".");
-        }
-        summary += " " + textPreview(element);
-        maxLength = maxLength || 80;
-        summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
-        return summary;
-      }
       function findText(parsed, startIndex, endIndex) { //for css + img replacement
         //console.log("Start index is:", startIndex);
         //console.log("End index is:", endIndex);
@@ -3026,15 +3024,15 @@ lastEditScript = """
         title: "Selected Element Tree",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
           let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
           const clickedElem = editor_model.clickedElem;
-          if (!clickedElem) return domSelector;
+          if (!clickedElem) return "Click on an element to view its tree";
           domSelector.classList.add("dom-selector-style");
           let mainElemDiv = el("div", {"class": "mainElem"}, []);
           let childrenElemDiv = el("div", {"class": "childrenElem"}, []);
@@ -3276,140 +3274,139 @@ lastEditScript = """
         title: "Attributes",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
           let keyvalues = el("div", {"class":"keyvalues"});
           const clickedElem = editor_model.clickedElem;
-          if (clickedElem) {
-            // modify tagname
+          if (!clickedElem) return "Click on an element to see its attributes";
+          // modify tagname
+          keyvalues.append(
+            el("div", {"class": "keyvalue"}, [
+              el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "tag: "),
+              el("span", {class:"attribute-key-value"}, [
+                el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
+                  [], {
+                    onkeyup() {
+                      document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+                    }
+                  }),
+                  el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
+                        let newel = el(document.querySelector("#newTagName").value);
+                        let elements = clickedElem.childNodes;
+                        while(elements.length) {
+                          newel.append(elements[0]);
+                        }
+                        for(let i = 0; i < clickedElem.attributes.length; i++) {
+                          newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+                        }
+                        clickedElem.parentElement.insertBefore(newel, clickedElem);
+                        clickedElem.remove();
+                        editor_model.clickedElem = newel;
+                        updateInteractionDiv();
+                      }
+                    }
+                  ),
+                  el("div", {id:"newtagname-align-placeholder"}, " ")
+                ]
+              )
+            ])
+          );
+          let isGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(clickedElem);
+          let isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(clickedElem);
+
+          for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
+            let name = clickedElem.attributes[i].name;
+            if(name === "ghost-clicked" || name === "ghost-hovered") continue;
+            let value = clickedElem.attributes[i].value;
+            // Inline styles incoporated into CSS display editor
+            if(name !== "style") {
+              let isGhost = isGhostAttributeKey(name);
+              let isIgnored = isIgnoredAttributeKey(name);
+              let isHref = name === "href" && clickedElem.tagName === "A";
               keyvalues.append(
-                el("div", {"class": "keyvalue"}, [
-                  el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "tag: "),
-                  el("span", {class:"attribute-key-value"}, [
-                    el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
-                      [], {
-                        onkeyup() {
-                          document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
-                        }
+                el("div", {"class": "keyvalue" + (isGhost ? " editor-recorded-ghost-attribute" : "")
+                                              + (isIgnored ? " editor-ignored-attribute" : ""),
+                          "title": isGhost ? "Key/value generated by a script" : isIgnored ? "key/value ignored after being modified by a script" : undefined
+                }, [
+                  el("span", {title: "Element attribute name"}, name + ": "),
+                  el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
+                    el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
+                        onkeyup: ((name, isHref) => function () {
+                            clickedElem.setAttribute(name, this.value);
+                            if(isHref) {
+                              let livelinks = document.querySelectorAll(".livelink");
+                              for(let livelink of livelinks) {
+                                let finalLink = livelink.matches("#context-menu *") ?
+                                  `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
+                                livelink.setAttribute("href", finalLink);
+                                livelink.setAttribute("title", "Go to " + this.value);
+                              }
+                            }
+                        })(name, isHref)
                       }),
-                      el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
-                            let newel = el(document.querySelector("#newTagName").value);
-                            let elements = clickedElem.childNodes;
-                            while(elements.length) {
-                              newel.append(elements[0]);
-                            }
-                            for(let i = 0; i < clickedElem.attributes.length; i++) {
-                              newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-                            }
-                            clickedElem.parentElement.insertBefore(newel, clickedElem);
-                            clickedElem.remove();
-                            editor_model.clickedElem = newel;
-                            updateInteractionDiv();
-                          }
-                        }
-                      ),
-                      el("div", {id:"newtagname-align-placeholder"}, " ")
+                    isHref ? el("div", {title: "Go to " + editor_model.link, "class": "modify-menu-icon inert"}, [], {
+                      innerHTML: liveLinkSVG(editor_model.link)
+                    }) : undefined,
+                    isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
+                      innerHTML: linkModeSVG,
+                      onclick: linkSelect
+                    }) : undefined,
+                    el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
+                      innerHTML: wasteBasketSVG,
+                      onclick: ((name) => function() {
+                        clickedElem.removeAttribute(name);
+                        editor_model.clickedElem = clickedElem;
+                        updateInteractionDiv();
+                        })(name)
+                      })
                     ]
                   )
-                ])
-              );
-            let isGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(clickedElem);
-            let isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(clickedElem);
-
-            for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
-              let name = clickedElem.attributes[i].name;
-              if(name === "ghost-clicked" || name === "ghost-hovered") continue;
-              let value = clickedElem.attributes[i].value;
-              // Inline styles incoporated into CSS display editor
-              if(name !== "style") {
-                let isGhost = isGhostAttributeKey(name);
-                let isIgnored = isIgnoredAttributeKey(name);
-                let isHref = name === "href" && clickedElem.tagName === "A";
-                keyvalues.append(
-                  el("div", {"class": "keyvalue" + (isGhost ? " editor-recorded-ghost-attribute" : "")
-                                                + (isIgnored ? " editor-ignored-attribute" : ""),
-                            "title": isGhost ? "Key/value generated by a script" : isIgnored ? "key/value ignored after being modified by a script" : undefined
-                  }, [
-                    el("span", {title: "Element attribute name"}, name + ": "),
-                    el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
-                      el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
-                          onkeyup: ((name, isHref) => function () {
-                              clickedElem.setAttribute(name, this.value);
-                              if(isHref) {
-                                let livelinks = document.querySelectorAll(".livelink");
-                                for(let livelink of livelinks) {
-                                  let finalLink = livelink.matches("#context-menu *") ?
-                                    `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
-                                  livelink.setAttribute("href", finalLink);
-                                  livelink.setAttribute("title", "Go to " + this.value);
-                                }
-                              }
-                          })(name, isHref)
-                        }),
-                      isHref ? el("div", {title: "Go to " + editor_model.link, "class": "modify-menu-icon inert"}, [], {
-                        innerHTML: liveLinkSVG(editor_model.link)
-                      }) : undefined,
-                      isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
-                        innerHTML: linkModeSVG,
-                        onclick: linkSelect
-                      }) : undefined,
-                      el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
-                        innerHTML: wasteBasketSVG,
-                        onclick: ((name) => function() {
-                          clickedElem.removeAttribute(name);
-                          editor_model.clickedElem = clickedElem;
-                          updateInteractionDiv();
-                          })(name)
-                        })
-                      ]
-                    )
-                  ]
-                ));
-              }
+                ]
+              ));
             }
-            let highlightsubmit = function() {
-              let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
-              this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
-                attrName === "" || attrName.trim() !== attrName
-            }
+          }
+          let highlightsubmit = function() {
+            let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
+            this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
+              attrName === "" || attrName.trim() !== attrName
+          }
 
-            if(clickedElem.nodeType === 1) {
-              keyvalues.append(
-                el("div", {"class": "keyvalue keyvalueadder"}, [
-                  el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
-                  el("span", {class: "attribute-key-value"}, [
-                    el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
-                      onfocus: function() {
-                        let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
-                        if(keyInput && keyInput.value != "") {
-                          let name = document.querySelector("div.keyvalueadder input[name=name]").value;
-                          clickedElem.setAttribute(
-                            name,
-                            document.querySelector("div.keyvalueadder input[name=value]").value
-                          );
-                          updateInteractionDiv();
-                          let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
-                          if(d) d.focus();
-                        }
-                      },
-                      onkeyup: highlightsubmit})),
-                    el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
-                      disabled: true,
-                      onclick() {
+          if(clickedElem.nodeType === 1) {
+            keyvalues.append(
+              el("div", {"class": "keyvalue keyvalueadder"}, [
+                el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
+                el("span", {class: "attribute-key-value"}, [
+                  el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
+                    onfocus: function() {
+                      let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
+                      if(keyInput && keyInput.value != "") {
+                        let name = document.querySelector("div.keyvalueadder input[name=name]").value;
                         clickedElem.setAttribute(
-                          this.parentElement.querySelector("[name=name]").value,
-                          this.parentElement.querySelector("[name=value]").value
+                          name,
+                          document.querySelector("div.keyvalueadder input[name=value]").value
                         );
                         updateInteractionDiv();
-                      },
-                      onkeyup: highlightsubmit })])
-                ])
-              );
-            }
+                        let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
+                        if(d) d.focus();
+                      }
+                    },
+                    onkeyup: highlightsubmit})),
+                  el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+                    disabled: true,
+                    onclick() {
+                      clickedElem.setAttribute(
+                        this.parentElement.querySelector("[name=name]").value,
+                        this.parentElement.querySelector("[name=value]").value
+                      );
+                      updateInteractionDiv();
+                    },
+                    onkeyup: highlightsubmit })])
+              ])
+            );
           }
           return keyvalues;
         }
@@ -3418,14 +3415,17 @@ lastEditScript = """
         title: "Style",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
           //id="CSS-modification"
           const clickedElem = editor_model.clickedElem;
+          if(!clickedElem) {
+            return "Click on an element to see its style";
+          }
           const do_css = (clickedElem && clickedElem.id !== "context-menu" && clickedElem.id !== "modify-menu" && clickedElem.id !== "editbox" &&
                           !editor_model.insertElement);
           let CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
@@ -3731,82 +3731,89 @@ lastEditScript = """
         title: "Image Tools",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return this.enabled(editor_model) ? 1 : undefined; // It's likely we want to modify this image above all.
+        },
+        findURLS(styleStr) {
+          var urls = [];
+          var diffPics = styleStr.split(",");
+          for(let k in diffPics) {
+            //extracts only url(...)
+            var matches = diffPics[k].match(/url\((.*?)\)/g);
+            console.log("the matches are:", matches);
+            //deepcopy string
+            var remainStr = diffPics[k].slice(0); 
+            for(let j in matches) {
+              //from current understanding, there should only be one url(...) per split of ,
+              console.log("the current match is:", matches[j]);
+              if(j == 1) {
+                console.log(`Odd syntax, ${matches[j]} also matched!`);
+              }
+              let sIndex = diffPics[k].indexOf(matches[j]);
+              //extracting the rest of the string 
+              afterStr = remainStr.slice(sIndex + matches[j].length);
+              beforeStr = remainStr.slice(0, sIndex);
+              urls.push({remainderBefore: beforeStr, url: matches[j], remainderAfter: afterStr});  
+            }
+          }
+          return urls;
+        },
+        //checks the inline CSS of the clicked node/element to see if background or background-image is a rule, and if 
+        //a link to an image is provided as part of the value for this rule;
+        //TODO: expand the set of CSS being checked to any style tags as well.
+        checkForBackgroundImg(clickedElem) {
+          //console.log("clicked element is:", clickedElem);
+          //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
+          var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
+          //console.log(clickedStyle);
+          //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
+          //former first, if it contains a url. for now, I am looping through the CSS rules twice.
+          //console.log("^parsed rules ");
+          for(let i in clickedStyle) {
+            for(let j in clickedStyle[i]) {
+              if(clickedStyle[i][j].directive === "background") {
+                clickedStyle[i][j].value = this.findURLS(clickedStyle[i][j].value);  
+                if(clickedStyle[i][j].value.length) {
+                  //console.log(clickedStyle[i][j]);
+                  return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
+                    imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
+                }
+              }
+            }
+          }
+          for(let i in clickedStyle) {
+            for(let j in clickedStyle[i]) {
+              if(clickedStyle[i][j].directive === "background-image") {
+                //console.log("hello?");
+                //console.log(clickedStyle[i][j].value);
+                clickedStyle[i][j].value = this.findURLS(clickedStyle[i][j].value);  
+                if(clickedStyle[i][j].value.length) {
+                  return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
+                    imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
+                }
+              }
+            }
+          } 
+          //console.log("unsuccessful");
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          let clickedElem = editor_model.clickedElem;
+          let backgroundImgSrc = this.checkForBackgroundImg(clickedElem);
+          const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
+          this.backgroundImgSrc = backgroundImgSrc;
+          return do_img_rpl;
         },
+        
+        // enabled has been called before, clickedElem is not empty and it contains a background image
         render: function render(editor_model, innerBox) {
+          if(!this.enabled(editor_model)) {
+            return "Click an element with a background image.";
+          }
           //extract url and extraneous text from specified CSS value (which is originally part of a rule)
           const clickedElem = editor_model.clickedElem;
           let ret = el("div", {"class": "information"});
-          if (!clickedElem) ret;
-          function findURLS(styleStr) {
-            var urls = [];
-            var diffPics = styleStr.split(",");
-            for(let k in diffPics) {
-              //extracts only url(...)
-              var matches = diffPics[k].match(/url\((.*?)\)/g);
-              console.log("the matches are:", matches);
-              //deepcopy string
-              var remainStr = diffPics[k].slice(0); 
-              for(let j in matches) {
-                //from current understanding, there should only be one url(...) per split of ,
-                console.log("the current match is:", matches[j]);
-                if(j == 1) {
-                  console.log(`Odd syntax, ${matches[j]} also matched!`);
-                }
-                let sIndex = diffPics[k].indexOf(matches[j]);
-                //extracting the rest of the string 
-                afterStr = remainStr.slice(sIndex + matches[j].length);
-                beforeStr = remainStr.slice(0, sIndex);
-                urls.push({remainderBefore: beforeStr, url: matches[j], remainderAfter: afterStr});  
-              }
-            }
-            return urls;
-          }
-          //checks the inline CSS of the clicked node/element to see if background or background-image is a rule, and if 
-          //a link to an image is provided as part of the value for this rule;
-          //TODO: expand the set of CSS being checked to any style tags as well.
-          function checkForBackgroundImg() {
-            //console.log("clicked element is:", clickedElem);
-            //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
-            var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
-            //console.log(clickedStyle);
-            //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
-            //former first, if it contains a url. for now, I am looping through the CSS rules twice.
-            //console.log("^parsed rules ");
-            for(let i in clickedStyle) {
-              for(let j in clickedStyle[i]) {
-                if(clickedStyle[i][j].directive === "background") {
-                  clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
-                  if(clickedStyle[i][j].value.length) {
-                    //console.log(clickedStyle[i][j]);
-                    return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
-                      imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
-                  }
-                }
-              }
-            }
-            for(let i in clickedStyle) {
-              for(let j in clickedStyle[i]) {
-                if(clickedStyle[i][j].directive === "background-image") {
-                  //console.log("hello?");
-                  //console.log(clickedStyle[i][j].value);
-                  clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
-                  if(clickedStyle[i][j].value.length) {
-                    return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
-                      imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
-                  }
-                }
-              }
-            } 
-            //console.log("unsuccessful");
-            return undefined;
-          }
-          let backgroundImgSrc = checkForBackgroundImg();
-          const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
-          if (!do_img_rpl) return ret;
+          if (!clickedElem) return ret;
+          let backgroundImgSrc = this.backgroundImgSrc;
           //unparse the background/background-image object
           function unparseBackgroundImg(backImgObj) {
             var textSegment = "";
@@ -3933,7 +3940,7 @@ lastEditScript = """
                       }
                       else {
                         console.log("Second time around:");
-                        backImgObj = checkForBackgroundImg();
+                        backImgObj = this.checkForBackgroundImg(clickedElem);
                         backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url('+ this.children[0].getAttribute("src") +')';
                       }
                       //console.log("current link", this.children[0].getAttribute("src"));
@@ -3970,7 +3977,7 @@ lastEditScript = """
           
           }
           let remParentheses = /\((.*?)\)/g;
-          let srcName = backgroundImgSrc ? remParentheses.exec(backgroundImgSrc.relCSS.value[0].url)[1] : clickedElem.attributes[0].value;
+          let srcName = backgroundImgSrc ? remParentheses.exec(backgroundImgSrc.relCSS.value[0].url)[1] : clickedElem.getAttribute("src");
 
           //console.log(srcName);
           //console.log(backgroundImgSrc.relCSS.value[0].url);
@@ -4020,20 +4027,27 @@ lastEditScript = """
           return this.enabled(editor_model) ? 1 : undefined;
         },
         enabled(editor_model) {
-          return false;
-        },
-        render: function render(editor_model, innerBox) {
           //textarea singleChildNodeContent
           let voidTags = {AREA: true, BASE: true, BR: true, COL: true, COMMANd: true, EMBED: true, HR: true, IMG: true, INPUT: true, KEYGEN: true, LINK: true, META: true, PARAM: true, SOURCE: true, TRACK: true, WBR: true};
           const clickedElem = editor_model.clickedElem;
-          const do_edit = (clickedElem && clickedElem.children.length === 0 && !voidTags[clickedElem.tagname]);
-          if (!do_edit) return el("div", {}, [], {});
-          let txt = el("textarea", {id:"singleChildNodeContent"},
+          const do_edit = (clickedElem  && clickedElem.children && clickedElem.children.length === 0 && !voidTags[clickedElem.tagName]);
+          return do_edit;
+        },
+        render: function render(editor_model, innerBox) {
+          if(!this.enabled(editor_model)) {
+            return "Click on an element containing just text.";
+          }
+          const clickedElem = editor_model.clickedElem;
+          if(!this.enabled(editor_model)) {
+            return "Click on a button or a node containing only text.";
+          }
+          //textarea singleChildNodeContent
+          let txt = el("div", {id: "singleChildNodeContentDiv"}, [el("textarea", {id:"singleChildNodeContent"},
             [], {
               value: clickedElem.innerText,
               onkeyup: function () { clickedElem.textContent = this.value; },
               onscroll: function() { editor_model.textareaScroll = this.scrollTop },
-            });
+            })]);
           setTimeout((txt => () => {
             txt.scrollTop = editor_model.textareaScroll;
             txt.selectionEnd = editor_model.textareaSelectionEnd;
@@ -4046,12 +4060,15 @@ lastEditScript = """
         title: "Insert",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return editor_model.inserting;
         },
         enabled(editor_model) {
-          return false;
+          return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
+          if(!this.enabled(editor_model)) {
+            return "Click on an element to view insert options.";
+          }
           let ret = el("div", {"class": "information"});
           const clickedElem = editor_model.clickedElem;
           if (!clickedElem) return ret;
@@ -4251,12 +4268,167 @@ lastEditScript = """
           title: "Drafts",
           minimized: true,
           priority(editor_model) {
-            return this.enabled(editor_model) ? 1 : undefined;
+            return undefined;
           },
           enabled(editor_model) {
-            return false;
+            return true;
           },
           render: function render(editor_model, innerBox) {
+            let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
+
+            const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
+
+            const get_switch_btn_for = (nm) => {
+              return el("button", {"class":"draft-switch"}, [nm], 
+              {
+                onclick: (event) => {
+                  editor_model.version = nm;
+                  navigateLocal("/Thaditor/versions/" + nm + "/?edit");
+                }
+              });
+            };
+
+            const get_switch_btn_live = () => {
+              return el("button", {class:"draft-switch-live"}, ["Live"],
+              {
+                onclick: (event) => {
+                  editor_model.version = "Live";
+                  navigateLocal("/?edit");
+                }
+              })
+            }
+
+            const get_clone_btn_for = (nm) => {
+              return el("button", {"class":"draft-clone"}, ["Clone"],
+              {
+                onclick: (event) => {
+                  //verzExist tells us if we need to mkdir versions
+                  //nm could be live or any draft ==> make f_pth
+                  const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
+                  if (!draft_name) {
+                    return;
+                  }
+                  let fail = false;
+                  if (!verzExist) {
+                    doWriteServer("mkdir", "Thaditor/versions");
+                  } else {
+                    let versionsList = JSON.parse(doReadServer("fullListDir", "Thaditor/versions/"));
+                    versionsList.forEach(val => {
+                      let [nm, isdir] = val;
+                      if (isdir) {
+                        if (nm == draft_name) {
+                          fail = window.confirm("Overwrite existing draft?");
+                        }
+                      }
+                    });
+                  }
+                  if (fail) return;
+                  doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
+                  let org_pth = editor_model.path;
+                  const t_pth = org_pth.slice(0, org_pth.lastIndexOf("/"));
+                  const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
+                  const success = copy_website(f_pth, "Thaditor/versions/" + draft_name + "/");
+                  //change our URL to the versions/draft/
+                  editor_model.version = draft_name;
+                  navigateLocal("/Thaditor/versions/" + draft_name + "/?edit");
+                  setTimeout( () => {
+                    sendNotification("Successfully created + switched to draft: " + draft_name);
+                  }, 1500);
+                }
+              })  
+            }
+
+            const get_delete_btn_for = (nm) => {
+              return el("button", {"class":"draft-delete"}, ["Delete"],
+              {
+                onclick: (event) => {
+                  deleteDraft(nm);
+                }
+              })  
+            }
+
+            const get_publish_btn_for = (nm) => {
+              return el("button", {"class":"draft-publish"}, ["Publish"],
+              {
+                onclick: (event) => {
+                  publishDraft(nm);
+                }
+              })
+            }
+
+            const get_current_label = () => {
+              return el("div", {"class":"draft-row"},
+                      [
+                        el("label", {}, [editor_model.version], {}),
+                        (isLive() ? el("label", {}, [""]) : get_publish_btn_for(editor_model.version)),
+                        get_clone_btn_for("Live"),
+                        (isLive() ? el("label", {}, ["Can't delete live"]):
+                                                          el("button", {}, ["Delete"],
+                                                          {
+                                                            onclick: (event) => {
+                                                              deleteDraft(editor_model.version);
+                                                            }
+                                                          }))
+
+                      ],
+                      {
+                        onclick: (event) => {
+                          //pass
+                        },
+                      })
+            };
+
+            const get_row_for_draft = (nm) => {
+              return el("div", {"class": "draft-row"},
+              [
+                get_switch_btn_for(nm),
+                get_publish_btn_for(nm),
+                get_clone_btn_for(nm),
+                get_delete_btn_for(nm),
+              ]);
+            };
+
+            const get_row_for_live = () => {
+              return el("div", {"class": "draft-row"},
+              [
+                get_switch_btn_live(),
+                get_clone_btn_for("Live")
+              ])
+            }
+
+
+            draftListDiv.append(get_current_label());
+            if (!isLive()) {
+              draftListDiv.append(get_row_for_live());
+            }
+            if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
+              const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
+              vers.forEach(ver => {
+                if (ver == editor_model.version){
+
+                } else {
+                  draftListDiv.append(get_row_for_draft(ver));
+                }
+              });
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
             const createNewDraft = () => {
               return el("div", {"class": "childrenSelector"},
                         [
@@ -4367,7 +4539,7 @@ lastEditScript = """
                         });
             };
 
-            let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
+            /*
             if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
               const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
               vers.forEach(ver => {
@@ -4377,11 +4549,11 @@ lastEditScript = """
             if (!isLive()) draftListDiv.append(liveBtn());
             if (!isLive()) draftListDiv.append(publishToLiveBtn());
             draftListDiv.append(createNewDraft());
-            if (!isLive()) draftListDiv.append(deleteCurrentDraftBtn());
+            if (!isLive()) draftListDiv.append(deleteCurrentDraftBtn());*/
             return draftListDiv;
-          }
+          } //end of draft container render
         });
-      }
+       }
       editor_model.interfaces.push({ 
         title: "Advanced",
         minimized: true,
@@ -4389,7 +4561,7 @@ lastEditScript = """
           return undefined;
         },
         enabled(editor_model) {
-          false;
+          return true;
         },
         render: function render(editor_model, innerBox) {
           let retDiv = el("div", {"class":"modify-menu-icons"});
@@ -4411,6 +4583,17 @@ lastEditScript = """
           );
           retDiv.append(el("br"));
           retDiv.append(
+            el("button", {type:""}, "Update Thaditor", {onclick() {
+              if(confirm("Are you ready to upgrade Thaditor?")) {
+                doWriteServer("updateversion", "latest", "", response => {
+                  console.log("Result from Updating Thaditor to latest:");
+                  console.log(response);
+                });
+              }
+            } })
+          );
+          retDiv.append(el("br"));
+          retDiv.append(
             el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
               [el("input", {class: "global-setting", id: "input-question", type: "checkbox"}, [], {
                 onchange: function() { editor_model.askQuestions = this.checked; },
@@ -4418,6 +4601,7 @@ lastEditScript = """
               el("span", {class:"slider round"})]));
           retDiv.append(
             el("label", {"for": "input-question", class: "label-checkbox"}, "Ask questions"));
+          retDiv.append(el("br"));
           retDiv.append(
             el("label", {class:"switch", title: "If on, changes are automatically propagated 1 second after the last edit"}, [
               el("input", {class: "global-setting", id: "input-autosave", type:"checkbox"}, [], {
@@ -4427,6 +4611,7 @@ lastEditScript = """
           );
           retDiv.append(
             el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
+          retDiv.append(el("br"));
           if(apache_server) {
             retDiv.append(
               el("a", {href:"javascript:0", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
@@ -4453,10 +4638,10 @@ lastEditScript = """
         title: "Log",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return true;
         },
         render: function render(editor_model, innerBox) {
           let retDiv = el("div", {"class":"modify-menu-icons"});
@@ -4479,10 +4664,10 @@ lastEditScript = """
         title: "Source",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          return false;
+          return true;
         },
         render: function render(editor_model, innerBox) {
           let source = document.querySelector("#modify-menu").getAttribute("sourcecontent");
@@ -4600,6 +4785,19 @@ lastEditScript = """
       navigateLocal("/?edit");
       sendNotification("Permanently deleted draft named: " + editor_model.version);
     }
+
+    function deleteDraft(nm) {
+      if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
+      const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
+      if (!ans) return;
+      //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
+      const pth_to_delete = "Thaditor/versions/" + nm + "/";
+      doWriteServer("deletermrf", pth_to_delete);
+      if (editor_model.version == nm) navigateLocal("/?edit");
+      sendNotification("Permanently deleted draft named: " + nm);
+      updateInteractionDiv();
+    }
+
     function publishToLive() {
       //Find which version we're at by examining editor_model.version and/or the path
       //copy all of the files in the draft/ folder out to the public facing site.
@@ -4622,6 +4820,21 @@ lastEditScript = """
       setTimeout (() => sendNotification("Switched to live."), 1500)
     }
     
+    function publishDraft(nm) {
+      //We're copying out Thaditor/versions/$nm/ to "".
+      if (nm == "Live") throw "Can't publish live to live";
+      const conf = window.confirm("Are you sure you want to publish " + nm + " to live?");
+      if (!conf) {
+        return;
+      }
+      let t_src = "Thaditor/versions/" + nm + "/";
+      copy_website(t_src, "");
+      editor_model.version = "Live";
+      navigateLocal("/?edit", true);
+      updateInteractionDiv();
+      sendNotification("Successfully published " + nm + " to live.");
+      setTimeout (() => sendNotification("Switched to live."), 1500)
+    }
     
 
     updateInteractionDiv(); //outer lastEditScript
@@ -4668,40 +4881,6 @@ lastEditScript = """
         return f;
       })();
       
-      // Helpers: Text preview and summary
-      function textPreview(element, maxLength) {
-        let x = element.textContent;
-        let result = "'" + x + "'";;
-        if(x == "") {
-          if(element.tagName === "META") {
-            result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
-                    (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
-          } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
-            result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          } else if(element.tagName === "LINK") {
-            result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          }
-        }
-        if(typeof maxLength !== "undefined" && result.length > maxLength) {
-          return result.substring(0, maxLength) + "...'";
-        }
-        return result;
-      }
-      function summary(element, idAndClasses, maxLength) {
-        var summary = element.tagName.toLowerCase();
-        if(idAndClasses && element.getAttribute("id")) {
-          summary += "#" + element.getAttribute("id");
-        }
-        var elemClass = element.getAttribute("class");
-        if(idAndClasses && elemClass && elemClass.trim().length) {
-          summary += "." + elemClass.split(/\s+/g).join(".");
-        }
-        summary += " " + textPreview(element);
-        maxLength = maxLength || 80;
-        summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
-        return summary;
-      }
-      
       // We render the content of modifyMenuDiv from scratch
       modifyMenuDiv.innerHTML = "";
       let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned"}); // Icons always visible
@@ -4715,18 +4894,18 @@ lastEditScript = """
       /*
         Render interfaces / containers
       */
-
       for(let i = 1; i < editor_model.interfaces.length; i++) {
         let x = editor_model.interfaces[i];
         let priority = x.priority(editor_model);
         if(i > 0 && typeof priority === "number") {
+          x.minimized = false;
           let previous = editor_model.interfaces[i-1]
           let beforePriority = previous.priority(editor_model);
           if(typeof beforePriority === "undefined" && (!previous.enabled(editor_model) || previous.minimized)) {
             var tmp = editor_model.interfaces[i];
             editor_model.interfaces[i] = editor_model.interfaces[i-1];
             editor_model.interfaces[i-1] = tmp;
-            i--; // Bubble up
+            i -= 2; // Bubble up
           }
         }
       }
@@ -4737,40 +4916,57 @@ lastEditScript = """
                             x.enabled(editor_model) ? x.minimized : true;
         let renderedContent = x.render(editor_model);
         let class_str = x.title.replace(" ", "_");
-        let menu = el("div", {
-          class:"editor-container" + (x.enabled(editor_model) ? "" : " disabled") + (x.minimized ? " minimized" : "") + " " + class_str}, [
-          el("div.editor-container-title", {
-            title: typeof renderedContent === "string" ? renderedContent : undefined
-         }, [el("span", {title: "Expand menu"}, x.title),
-             el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: openTopSVG}),
-             i >= editor_model.interfaces.length - 1 ? undefined :
-             el("div.editor-container-icon", {title: "Move menu down"}, [], {innerHTML: arrowDown,
-               onclick: (i => event => {
-                 var tmp = editor_model.interfaces[i];
-                 editor_model.interfaces[i] = editor_model.interfaces[i+1];
-                 editor_model.interfaces[i+1] = tmp;
-                 updateInteractionDiv();
-               })(i)}),
-             i == 0 ? undefined :
-             el("div.editor-container-icon", {title: "Move menu up"}, [], {innerHTML: arrowUp,
-               onclick: (i => event => {
-                 var tmp = editor_model.interfaces[i];
-                 editor_model.interfaces[i] = editor_model.interfaces[i-1];
-                 editor_model.interfaces[i-1] = tmp;
-                 updateInteractionDiv();
-               })(i)})
-            ], {
-            onclick: ((x, initMinimized) => event => {
-              let target = event.target;
-              while(!target.matches(".editor-container")) target = target.parentNode;
-              //console.log("onclick", event.target);
-              x.minimized = target.classList.contains("minimized");
-              x.minimized = !x.minimized;
-              target.classList.toggle("minimized", x.minimized);
-            })(x, initMinimized)
-          }),
-          el("div.editor-container-content", {}, renderedContent),
-        ]);
+        let menu = el(
+          "div", {
+            class:"editor-container" + (x.enabled(editor_model) ? "" : " disabled") + (x.minimized ? " minimized" : "") + " " + class_str},
+          [ el("div.editor-container-title", {
+                 title: typeof renderedContent === "string" ? renderedContent : undefined
+               },
+               [ el("span", {title: "Expand menu"}, x.title),
+                 el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: openTopSVG}),
+                 el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: arrowDown,
+                   onclick: function(event) {
+                     let d = this.parentElement.parentElement;
+                     var tmp = editor_model.interfaces[d.i];
+                     editor_model.interfaces[d.i] = editor_model.interfaces[d.i+1];
+                     editor_model.interfaces[d.i+1] = tmp;
+                     d.nextElementSibling.i = d.i;
+                     d.i = d.i + 1;
+                     d.parentElement.insertBefore(d.nextElementSibling, d);
+                     event.preventDefault();
+                     event.stop = true;
+                     return false;
+                   }}),
+                 el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: arrowUp,
+                   i: i,
+                   onclick: function(event) {
+                     let d = this.parentElement.parentElement;
+                     var tmp = editor_model.interfaces[d.i];
+                     editor_model.interfaces[d.i] = editor_model.interfaces[d.i-1];
+                     editor_model.interfaces[d.i-1] = tmp;
+                     d.previousElementSibling.i = d.i;
+                     d.i = d.i - 1;
+                     d.parentElement.insertBefore(d, d.previousElementSibling);
+                     event.preventDefault();
+                     event.stop = true;
+                     return false;
+                   }})
+               ],
+               {
+                onclick: ((x) => event => {
+                  console.log(event);
+                  if(event.stop) return;
+                  let target = event.target;
+                  while(!target.matches(".editor-container")) target = target.parentNode;
+                  //console.log("onclick", event.target);
+                  x.minimized = target.classList.contains("minimized");
+                  x.minimized = !x.minimized;
+                  target.classList.toggle("minimized", x.minimized);
+                })(x)
+               }),
+            el("div.editor-container-content", {}, renderedContent),
+          ],
+        {i: i});
         modifyMenuHolder.append(menu);
       }
       if (do_interfaces) {
