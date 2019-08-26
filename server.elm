@@ -3032,7 +3032,7 @@ lastEditScript = """
         render: function render(editor_model, innerBox) {
           let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
           const clickedElem = editor_model.clickedElem;
-          if (!clickedElem) return "Click on an element to view its tree";
+          if (!clickedElem) return "Click on an element to view its location in DOM tree";
           domSelector.classList.add("dom-selector-style");
           let mainElemDiv = el("div", {"class": "mainElem"}, []);
           let childrenElemDiv = el("div", {"class": "childrenElem"}, []);
@@ -3107,7 +3107,6 @@ lastEditScript = """
                 updateInteractionDiv();
               }
             } else {
-              
               childrenElemDiv.append(
                 el("div", {"class": "childrenSelector no-sibling"}, "no sibling")
               );
@@ -3218,11 +3217,8 @@ lastEditScript = """
                     }
                     cnt++;
                   }
-                } else {
-                  // document.querySelector(".childrenElem").append(
-                  //     el("div", {"class": "no-children"}, "No Children")
-                  // );
                 }
+                // else: bottom of DOM tree
               } else {
                 editor_model.previousVisitedElem.pop();
                 let middleChild = editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1];
@@ -3257,15 +3253,12 @@ lastEditScript = """
                 }
                 displayElemAttr(mainElemDiv, clickedElem.parentElement);
               } else {
-                mainElemDiv.querySelector(".mainElem").append(
-                    el("div", {"class": "no-parent"}, "No Parent")
-                );
+                // for <html>
+                displayMainElem(clickedElem);
+                displayElemAttr(mainElemDiv, clickedElem);
               } 
               displayChildrenSiblings(clickedElem, true);
             }
-
-          
-            
           }
           return domSelector;
         }
@@ -3286,7 +3279,7 @@ lastEditScript = """
           // modify tagname
           keyvalues.append(
             el("div", {"class": "keyvalue"}, [
-              el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "tag: "),
+              el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "Tag: "),
               el("span", {class:"attribute-key-value"}, [
                 el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
                   [], {
@@ -3623,7 +3616,7 @@ lastEditScript = """
               for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
               }
-              CSSarea.append(el("span", {}, [], {innerHTML: headerStr}));
+              CSSarea.append(el("div", {"id": "CSS-chain"}, [], {innerHTML: headerStr}));
               let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "CSS-selectors" }, [], {
                   defaultValue: cssState.content,
@@ -4402,22 +4395,6 @@ lastEditScript = """
               });
             }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
             
             const createNewDraft = () => {
               return el("div", {"class": "childrenSelector"},
@@ -4662,9 +4639,9 @@ lastEditScript = """
         render: function render(editor_model, innerBox) {
           let source = document.querySelector("#modify-menu").getAttribute("sourcecontent");
           let ret = 
-            el("div", {"class": "tagName"},
+            el("div", {"class": "tagName nohover"},
              [el("textarea",
-                  {style: "width:100%; height: 100%",
+                  {style: "width:100%",
                    id: "sourcecontentmodifier", placeholder: "Source of the page, before evaluation", "class": "templateengine"}, [], {
                 onkeyup: function() {
                   if(document.querySelector("#modify-menu").getAttribute('sourcecontent') !== this.value)
@@ -4912,7 +4889,7 @@ lastEditScript = """
           [ el("div.editor-container-title", {
                  title: typeof renderedContent === "string" ? renderedContent : undefined
                },
-               [ el("span", {title: "Expand menu"}, x.title),
+               [ el("div", {title: "Expand menu", class: "expand-menu"}, x.title),
                  el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: openTopSVG}),
                  el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: arrowDown,
                    onclick: function(event) {
