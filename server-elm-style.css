@@ -1035,7 +1035,7 @@ div.editor-container-content {
   padding: 6px;
   padding: 6px;
   max-height: 80%;
-  overflow-y: scroll;
+  overflow-y: auto;
 }
 
 div.editor-container div.editor-container-title div.editor-container-icon {
