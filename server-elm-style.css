@@ -876,11 +876,11 @@ div#modify-menu .modify-menu-icon-label-link {
     text-align: center;
 }
 
-div#context-menu .context-menu-button>svg, div#modify-menu .modify-menu-button>svg {
-    /* padding: 5px;
+/* div#context-menu .context-menu-button>svg, div#modify-menu .modify-menu-button>svg {
+    padding: 5px;
     padding-bottom: 2px;
-    padding-top: 2px; */
-}
+    padding-top: 2px;
+} */
 
 div#context-menu .context-menu-button.inert, div#modify-menu .modify-menu-icons.modify-menu-icons .modify-menu-button.inert {
     background: var(--context-button-color-inert)
