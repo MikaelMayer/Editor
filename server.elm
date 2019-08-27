@@ -1374,8 +1374,10 @@ editor.matches = function(elem, selector) {
 editor.customContextMenuButtons = [];
 
 // Creates an SVG icon from the given path. If fill is true, will have the path filled.
-function svgFromPath(path, fill) {
-  return `<svg class="context-menu-icon${fill ? " fill": ""}" width="30" height="20" viewBox="0 0 40 30">
+function svgFromPath(path, fill, width, height, viewBox) {
+  return `<svg class="context-menu-icon${fill ? " fill": ""}" 
+        width="${width ? width : 40}" height="${height ? height : 30}" 
+        ${viewBox ? "viewBox=\"" + viewBox[0] + " "+ viewBox[1] + " "+ viewBox[2] + " "+ viewBox[3] +"\"" : "viewBox=\"0 0 40 30\""}>
         <path d="${path}"></path></svg>`
 }
 editor.svgFromPath = svgFromPath;
@@ -2718,7 +2720,8 @@ lastEditScript = """
     } //end of onClickGlobal
 
 
-
+    var editorContainerArrowDown = svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true, 30, 20, [0, 0, 40, 30]);
+    var editorContainerArrowUp = svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true, 30, 20, [0, 0, 40, 30]);
     var arrowDown = svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true);
     var arrowRight = svgFromPath("M 21,25 18,22 22,18 8,18 8,12 22,12 18,8 21,5 31,15 Z", true);
     var arrowUp = svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true);
@@ -2728,6 +2731,7 @@ lastEditScript = """
     var openLeftSVG = svgFromPath("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
     var closeRightSVG = svgFromPath("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
     var openTopSVG = svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
+    var displayArrowSVG = svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true, 30, 20, [0, 0, 40, 30]);
     var closeBottomSVG = svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
     var wasteBasketSVG = svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
     var plusSVG = svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
@@ -4890,8 +4894,8 @@ lastEditScript = """
                  title: typeof renderedContent === "string" ? renderedContent : undefined
                },
                [ el("div", {title: "Expand menu", class: "expand-menu"}, x.title),
-                 el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: openTopSVG}),
-                 el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: arrowDown,
+                 el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: displayArrowSVG}),
+                 el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: editorContainerArrowDown,
                    onclick: function(event) {
                      let d = this.parentElement.parentElement;
                      var tmp = editor_model.interfaces[d.i];
@@ -4904,7 +4908,7 @@ lastEditScript = """
                      event.stop = true;
                      return false;
                    }}),
-                 el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: arrowUp,
+                 el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: editorContainerArrowUp,
                    i: i,
                    onclick: function(event) {
                      let d = this.parentElement.parentElement;

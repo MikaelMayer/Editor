@@ -488,7 +488,7 @@ div#modify-menu div.keyvalues {
 }
 
 div#modify-menu div.keyvalues>div.keyvalue {
-    font-size: 1rem;
+    font-size: 16px;
     padding: 2px;
     display: flex;
     flex-direction: row;
@@ -525,7 +525,7 @@ div#modify-menu div.keyvalue input {
     padding: 4px;
     width: 98%;
     color: black;
-    font-size: 1rem;
+    font-size: 16px;
 }
 
 div#modify-menu .codefont {
@@ -875,9 +875,9 @@ div#modify-menu .modify-menu-icon-label-link {
 }
 
 div#context-menu .context-menu-button>svg, div#modify-menu .modify-menu-button>svg {
-    padding: 5px;
+    /* padding: 5px;
     padding-bottom: 2px;
-    padding-top: 2px;
+    padding-top: 2px; */
 }
 
 div#context-menu .context-menu-button.inert, div#modify-menu .modify-menu-icons.modify-menu-icons .modify-menu-button.inert {
