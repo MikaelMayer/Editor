@@ -1375,7 +1375,7 @@ editor.customContextMenuButtons = [];
 
 // Creates an SVG icon from the given path. If fill is true, will have the path filled.
 function svgFromPath(path, fill) {
-  return `<svg class="context-menu-icon${fill ? " fill": ""}" width="40" height="30">
+  return `<svg class="context-menu-icon${fill ? " fill": ""}" width="30" height="20" viewBox="0 0 40 30">
         <path d="${path}"></path></svg>`
 }
 editor.svgFromPath = svgFromPath;

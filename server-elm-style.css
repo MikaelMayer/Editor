@@ -875,10 +875,9 @@ div#modify-menu .modify-menu-icon-label-link {
 }
 
 div#context-menu .context-menu-button>svg, div#modify-menu .modify-menu-button>svg {
-    padding-left: var(--context-menu-padding-left);
-    padding-right: var(--context-menu-padding-left);
-    padding-top: var(--context-menu-padding-top);
-    padding-bottom: var(--context-menu-padding-top);
+    padding: 5px;
+    padding-bottom: 2px;
+    padding-top: 2px;
 }
 
 div#context-menu .context-menu-button.inert, div#modify-menu .modify-menu-icons.modify-menu-icons .modify-menu-button.inert {
@@ -1038,8 +1037,10 @@ div.editor-container-content {
   max-height: 80%;
   overflow-y: scroll;
 }
+
 div.editor-container div.editor-container-title div.editor-container-icon {
   float: right;
+  margin-top: 5px;
 }
 div.editor-container.minimized div.editor-container-title div.editor-container-icon#displayArrow {
   transform: rotate(180deg);
