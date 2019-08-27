@@ -352,6 +352,8 @@ div#modify-menu textarea.inline-CSS {
 div#modify-menu #CSS-modification {
     width: 100%;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     flex: 1;
     padding: 4px;
 }

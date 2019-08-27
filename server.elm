@@ -3368,6 +3368,15 @@ lastEditScript = """
                 ]
               ));
             }
+            else {
+              for(let i in editor_model.interfaces) {
+                if(editor_model.interfaces[i].title === "Style") {
+                  editor_model.interfaces[i].minimized = false;
+                  editor_model.inline = clickedElem.getAttribute("style");                  
+                  editor_model.interfaces[i].priority(editor_model);               
+                }
+              }
+            }
           }
           let highlightsubmit = function() {
             let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
@@ -3415,6 +3424,7 @@ lastEditScript = """
         title: "Style",
         minimized: true,
         priority(editor_model) {
+          if(editor_model.inline) return 1;
           return undefined;
         },
         enabled(editor_model) {
@@ -3444,7 +3454,14 @@ lastEditScript = """
                   rawCSS.push({text: e.nextElementSibling.textContent, tag: e})
                 }*/
                 let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
-                e.__editor__.ignoredAttrMap = {href: CSSFilePath};
+                if(e.__editor__) e.__editor__.ignoredAttrMap = {href: CSSFilePath};
+                console.log(CSSFilePath);
+                let fileName = CSSFilePath.match(/[^\/]\w+\.\w+$/ig);
+                //let newCSSFilePath = CSSFilePath;
+                doWriteServer("fullCopy", CSSFilePath, CSSFilePath);
+                //debugger;
+                //e.setAtttribute("href", newCSSfilePath);
+                //CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
                 let CSSvalue = doReadServer("read", CSSFilePath);
                 //console.log(CSSFilePath.match(/server-elm-style/g));
                 if(!(CSSFilePath.match(/server-elm-style/g)) && CSSvalue) {
@@ -3592,13 +3609,13 @@ lastEditScript = """
               );
             }
             //inline styles 
-            var inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
-            if(inline) {
+            editor_model.inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
+            if(editor_model.inline) {
               //debugger;
               console.log("We have inline CSS!");
               let inlineCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "inline-CSS"}, [], {
-                  defaultValue: inline,
+                  defaultValue: editor_model.inline,
                   onfocusout() {
                     setCSSAreas();
                   },
@@ -3619,6 +3636,15 @@ lastEditScript = """
               CSSarea.append(el("span", {}, [], {innerHTML: "Inline styles:"}));
               CSSarea.append(inlineCSS);
               //debugger;
+            }
+            else{
+              CSSarea.append(el("button", {}, [], {
+                innerHTML: "Add inline style",
+                onclick() {
+                  clickedElem.setAttribute("style", " ");
+                  editor_model.inline = true;
+                  setCSSAreas();
+                }}));
             }
             //rest of CSS
             editor_model.CSSState = fullParseCSS();
