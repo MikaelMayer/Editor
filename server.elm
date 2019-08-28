@@ -4080,7 +4080,7 @@ lastEditScript = """
         }
       });
       editor_model.interfaces.push({
-        title: "Insert",
+        title: "Create",
         minimized: true,
         priority(editor_model) {
           return editor_model.inserting;
@@ -4097,7 +4097,6 @@ lastEditScript = """
           if (!clickedElem) return ret;
           ret.classList.add("insert-information-style");
           ret.classList.add("information-style");
-          ret.append(el("h1", {}, "Insert"));
           let insertOption = function(value, msg, checked, title) {
             return el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsert" + value, name: "insertionPlace", value: value}, [], {checked: checked || false}),
@@ -4220,9 +4219,12 @@ lastEditScript = """
             addElem("Link", {tag:"link", attrs:{rel:"", href: ""}, props: {}, title: "Insert <link>"});
           }
           if(clickedElem.tagName !== "HEAD") {
+            ret.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
+              onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
+            );
             ret.append(
               el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
-                  innerHTML: linkModeSVG,
+                  innerHTML: linkModeSVG + "<span>Move a node</span>",
                   onclick: function(event) {
                     editor_model.insertElement = false;
                     let insertionStyle = getInsertionPlace();
@@ -4248,9 +4250,6 @@ lastEditScript = """
                   }
                 })
             )
-            ret.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
-              onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
-            );
             // TODO: Filter and sort which one we can add, also depending on where to insert.
             addElem("List item", {tag:"li", props: { innerHTML: "<br>" }, title: "Insert <li>"});
             addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }, title: "Insert <ul>"});
