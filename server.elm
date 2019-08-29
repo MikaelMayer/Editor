@@ -1374,8 +1374,10 @@ editor.matches = function(elem, selector) {
 editor.customContextMenuButtons = [];
 
 // Creates an SVG icon from the given path. If fill is true, will have the path filled.
-function svgFromPath(path, fill) {
-  return `<svg class="context-menu-icon${fill ? " fill": ""}" width="30" height="20" viewBox="0 0 40 30">
+function svgFromPath(path, fill, width, height, viewBox) {
+  return `<svg class="context-menu-icon${fill ? " fill": ""}" 
+        width="${width ? width : 40}" height="${height ? height : 30}" 
+        ${viewBox ? "viewBox=\"" + viewBox[0] + " "+ viewBox[1] + " "+ viewBox[2] + " "+ viewBox[3] +"\"" : "viewBox=\"0 0 40 30\""}>
         <path d="${path}"></path></svg>`
 }
 editor.svgFromPath = svgFromPath;
@@ -1778,11 +1780,19 @@ lastEditScript = """
 
     //(outer lastEditScript)
     function saveDisplayProperties() {
-      let singleChildNodeContent = document.querySelector("textarea#singleChildNodeContent");
-      if(singleChildNodeContent) {
-        editor_model.textareaScroll = singleChildNodeContent.scrollTop;
-        editor_model.textareaSelectionStart = singleChildNodeContent.selectionStart;
-        editor_model.textareaSelectionEnd = singleChildNodeContent.selectionEnd;
+      let ret = document.querySelector("#textChildNodeContentDiv");
+      if(ret) {
+        editor_model.textareaPropertiesSaved = [];
+        for(let i = 0; i < ret.childNodes.length; i++) {
+          if(ret.childNodes[i].tagName === "TEXTAREA") {
+            editor_model.textareaPropertiesSaved[i] = {
+              scrollTop: ret.childNodes[i].scrollTop,
+              selectionEnd: ret.childNodes[i].selectionStart,
+              selectionStart: ret.childNodes[i].selectionEnd,
+              focus: ret.childNodes[i] === document.activeElement
+            };
+          }
+        }
       }
     }
     
@@ -2718,7 +2728,8 @@ lastEditScript = """
     } //end of onClickGlobal
 
 
-
+    var editorContainerArrowDown = svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true, 30, 20, [0, 0, 40, 30]);
+    var editorContainerArrowUp = svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true, 30, 20, [0, 0, 40, 30]);
     var arrowDown = svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true);
     var arrowRight = svgFromPath("M 21,25 18,22 22,18 8,18 8,12 22,12 18,8 21,5 31,15 Z", true);
     var arrowUp = svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true);
@@ -2728,6 +2739,7 @@ lastEditScript = """
     var openLeftSVG = svgFromPath("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
     var closeRightSVG = svgFromPath("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
     var openTopSVG = svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
+    var displayArrowSVG = svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true, 30, 20, [0, 0, 40, 30]);
     var closeBottomSVG = svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
     var wasteBasketSVG = svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
     var plusSVG = svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
@@ -2925,9 +2937,7 @@ lastEditScript = """
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
-      textareaScroll: ifAlreadyRunning ? editor_model.textareaScroll : 0,
-      textareaSelectionStart: ifAlreadyRunning ? editor_model.textareaSelectionStart : 0,
-      textareaSelectionEnd: ifAlreadyRunning ? editor_model.textareaSelectionEnd: 0,
+      textareaPropertiesSaved: ifAlreadyRunning ? editor_model.textareaPropertiesSaved : [],
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
                     @(case listDict.get "question" vars of
                        Just questionattr -> "true"
@@ -3284,20 +3294,33 @@ lastEditScript = """
                 el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
                   [], {
                     onkeyup() {
-                      document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+                      let applyNewTagNameButton = document.querySelector("#applyNewTagName");
+                      applyNewTagNameButton.classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w*$/));
+                      applyNewTagNameButton.value = this.value === "" ? "-" : "Set";
+                      applyNewTagNameButton.setAttribute("title", this.value === "" ? "Lift element's children and delete element" :  "Change tag name to '"+this.value+"'");
                     }
                   }),
                   el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
-                        let newel = el(document.querySelector("#newTagName").value);
-                        let elements = clickedElem.childNodes;
-                        while(elements.length) {
-                          newel.append(elements[0]);
+                        let newTagName = document.querySelector("#newTagName").value;
+                        let newel;
+                        if(newTagName === "") {
+                          while(clickedElem.childNodes.length) {
+                            newel = clickedElem.childNodes[0];
+                            clickedElem.parentElement.insertBefore(newel, clickedElem);
+                          }
+                          clickedElem.remove();
+                        } else {
+                          newel = el(document.querySelector("#newTagName").value);
+                          let elements = clickedElem.childNodes;
+                          while(elements.length) {
+                            newel.append(elements[0]);
+                          }
+                          for(let i = 0; i < clickedElem.attributes.length; i++) {
+                            newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+                          }
+                          clickedElem.parentElement.insertBefore(newel, clickedElem);
+                          clickedElem.remove();
                         }
-                        for(let i = 0; i < clickedElem.attributes.length; i++) {
-                          newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-                        }
-                        clickedElem.parentElement.insertBefore(newel, clickedElem);
-                        clickedElem.remove();
                         editor_model.clickedElem = newel;
                         updateInteractionDiv();
                       }
@@ -4042,40 +4065,67 @@ lastEditScript = """
         title: "Text Editing",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          //textarea singleChildNodeContent
-          let voidTags = {AREA: true, BASE: true, BR: true, COL: true, COMMANd: true, EMBED: true, HR: true, IMG: true, INPUT: true, KEYGEN: true, LINK: true, META: true, PARAM: true, SOURCE: true, TRACK: true, WBR: true};
           const clickedElem = editor_model.clickedElem;
-          const do_edit = (clickedElem  && clickedElem.children && clickedElem.children.length === 0 && !voidTags[clickedElem.tagName]);
-          return do_edit;
+          if(!clickedElem) return false;
+          for(let i in clickedElem.childNodes) {
+            let node = clickedElem.childNodes[i];
+            if(node.nodeType === 3 && node.textContent.trim() !== "") {
+              return true;
+            }
+          }
         },
         render: function render(editor_model, innerBox) {
           if(!this.enabled(editor_model)) {
-            return "Click on an element containing just text.";
+            return "Click on an element that contains some text.";
           }
           const clickedElem = editor_model.clickedElem;
-          if(!this.enabled(editor_model)) {
-            return "Click on a button or a node containing only text.";
+          //textarea textChildNodeContent
+          let ret = el("div", {id: "textChildNodeContentDiv"}, []);
+          for(let i in clickedElem.childNodes) {
+            let node = clickedElem.childNodes[i];
+            if(node.nodeType === 3 && node.textContent.trim() !== "") { // Non-empty text nodes.
+              ret.append(
+                el("textarea", {class:"textChildNodeContent"},
+                [], {
+                  value: node.textContent,
+                  onkeyup: (node => function() { node.textContent = this.value; })(node),
+                  onscroll: ((node, i) => function() { editor_model.textareaScroll = this.scrollTop })(node),
+                })
+              )
+            } else if(node.nodeType === 1) { // Make this a shortcut for the node
+              ret.append(
+                el("div.childrenSelector", {}, 
+                  el("div.childrenSelectorName", {}, "<" + node.tagName + ">"),
+                  {
+                    onclick: (node => () => {
+                      editor_model.clickedElem = node;
+                      updateInteractionDiv();
+                    })(node)
+                  }
+                )
+              )
+            }
           }
-          //textarea singleChildNodeContent
-          let txt = el("div", {id: "singleChildNodeContentDiv"}, [el("textarea", {id:"singleChildNodeContent"},
-            [], {
-              value: clickedElem.innerText,
-              onkeyup: function () { clickedElem.textContent = this.value; },
-              onscroll: function() { editor_model.textareaScroll = this.scrollTop },
-            })]);
-          setTimeout((txt => () => {
-            txt.scrollTop = editor_model.textareaScroll;
-            txt.selectionEnd = editor_model.textareaSelectionEnd;
-            txt.selectionStart = editor_model.textareaSelectionStart;
-          })(txt), 0);
-          return txt;
+          setTimeout((ret => () => {
+            for(let i = 0; i < editor_model.textareaPropertiesSaved.length && i < ret.childNodes.length; i++) {
+              if(ret.childNodes[i].tagName === "TEXTAREA") {
+                ret.childNodes[i].scrollTop = editor_model.textareaPropertiesSaved[i].scrollTop;
+                ret.childNodes[i].selectionEnd = editor_model.textareaPropertiesSaved[i].selectionEnd;
+                ret.childNodes[i].selectionStart = editor_model.textareaPropertiesSaved[i].selectionStart;
+                if(editor_model.textareaPropertiesSaved[i].focus) {
+                  ret.childNodes[i].focus();
+                }
+              }
+            }
+          })(ret), 0);
+          return ret;
         }
       });
       editor_model.interfaces.push({
-        title: "Insert",
+        title: "Create",
         minimized: true,
         priority(editor_model) {
           return editor_model.inserting;
@@ -4092,7 +4142,6 @@ lastEditScript = """
           if (!clickedElem) return ret;
           ret.classList.add("insert-information-style");
           ret.classList.add("information-style");
-          ret.append(el("h1", {}, "Insert"));
           let insertOption = function(value, msg, checked, title) {
             return el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsert" + value, name: "insertionPlace", value: value}, [], {checked: checked || false}),
@@ -4108,7 +4157,8 @@ lastEditScript = """
             isHTML || !caretBlinks ? undefined : insertOption("caret", "At caret", !isTop && caretBlinks),
             isHTML ? undefined : insertOption("last-child", "As last child", isTop || !caretBlinks),
             isTop ? undefined : insertOption("after", "After node"),
-            isTop ? undefined : insertOption("wrap", "Wrap node", false, "Put the selected node inside the newly inserted node")
+            isTop ? undefined : insertOption("wrap", "Wrap node", false, "Put the selected node inside the newly inserted node"),
+            clickedElem.childNodes && clickedElem.childNodes.length ? insertOption("wrap-children", "Wrap children", false, "Insert all node's children as children of element, then add element as a child.") : undefined
           ]));
           let getInsertionPlace = () => {
             let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
@@ -4150,6 +4200,16 @@ lastEditScript = """
               }
               newElement.appendChild(clickedElem);
               console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
+            } else if(insertionStyle === "wrap-children") {
+              if(typeof newElement === "string") {
+                clickedElem.insertAdjacentHTML("afterbegin", newElement);
+                newElement = clickedElem.children[0];
+              } else {
+                clickedElem.insertBefore(newElement, clickedElem.childNodes[0]);
+              }
+              while(newElement.nextSibling) {
+                newElement.append(newElement.nextSibling);
+              }
             } else if(insertionStyle === "caret") {
               let s = editor_model.caretPosition;
               let txt = s.startContainer;
@@ -4215,9 +4275,12 @@ lastEditScript = """
             addElem("Link", {tag:"link", attrs:{rel:"", href: ""}, props: {}, title: "Insert <link>"});
           }
           if(clickedElem.tagName !== "HEAD") {
+            ret.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
+              onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
+            );
             ret.append(
               el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
-                  innerHTML: linkModeSVG,
+                  innerHTML: linkModeSVG + "<span>Move a node</span>",
                   onclick: function(event) {
                     editor_model.insertElement = false;
                     let insertionStyle = getInsertionPlace();
@@ -4243,20 +4306,15 @@ lastEditScript = """
                   }
                 })
             )
-            ret.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
-              onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
-            );
             // TODO: Filter and sort which one we can add, also depending on where to insert.
             addElem("List item", {tag:"li", props: { innerHTML: "<br>" }, title: "Insert <li>"});
             addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }, title: "Insert <ul>"});
             addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n<li><br></li>\n</ol>" }, title: "Insert <ol>"});
-            addElem("Button", {tag: "button", props: {innerHTML: "Name_your_button" }, title: "Insert <button>"});
-            // something is wrong with creating link and paragraph using childCreate
-            // addElem("Link", {tag:"a", childCreate: "Name_your_link"});
-            // addElem("Paragraph", {tag:"p", childCreate: "Inserted paragraph"});
-            addElem("Link", {tag: "a", props: { innerHTML: "Name_your_link", href: "" }, title: "Insert <a href=''>"});
-            addElem("Paragraph", {tag: "p", props: { innerHTML: "Insert_paragraph" }, title: "Insert <p>"});
+            addElem("Button", {tag: "button", props: {innerHTML: "Button name" }, title: "Insert <button>"});
+            addElem("Link", {tag: "a", props: { innerHTML: "Link name", href: "" }, title: "Insert <a href=''>"});
+            addElem("Paragraph", {tag: "p", props: { innerHTML: "Your text here" }, title: "Insert <p>"});
             addElem("Division content", {tag: "div", title: "Insert <div>"});
+            addElem("Section", {tag: "section", title: "Insert <section>"});
             addElem("Preformatted text", {tag: "pre", title: "Insert <pre>"});
             for(let i = 1; i <= 6; i++) {
               addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }, title: "Insert <h"+i+">"});
@@ -4266,13 +4324,15 @@ lastEditScript = """
           addElem("Stylesheet", {tag:"style", children: "/*Your CSS there*/", title: "Insert <style>"});
           addElem("JavaScript", {tag:"script", children: "/*Your CSS below*/", title: "Insert <script>"});
 
-          
           ret.append(
             el("div", {"class": "tagName", id: "customHTML"}, [
               el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
               el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
                   innerHTML: plusSVG, 
-                  onclick: insertTag
+                  onclick: function(event) {
+                      let insertionStyle = getInsertionPlace();
+                      insertTag.call(this, event, undefined, insertionStyle);
+                  }
                 }
               )
             ])
@@ -4925,8 +4985,8 @@ lastEditScript = """
                  title: typeof renderedContent === "string" ? renderedContent : undefined
                },
                [ el("div", {title: "Expand menu", class: "expand-menu"}, x.title),
-                 el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: openTopSVG}),
-                 el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: arrowDown,
+                 el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: displayArrowSVG}),
+                 el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: editorContainerArrowDown,
                    onclick: function(event) {
                      let d = this.parentElement.parentElement;
                      var tmp = editor_model.interfaces[d.i];
@@ -4939,7 +4999,7 @@ lastEditScript = """
                      event.stop = true;
                      return false;
                    }}),
-                 el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: arrowUp,
+                 el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: editorContainerArrowUp,
                    i: i,
                    onclick: function(event) {
                      let d = this.parentElement.parentElement;
@@ -5012,7 +5072,7 @@ lastEditScript = """
             }
         });
         addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
-          {"class": "inert", title: "Undo most recent change",
+          {"class": "inert" + (canUndo() ? "" : " disabled"), title: "Undo most recent change",
             id: "undobutton"
           },
           {onclick: function(event) {
@@ -5021,7 +5081,7 @@ lastEditScript = """
           }   
         );
         addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
-          {"class": "inert", title: "Redo most recent undo",
+          {"class": "inert" + (canRedo() ? "" : " disabled"), title: "Redo most recent undo",
             id: "redobutton"
           },
         	{onclick: function(event) {
@@ -5321,7 +5381,16 @@ lastEditScript = """
          document.addEventListener('mousedown', onMouseDownGlobal, false);
       """
     else "")
-
+      window.addEventListener("error", function (message, source, lineno, colno, error) {
+        let msg;
+        if(message instanceof ErrorEvent) {
+          msg = message.message;
+        } else {
+          msg = message + " from " + source + " L" + lineno + "C" + colno;
+        }
+        editor_model.editor_log.push(msg);
+      });
+       
       window.onbeforeunload = function (e) {
         e = e || window.event;
         var askConfirmation = editor_model.canSave || editor_model.isSaving || editor_model.disambiguationMenu;
