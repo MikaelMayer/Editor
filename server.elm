@@ -3440,7 +3440,7 @@ lastEditScript = """
             //console.log("All style tags:", document.querySelectorAll("style"));
             document.querySelectorAll("link, style").forEach((e) => {
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
-                console.log(e.nextElementSibling.getAttribute("class"));
+                //console.log(e.nextElementSibling.getAttribute("class"));
                 /*if(e.nextElementSibling && e.nextElementSibling.tagName === "STYLE" && e.nextElementSibling.getAttribute("class") === "editor-interface ghost-CSS") {
                   //for all intents and purposes, the ghost style node will be the same as the link style CSS
                   console.log("extracted from ghost style node");
@@ -3451,7 +3451,7 @@ lastEditScript = """
                 console.log(CSSFilePath);
                 let fileName = CSSFilePath.match(/[^\/]\w+\.\w+$/ig);
                 //let newCSSFilePath = CSSFilePath;
-                doWriteServer("fullCopy", CSSFilePath, CSSFilePath);
+                //doWriteServer("fullCopy", CSSFilePath, CSSFilePath);
                 //debugger;
                 //e.setAtttribute("href", newCSSfilePath);
                 //CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
@@ -3469,9 +3469,6 @@ lastEditScript = """
             for(let z in rawCSS) {  
               var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
               for(let i in parsedCSS) {
-                //console.log(parsedCSS[i].kind);
-                //console.log('@@keyframes');
-                //console.log(parsedCSS[i].kind === '@@keyframes');
                 if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector)) {
                   let content = CSSparser.unparseCSS([parsedCSS[i]]);
                   let wsBefore = content.replace(/^(\s*\n)[\s\S]*$/g, (m, ws) => ws);
@@ -3480,17 +3477,19 @@ lastEditScript = """
                   fullCSS.push({type: 'cssBlock', content: contentTrimmed, 
                     before: findText(parsedCSS, 0, i) + wsBefore, after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                 }
-                else if(parsedCSS[i].kind === '@@media' && window.matchMedia(parsedCSS[i].selector).matches) {
-                  //saving selector information 
+                else if(parsedCSS[i].kind === '@@media' && window.matchMedia(parsedCSS[i].atNameValue).matches) {
                   let curMedia = parsedCSS[i];
                   for(let j in curMedia.content) {
+                    console.log(curMedia.content[j]);
                     if(editor.matches(clickedElem, curMedia.content[j].selector)) {
-                      var insertMedia = {type: '@@media', content: curMedia, 
+                      var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
+                        mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
-                        before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag};
-                      curMedia.content = CSSparser.unparseCSS([curMedia.content[j]]);
-                      insertMedia.content = curMedia.content;
+                        before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
+                      console.log("Insert media:");
+                      console.log(insertMedia);
                       fullCSS.push(insertMedia);
+                      console.log("got here first!");
                     }
                   }
                 }
@@ -3503,8 +3502,6 @@ lastEditScript = """
                     before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                 }
                 else if(parsedCSS[i].kind === '@@keyframes') {
-                  console.log("got here!");
-                  console.log(parsedCSS[i]);
                   keyframes.push({type: '@@keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
                     before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag,
                     animationName: parsedCSS[i].atNameValue});
@@ -3512,19 +3509,18 @@ lastEditScript = """
                 else if(parsedCSS[i].kind === 'whitespace') { 
                   continue;
                 }
-                if(i === parsedCSS.length - 1 && !curCSS.length) {
+                if(i === parsedCSS.length - 1 && !fullCSS.length) {
                   console.log("Nothing relevant in style tag: ", rawCSS[z].tag);
                 }
+                console.log("got here!");
               }
               //console.log("The parsed text looks like:", curCSS);
             }
-            console.log(keyframes);
             for(i in keyframes) {
               for(j in fullCSS) {
                 let parsedSection = CSSparser.parseCSS(fullCSS[j].content);
                 for(k in parsedSection.content) {
                   for(l in parsedSection.content[k].rules) {
-                    console.log(parsedSection.content[k].rules[l]);
                     if(Number(parsedSection.content[k].rules[l].search(keyframes[i].animationName)) >= 0) {
                       fullCSS.push(keyframes[i]);
                     }
@@ -3554,20 +3550,19 @@ lastEditScript = """
               //console.log(CSSString);
             }
             else if(curCSS.type === '@@media') { 
-              let curMedia = CSSparser.parseCSS(curCSS.content);
-              curMedia.content = curCSS.beforeInner + curCSS.content.content + curCSS.afterInner;
-              CSSString = CSSparser.unparseCSS([curMedia]);        
+              console.log(curCSS);
+              CSSString = curCSS.before + curCSS.mediaSelector + curCSS.innerBefore + curCSS.content + curCSS.innerAfter + curCSS.whitesAfter + curCSS.after;   
             }
             if(curTag.tagName === "LINK") {
               return CSSString;
             }
-            //console.log("Text is:" + CSSString);
+            console.log("Text is:" + CSSString);
             curTag.textContent = CSSString;
             //debugger
             //consolw.log("After");
           }
           var curCSSWindow = undefined;
-          //CSSState = fullParseCSS();
+
           function setCSSAreas() {
             while(CSSarea.firstChild) {
               //console.log("Removed child:", CSSarea.firstChild);
@@ -3654,7 +3649,19 @@ lastEditScript = """
               for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
               }
-              CSSarea.append(el("div", {"id": "CSS-chain"}, [], {innerHTML: headerStr}));
+              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: headerStr}));
+              if(cssState.type === '@@media') {
+                CSSarea.append(el("div", {"class": "@media-selector", "contenteditable": true}, [], {
+                oninput() {
+                  if(window.matchMedia(curCSSState[i].selector).matches ? editor.matches(clickedElem, curCSSState[i].content.selector) : false) {
+                    //implement throwError;
+                  }
+                  cssState.mediaSelector = this.value;
+                  fullUnparseCSS(cssState);
+                },
+                innerHTML: cssState.mediaSelector
+                }))
+              }
               let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "CSS-selectors" }, [], {
                   defaultValue: cssState.content,
@@ -3670,15 +3677,7 @@ lastEditScript = """
                       curCSSState = CSSparser.parseCSS(this.value);
                       //console.log(curCSSState);
                       //check to make sure CSS is still relevant to clicked element.
-                      for(let i in curCSSState) {
-                        if(curCSSState[i].kind === 'cssBlock' || curCSSState[i].kind === '@media') {
-                          if(!(curCSSState[i].kind === 'cssBlock' ? editor.matches(clickedElem, curCSSState[i].selector) : 
-                          (window.matchMedia(curCSSState[i].selector).matches ? editor.matches(clickedElem, curCSSState[i].content.selector) : false))) {
-                            throwError = true;
-                          }
-                        }
-                      }
-                      if(throwError) {
+                      if(curCSSState[i].kind === 'cssBlock' && editor.matches(clickedElem, curCSSState[i].selector)) {
                         sendNotification("CSS selector does not match");
                         this.setAttribute("wrong-selector", true);
                         this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
