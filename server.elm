@@ -1620,25 +1620,6 @@ lastEditScript = """
     var onMobile = () => window.matchMedia("(orientation: portrait)").matches;
     var buttonHeight = () => onMobile() ? 48 : 30;
     var buttonWidth  = () => onMobile() ? 48 : 40;
-    
-    /*setTimeout(() => {document.querySelectorAll("link").forEach((e) => {
-      let nextSibGhostCSS = e.nextElementSibling;
-      if(nextSibGhostCSS && nextSibGhostCSS.tagName === "STYLE" && nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS") {
-        console.log("There is already a ghost CSS node here!");
-      }
-      else {
-        let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
-        let CSSvalue = doReadServer("read", CSSFilePath);
-        //console.log(CSSFilePath.match(/server-elm-style/g));
-        if(!(CSSFilePath.match(/server-elm-style/g)) && CSSvalue) {
-          CSSvalue = CSSvalue.slice(1);
-          e.parentElement.insertBefore(el("style", {"isghost": true, "class": "editor-interface ghost-CSS"}, [], {
-              textContent: CSSvalue
-            }), 
-            nextSibGhostCSS);
-        }
-      }
-    });}, 500); */
 
 
     // Before saving, call this function to that it eventually triggers a save action to any file.
@@ -1994,6 +1975,22 @@ lastEditScript = """
     //var serverWorker = new Worker("/Thaditor/editor.js");
 
     function sendModificationsToServer() {
+      
+      //temp place to put CSS file loading stuff (may well be moved later)
+      document.querySelectorAll("link").forEach((e) => {
+        if(!isGhostNode && e.__editor__ && e.__editor__.ignoredAttrMap && e.__editor__.ignoredAttrMap) {
+          doReadServer("read", e.href, (newCSSValue) => {
+            doReadServer("read", e.__editor__.ignoredAttrMap.href, (CSSvalue) => {
+              addFileToSave(e.__editor__.ignoredAttrMap.href, CSSvalue, newCSSValue);
+            });
+          });
+          let timeIndex = e.__editor__.ignoredAttrMap.href.indexOf("?timestamp=");
+          if(timeIndex) {
+            e.__editor__.ignoredAttrMap.href = e.__editor__.ignoredAttrMap.href.slice(0, timeIndex);
+          }
+          e.__editor__.ignoredAttrMap.href.append(`?timestamp=${+new Date()}`);
+        } 
+      })
       
       if(document.getElementById("notification-menu") != null) {
         //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
@@ -2978,16 +2975,8 @@ lastEditScript = """
 
     function init_interfaces() {
       function findText(parsed, startIndex, endIndex) { //for css + img replacement
-        console.log(parsed);
-        console.log("Start index is:", startIndex);
-        console.log("End index is:", endIndex);
         let textSegment = "";
-        //console.log("got to findtext");
-        //console.log("startIndex is:" + startIndex + " endIndex is:" + endIndex);
         for(let i = startIndex; i < endIndex; i++) {
-          console.log("findtext:", i);
-          //console.log(parsed[0].directive);
-          //console.log(CSSparser.unparseRules([parsed[i]]));
           textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[i]]) :
             (parsed[0].directive ? CSSparser.unparseRules([parsed[i]]) : "") : "";
           //console.log(textSegment);
@@ -3426,7 +3415,6 @@ lastEditScript = """
           return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
-          //id="CSS-modification"
           const clickedElem = editor_model.clickedElem;
           if(!clickedElem) {
             return "Click on an element to see its style";
@@ -3442,40 +3430,43 @@ lastEditScript = """
             //console.log("All style tags:", document.querySelectorAll("style"));
             document.querySelectorAll("link, style").forEach((e) => {
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
-                if(e.nextElementSibling) console.log(e.nextElementSibling.getAttribute("class"));
+                /*if(e.nextElementSibling) console.log(e.nextElementSibling.getAttribute("class"));
                 if(e.nextElementSibling && e.nextElementSibling.tagName === "STYLE" && e.nextElementSibling.getAttribute("class") === "editor-interface ghost-CSS") {
                   //for all intents and purposes, the ghost style node will be the same as the link style CSS
                   console.log("extracted from ghost style node");
                   rawCSS.push({text: e.nextElementSibling.textContent, tag: e})
-                }
+                }*/
                 let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
-                if(e.__editor__) e.__editor__.ignoredAttrMap = {href: CSSFilePath};
-                let newFileName = "temp.css"
-                console.log(CSSFilePath);
-                if(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName) newFileName = "temp1.css";
-                
-                //CSSFilePath = CSSFilePath.split("/");
-                //CSSFilePath[CSSFilePath.length - 1];
-                //doWriteServer("fullCopy", CSSFilePath, CSSFilePath);
-                //debugger;
-                //e.setAtttribute("href", newCSSfilePath);
-                //CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
-                //let CSSvalue = doReadServer("read", CSSFilePath);
-                //console.log(CSSFilePath.match(/server-elm-style/g));
-                if(!(CSSFilePath.match(/server-elm-style/g)) && CSSvalue) {
-                  CSSvalue = CSSvalue.slice(1);
-                  rawCSS.push({text: CSSvalue, tag: e});
+                if(!(CSSFilePath.match(/server-elm-style/g))) {
+                  if(!e.__editor__) e.__editor__ = {}; 
+                  e.__editor__.ignoredAttrMap = {href: CSSFilePath};
+                  let newFileName = "temp.css"
+                  console.log(CSSFilePath);
+                  if(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName) newFileName = "temp1.css";
+                  let newFilePath = CSSFilePath.split("/");
+                  newFilePath[newFilePath.length - 1] = newFileName;
+                  newFilePath = newFilePath.join("/");
+                  console.log(newFilePath);
+                  //doWriteServer("fullCopy", CSSFilePath, newFilePath, () => {});
+                  //console.log("done copying!");
+                  let CSSvalue = doReadServer("read", CSSFilePath);
+                  doWriteServer("write", newFilePath, CSSvalue);
+                  if(CSSvalue) {
+                      CSSvalue = CSSvalue.slice(1);
+                      rawCSS.push({text: CSSvalue, tag: e});
+                    }
+                  e.setAttribute("href", newFilePath);
+                  console.log("do we get here?");
                 }
               }
               else if(e.tagName === "STYLE" && !e.getAttribute("isghost")) {
                 rawCSS.push({text: e.textContent, tag: e});
               }
             });
+            console.log("got here!");
             for(let z in rawCSS) {  
               var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
               for(let i in parsedCSS) {
-                console.log(i + ":");
-                console.log(parsedCSS[i]);
                 //console.log(parsedCSS[i].kind);
                 //console.log('@@keyframes');
                 //console.log(parsedCSS[i].kind === '@@keyframes');
@@ -3484,9 +3475,6 @@ lastEditScript = """
                   let wsBefore = content.replace(/^(\s*\n|)[\s\S]*$/g, (m, ws) => ws);
                   let contentTrimmed = content.replace(/\s*\n/,"");
                   //calculating before and after text
-                  console.log("before text:");
-                  console.log(findText(parsedCSS, 0, Number(i)));
-                  console.log("whitespace:", wsBefore);
                   fullCSS.push({type: 'cssBlock', content: contentTrimmed, 
                     before: findText(parsedCSS, 0, Number(i)) + wsBefore, after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                 }
@@ -3513,8 +3501,6 @@ lastEditScript = """
                     before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                 }
                 else if(parsedCSS[i].kind === '@@keyframes') {
-                  console.log("got here!");
-                  console.log(parsedCSS[i]);
                   keyframes.push({type: '@@keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
                     before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag,
                     animationName: parsedCSS[i].atNameValue});
@@ -3528,7 +3514,6 @@ lastEditScript = """
               }
               //console.log("The parsed text looks like:", curCSS);
             }
-            console.log(keyframes);
             for(i in keyframes) {
               for(j in fullCSS) {
                 let parsedSection = CSSparser.parseCSS(fullCSS[j].content);
@@ -3585,9 +3570,7 @@ lastEditScript = """
               CSSarea.removeChild(CSSarea.firstChild);
             }
             //if there is linked CSS text
-            if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("href")) {
-              let CSSFilePath = relativeToAbsolute(clickedElem.getAttribute("href"));
-              let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
+            if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("href")) {  
               CSSarea.append(
                 el("div", {"class": "CSS-modify-unit"}, [
                   el("textarea", {"class": "linked-CSS"}, [], {
@@ -3596,7 +3579,7 @@ lastEditScript = """
                       setCSSAreas();
                     },
                     oninput() {
-                      let nextSibGhostCSS = clickedElem.nextElementSibling;
+                      /*let nextSibGhostCSS = clickedElem.nextElementSibling;
                       if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
                         nextSibGhostCSS.textContent = this.value;
                       }
@@ -3605,8 +3588,18 @@ lastEditScript = """
                             textContent: this.value
                           }), 
                           nextSibGhostCSS);
+                      }*/
+                      //use unlink action to delete file
+                      let CSSFilePath = relativeToAbsolute(clickedELem.getAttribute("href"));
+                      doWriteServer("write", CSSFilePath, this.value);
+                      editor_model.idNum += 1;
+                      //add dummy counter, force reload
+                      let dummyIndex = CSSFilePath.indexOf("?l=");
+                      if(dummyIndex > -1) {
+                        CSSFilePath = CSSFilePath.slice(0, dummyIndex);
                       }
-                      addFileToSave(CSSFilePath, CSSvalue, this.value)
+                      CSSFilePath.append(`?l=${editor_model.idNum}`);
+                      
                     }
                   })
                 ])
@@ -3615,7 +3608,6 @@ lastEditScript = """
             //inline styles 
             editor_model.inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
             if(editor_model.inline) {
-              //debugger;
               console.log("We have inline CSS!");
               let inlineCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "inline-CSS"}, [], {
@@ -3631,7 +3623,7 @@ lastEditScript = """
                   el("div", {"class": "clone-CSS"}, [], {
                     innerHTML: cloneSVG,
                     onclick() {
-                      let closestStyleLink = document.querySelector("style", "link");
+                      let closestStyleLink = document.querySelector("link, style");
                       let inline_CSS = document.querySelectorAll(".inline-CSS");
                       if(closestStyleLink) {
                         let postIndentCSS = "";
@@ -3645,35 +3637,46 @@ lastEditScript = """
                           }
                         }
                         //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
-                        //split between common (section, div, etc...) and rare/better semantically defined tags (pre)
+                        //split between common (section, div, span, p, ul,  etc...) and rare/better semantically defined tags (pre)
 
-                        //check if selector applies to any ancestors or descandants, then its ok
-                        //else add class or use > selector until it is precise enough
+                        //check if selector applies to any ancestors or descendants, then its ok
+                        //else add class or use > selector until it is precise 
                       
-                        let curSelector = clickedElem.getAttribute("id") || clickedElem.getAttribute("name") || clickedElem.getAttribute("class");
-                        let curSelectorType, selectorStr;
-                        if(!curSelector) {
-                          sendNotification("Please specify an id, name or class for the selected element!");
-                          return;
-                        }
-                        else {
-                          if(clickedElem.getAttribute("id")) {
-                            curSelectorType = "id";
+                      
+                        let curSelector = clickedElem.getAttribute("id") || clickedElem.getAttribute("name") || clickedElem.getAttribute("class") || clickedElem.tagName.toLowerCase();
+                        //checking ancestors
+                        let selectorIsOrg = true;
+                        for(let curAncestor = clickedElem.parentNode; curAncestor; curAncestor = curAncestor.parentNode) {
+                          if(editor.matches(curAncestor, curSelector)) {
+                            selectorIsOrg = false;
                           }
-                          else if(clickedElem.getAttribute("name")) {
-                            curSelectorType = "name";
+                        }
+                        //checking descendants
+                        if(selectorIsOrg && !(clickedElem.querySelector(curSelector))) {
+                          let curSelectorType, selectorStr;
+                          if(!curSelector) {
+                            sendNotification("Please specify an id, name or class for the selected element!");
+                            return;
                           }
                           else {
-                            curSelectorType = "class";
+                            if(clickedElem.getAttribute("id")) {
+                              curSelectorType = "id";
+                            }
+                            else if(clickedElem.getAttribute("name")) {
+                              curSelectorType = "name";
+                            }
+                            else {
+                              curSelectorType = "class";
+                            }
+                            selectorStr = "[" + curSelectorType + "=" + curSelector + "]";
                           }
-                          selectorStr = "[" + curSelectorType + "=" + curSelector + "]";
-                        }
-                        let CSStext = selectorStr + "\n{\n" + postIndentCSS + "\n}"
-                        if(closestStyleLink.tagName === "STYLE") {
-                          closestStyleLink.value += "\n" + CSSText; 
-                        }
-                        else {
+                          let CSStext = selectorStr + "\n{\n" + postIndentCSS + "\n}"
+                          if(closestStyleLink.tagName === "STYLE") {
+                            closestStyleLink.value += "\n" + CSSText; 
+                          }
+                          else {
 
+                          }
                         }
                       }
                       else {
@@ -3709,7 +3712,7 @@ lastEditScript = """
             }
             //rest of CSS
             editor_model.CSSState = fullParseCSS();
-            console.log("CSS state is:", editor_model.CSSState);
+            //console.log("CSS state is:", editor_model.CSSState);
             const count = (str) => {
               const re = /\n/g
               return ((str || '').match(re) || []).length
@@ -3717,7 +3720,7 @@ lastEditScript = """
             for(let i in editor_model.CSSState) {
               let cssState = editor_model.CSSState[i];
               let orgTag = cssState.orgTag;
-              console.log("cssState", cssState);
+              //console.log("cssState", cssState);
               let headerStr = orgTag.tagName.toLowerCase() + (orgTag.tagName === "LINK" ? " (" + orgTag.getAttribute("href")+":" + (count(cssState.before) + 1) + ")" : "");
               for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
@@ -3732,7 +3735,6 @@ lastEditScript = """
               let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "CSS-selectors" }, [], {
                   defaultValue: cssState.content,
-                  orgValue: doReadServer("read", cssState.orgTag.href).slice(1),
                   onfocusout() {
                     if(this.storedCSS.orgTag.tagName != "LINK") {
                       setCSSAreas();
@@ -3768,7 +3770,7 @@ lastEditScript = """
                     else {
                       this.storedCSS.content = this.value;
                       console.log(this.storedCSS);
-                      let nextSibGhostCSS = this.storedCSS.orgTag.nextElementSibling;
+                      /*let nextSibGhostCSS = this.storedCSS.orgTag.nextElementSibling;
                       console.log(nextSibGhostCSS);
                       if(nextSibGhostCSS) console.log(nextSibGhostCSS.getAttribute("class"));
                       if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
@@ -3780,9 +3782,20 @@ lastEditScript = """
                             textContent: fullUnparseCSS(this.storedCSS)
                           }), 
                           nextSibGhostCSS);
-                      }
+                      }*/
                       let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
-                      addFileToSave(CSSFilePath, this.orgValue, fullUnparseCSS(this.storedCSS));
+                      this.storedCSS.content = this.value;
+                      doWriteServer("write", CSSFilePath, fullUnparseCSS(this.storedCSS));
+                      editor_model.idNum += 1;
+                      //add dummy counter, force reload
+                      let dummyIndex = CSSFilePath.indexOf("?c=");
+                      if(dummyIndex > -1) {
+                        CSSFilePath = CSSFilePath.slice(0, dummyIndex);
+                      }
+                      CSSFilePath = CSSFilePath.concat(`?c=${editor_model.idNum}`);
+                      console.log("new file path:");
+                      console.log(CSSFilePath);
+                      this.storedCSS.orgTag.setAttribute("href", CSSFilePath);
                     }
                   },
                   storedCSS: cssState
@@ -3794,8 +3807,9 @@ lastEditScript = """
                       let linked_CSS = this.parentElement.childNodes[0];
                       linked_CSS.value = "";
                       let CSSFilePath = relativeToAbsolute(this.parentElement.childNodes[0].storedCSS.orgTag.getAttribute("href"));
-                      let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
-                      addFileToSave(CSSFilePath, CSSvalue, linked_CSS.value);
+                      doReadServer("read", CSSFilePath, (CSSvalue) => {
+                        addFileToSave(CSSFilePath, CSSvalue.slice(1), linked_CSS.value);
+                      });
                       setCSSAreas();
                     }
                   }) :
