@@ -5098,9 +5098,10 @@ lastEditScript = """
                 //temp place to put CSS file loading stuff (may well be moved later)
                 console.log("SAVING!");
                 let allPageLinks = document.querySelectorAll("link");
-                for(let e in allPageLinks){
+                for(let e = 0; e < allPageLinks.length; e++){
+                  console.log("current element:");
                   console.log(allPageLinks[e]);
-                  console.log(allPageLinks.ghost-href);
+                  console.log(allPageLinks[e].getAttribute("ghost-href"));
                   if(!isGhostNode(allPageLinks[e]) && allPageLinks[e].getAttribute("ghost-href")) {
                     let trueTempPath = allPageLinks[e].getAttribute("href"), dummyIndex = trueTempPath.indexOf("?c=");
                     if(dummyIndex > -1) {
@@ -5113,12 +5114,12 @@ lastEditScript = """
                     console.log("before:" + allPageLinks[e].getAttribute("href"));
                     console.log(doReadServer("read", trueTempPath));
                     doWriteServer("fullCopy", trueTempPath, trueCSSPath, () => {
-                      console.log(trueTempPath);
-                      console.log(trueCSSPath);
-                      console.log("source");
-                      console.log(doReadServer("read", trueTempPath));
-                      console.log("dest");
-                      console.log(doReadServer("read", trueCSSPath));
+                      console.log("true temp:" + trueTempPath);
+                      console.log("true CSS:" + trueCSSPath);
+                      //console.log("source");
+                      //console.log(doReadServer("read", trueTempPath));
+                      //console.log("dest");
+                      //console.log(doReadServer("read", trueCSSPath));
                       
                       trueCSSPath = trueCSSPath.concat(`?timestamp=${+new Date()}`);
                       allPageLinks[e].setAttribute("href", trueCSSPath);
