@@ -3574,7 +3574,7 @@ lastEditScript = """
             }
             else if(curCSS.type === '@@media') { 
               console.log(curCSS);
-              CSSString = curCSS.before + curCSS.mediaSelector + curCSS.innerBefore + curCSS.content + curCSS.innerAfter + curCSS.whitesAfter + curCSS.after;   
+              CSSString = curCSS.before + curCSS.mediaSelector + curCSS.innerBefore + curCSS.content + curCSS.innerAfter + curCSS.bracketAfter + curCSS.after;   
             }
             if(curTag.tagName === "LINK") {
               return CSSString;
@@ -3652,7 +3652,7 @@ lastEditScript = """
               CSSarea.append(el("button", {}, [], {
                 innerHTML: "Add inline style",
                 onclick() {
-                  clickedElem.setAttribute("style", " ");
+                  clickedElem.setAttribute("style", "");
                   editor_model.inline = true;
                   setCSSAreas();
                 }}));
@@ -4058,9 +4058,16 @@ lastEditScript = """
               {}
             )
           );
-          
-          // show lists of images in selected image's folder
-          showListsImages(srcName, backgroundImgSrc);
+          if(srcName == undefined) {
+            ret.append(
+              el("button", {}, "Add src attribute", {onclick: () => {
+                clickedElem.setAttribute("src", "");
+                updateInteractionDiv();
+              }}));
+          } else {
+            showListsImages(srcName, backgroundImgSrc);
+            // show lists of images in selected image's folder
+          }
           return ret;
         }
       });
@@ -4283,7 +4290,7 @@ lastEditScript = """
             );
             ret.append(
               el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
-                  innerHTML: linkModeSVG + "<span>Move a node</span>",
+                  innerHTML: linkModeSVG + "<span>Move node</span>",
                   onclick: function(event) {
                     editor_model.insertElement = false;
                     let insertionStyle = getInsertionPlace();
@@ -4318,6 +4325,7 @@ lastEditScript = """
             addElem("Paragraph", {tag: "p", props: { innerHTML: "Your text here" }, title: "Insert <p>"});
             addElem("Division content", {tag: "div", title: "Insert <div>"});
             addElem("Section", {tag: "section", title: "Insert <section>"});
+            addElem("Image", {tag: "img", title: "Insert <img>", attrs: {src: ""}});
             addElem("Preformatted text", {tag: "pre", title: "Insert <pre>"});
             for(let i = 1; i <= 6; i++) {
               addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }, title: "Insert <h"+i+">"});
