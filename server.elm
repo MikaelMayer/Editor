@@ -280,7 +280,7 @@ luca =
     }
     function postServer(action, name, content) {
       return new Promise(function(resolve, reject) {
-        doWriteServer(action, name, resolve, reject);
+        doWriteServer(action, name, content, resolve, reject);
       });
     }
     // Page reloading without trying to recover the editor's state.
@@ -1996,7 +1996,6 @@ lastEditScript = """
     //var serverWorker = new Worker("/Thaditor/editor.js");
 
     function sendModificationsToServer() {
-  
       if(document.getElementById("notification-menu") != null) {
         //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
         // TODO: Listen and gather subsequent modifications when it is loading
@@ -3458,8 +3457,6 @@ lastEditScript = """
                     newFilePath[newFilePath.length - 1] = newFileName;
                     newFilePath = newFilePath.join("/");
                     console.log(newFilePath);
-                    //doWriteServer("fullCopy", CSSFilePath, newFilePath);
-                    //console.log("done copying!");
                     let CSSvalue = doReadServer("read", CSSFilePath);
                     if(CSSvalue) {
                       CSSvalue = CSSvalue.slice(1);
@@ -5191,8 +5188,8 @@ lastEditScript = """
                         trueCSSPath = trueCSSPath.slice(0, timeIndex);
                       }
                       console.log("before:" + allPageLinks[e].getAttribute("href"));
-                      console.log(doReadServer("read", trueTempPath));
-                      await putServer("fullCopy", trueTempPath, trueCSSPath);
+                      //console.log(doReadServer("read", trueTempPath));
+                      await postServer("fullCopy", trueTempPath, trueCSSPath);
                       console.log("true temp:" + trueTempPath);
                       console.log("true CSS:" + trueCSSPath);
                       //console.log("source");
@@ -5200,10 +5197,10 @@ lastEditScript = """
                       //console.log("dest");
                       //console.log(doReadServer("read", trueCSSPath));
                       
-                      trueCSSPath = trueCSSPath.concat(`?timestamp=${+new Date()}`);
+                      trueCSSPath += `?timestamp=${+new Date()}`;
                       allPageLinks[e].setAttribute("href", trueCSSPath);
                       console.log("after:" + allPageLinks[e].getAttribute("href"));
-                      await putServer("unlink", trueTempPath);
+                      await postServer("unlink", trueTempPath);
                     }                 
                   }
                   if(!this.classList.contains("disabled")) {

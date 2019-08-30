@@ -384,15 +384,12 @@ div#modify-menu #CSS-modification>.CSS-modify-unit {
     margin-bottom: 5px;
 }
 
-<<<<<<< HEAD
 div#modify-menu #CSS-modification>.CSS-modify-unit>.CSS-buttons{
     display: flex;
     flex-direction: column;
     align-items: center;
 }
 
-div#modify-menu #CSS-modification>.CSS-chain {
-=======
 div#modify-menu #CSS-modification>.CSS-modify-unit > textarea {
     width: 100%;
     height: 100px;
@@ -406,7 +403,6 @@ div#modify-menu #CSS-modification>.CSS-modify-unit > textarea {
 }
 
 div#modify-menu #CSS-modification>#CSS-chain {
->>>>>>> origin/master
     margin-bottom: 6px;
 }
 
