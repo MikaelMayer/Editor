@@ -280,7 +280,7 @@ luca =
     }
     function postServer(action, name, content) {
       return new Promise(function(resolve, reject) {
-        doWriteServer(action, name, resolve, reject);
+        doWriteServer(action, name, content, resolve, reject);
       });
     }
     // Page reloading without trying to recover the editor's state.
@@ -3632,12 +3632,12 @@ lastEditScript = """
             }
             //inline styles 
             editor_model.inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
-            if(editor_model.inline) {
+            if(typeof editor_model.inline === "string") {
               //debugger;
               console.log("We have inline CSS!");
               let inlineCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "inline-CSS"}, [], {
-                  defaultValue: editor_model.inline,
+                  value: editor_model.inline,
                   onfocusout() {
                     setCSSAreas();
                   },
@@ -3686,13 +3686,13 @@ lastEditScript = """
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: headerStr}));
               if(cssState.type === '@@media') {
                 CSSarea.append(el("div", {"class": "@media-selector", "contenteditable": true}, [], {
-                oninput() {
-                  if(window.matchMedia(curCSSState[i].selector).matches ? editor.matches(clickedElem, curCSSState[i].content.selector) : false) {
+                oninput: (cssState => function() {
+                  if(window.matchMedia(cssState.selector).matches ? editor.matches(clickedElem, cssState.content.selector) : false) {
                     //implement throwError;
                   }
                   cssState.mediaSelector = this.value;
                   fullUnparseCSS(cssState);
-                },
+                })(cssState),
                 innerHTML: cssState.mediaSelector
                 }))
               }
@@ -3705,13 +3705,13 @@ lastEditScript = """
                       setCSSAreas();
                     }
                   },
-                  oninput: (i => function() {
+                  oninput() {
                     if(this.storedCSS.orgTag.tagName != "LINK") {
                       let throwError = false;
-                      curCSSState = CSSparser.parseCSS(this.value);
+                      let curCSSState = CSSparser.parseCSS(this.value);
                       //console.log(curCSSState);
                       //check to make sure CSS is still relevant to clicked element.
-                      if(curCSSState[i].kind === 'cssBlock' && editor.matches(clickedElem, curCSSState[i].selector)) {
+                      if(curCSSState.kind === 'cssBlock' && editor.matches(clickedElem, curCSSState.selector)) {
                         sendNotification("CSS selector does not match");
                         this.setAttribute("wrong-selector", true);
                         this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
@@ -3746,7 +3746,7 @@ lastEditScript = """
                       let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
                       addFileToSave(CSSFilePath, this.orgValue, fullUnparseCSS(this.storedCSS));
                     }
-                  })(i),
+                  },
                   storedCSS: cssState
                 }),
                 orgTag.tagName === "LINK" ?
@@ -4787,7 +4787,7 @@ lastEditScript = """
     
 
     function reorderCompatible(node1, node2){
-      let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1};
+      let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1, SECTION: 1, IMG: 1, PRE: 1};
       let metaOrderableTags = {META:1, TITLE:1, SCRIPT: 1, LINK: 1, STYLE: 1};
       return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
         topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName] ||
