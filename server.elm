@@ -1780,11 +1780,19 @@ lastEditScript = """
 
     //(outer lastEditScript)
     function saveDisplayProperties() {
-      let singleChildNodeContent = document.querySelector("textarea#singleChildNodeContent");
-      if(singleChildNodeContent) {
-        editor_model.textareaScroll = singleChildNodeContent.scrollTop;
-        editor_model.textareaSelectionStart = singleChildNodeContent.selectionStart;
-        editor_model.textareaSelectionEnd = singleChildNodeContent.selectionEnd;
+      let ret = document.querySelector("#textChildNodeContentDiv");
+      if(ret) {
+        editor_model.textareaPropertiesSaved = [];
+        for(let i = 0; i < ret.childNodes.length; i++) {
+          if(ret.childNodes[i].tagName === "TEXTAREA") {
+            editor_model.textareaPropertiesSaved[i] = {
+              scrollTop: ret.childNodes[i].scrollTop,
+              selectionEnd: ret.childNodes[i].selectionStart,
+              selectionStart: ret.childNodes[i].selectionEnd,
+              focus: ret.childNodes[i] === document.activeElement
+            };
+          }
+        }
       }
     }
     
@@ -2929,9 +2937,7 @@ lastEditScript = """
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
-      textareaScroll: ifAlreadyRunning ? editor_model.textareaScroll : 0,
-      textareaSelectionStart: ifAlreadyRunning ? editor_model.textareaSelectionStart : 0,
-      textareaSelectionEnd: ifAlreadyRunning ? editor_model.textareaSelectionEnd: 0,
+      textareaPropertiesSaved: ifAlreadyRunning ? editor_model.textareaPropertiesSaved : [],
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
                     @(case listDict.get "question" vars of
                        Just questionattr -> "true"
@@ -3288,20 +3294,33 @@ lastEditScript = """
                 el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
                   [], {
                     onkeyup() {
-                      document.querySelector("#applyNewTagName").classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w+$/));
+                      let applyNewTagNameButton = document.querySelector("#applyNewTagName");
+                      applyNewTagNameButton.classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w*$/));
+                      applyNewTagNameButton.value = this.value === "" ? "-" : "Set";
+                      applyNewTagNameButton.setAttribute("title", this.value === "" ? "Lift element's children and delete element" :  "Change tag name to '"+this.value+"'");
                     }
                   }),
                   el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
-                        let newel = el(document.querySelector("#newTagName").value);
-                        let elements = clickedElem.childNodes;
-                        while(elements.length) {
-                          newel.append(elements[0]);
+                        let newTagName = document.querySelector("#newTagName").value;
+                        let newel;
+                        if(newTagName === "") {
+                          while(clickedElem.childNodes.length) {
+                            newel = clickedElem.childNodes[0];
+                            clickedElem.parentElement.insertBefore(newel, clickedElem);
+                          }
+                          clickedElem.remove();
+                        } else {
+                          newel = el(document.querySelector("#newTagName").value);
+                          let elements = clickedElem.childNodes;
+                          while(elements.length) {
+                            newel.append(elements[0]);
+                          }
+                          for(let i = 0; i < clickedElem.attributes.length; i++) {
+                            newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+                          }
+                          clickedElem.parentElement.insertBefore(newel, clickedElem);
+                          clickedElem.remove();
                         }
-                        for(let i = 0; i < clickedElem.attributes.length; i++) {
-                          newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-                        }
-                        clickedElem.parentElement.insertBefore(newel, clickedElem);
-                        clickedElem.remove();
                         editor_model.clickedElem = newel;
                         updateInteractionDiv();
                       }
@@ -3444,7 +3463,7 @@ lastEditScript = """
             //console.log("All style tags:", document.querySelectorAll("style"));
             document.querySelectorAll("link, style").forEach((e) => {
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
-                console.log(e.nextElementSibling.getAttribute("class"));
+                //console.log(e.nextElementSibling.getAttribute("class"));
                 /*if(e.nextElementSibling && e.nextElementSibling.tagName === "STYLE" && e.nextElementSibling.getAttribute("class") === "editor-interface ghost-CSS") {
                   //for all intents and purposes, the ghost style node will be the same as the link style CSS
                   console.log("extracted from ghost style node");
@@ -3455,7 +3474,7 @@ lastEditScript = """
                 console.log(CSSFilePath);
                 let fileName = CSSFilePath.match(/[^\/]\w+\.\w+$/ig);
                 //let newCSSFilePath = CSSFilePath;
-                doWriteServer("fullCopy", CSSFilePath, CSSFilePath);
+                //doWriteServer("fullCopy", CSSFilePath, CSSFilePath);
                 //debugger;
                 //e.setAtttribute("href", newCSSfilePath);
                 //CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
@@ -3473,9 +3492,6 @@ lastEditScript = """
             for(let z in rawCSS) {  
               var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
               for(let i in parsedCSS) {
-                //console.log(parsedCSS[i].kind);
-                //console.log('@@keyframes');
-                //console.log(parsedCSS[i].kind === '@@keyframes');
                 if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector)) {
                   let content = CSSparser.unparseCSS([parsedCSS[i]]);
                   let wsBefore = content.replace(/^(\s*\n)[\s\S]*$/g, (m, ws) => ws);
@@ -3484,17 +3500,19 @@ lastEditScript = """
                   fullCSS.push({type: 'cssBlock', content: contentTrimmed, 
                     before: findText(parsedCSS, 0, i) + wsBefore, after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                 }
-                else if(parsedCSS[i].kind === '@@media' && window.matchMedia(parsedCSS[i].selector).matches) {
-                  //saving selector information 
+                else if(parsedCSS[i].kind === '@@media' && window.matchMedia(parsedCSS[i].atNameValue).matches) {
                   let curMedia = parsedCSS[i];
                   for(let j in curMedia.content) {
+                    console.log(curMedia.content[j]);
                     if(editor.matches(clickedElem, curMedia.content[j].selector)) {
-                      var insertMedia = {type: '@@media', content: curMedia, 
+                      var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
+                        mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
-                        before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag};
-                      curMedia.content = CSSparser.unparseCSS([curMedia.content[j]]);
-                      insertMedia.content = curMedia.content;
+                        before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
+                      console.log("Insert media:");
+                      console.log(insertMedia);
                       fullCSS.push(insertMedia);
+                      console.log("got here first!");
                     }
                   }
                 }
@@ -3507,8 +3525,6 @@ lastEditScript = """
                     before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                 }
                 else if(parsedCSS[i].kind === '@@keyframes') {
-                  console.log("got here!");
-                  console.log(parsedCSS[i]);
                   keyframes.push({type: '@@keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
                     before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag,
                     animationName: parsedCSS[i].atNameValue});
@@ -3516,19 +3532,18 @@ lastEditScript = """
                 else if(parsedCSS[i].kind === 'whitespace') { 
                   continue;
                 }
-                if(i === parsedCSS.length - 1 && !curCSS.length) {
+                if(i === parsedCSS.length - 1 && !fullCSS.length) {
                   console.log("Nothing relevant in style tag: ", rawCSS[z].tag);
                 }
+                console.log("got here!");
               }
               //console.log("The parsed text looks like:", curCSS);
             }
-            console.log(keyframes);
             for(i in keyframes) {
               for(j in fullCSS) {
                 let parsedSection = CSSparser.parseCSS(fullCSS[j].content);
                 for(k in parsedSection.content) {
                   for(l in parsedSection.content[k].rules) {
-                    console.log(parsedSection.content[k].rules[l]);
                     if(Number(parsedSection.content[k].rules[l].search(keyframes[i].animationName)) >= 0) {
                       fullCSS.push(keyframes[i]);
                     }
@@ -3558,20 +3573,19 @@ lastEditScript = """
               //console.log(CSSString);
             }
             else if(curCSS.type === '@@media') { 
-              let curMedia = CSSparser.parseCSS(curCSS.content);
-              curMedia.content = curCSS.beforeInner + curCSS.content.content + curCSS.afterInner;
-              CSSString = CSSparser.unparseCSS([curMedia]);        
+              console.log(curCSS);
+              CSSString = curCSS.before + curCSS.mediaSelector + curCSS.innerBefore + curCSS.content + curCSS.innerAfter + curCSS.whitesAfter + curCSS.after;   
             }
             if(curTag.tagName === "LINK") {
               return CSSString;
             }
-            //console.log("Text is:" + CSSString);
+            console.log("Text is:" + CSSString);
             curTag.textContent = CSSString;
             //debugger
             //consolw.log("After");
           }
           var curCSSWindow = undefined;
-          //CSSState = fullParseCSS();
+
           function setCSSAreas() {
             while(CSSarea.firstChild) {
               //console.log("Removed child:", CSSarea.firstChild);
@@ -3658,7 +3672,19 @@ lastEditScript = """
               for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
               }
-              CSSarea.append(el("div", {"id": "CSS-chain"}, [], {innerHTML: headerStr}));
+              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: headerStr}));
+              if(cssState.type === '@@media') {
+                CSSarea.append(el("div", {"class": "@media-selector", "contenteditable": true}, [], {
+                oninput() {
+                  if(window.matchMedia(curCSSState[i].selector).matches ? editor.matches(clickedElem, curCSSState[i].content.selector) : false) {
+                    //implement throwError;
+                  }
+                  cssState.mediaSelector = this.value;
+                  fullUnparseCSS(cssState);
+                },
+                innerHTML: cssState.mediaSelector
+                }))
+              }
               let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "CSS-selectors" }, [], {
                   defaultValue: cssState.content,
@@ -3674,15 +3700,7 @@ lastEditScript = """
                       curCSSState = CSSparser.parseCSS(this.value);
                       //console.log(curCSSState);
                       //check to make sure CSS is still relevant to clicked element.
-                      for(let i in curCSSState) {
-                        if(curCSSState[i].kind === 'cssBlock' || curCSSState[i].kind === '@media') {
-                          if(!(curCSSState[i].kind === 'cssBlock' ? editor.matches(clickedElem, curCSSState[i].selector) : 
-                          (window.matchMedia(curCSSState[i].selector).matches ? editor.matches(clickedElem, curCSSState[i].content.selector) : false))) {
-                            throwError = true;
-                          }
-                        }
-                      }
-                      if(throwError) {
+                      if(curCSSState[i].kind === 'cssBlock' && editor.matches(clickedElem, curCSSState[i].selector)) {
                         sendNotification("CSS selector does not match");
                         this.setAttribute("wrong-selector", true);
                         this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
@@ -4050,40 +4068,67 @@ lastEditScript = """
         title: "Text Editing",
         minimized: true,
         priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined;
+          return undefined;
         },
         enabled(editor_model) {
-          //textarea singleChildNodeContent
-          let voidTags = {AREA: true, BASE: true, BR: true, COL: true, COMMANd: true, EMBED: true, HR: true, IMG: true, INPUT: true, KEYGEN: true, LINK: true, META: true, PARAM: true, SOURCE: true, TRACK: true, WBR: true};
           const clickedElem = editor_model.clickedElem;
-          const do_edit = (clickedElem  && clickedElem.children && clickedElem.children.length === 0 && !voidTags[clickedElem.tagName]);
-          return do_edit;
+          if(!clickedElem) return false;
+          for(let i in clickedElem.childNodes) {
+            let node = clickedElem.childNodes[i];
+            if(node.nodeType === 3 && node.textContent.trim() !== "") {
+              return true;
+            }
+          }
         },
         render: function render(editor_model, innerBox) {
           if(!this.enabled(editor_model)) {
-            return "Click on an element containing just text.";
+            return "Click on an element that contains some text.";
           }
           const clickedElem = editor_model.clickedElem;
-          if(!this.enabled(editor_model)) {
-            return "Click on a button or a node containing only text.";
+          //textarea textChildNodeContent
+          let ret = el("div", {id: "textChildNodeContentDiv"}, []);
+          for(let i in clickedElem.childNodes) {
+            let node = clickedElem.childNodes[i];
+            if(node.nodeType === 3 && node.textContent.trim() !== "") { // Non-empty text nodes.
+              ret.append(
+                el("textarea", {class:"textChildNodeContent"},
+                [], {
+                  value: node.textContent,
+                  onkeyup: (node => function() { node.textContent = this.value; })(node),
+                  onscroll: ((node, i) => function() { editor_model.textareaScroll = this.scrollTop })(node),
+                })
+              )
+            } else if(node.nodeType === 1) { // Make this a shortcut for the node
+              ret.append(
+                el("div.childrenSelector", {}, 
+                  el("div.childrenSelectorName", {}, "<" + node.tagName + ">"),
+                  {
+                    onclick: (node => () => {
+                      editor_model.clickedElem = node;
+                      updateInteractionDiv();
+                    })(node)
+                  }
+                )
+              )
+            }
           }
-          //textarea singleChildNodeContent
-          let txt = el("div", {id: "singleChildNodeContentDiv"}, [el("textarea", {id:"singleChildNodeContent"},
-            [], {
-              value: clickedElem.innerText,
-              onkeyup: function () { clickedElem.textContent = this.value; },
-              onscroll: function() { editor_model.textareaScroll = this.scrollTop },
-            })]);
-          setTimeout((txt => () => {
-            txt.scrollTop = editor_model.textareaScroll;
-            txt.selectionEnd = editor_model.textareaSelectionEnd;
-            txt.selectionStart = editor_model.textareaSelectionStart;
-          })(txt), 0);
-          return txt;
+          setTimeout((ret => () => {
+            for(let i = 0; i < editor_model.textareaPropertiesSaved.length && i < ret.childNodes.length; i++) {
+              if(ret.childNodes[i].tagName === "TEXTAREA") {
+                ret.childNodes[i].scrollTop = editor_model.textareaPropertiesSaved[i].scrollTop;
+                ret.childNodes[i].selectionEnd = editor_model.textareaPropertiesSaved[i].selectionEnd;
+                ret.childNodes[i].selectionStart = editor_model.textareaPropertiesSaved[i].selectionStart;
+                if(editor_model.textareaPropertiesSaved[i].focus) {
+                  ret.childNodes[i].focus();
+                }
+              }
+            }
+          })(ret), 0);
+          return ret;
         }
       });
       editor_model.interfaces.push({
-        title: "Insert",
+        title: "Create",
         minimized: true,
         priority(editor_model) {
           return editor_model.inserting;
@@ -4100,7 +4145,6 @@ lastEditScript = """
           if (!clickedElem) return ret;
           ret.classList.add("insert-information-style");
           ret.classList.add("information-style");
-          ret.append(el("h1", {}, "Insert"));
           let insertOption = function(value, msg, checked, title) {
             return el("span", {class: "insertOption"}, [
               el("input", {type: "radio", id: "radioInsert" + value, name: "insertionPlace", value: value}, [], {checked: checked || false}),
@@ -4116,7 +4160,8 @@ lastEditScript = """
             isHTML || !caretBlinks ? undefined : insertOption("caret", "At caret", !isTop && caretBlinks),
             isHTML ? undefined : insertOption("last-child", "As last child", isTop || !caretBlinks),
             isTop ? undefined : insertOption("after", "After node"),
-            isTop ? undefined : insertOption("wrap", "Wrap node", false, "Put the selected node inside the newly inserted node")
+            isTop ? undefined : insertOption("wrap", "Wrap node", false, "Put the selected node inside the newly inserted node"),
+            clickedElem.childNodes && clickedElem.childNodes.length ? insertOption("wrap-children", "Wrap children", false, "Insert all node's children as children of element, then add element as a child.") : undefined
           ]));
           let getInsertionPlace = () => {
             let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
@@ -4158,6 +4203,16 @@ lastEditScript = """
               }
               newElement.appendChild(clickedElem);
               console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
+            } else if(insertionStyle === "wrap-children") {
+              if(typeof newElement === "string") {
+                clickedElem.insertAdjacentHTML("afterbegin", newElement);
+                newElement = clickedElem.children[0];
+              } else {
+                clickedElem.insertBefore(newElement, clickedElem.childNodes[0]);
+              }
+              while(newElement.nextSibling) {
+                newElement.append(newElement.nextSibling);
+              }
             } else if(insertionStyle === "caret") {
               let s = editor_model.caretPosition;
               let txt = s.startContainer;
@@ -4223,9 +4278,12 @@ lastEditScript = """
             addElem("Link", {tag:"link", attrs:{rel:"", href: ""}, props: {}, title: "Insert <link>"});
           }
           if(clickedElem.tagName !== "HEAD") {
+            ret.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
+              onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
+            );
             ret.append(
               el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
-                  innerHTML: linkModeSVG,
+                  innerHTML: linkModeSVG + "<span>Move a node</span>",
                   onclick: function(event) {
                     editor_model.insertElement = false;
                     let insertionStyle = getInsertionPlace();
@@ -4251,20 +4309,15 @@ lastEditScript = """
                   }
                 })
             )
-            ret.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
-              onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
-            );
             // TODO: Filter and sort which one we can add, also depending on where to insert.
             addElem("List item", {tag:"li", props: { innerHTML: "<br>" }, title: "Insert <li>"});
             addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }, title: "Insert <ul>"});
             addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n<li><br></li>\n</ol>" }, title: "Insert <ol>"});
-            addElem("Button", {tag: "button", props: {innerHTML: "Name_your_button" }, title: "Insert <button>"});
-            // something is wrong with creating link and paragraph using childCreate
-            // addElem("Link", {tag:"a", childCreate: "Name_your_link"});
-            // addElem("Paragraph", {tag:"p", childCreate: "Inserted paragraph"});
-            addElem("Link", {tag: "a", props: { innerHTML: "Name_your_link", href: "" }, title: "Insert <a href=''>"});
-            addElem("Paragraph", {tag: "p", props: { innerHTML: "Insert_paragraph" }, title: "Insert <p>"});
+            addElem("Button", {tag: "button", props: {innerHTML: "Button name" }, title: "Insert <button>"});
+            addElem("Link", {tag: "a", props: { innerHTML: "Link name", href: "" }, title: "Insert <a href=''>"});
+            addElem("Paragraph", {tag: "p", props: { innerHTML: "Your text here" }, title: "Insert <p>"});
             addElem("Division content", {tag: "div", title: "Insert <div>"});
+            addElem("Section", {tag: "section", title: "Insert <section>"});
             addElem("Preformatted text", {tag: "pre", title: "Insert <pre>"});
             for(let i = 1; i <= 6; i++) {
               addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }, title: "Insert <h"+i+">"});
@@ -4274,13 +4327,15 @@ lastEditScript = """
           addElem("Stylesheet", {tag:"style", children: "/*Your CSS there*/", title: "Insert <style>"});
           addElem("JavaScript", {tag:"script", children: "/*Your CSS below*/", title: "Insert <script>"});
 
-          
           ret.append(
             el("div", {"class": "tagName", id: "customHTML"}, [
               el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
               el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
                   innerHTML: plusSVG, 
-                  onclick: insertTag
+                  onclick: function(event) {
+                      let insertionStyle = getInsertionPlace();
+                      insertTag.call(this, event, undefined, insertionStyle);
+                  }
                 }
               )
             ])
@@ -5020,7 +5075,7 @@ lastEditScript = """
             }
         });
         addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
-          {"class": "inert", title: "Undo most recent change",
+          {"class": "inert" + (canUndo() ? "" : " disabled"), title: "Undo most recent change",
             id: "undobutton"
           },
           {onclick: function(event) {
@@ -5029,7 +5084,7 @@ lastEditScript = """
           }   
         );
         addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
-          {"class": "inert", title: "Redo most recent undo",
+          {"class": "inert" + (canRedo() ? "" : " disabled"), title: "Redo most recent undo",
             id: "redobutton"
           },
         	{onclick: function(event) {
@@ -5329,7 +5384,16 @@ lastEditScript = """
          document.addEventListener('mousedown', onMouseDownGlobal, false);
       """
     else "")
-
+      window.addEventListener("error", function (message, source, lineno, colno, error) {
+        let msg;
+        if(message instanceof ErrorEvent) {
+          msg = message.message;
+        } else {
+          msg = message + " from " + source + " L" + lineno + "C" + colno;
+        }
+        editor_model.editor_log.push(msg);
+      });
+       
       window.onbeforeunload = function (e) {
         e = e || window.event;
         var askConfirmation = editor_model.canSave || editor_model.isSaving || editor_model.disambiguationMenu;
