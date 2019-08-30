@@ -3415,7 +3415,7 @@ lastEditScript = """
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
                 let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));                
                 if(!(CSSFilePath.match(/server-elm-style/g))) {
-                  if(!(e.getAttribute("ghost-href")) {
+                  if(!(e.getAttribute("ghost-href"))) {
                     e.setAttribute("ghost-href", CSSFilePath);
                     let newFileName = "temp.css";
                     //console.log(CSSFilePath);
