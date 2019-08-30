@@ -356,6 +356,23 @@ div#modify-menu #CSS-modification {
     flex: 1;
 }
 
+div#modify-menu #CSS-modification > button#add-inline-style {
+    margin-top: 4px;
+    margin-bottom: 4px;
+    border-radius: 0.2em;
+    background-color: var(--context-dom-children-selector-color);
+    font-weight: bold;
+    padding: 4px;
+}
+
+div#modify-menu #CSS-modification > button#add-inline-style:hover {
+    -webkit-filter: contrast(125%);
+    /* Chrome, Opera */
+    -moz-filter: blur(125%);
+    -ms-filter: blur(125%);
+    filter: blur(125%);
+}
+
 div#modify-menu #CSS-modification .linked-CSS {
     width: 100%;
     height: 250px;
@@ -365,6 +382,18 @@ div#modify-menu #CSS-modification>.CSS-modify-unit {
     display: flex;
     align-items: center;
     margin-bottom: 5px;
+}
+
+div#modify-menu #CSS-modification>.CSS-modify-unit > textarea {
+    width: 100%;
+    height: 100px;
+    overflow-y: auto;
+    font-family: monospace;
+    color: black;
+    border-radius: 0.2em;
+    border: none;
+    font-size: 0.8rem;
+    padding: 6px;
 }
 
 div#modify-menu #CSS-modification>#CSS-chain {
@@ -381,7 +410,7 @@ div#modify-menu #CSS-modification>.CSS-modify-unit .CSS-selectors {
     overflow-y: auto;
     font-family: monospace;
     color: black;
-    border-radius: 0.4rem;
+    border-radius: 0.2em;
     border: none;
     font-size: 0.8rem;
     padding: 6px;
@@ -1008,7 +1037,7 @@ div.editor-container.minimized div.editor-container-content {
 div.editor-container.disabled div.editor-container-title {
   color: #BBB;
 }
-div.editor-container:not(.disabled):hover {
+div.editor-container:not(.disabled) > div.editor-container-title:hover {
   -webkit-filter: contrast(125%);
     /* Chrome, Opera */
     -moz-filter: blur(125%);
@@ -1028,7 +1057,7 @@ div.editor-container-title {
   height: 30px;
   background-color: var(--context-editor-container-title);
   cursor: pointer;
-  font-family: Montserrat,'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: Tahoma, sans-serif;
   font-weight: bold;
 }
 
@@ -1046,6 +1075,68 @@ div.editor-container div.editor-container-title div.editor-container-icon {
 div.editor-container.minimized div.editor-container-title div.editor-container-icon#displayArrow {
   transform: rotate(180deg);
   transform-origin: 50% 50%;
+}
+
+div.editor-container-content > div.draftList > div.draft-row {
+    display: flex;
+}
+
+div.editor-container-content > div.draftList > div.draft-row:not(#draft-title) > * {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+
+div.editor-container-content > div.draftList > div.draft-row > button {
+    margin: 4px;
+    border-radius: 0.2em;
+    color: var(--context-dom-children-selector-color);
+    background-color: rgba(255, 255, 255, 0.9);
+    font-size: 0.88em;
+    border: none;
+}
+
+div.editor-container-content > div.draftList > div.draft-row > button:hover {
+    -webkit-filter: contrast(125%);
+    /* Chrome, Opera */
+    -moz-filter: blur(125%);
+    -ms-filter: blur(125%);
+    filter: blur(125%);
+    background-color: var(--context-dom-children-selector-color);
+    border: none;
+    color: white;
+}
+
+div.editor-container-content > div.draftList > div.draft-row > button.draft-switch {
+    color: white;
+    background-color: var(--context-dom-selector-color);
+    flex-basis: 10px;
+}
+
+div.draftList > div.draft-row > button.draft-publish,
+div.draftList > div.draft-row > button.draft-clone,
+div.draftList > div.draft-row > button.draft-delete {
+    flex-basis: 20px;
+}
+
+div.draftList > div.draft-row > button.draft-delete:hover {
+    color: rgb(204, 204, 0) !important;
+}
+
+div.editor-container-content > div.draftList > div#draft-title {
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+div.editor-container-content > div.draftList > div#draft-title > label {
+    margin-top: 6px;
+}
+
+div.editor-container-content > div.draftList > div#draft-title > label:first-child {
+    font-weight: bold;
+    font-size: 1.2em;
+    margin-top: 2px;
+    padding-right: 10px;
 }
 
 @media (pointer: coarse) {
