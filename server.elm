@@ -3649,7 +3649,7 @@ lastEditScript = """
               //debugger;
             }
             else{
-              CSSarea.append(el("button", {}, [], {
+              CSSarea.append(el("button", {"id": "add-inline-style"}, [], {
                 innerHTML: "Add inline style",
                 onclick() {
                   clickedElem.setAttribute("style", " ");
@@ -4355,7 +4355,7 @@ lastEditScript = """
             return true;
           },
           render: function render(editor_model, innerBox) {
-            let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
+            let draftListDiv = el("div", {"class":"draftList"}, [], {});
 
             const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
 
@@ -4438,7 +4438,7 @@ lastEditScript = """
             }
 
             const get_current_label = () => {
-              return el("div", {"class":"draft-row"},
+              return el("div", {"class":"draft-row", "id": "draft-title"},
                       [
                         el("label", {}, [editor_model.version], {}),
                         (isLive() ? el("label", {}, [""]) : get_publish_btn_for(editor_model.version)),
@@ -4470,7 +4470,7 @@ lastEditScript = """
             };
 
             const get_row_for_live = () => {
-              return el("div", {"class": "draft-row"},
+              return el("div", {"class": "draft-row", "id": "draft-row-live"},
               [
                 get_switch_btn_live(),
                 get_clone_btn_for("Live")
