@@ -1975,23 +1975,7 @@ lastEditScript = """
     //var serverWorker = new Worker("/Thaditor/editor.js");
 
     function sendModificationsToServer() {
-      
-      //temp place to put CSS file loading stuff (may well be moved later)
-      document.querySelectorAll("link").forEach((e) => {
-        if(!isGhostNode && e.__editor__ && e.__editor__.ignoredAttrMap && e.__editor__.ignoredAttrMap) {
-          doReadServer("read", e.href, (newCSSValue) => {
-            doReadServer("read", e.__editor__.ignoredAttrMap.href, (CSSvalue) => {
-              addFileToSave(e.__editor__.ignoredAttrMap.href, CSSvalue, newCSSValue);
-            });
-          });
-          let timeIndex = e.__editor__.ignoredAttrMap.href.indexOf("?timestamp=");
-          if(timeIndex) {
-            e.__editor__.ignoredAttrMap.href = e.__editor__.ignoredAttrMap.href.slice(0, timeIndex);
-          }
-          e.__editor__.ignoredAttrMap.href.append(`?timestamp=${+new Date()}`);
-        } 
-      })
-      
+  
       if(document.getElementById("notification-menu") != null) {
         //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
         // TODO: Listen and gather subsequent modifications when it is loading
@@ -3194,7 +3178,6 @@ lastEditScript = """
                       if (!c.tagName) {
                         return;
                       }
-
                       if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
                         editor_model.displayClickedElemAsMainElem = false;
                       } else {
@@ -3430,40 +3413,46 @@ lastEditScript = """
             //console.log("All style tags:", document.querySelectorAll("style"));
             document.querySelectorAll("link, style").forEach((e) => {
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
-                /*if(e.nextElementSibling) console.log(e.nextElementSibling.getAttribute("class"));
-                if(e.nextElementSibling && e.nextElementSibling.tagName === "STYLE" && e.nextElementSibling.getAttribute("class") === "editor-interface ghost-CSS") {
-                  //for all intents and purposes, the ghost style node will be the same as the link style CSS
-                  console.log("extracted from ghost style node");
-                  rawCSS.push({text: e.nextElementSibling.textContent, tag: e})
-                }*/
-                let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
+                let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));                
                 if(!(CSSFilePath.match(/server-elm-style/g))) {
-                  if(!e.__editor__) e.__editor__ = {}; 
-                  e.__editor__.ignoredAttrMap = {href: CSSFilePath};
-                  let newFileName = "temp.css"
-                  console.log(CSSFilePath);
-                  if(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName) newFileName = "temp1.css";
-                  let newFilePath = CSSFilePath.split("/");
-                  newFilePath[newFilePath.length - 1] = newFileName;
-                  newFilePath = newFilePath.join("/");
-                  console.log(newFilePath);
-                  //doWriteServer("fullCopy", CSSFilePath, newFilePath, () => {});
-                  //console.log("done copying!");
-                  let CSSvalue = doReadServer("read", CSSFilePath);
-                  doWriteServer("write", newFilePath, CSSvalue);
-                  if(CSSvalue) {
+                  if(!(e.getAttribute("has-temp"))) {
+                    if(!e.__editor) e.__editor__ = {}; 
+                    e.__editor__.ignoredAttrMap = {href: CSSFilePath.slice(0)};
+                    console.log("The ignored attribute key values are:");
+                    console.log(e.__editor__.ignoredAttrMap);
+                    let newFileName = "temp.css";
+                    //console.log(CSSFilePath);
+                    if(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName) newFileName = "temp1.css";
+                    let newFilePath = CSSFilePath.split("/");
+                    newFilePath[newFilePath.length - 1] = newFileName;
+                    newFilePath = newFilePath.join("/");
+                    console.log(newFilePath);
+                    //doWriteServer("fullCopy", CSSFilePath, newFilePath);
+                    //console.log("done copying!");
+                    let CSSvalue = doReadServer("read", CSSFilePath);
+                    if(CSSvalue) {
                       CSSvalue = CSSvalue.slice(1);
                       rawCSS.push({text: CSSvalue, tag: e});
                     }
-                  e.setAttribute("href", newFilePath);
-                  console.log("do we get here?");
+                    doWriteServer("write", newFilePath, CSSvalue);
+                    //console.log("CSS value is:" + CSSvalue);
+                    e.setAttribute("href", newFilePath);
+                    e.setAttribute("has-temp", true);
+                  }
+                  else {
+                    let tempIndex = CSSFilePath.indexOf("?c=")
+                    if(tempIndex > 0) CSSFilePath = CSSFilePath.slice(0, tempIndex);
+                    //console.log("temp CSS loaded");
+                    let CSSvalue = doReadServer("read", CSSFilePath);
+                    //console.log("css value loaded is:", CSSvalue);
+                    rawCSS.push({text: CSSvalue.slice(1), tag: e});
+                  }
                 }
               }
               else if(e.tagName === "STYLE" && !e.getAttribute("isghost")) {
                 rawCSS.push({text: e.textContent, tag: e});
               }
             });
-            console.log("got here!");
             for(let z in rawCSS) {  
               var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
               for(let i in parsedCSS) {
@@ -3497,6 +3486,7 @@ lastEditScript = """
                     && parsedCSS[i].value.startsWith("\"") && parsedCSS[i].value.endsWith("\""))) {
                     sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
                   }
+                  console.log("pushed charset");
                   fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
                     before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                 }
@@ -3537,10 +3527,6 @@ lastEditScript = """
           }
           
           function fullUnparseCSS(curCSS) {
-            //console.log("Before unparse update:")
-            //document.querySelectorAll("style").forEach((e) => { 
-              //console.log(CSSparser.parseCSS(e.textContent));
-            //});
             let curTag = curCSS.orgTag;
             let CSSString = "";
             if(curCSS.type === 'cssBlock' || curCSS.type === "@@charset") {
@@ -3570,7 +3556,9 @@ lastEditScript = """
               CSSarea.removeChild(CSSarea.firstChild);
             }
             //if there is linked CSS text
-            if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("href")) {  
+            if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("href")) {
+              let CSSFilePath = relativeToAbsolute(clickedELem.getAttribute("href"));
+              let CSSvalue = doReadServer("read", CSSFilePath);
               CSSarea.append(
                 el("div", {"class": "CSS-modify-unit"}, [
                   el("textarea", {"class": "linked-CSS"}, [], {
@@ -3579,18 +3567,7 @@ lastEditScript = """
                       setCSSAreas();
                     },
                     oninput() {
-                      /*let nextSibGhostCSS = clickedElem.nextElementSibling;
-                      if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
-                        nextSibGhostCSS.textContent = this.value;
-                      }
-                      else {
-                        clickedElem.parentElement.insertBefore(el("style", {"isghost": true, "class": "editor-interface ghost-CSS"}, [], {
-                            textContent: this.value
-                          }), 
-                          nextSibGhostCSS);
-                      }*/
                       //use unlink action to delete file
-                      let CSSFilePath = relativeToAbsolute(clickedELem.getAttribute("href"));
                       doWriteServer("write", CSSFilePath, this.value);
                       editor_model.idNum += 1;
                       //add dummy counter, force reload
@@ -3599,7 +3576,6 @@ lastEditScript = """
                         CSSFilePath = CSSFilePath.slice(0, dummyIndex);
                       }
                       CSSFilePath.append(`?l=${editor_model.idNum}`);
-                      
                     }
                   })
                 ])
@@ -3768,34 +3744,32 @@ lastEditScript = """
                       //setCSSAreas();
                     }
                     else {
-                      this.storedCSS.content = this.value;
-                      console.log(this.storedCSS);
-                      /*let nextSibGhostCSS = this.storedCSS.orgTag.nextElementSibling;
-                      console.log(nextSibGhostCSS);
-                      if(nextSibGhostCSS) console.log(nextSibGhostCSS.getAttribute("class"));
-                      if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
-                        nextSibGhostCSS.textContent = fullUnparseCSS(this.storedCSS);
-                      }
-                      else {
-                        console.log("now inserting a new ghost style");
-                        this.storedCSS.orgTag.parentElement.insertBefore(el("style", {"isghost": true, class: "editor-interface ghost-CSS"}, [], {
-                            textContent: fullUnparseCSS(this.storedCSS)
-                          }), 
-                          nextSibGhostCSS);
-                      }*/
                       let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
-                      this.storedCSS.content = this.value;
-                      doWriteServer("write", CSSFilePath, fullUnparseCSS(this.storedCSS));
-                      editor_model.idNum += 1;
-                      //add dummy counter, force reload
-                      let dummyIndex = CSSFilePath.indexOf("?c=");
-                      if(dummyIndex > -1) {
-                        CSSFilePath = CSSFilePath.slice(0, dummyIndex);
+                      let tempIndex = CSSFilePath.indexOf("?c=");
+                      if(tempIndex > -1) {
+                        CSSFilePath = CSSFilePath.slice(0, tempIndex);
                       }
-                      CSSFilePath = CSSFilePath.concat(`?c=${editor_model.idNum}`);
-                      console.log("new file path:");
-                      console.log(CSSFilePath);
-                      this.storedCSS.orgTag.setAttribute("href", CSSFilePath);
+                      if(this.storedCSS.orgTag.__editor__) console.log(this.storedCSS.orgTag.__editor__.ignoredAttrMap);
+                      console.log("Current file path is:", CSSFilePath);
+                      this.storedCSS.content = this.value;
+                      console.log(this.value);
+                      //console.log(fullUnparseCSS(this.storedCSS));
+                      doWriteServer("write", CSSFilePath, fullUnparseCSS(this.storedCSS), () => {
+                        console.log("success");
+                        editor_model.idNum += 1;
+                        //add dummy counter, force reload
+                        let dummyIndex = CSSFilePath.indexOf("?c=");
+                        if(dummyIndex > -1) {
+                          CSSFilePath = CSSFilePath.slice(0, dummyIndex);
+                        }
+                        CSSFilePath = CSSFilePath.concat(`?c=${editor_model.idNum}`);
+                        console.log("new file path:");
+                        console.log(CSSFilePath);
+                        this.storedCSS.orgTag.setAttribute("href", CSSFilePath);
+                      }, () => {console.log("failure")});
+                      if(this.storedCSS.orgTag.__editor__) console.log(this.storedCSS.orgTag.__editor__.ignoredAttrMap);
+                      //console.log(doReadServer("read", CSSFilePath));
+                      
                     }
                   },
                   storedCSS: cssState
@@ -5125,7 +5099,38 @@ lastEditScript = """
             : function(event) {
               if (editor_model.isSaving) {
                 sendNotification("Can't save while save is being undertaken");
-              }else {
+              }
+              else {
+                //temp place to put CSS file loading stuff (may well be moved later)
+                var tempCSSPath;
+                console.log("SAVING!");
+                document.querySelectorAll("link").forEach((e) => {
+                  console.log(e);
+                  if(!isGhostNode(e) && e.getAttribute("has-temp")) {
+                    console.log(e.__editor__.ignoredAttrMap.href);
+                    console.log("about to save changes to original CSS file!");
+                    let trueTempPath = e.getAttribute("href"), dummyIndex = trueTempPath.indexOf("?c=");
+                    if(dummyIndex > -1) {
+                      trueTempPath  = trueTempPath.slice(0, dummyIndex);
+                    }
+                    //let oldValue = doReadServer("read", e.__editor__.ignoredAttrMap.href);
+                    let newValue = doReadServer("read", trueTempPath); 
+                    console.log(e.getAttribute("href"));
+                    console.log("current new value:")
+                    console.log(newValue);
+                    //doWriteServer("write", e.__editor__.ignoredAttrMap.href, newValue);
+                    let timeIndex = e.__editor__.ignoredAttrMap.href.indexOf("?timestamp=");
+                    if(timeIndex > -1) {
+                      e.__editor__.ignoredAttrMap.href = e.__editor__.ignoredAttrMap.href.slice(0, timeIndex);
+                    }
+                    e.__editor__.ignoredAttrMap.href.concat(`?timestamp=${+new Date()}`);
+                    e.setAttribute("href", e.__editor__.ignoredAttrMap.href);
+                    doWriteServer("unlink", trueTempPath);
+                  }
+                  e.removeAttribute("has-temp");
+                });
+                debugger;
+      
                 if(!this.classList.contains("disabled")) {
                   if (apache_server) {
                     sendModificationsToServer();
