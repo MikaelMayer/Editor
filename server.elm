@@ -252,6 +252,12 @@ luca =
         }
       }
     }
+    // Use in async setting
+    function getServer(action, name) {
+      return new Promise(function(resolve, reject) {
+        doReadServer(action, name, resolve, reject);
+      });
+    }
     function doWriteServer(action, name, content, onOk, onErr) {
       if (typeof writeServer != "undefined") {
         console.log("about to write to server");
@@ -271,6 +277,11 @@ luca =
           return "";
         }
       }
+    }
+    function postServer(action, name, content) {
+      return new Promise(function(resolve, reject) {
+        doWriteServer(action, name, resolve, reject);
+      });
     }
     // Page reloading without trying to recover the editor's state.
     function doReloadPage(url, replaceState) {
@@ -3694,7 +3705,7 @@ lastEditScript = """
                       setCSSAreas();
                     }
                   },
-                  oninput() {
+                  oninput: (i => function() {
                     if(this.storedCSS.orgTag.tagName != "LINK") {
                       let throwError = false;
                       curCSSState = CSSparser.parseCSS(this.value);
@@ -3735,7 +3746,7 @@ lastEditScript = """
                       let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
                       addFileToSave(CSSFilePath, this.orgValue, fullUnparseCSS(this.storedCSS));
                     }
-                  },
+                  })(i),
                   storedCSS: cssState
                 }),
                 orgTag.tagName === "LINK" ?
@@ -4661,6 +4672,7 @@ lastEditScript = """
                 doWriteServer("updateversion", "latest", "", response => {
                   console.log("Result from Updating Thaditor to latest:");
                   console.log(response);
+                  location.reload(true);
                 });
               }
             } })
