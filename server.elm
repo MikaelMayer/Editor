@@ -252,6 +252,12 @@ luca =
         }
       }
     }
+    // Use in async setting
+    function getServer(action, name) {
+      return new Promise(function(resolve, reject) {
+        doReadServer(action, name, resolve, reject);
+      });
+    }
     function doWriteServer(action, name, content, onOk, onErr) {
       if (typeof writeServer != "undefined") {
         console.log("about to write to server");
@@ -271,6 +277,11 @@ luca =
           return "";
         }
       }
+    }
+    function postServer(action, name, content) {
+      return new Promise(function(resolve, reject) {
+        doWriteServer(action, name, resolve, reject);
+      });
     }
     // Page reloading without trying to recover the editor's state.
     function doReloadPage(url, replaceState) {
@@ -3574,7 +3585,7 @@ lastEditScript = """
             }
             else if(curCSS.type === '@@media') { 
               console.log(curCSS);
-              CSSString = curCSS.before + curCSS.mediaSelector + curCSS.innerBefore + curCSS.content + curCSS.innerAfter + curCSS.whitesAfter + curCSS.after;   
+              CSSString = curCSS.before + curCSS.mediaSelector + curCSS.innerBefore + curCSS.content + curCSS.innerAfter + curCSS.bracketAfter + curCSS.after;   
             }
             if(curTag.tagName === "LINK") {
               return CSSString;
@@ -3652,7 +3663,7 @@ lastEditScript = """
               CSSarea.append(el("button", {"id": "add-inline-style"}, [], {
                 innerHTML: "Add inline style",
                 onclick() {
-                  clickedElem.setAttribute("style", " ");
+                  clickedElem.setAttribute("style", "");
                   editor_model.inline = true;
                   setCSSAreas();
                 }}));
@@ -3694,7 +3705,7 @@ lastEditScript = """
                       setCSSAreas();
                     }
                   },
-                  oninput() {
+                  oninput: (i => function() {
                     if(this.storedCSS.orgTag.tagName != "LINK") {
                       let throwError = false;
                       curCSSState = CSSparser.parseCSS(this.value);
@@ -3735,7 +3746,7 @@ lastEditScript = """
                       let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
                       addFileToSave(CSSFilePath, this.orgValue, fullUnparseCSS(this.storedCSS));
                     }
-                  },
+                  })(i),
                   storedCSS: cssState
                 }),
                 orgTag.tagName === "LINK" ?
@@ -4058,9 +4069,16 @@ lastEditScript = """
               {}
             )
           );
-          
-          // show lists of images in selected image's folder
-          showListsImages(srcName, backgroundImgSrc);
+          if(srcName == undefined) {
+            ret.append(
+              el("button", {}, "Add src attribute", {onclick: () => {
+                clickedElem.setAttribute("src", "");
+                updateInteractionDiv();
+              }}));
+          } else {
+            showListsImages(srcName, backgroundImgSrc);
+            // show lists of images in selected image's folder
+          }
           return ret;
         }
       });
@@ -4283,7 +4301,7 @@ lastEditScript = """
             );
             ret.append(
               el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
-                  innerHTML: linkModeSVG + "<span>Move a node</span>",
+                  innerHTML: linkModeSVG + "<span>Move node</span>",
                   onclick: function(event) {
                     editor_model.insertElement = false;
                     let insertionStyle = getInsertionPlace();
@@ -4318,6 +4336,7 @@ lastEditScript = """
             addElem("Paragraph", {tag: "p", props: { innerHTML: "Your text here" }, title: "Insert <p>"});
             addElem("Division content", {tag: "div", title: "Insert <div>"});
             addElem("Section", {tag: "section", title: "Insert <section>"});
+            addElem("Image", {tag: "img", title: "Insert <img>", attrs: {src: ""}});
             addElem("Preformatted text", {tag: "pre", title: "Insert <pre>"});
             for(let i = 1; i <= 6; i++) {
               addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }, title: "Insert <h"+i+">"});
@@ -4653,6 +4672,7 @@ lastEditScript = """
                 doWriteServer("updateversion", "latest", "", response => {
                   console.log("Result from Updating Thaditor to latest:");
                   console.log(response);
+                  location.reload(true);
                 });
               }
             } })
