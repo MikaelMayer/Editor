@@ -3415,11 +3415,8 @@ lastEditScript = """
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
                 let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));                
                 if(!(CSSFilePath.match(/server-elm-style/g))) {
-                  if(!(e.getAttribute("has-temp"))) {
-                    if(!e.__editor) e.__editor__ = {}; 
-                    e.__editor__.ignoredAttrMap = {href: CSSFilePath.slice(0)};
-                    console.log("The ignored attribute key values are:");
-                    console.log(e.__editor__.ignoredAttrMap);
+                  if(!(e.getAttribute("ghost-href")) {
+                    e.setAttribute("ghost-href", CSSFilePath);
                     let newFileName = "temp.css";
                     //console.log(CSSFilePath);
                     if(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName) newFileName = "temp1.css";
@@ -3437,7 +3434,6 @@ lastEditScript = """
                     doWriteServer("write", newFilePath, CSSvalue);
                     //console.log("CSS value is:" + CSSvalue);
                     e.setAttribute("href", newFilePath);
-                    e.setAttribute("has-temp", true);
                   }
                   else {
                     let tempIndex = CSSFilePath.indexOf("?c=")
@@ -3749,7 +3745,6 @@ lastEditScript = """
                       if(tempIndex > -1) {
                         CSSFilePath = CSSFilePath.slice(0, tempIndex);
                       }
-                      if(this.storedCSS.orgTag.__editor__) console.log(this.storedCSS.orgTag.__editor__.ignoredAttrMap);
                       console.log("Current file path is:", CSSFilePath);
                       this.storedCSS.content = this.value;
                       console.log(this.value);
@@ -3767,7 +3762,6 @@ lastEditScript = """
                         console.log(CSSFilePath);
                         this.storedCSS.orgTag.setAttribute("href", CSSFilePath);
                       }, () => {console.log("failure")});
-                      if(this.storedCSS.orgTag.__editor__) console.log(this.storedCSS.orgTag.__editor__.ignoredAttrMap);
                       //console.log(doReadServer("read", CSSFilePath));
                       
                     }
@@ -5102,34 +5096,39 @@ lastEditScript = """
               }
               else {
                 //temp place to put CSS file loading stuff (may well be moved later)
-                var tempCSSPath;
                 console.log("SAVING!");
-                document.querySelectorAll("link").forEach((e) => {
-                  console.log(e);
-                  if(!isGhostNode(e) && e.getAttribute("has-temp")) {
-                    console.log(e.__editor__.ignoredAttrMap.href);
-                    console.log("about to save changes to original CSS file!");
-                    let trueTempPath = e.getAttribute("href"), dummyIndex = trueTempPath.indexOf("?c=");
+                let allPageLinks = document.querySelectorAll("link");
+                for(let e in allPageLinks){
+                  console.log(allPageLinks[e]);
+                  console.log(allPageLinks.ghost-href);
+                  if(!isGhostNode(allPageLinks[e]) && allPageLinks[e].getAttribute("ghost-href")) {
+                    let trueTempPath = allPageLinks[e].getAttribute("href"), dummyIndex = trueTempPath.indexOf("?c=");
                     if(dummyIndex > -1) {
                       trueTempPath  = trueTempPath.slice(0, dummyIndex);
                     }
-                    //let oldValue = doReadServer("read", e.__editor__.ignoredAttrMap.href);
-                    let newValue = doReadServer("read", trueTempPath); 
-                    console.log(e.getAttribute("href"));
-                    console.log("current new value:")
-                    console.log(newValue);
-                    //doWriteServer("write", e.__editor__.ignoredAttrMap.href, newValue);
-                    let timeIndex = e.__editor__.ignoredAttrMap.href.indexOf("?timestamp=");
+                    let trueCSSPath = allPageLinks[e].getAttribute("ghost-href"), timeIndex = trueCSSPath.indexOf("?timestamp=");
                     if(timeIndex > -1) {
-                      e.__editor__.ignoredAttrMap.href = e.__editor__.ignoredAttrMap.href.slice(0, timeIndex);
+                      trueCSSPath = trueCSSPath.slice(0, timeIndex);
                     }
-                    e.__editor__.ignoredAttrMap.href.concat(`?timestamp=${+new Date()}`);
-                    e.setAttribute("href", e.__editor__.ignoredAttrMap.href);
-                    doWriteServer("unlink", trueTempPath);
-                  }
-                  e.removeAttribute("has-temp");
-                });
-                debugger;
+                    console.log("before:" + allPageLinks[e].getAttribute("href"));
+                    console.log(doReadServer("read", trueTempPath));
+                    doWriteServer("fullCopy", trueTempPath, trueCSSPath, () => {
+                      console.log(trueTempPath);
+                      console.log(trueCSSPath);
+                      console.log("source");
+                      console.log(doReadServer("read", trueTempPath));
+                      console.log("dest");
+                      console.log(doReadServer("read", trueCSSPath));
+                      
+                      trueCSSPath = trueCSSPath.concat(`?timestamp=${+new Date()}`);
+                      allPageLinks[e].setAttribute("href", trueCSSPath);
+                      console.log("after:" + allPageLinks[e].getAttribute("href"));
+                      //debugger;
+                    });
+                    //doWriteServer("unlink", trueTempPath);
+                  }                 
+                }
+                //debugger;
       
                 if(!this.classList.contains("disabled")) {
                   if (apache_server) {
