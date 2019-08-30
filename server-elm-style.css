@@ -1093,6 +1093,7 @@ div.editor-container-content > div.draftList > div.draft-row > button {
     color: var(--context-dom-children-selector-color);
     background-color: rgba(255, 255, 255, 0.9);
     font-size: 0.88em;
+    border: none;
 }
 
 div.editor-container-content > div.draftList > div.draft-row > button:hover {
@@ -1128,7 +1129,14 @@ div.editor-container-content > div.draftList > div#draft-title {
 }
 
 div.editor-container-content > div.draftList > div#draft-title > label {
-    margin-top: 10px;
+    margin-top: 6px;
+}
+
+div.editor-container-content > div.draftList > div#draft-title > label:first-child {
+    font-weight: bold;
+    font-size: 1.2em;
+    margin-top: 2px;
+    padding-right: 10px;
 }
 
 @media (pointer: coarse) {
