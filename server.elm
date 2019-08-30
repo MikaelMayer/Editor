@@ -2282,8 +2282,8 @@ lastEditScript = """
           undoElem[k].URValue = cur_attr; 
         }
         else if(mutType == "characterData") {
-          const cur_data = target.data;
-          target.data = undoElem[k].URValue;
+          const cur_data = target.textContent;
+          target.textContent = undoElem[k].URValue;
           undoElem[k].URValue = cur_data;
           //undoElem[k].isConnected ? undoElem[k].URValue : quicker(undoElem[k]).URValue = cur_data;
         }
@@ -3436,7 +3436,6 @@ lastEditScript = """
             //console.log("All style tags:", document.querySelectorAll("style"));
             document.querySelectorAll("link, style").forEach((e) => {
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
-<<<<<<< HEAD
                 let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));                
                 if(!(CSSFilePath.match(/server-elm-style/g))) {
                   if(!(e.getAttribute("ghost-href"))) {
@@ -3467,28 +3466,6 @@ lastEditScript = """
                     //console.log("css value loaded is:", CSSvalue);
                     rawCSS.push({text: CSSvalue.slice(1), tag: e});
                   }
-=======
-                //console.log(e.nextElementSibling.getAttribute("class"));
-                /*if(e.nextElementSibling && e.nextElementSibling.tagName === "STYLE" && e.nextElementSibling.getAttribute("class") === "editor-interface ghost-CSS") {
-                  //for all intents and purposes, the ghost style node will be the same as the link style CSS
-                  console.log("extracted from ghost style node");
-                  rawCSS.push({text: e.nextElementSibling.textContent, tag: e})
-                }*/
-                let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
-                if(e.__editor__) e.__editor__.ignoredAttrMap = {href: CSSFilePath};
-                console.log(CSSFilePath);
-                let fileName = CSSFilePath.match(/[^\/]\w+\.\w+$/ig);
-                //let newCSSFilePath = CSSFilePath;
-                //doWriteServer("fullCopy", CSSFilePath, CSSFilePath);
-                //debugger;
-                //e.setAtttribute("href", newCSSfilePath);
-                //CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
-                let CSSvalue = doReadServer("read", CSSFilePath);
-                //console.log(CSSFilePath.match(/server-elm-style/g));
-                if(!(CSSFilePath.match(/server-elm-style/g)) && CSSvalue) {
-                  CSSvalue = CSSvalue.slice(1);
-                  rawCSS.push({text: CSSvalue, tag: e});
->>>>>>> master
                 }
               }
               else if(e.tagName === "STYLE" && !e.getAttribute("isghost")) {
@@ -3514,15 +3491,9 @@ lastEditScript = """
                       var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
                         mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
-<<<<<<< HEAD
-                        before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag};
-                      curMedia.content = CSSparser.unparseCSS([curMedia.content[j]]);
-                      insertMedia.content = curMedia.content;
-=======
-                        before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
+                        before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
                       console.log("Insert media:");
                       console.log(insertMedia);
->>>>>>> master
                       fullCSS.push(insertMedia);
                       console.log("got here first!");
                     }
@@ -3747,15 +3718,6 @@ lastEditScript = """
               for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
               }
-<<<<<<< HEAD
-              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {
-                innerHTML: headerStr,
-                relatedElem: orgTag,
-                onclick() {
-                  editor_model.clickedElem = orgTag;
-                  updateInteractionDiv();
-                }}));
-=======
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: headerStr}));
               if(cssState.type === '@@media') {
                 CSSarea.append(el("div", {"class": "@media-selector", "contenteditable": true}, [], {
@@ -3769,7 +3731,6 @@ lastEditScript = """
                 innerHTML: cssState.mediaSelector
                 }))
               }
->>>>>>> master
               let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "CSS-selectors" }, [], {
                   defaultValue: cssState.content,
@@ -5202,24 +5163,24 @@ lastEditScript = """
               }
               else {
                 //temp place to put CSS file loading stuff (may well be moved later)
-                console.log("SAVING!");
                 let allPageLinks = document.querySelectorAll("link");
-                for(let e = 0; e < allPageLinks.length; e++){
-                  console.log("current element:");
-                  console.log(allPageLinks[e]);
-                  console.log(allPageLinks[e].getAttribute("ghost-href"));
-                  if(!isGhostNode(allPageLinks[e]) && allPageLinks[e].getAttribute("ghost-href")) {
-                    let trueTempPath = allPageLinks[e].getAttribute("href"), dummyIndex = trueTempPath.indexOf("?c=");
-                    if(dummyIndex > -1) {
-                      trueTempPath  = trueTempPath.slice(0, dummyIndex);
-                    }
-                    let trueCSSPath = allPageLinks[e].getAttribute("ghost-href"), timeIndex = trueCSSPath.indexOf("?timestamp=");
-                    if(timeIndex > -1) {
-                      trueCSSPath = trueCSSPath.slice(0, timeIndex);
-                    }
-                    console.log("before:" + allPageLinks[e].getAttribute("href"));
-                    console.log(doReadServer("read", trueTempPath));
-                    doWriteServer("fullCopy", trueTempPath, trueCSSPath, () => {
+                (async () => {
+                  for(let e = 0; e < allPageLinks.length; e++) {
+                    console.log("current element:");
+                    console.log(allPageLinks[e]);
+                    console.log(allPageLinks[e].getAttribute("ghost-href"));
+                    if(!isGhostNode(allPageLinks[e]) && allPageLinks[e].getAttribute("ghost-href")) {
+                      let trueTempPath = allPageLinks[e].getAttribute("href"), dummyIndex = trueTempPath.indexOf("?c=");
+                      if(dummyIndex > -1) {
+                        trueTempPath  = trueTempPath.slice(0, dummyIndex);
+                      }
+                      let trueCSSPath = allPageLinks[e].getAttribute("ghost-href"), timeIndex = trueCSSPath.indexOf("?timestamp=");
+                      if(timeIndex > -1) {
+                        trueCSSPath = trueCSSPath.slice(0, timeIndex);
+                      }
+                      console.log("before:" + allPageLinks[e].getAttribute("href"));
+                      console.log(doReadServer("read", trueTempPath));
+                      await putServer("fullCopy", trueTempPath, trueCSSPath);
                       console.log("true temp:" + trueTempPath);
                       console.log("true CSS:" + trueCSSPath);
                       //console.log("source");
@@ -5230,20 +5191,17 @@ lastEditScript = """
                       trueCSSPath = trueCSSPath.concat(`?timestamp=${+new Date()}`);
                       allPageLinks[e].setAttribute("href", trueCSSPath);
                       console.log("after:" + allPageLinks[e].getAttribute("href"));
-                      //debugger;
-                    });
-                    //doWriteServer("unlink", trueTempPath);
-                  }                 
-                }
-                //debugger;
-      
-                if(!this.classList.contains("disabled")) {
-                  if (apache_server) {
-                    sendModificationsToServer();
-                  } else {
-                    sendModificationsToServerNode();
+                      await putServer("unlink", trueTempPath);
+                    }                 
                   }
-                }
+                  if(!this.classList.contains("disabled")) {
+                    if (apache_server) {
+                      sendModificationsToServer();
+                    } else {
+                      sendModificationsToServerNode();
+                    }
+                  }
+                })();
               }
             }
           }
