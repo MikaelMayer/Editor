@@ -252,6 +252,12 @@ luca =
         }
       }
     }
+    // Use in async setting
+    function getServer(action, name) {
+      return new Promise(function(resolve, reject) {
+        doReadServer(action, name, resolve, reject);
+      });
+    }
     function doWriteServer(action, name, content, onOk, onErr) {
       if (typeof writeServer != "undefined") {
         console.log("about to write to server");
@@ -271,6 +277,11 @@ luca =
           return "";
         }
       }
+    }
+    function postServer(action, name, content) {
+      return new Promise(function(resolve, reject) {
+        doWriteServer(action, name, resolve, reject);
+      });
     }
     // Page reloading without trying to recover the editor's state.
     function doReloadPage(url, replaceState) {
@@ -3694,8 +3705,8 @@ lastEditScript = """
               CSSarea.append(inlineCSS);
               //debugger;
             }
-            else {
-              CSSarea.append(el("button", {}, [], {
+            else{
+              CSSarea.append(el("button", {"id": "add-inline-style"}, [], {
                 innerHTML: "Add inline style",
                 onclick() {
                   clickedElem.setAttribute("style", "");
@@ -3739,7 +3750,7 @@ lastEditScript = """
                       setCSSAreas();
                     }
                   },
-                  oninput() {
+                  oninput: (i => function() {
                     if(this.storedCSS.orgTag.tagName != "LINK") {
                       let throwError = false;
                       curCSSState = CSSparser.parseCSS(this.value);
@@ -3784,7 +3795,7 @@ lastEditScript = """
                       //console.log(doReadServer("read", CSSFilePath));
                       
                     }
-                  },
+                  })(i),
                   storedCSS: cssState
                 }),
                 orgTag.tagName === "LINK" ?
@@ -4413,7 +4424,7 @@ lastEditScript = """
             return true;
           },
           render: function render(editor_model, innerBox) {
-            let draftListDiv = el("div", {"class":".childrenElem"}, [], {});
+            let draftListDiv = el("div", {"class":"draftList"}, [], {});
 
             const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
 
@@ -4496,7 +4507,7 @@ lastEditScript = """
             }
 
             const get_current_label = () => {
-              return el("div", {"class":"draft-row"},
+              return el("div", {"class":"draft-row", "id": "draft-title"},
                       [
                         el("label", {}, [editor_model.version], {}),
                         (isLive() ? el("label", {}, [""]) : get_publish_btn_for(editor_model.version)),
@@ -4528,7 +4539,7 @@ lastEditScript = """
             };
 
             const get_row_for_live = () => {
-              return el("div", {"class": "draft-row"},
+              return el("div", {"class": "draft-row", "id": "draft-row-live"},
               [
                 get_switch_btn_live(),
                 get_clone_btn_for("Live")
@@ -4711,6 +4722,7 @@ lastEditScript = """
                 doWriteServer("updateversion", "latest", "", response => {
                   console.log("Result from Updating Thaditor to latest:");
                   console.log(response);
+                  location.reload(true);
                 });
               }
             } })
