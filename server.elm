@@ -3892,6 +3892,9 @@ lastEditScript = """
             }
           }
           function showListsImages(srcName, backImgObj) {
+            if (isAbsolute(srcName)) {
+              return;
+            }
             console.log("hello!");
             console.log("Source name is:", srcName);
             srcName = relativeToAbsolute(srcName)
