@@ -950,15 +950,10 @@ evaluatedPage =
           return;
         }
         if (isDuplicateHere(newname)) {
-          window.alert("Please choose a different name so as to not overwrite an existing file. (or change the name of that file).");
-          return;
+          const doit = window.confirm("Are you sure you want to overwrite an existing file with the name " + newname + "?");
+          if (!doit) return;
         }
         var x = doWriteServer("rename", "@path" + sel.id, "@path" + newname);
-        if (x) {
-          console.log ("rename failed");
-          window.alert("rename failed");
-          return;
-        }
         console.log ("renamed", sel.id, newname);
         goodReload();
       }
@@ -1014,9 +1009,6 @@ evaluatedPage =
         }
         contents = contents.substring(1, contents.length);
         var resp = doWriteServer("create", "@path" + newname, contents);
-        if (resp) {
-          console.error ("Duplicating file failed for some reason: ", resp);
-        } 
         goodReload();
       }
       function createFolder() {
@@ -1034,8 +1026,8 @@ evaluatedPage =
         }
         var dups = isDuplicateHere(newname);
         if (dups) {
-          window.alert("There is already a file / folder with that name. Please try again.");
-          return;
+          const conf = window.confirm ("Are you sure you want to overwrite a folder with the name " + newname + " with an empty file? This would delete the folder.");
+          if (!conf) return;
         }
         doWriteServer("mkdir", newname, "");
         goodReload();
@@ -1055,8 +1047,8 @@ evaluatedPage =
         try {
           var nldir = fullListDir(newpath);
           if (isDupInFolder(nldir, btn.id)) {
-            window.alert("There already exists a file in that folder with this name. Move cancelled.");
-            return;
+            const conf = window.confirm("Are you sure you want to overwrite an existing file?");
+            if (!conf) return;
           }
         } catch (e) {
           window.alert ("The path specified does not exist. Move cancelled.");
@@ -1092,17 +1084,9 @@ evaluatedPage =
         initializeProgress(files.length);
         var didUp = false;
         ([...files]).forEach((fl) => {
-          var isgud = true;
-          thisListDir.forEach(([nm, isdir]) => {
-            if (nm == fl.name) {
-              window.alert("File named " + fl.name + " already exists in this folder. Overwrite cancelled.", fl.name);
-              isgud = false;
-            }
-          });
-          if (isgud) {
-            editor.uploadFile("@path" + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
-            didUp = true;
-          }
+          editor.uploadFile("@path" + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
+          didUp = true;
+          
         });
         progbar.value = 100;
         progbar.visible = false;
@@ -2166,6 +2150,8 @@ lastEditScript = """
     } //sendToUndo
     
     function handleMutations(mutations, observer) {
+      console.log ("handle muts");
+      console.log ({mutations, observer});
       var onlyGhosts = true;
       let cur_date = new Date();
       let cur_time = cur_date.getTime();
@@ -4384,6 +4370,7 @@ lastEditScript = """
                 onclick: (event) => {
                   editor_model.version = nm;
                   navigateLocal("/Thaditor/versions/" + nm + "/?edit");
+                  setTimeout(() => sendNotification("Switched to " + nm), 1500);
                 }
               });
             };
@@ -4394,6 +4381,7 @@ lastEditScript = """
                 onclick: (event) => {
                   editor_model.version = "Live";
                   navigateLocal("/?edit");
+                  setTimeout(() => sendNotification("Switched to Live"), 1500);
                 }
               })
             }
@@ -4442,7 +4430,7 @@ lastEditScript = """
               return el("button", {"class":"draft-delete"}, ["Delete"],
               {
                 onclick: (event) => {
-                  deleteDraft(nm);
+                  deleteDraft(nm); //confirms + sends notif inside the method
                 }
               })  
             }
@@ -4450,8 +4438,8 @@ lastEditScript = """
             const get_publish_btn_for = (nm) => {
               return el("button", {"class":"draft-publish"}, ["Publish"],
               {
-                onclick: (event) => {
-                  publishDraft(nm);
+                onclick: (event) => { 
+                  publishDraft(nm); //confirms + sends notif inside the method
                 }
               })
             }
@@ -4504,9 +4492,7 @@ lastEditScript = """
             if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
               const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
               vers.forEach(ver => {
-                if (ver == editor_model.version){
-
-                } else {
+                if (!(ver == editor_model.version)){
                   draftListDiv.append(get_row_for_draft(ver));
                 }
               });
@@ -4845,7 +4831,7 @@ lastEditScript = """
         if (isdir) {
           doWriteServer("fullCopy", s, d);
         } else {
-          doWriteServer("move", d, s);
+          doWriteServer("copy", d, s);
         }
       });
       let dh = doReadServer("read", source + "/.thaditor_meta");
@@ -4927,6 +4913,8 @@ lastEditScript = """
     
 
     function updateInteractionDiv() {
+      const menuholder = document.querySelector("#modify-menu-holder");
+      const old_scroll = menuholder ? menuholder.scrollTop : 0;
       
       // Set up
       let model = editor_model;
@@ -4971,7 +4959,7 @@ lastEditScript = """
       let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned"}); // Icons always visible
       let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"}); // Top-level icons on the top bar
       let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
-      let modifyMenuHolder = el("div", {"class": "modify-menu-holder"});
+      let modifyMenuHolder = el("div", {"class": "modify-menu-holder", "id":"modify-menu-holder"});
       modifyMenuDiv.append(modifyMenuPinnedIconsDiv); // Keep this one as it.
       modifyMenuDiv.append(modifyMenuIconsDiv);       // TODO: Move to editor_model.interfaces
       modifyMenuDiv.append(domSelector);              // TODO: Move to editor_model.interfaces
@@ -5055,7 +5043,9 @@ lastEditScript = """
         modifyMenuHolder.append(menu);
       }
       if (do_interfaces) {
+        console.log ({old_scroll, modifyMenuHolder});
         modifyMenuDiv.append(modifyMenuHolder);
+        modifyMenuHolder.scrollTop = old_scroll;
       }
       let createButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
