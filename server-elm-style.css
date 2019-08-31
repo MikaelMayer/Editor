@@ -415,7 +415,7 @@ div#modify-menu #CSS-modification>.CSS-modify-unit .CSS-selectors {
     color: black;
     border-radius: 0.2em;
     border: none;
-    font-size: 0.8rem;
+    font-size: 0.8em;
     padding: 6px;
 }
 
@@ -734,7 +734,7 @@ div.no-sibling {
     color: black;
     width: 20%;
     text-transform: uppercase;
-    font-size: 0.7rem;
+    font-size: 0.8em;
     line-height: 20px;
     font-weight: bold;
     min-width: 50px;
@@ -982,7 +982,7 @@ textarea.textChildNodeContent {
   color: black;
   resize: vertical;
   min-height: 50px;
-  font-size: 0.8rem;
+  font-size: 0.8em;
 }
 
 textarea.templateengine {
@@ -991,8 +991,8 @@ textarea.templateengine {
     color: black;
     border-radius: 0.4rem;
     border: 0;
-    padding: 0.4rem;
-    font: normal 0.84rem Consolas, Monaco, monospace;
+    padding: 0.4em;
+    font: normal 0.8em Consolas, Monaco, monospace;
     resize: none;
     opacity: 0.8;
 }
