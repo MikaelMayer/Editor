@@ -363,6 +363,9 @@ div#modify-menu #CSS-modification > button#add-inline-style {
     background-color: var(--context-dom-children-selector-color);
     font-weight: bold;
     padding: 4px;
+    border: none;
+    font-size: 1em;
+    color: white;
 }
 
 div#modify-menu #CSS-modification > button#add-inline-style:hover {
@@ -396,7 +399,7 @@ div#modify-menu #CSS-modification>.CSS-modify-unit > textarea {
     padding: 6px;
 }
 
-div#modify-menu #CSS-modification>#CSS-chain {
+div#modify-menu #CSS-modification>div.CSS-chain {
     margin-bottom: 6px;
 }
 
