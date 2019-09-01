@@ -360,7 +360,8 @@ div#modify-menu #CSS-modification > button#add-inline-style {
     margin-top: 4px;
     margin-bottom: 4px;
     border-radius: 0.2em;
-    background-color: var(--context-dom-children-selector-color);
+    background: linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
+    background: -webkit-linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
     font-weight: bold;
     padding: 4px;
     border: none;
@@ -446,6 +447,7 @@ div#modify-menu {
     width: 100%;
     height: 100%;
     overflow-y: scroll;
+    font-family: Arial, Helvetica, sans-serif;
 }
 
 .modify-menu-icon {
@@ -619,6 +621,7 @@ div.tagname-summary {
 
 div.dom-selector-style {
     margin: 2%;
+    margin-top: 0;
     margin-bottom: 0;
     border-radius: 0.4em;
     padding: 0.4rem;
@@ -1071,6 +1074,10 @@ div.editor-container-content {
   overflow-y: auto;
 }
 
+div.editor-container-content button {
+    outline: none;
+}
+
 div.editor-container div.editor-container-title div.editor-container-icon {
   float: right;
   margin-top: 5px;
@@ -1097,6 +1104,7 @@ div.editor-container-content > div.draftList > div.draft-row > button {
     background-color: rgba(255, 255, 255, 0.9);
     font-size: 0.88em;
     border: none;
+    height: 1.6em;
 }
 
 div.editor-container-content > div.draftList > div.draft-row > button:hover {
@@ -1112,8 +1120,32 @@ div.editor-container-content > div.draftList > div.draft-row > button:hover {
 
 div.editor-container-content > div.draftList > div.draft-row > button.draft-switch {
     color: white;
-    background-color: var(--context-dom-selector-color);
+    background: linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
+    background: -webkit-linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
     flex-basis: 10px;
+}
+
+div.modify-menu-icons > button#update-thaditor-btn {
+    color: white;
+    background: linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
+    background: -webkit-linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
+    border: none;
+    font-size: 0.8em;
+    margin-top: 6px;
+    margin-bottom: 6px;
+    display: block;
+    border-radius: 0.4em;
+    height: 2em;
+    font-weight: bold;
+}
+
+div.modify-menu-icons > button#update-thaditor-btn:hover {
+    -webkit-filter: contrast(125%);
+    /* Chrome, Opera */
+    -moz-filter: blur(125%);
+    -ms-filter: blur(125%);
+    filter: blur(125%);
+    border: none;
 }
 
 div.draftList > div.draft-row > button.draft-publish,
@@ -1124,6 +1156,7 @@ div.draftList > div.draft-row > button.draft-delete {
 
 div.draftList > div.draft-row > button.draft-delete:hover {
     color: rgb(204, 204, 0) !important;
+    font-weight: bold;
 }
 
 div.editor-container-content > div.draftList > div#draft-title {

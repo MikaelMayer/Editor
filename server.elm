@@ -4665,9 +4665,8 @@ lastEditScript = """
               }
             }
           );
-          retDiv.append(el("br"));
           retDiv.append(
-            el("button", {type:""}, "Update Thaditor", {onclick() {
+            el("button", {type:"", "id": "update-thaditor-btn"}, "Update Thaditor", {onclick() {
               if(confirm("Are you ready to upgrade Thaditor?")) {
                 doWriteServer("updateversion", "latest", "", response => {
                   console.log("Result from Updating Thaditor to latest:");
@@ -4677,7 +4676,6 @@ lastEditScript = """
               }
             } })
           );
-          retDiv.append(el("br"));
           retDiv.append(
             el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
               [el("input", {class: "global-setting", id: "input-question", type: "checkbox"}, [], {
@@ -4686,7 +4684,7 @@ lastEditScript = """
               el("span", {class:"slider round"})]));
           retDiv.append(
             el("label", {"for": "input-question", class: "label-checkbox"}, "Ask questions"));
-          retDiv.append(el("br"));
+          
           retDiv.append(
             el("label", {class:"switch", title: "If on, changes are automatically propagated 1 second after the last edit"}, [
               el("input", {class: "global-setting", id: "input-autosave", type:"checkbox"}, [], {
@@ -4696,7 +4694,7 @@ lastEditScript = """
           );
           retDiv.append(
             el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
-          retDiv.append(el("br"));
+          
           if(apache_server) {
             retDiv.append(
               el("a", {href:"javascript:0", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
