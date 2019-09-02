@@ -3480,13 +3480,18 @@ lastEditScript = """
               let e = CSSstyles[i];
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
                 let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));                
-                if(!(CSSFilePath.match(/server-elm-style/g))) {
+                if(!(CSSFilePath.match(/server-elm-style/g)) && (CSSFilePath.indexOf("http") < 0)) {
                   if(!(e.getAttribute("ghost-href"))) {
                     //(async () => {
                     e.setAttribute("ghost-href", CSSFilePath);
-                    let newFileName = "temp.css";
+                    //for now, we will increase # on temp#.css until we find a unique name
+                    editor_model.idNum += 1;
+                    let newFileName = `temp${editor_model.idNum}.css`;
                     //console.log(CSSFilePath);
-                    if(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName) newFileName = "temp1.css";
+                    while (CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName) {
+                      editor_model.idNum += 1;
+                      newFileName = `temp${editor_model.idNum}.css`;
+                    }
                     let newFilePath = CSSFilePath.split("/");
                     newFilePath[newFilePath.length - 1] = newFileName;
                     newFilePath = newFilePath.join("/");
@@ -3744,30 +3749,6 @@ lastEditScript = """
                         //just default to style node for now
                         document.head.appendChild(el("style", {"class": "inserted-CSS"}, [], {textContent: postIndentCSS}));
                       }
-                        /*let curSelectorType, selectorStr;
-                        if(!curSelector) {
-                          sendNotification("Please specify an id, name or class for the selected element!");
-                          return;
-                        }
-                        else {
-                          if(clickedElem.getAttribute("id")) {
-                            curSelectorType = "id";
-                          }
-                          else if(clickedElem.getAttribute("name")) {
-                            curSelectorType = "name";
-                          }
-                          else {
-                            curSelectorType = "class";
-                          }
-                          selectorStr = "[" + curSelectorType + "=" + curSelector + "]";
-                        }
-                        let CSStext = selectorStr + "\n{\n" + postIndentCSS + "\n}"
-                        if(closestStyleLink.tagName === "STYLE") {
-                          closestStyleLink.value += "\n" + CSSText; 
-                        }
-                        else {
-
-                        }*/
                       
                       clickedElem.removeAttribute("style");
                       setCSSAreas();
