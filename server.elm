@@ -3430,7 +3430,7 @@ lastEditScript = """
                           document.querySelector("div.keyvalueadder input[name=value]").value
                         );
                         updateInteractionDiv();
-                        let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
+                        let d =  document.querySelector("div.keyvalue input#dom-attr-" + name);
                         if(d) d.focus();
                       }
                     },
@@ -3480,7 +3480,7 @@ lastEditScript = """
               let e = CSSstyles[i];
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
                 let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));                
-                if(!(CSSFilePath.match(/server-elm-style/g)) && (CSSFilePath.indexOf("http") < 0)) {
+                if(!(e.className && e.className === "editor-interface")/*!(CSSFilePath.match(/server-elm-style/g))*/ && (CSSFilePath.indexOf("http") < 0)) {
                   if(!(e.getAttribute("ghost-href"))) {
                     //(async () => {
                     e.setAttribute("ghost-href", CSSFilePath);
@@ -3675,13 +3675,27 @@ lastEditScript = """
                   }
                 }),
                 el("div", {"class": "CSS-buttons"}, [
-                  el("div", {"class": "clone-CSS"}, [], {
+                  el("div", {"class": "CSS-action-button"}, [], {
                     innerHTML: cloneSVG,
                     onclick() {
-                      let closestStyleLink = document.querySelector("link, style");
-                      let inline_CSS = document.querySelectorAll(".inline-CSS");  
+                      let closestStyleLink;
+                      let closestStyleLinkAll = document.querySelectorAll("link, style");
+                      console.log("hi!", closestStyleLinkAll);
+                      for(let e in closestStyleLinkAll) {
+                        if(closestStyleLinkAll[e].tagName === "STYLE") {
+                          closestStyleLink = closestStyleLinkAll[e];
+                          break;
+                        }
+                        else if(closestStyleLinkAll[e].tagName === "LINK" && (closestStyleLinkAll[e].tagName.indexOf("http") < 0) && (closestStyleLinkAll[e].className != "editor-interface")) {
+                          closestStyleLink = closestStyleLinkAll[e];
+                          break;
+                        }
+                      }
+                      console.log("Closest CSS source:", closestStyleLink);
+                      let inline_CSS = document.querySelectorAll(".inline-CSS");
+                      console.log("Finding inline CSS textarea:", inline_CSS);  
                       let postIndentCSS = "";
-                      let preIndentCSS = inline_CSS.value.split("\n");
+                      let preIndentCSS = inline_CSS[0].value.split("\n");
                       for(let i = 0; i < preIndentCSS.length; i++) {
                         if(i !== preIndentCSS.length-1) {
                           postIndentCSS += "\t" + preIndentCSS[i] + "\n";
@@ -3695,7 +3709,15 @@ lastEditScript = """
 
                       //check if selector applies to any ancestors or descendants, then its ok
                       //else add class or use > selector until it is precise 
-                      let curSelector = clickedElem.getAttribute("id") || clickedElem.tagName || clickedElem.getAttribute("class") || clickedElem.tagName.toLowerCase();
+                      let curselector;
+                      if(clickedElem.getAttribute("id")) {
+                        curSelector = "#" + clickedElem.getAttribute("id")
+                      } 
+                      else if (clickedElem.getAttribute("class"))
+                        curSelector = "." + clickedElem.getAttribute("class");
+                      else {
+                        curSelector = clickedElem.tagName.toLowerCase();
+                      }
                       //checking ancestors
                       let selectorIsOrg = true;
                       for(let curAncestor = clickedElem.parentNode; curAncestor; curAncestor = curAncestor.parentNode) {
@@ -3706,22 +3728,20 @@ lastEditScript = """
                       //checking descendants
                       if(clickedElem.querySelector(curSelector)) {
                         selectorIsOrg = false;
-                      }
-                      
+                      } 
                       if(!selectorIsOrg) {
                         let curSelector = clickedElem.tagName.toLowerCase();
                         for(let curElem = clickedElem.parentElement; curElem; curElem = curElem.parentElement) {
                           curSelector =  curElem.tagName.toLowerCase() + " > " + curSelector; 
                         }
                       }
-
-                      postIndentCSS = "\n" + curSelector + "{\n" + postIndentCSS + "\n}"; 
-                    
+                      postIndentCSS = "\n" + curSelector + "{\n" + postIndentCSS + "\n}";   
+                      console.log("closestStyleLink is:", closestStyleLink);     
                       if(closestStyleLink) {
                         if(closestStyleLink.tagName === "LINK") {
                           (async () => {
                             editor_model.outputObserver.disconnect();
-                            let oldHref = closestStyleLink.getAttribute("href"), oldValue = await getServer("read", oldhref);
+                            let oldHref = closestStyleLink.getAttribute("href"), oldValue = await getServer("read", oldHref);
                             await postServer("write", oldHref, oldValue + postIndentCSS);
                             let CSSFilePath = oldHref.slice(0);
                             CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
@@ -3754,7 +3774,7 @@ lastEditScript = """
                       setCSSAreas();
                     }
                   }),
-                  el("div", {"class": "delete-CSS"}, [], {
+                  el("div", {"class": "CSS-action-button"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick() {
                       let inline_CSS = document.querySelectorAll(".inline-CSS");
@@ -3765,17 +3785,15 @@ lastEditScript = """
                   })
                 ])
               ]);
-              CSSarea.append(el("span", {}, [], {innerHTML: "Inline styles:"}));
+              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "Inline styles:"}));
               CSSarea.append(inlineCSS);
-              //debugger;
             }
             else{
               CSSarea.append(el("button", {"id": "add-inline-style"}, [], {
                 innerHTML: "Add inline style",
                 onclick() {
-                  clickedElem.setAttribute("style", "");
-                  editor_model.inline = true;
-                  setCSSAreas();
+                  clickedElem.setAttribute("style", " ");
+                  updateInteractionDiv();
                 }}));
             }
             //rest of CSS
@@ -3870,7 +3888,7 @@ lastEditScript = """
                   storedCSS: cssState
                 }),
                 orgTag.tagName === "LINK" ?
-                  el("div", {"class": "delete-CSS", "title": "Delete this entire window of CSS"}, [], {
+                  el("div", {"class": "CSS-action-button", "title": "Delete this entire window of CSS"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick() {
                       (async () => {
@@ -3900,7 +3918,7 @@ lastEditScript = """
                       }) ();
                     }
                   }) :
-                  el("div", {"class": "delete-CSS", "title": "Delete this entire window of CSS"}, [], {
+                  el("div", {"class": "CSS-action-button", "title": "Delete this entire window of CSS"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick() {
                       //console.log(this.parentElements.childNodes);

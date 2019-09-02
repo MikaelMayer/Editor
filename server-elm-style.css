@@ -406,7 +406,7 @@ div#modify-menu #CSS-modification>#CSS-chain {
     margin-bottom: 6px;
 }
 
-div#modify-menu #CSS-modification>.CSS-modify-unit .delete-CSS:hover {
+div#modify-menu #CSS-modification>.CSS-modify-unit .CSS-action-button:hover {
     background-color: var(--context-button-color-hover);
 }
 
