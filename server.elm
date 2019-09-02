@@ -3518,8 +3518,10 @@ lastEditScript = """
                     && parsedCSS[i].value.startsWith("\"") && parsedCSS[i].value.endsWith("\""))) {
                     sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
                   }
-                  fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
-                    before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
+                  if(editor_model.clickedElem.tagName != "STYLE" && editor_model.clickedElem.tagName != "LINK") {
+                    fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
+                      before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
+                  }
                 }
                 else if(parsedCSS[i].kind === '@@keyframes') {
                   keyframes.push({type: '@@keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
@@ -3592,6 +3594,7 @@ lastEditScript = """
             if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("href")) {
               let CSSFilePath = relativeToAbsolute(clickedElem.getAttribute("href"));
               let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
+              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
               CSSarea.append(
                 el("div", {"class": "CSS-modify-unit"}, [
                   el("textarea", {"class": "linked-CSS"}, [], {
@@ -3669,7 +3672,13 @@ lastEditScript = """
               for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
               }
-              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: headerStr}));
+              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {
+                innerHTML: headerStr,
+                onclick: () => {
+                  editor_model.clickedElem = orgTag;
+                  updateInteractionDiv();
+                }
+                }));
               if(cssState.type === '@@media') {
                 CSSarea.append(el("div", {"class": "@media-selector", "contenteditable": true}, [], {
                 oninput: (cssState => function() {
