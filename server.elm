@@ -2976,6 +2976,18 @@ lastEditScript = """
           //just send a notif, no more naving to the clone
           updateInteractionDiv();
           sendNotification("Successfully cloned " + e.data.nm + " to " + e.data.draft_name);
+        } else if (e.data.action == "rename_complete") {
+          let marker = false;
+          if (e.data.nm == e.data.version) {
+            navigateLocal("/Thaditor/versions/" + e.data.draft_name + "/?edit");
+            marker = true;
+          }
+          updateInteractionDiv();
+          if (marker) {
+            setTimeout(sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name), 2000)
+          } else {
+            sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name);
+          }
         }
       }
     }
@@ -3013,9 +3025,6 @@ lastEditScript = """
       summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
       return summary;
     }
-    let is_draft_name_valid = (nm) => {
-      return !(nm.startsWith("[^a-zA-Z0-9]"));
-    };
     function init_interfaces() {
       function findText(parsed, startIndex, endIndex) { //for css + img replacement
         let textSegment = "";
@@ -3487,27 +3496,6 @@ lastEditScript = """
             for(let i in CSSstyles) {
               let e = CSSstyles[i];
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
-<<<<<<< HEAD
-                //console.log(e.nextElementSibling.getAttribute("class"));
-                /*if(e.nextElementSibling && e.nextElementSibling.tagName === "STYLE" && e.nextElementSibling.getAttribute("class") === "editor-interface ghost-CSS") {
-                  //for all intents and purposes, the ghost style node will be the same as the link style CSS
-                  console.log("extracted from ghost style node");
-                  rawCSS.push({text: e.nextElementSibling.textContent, tag: e})
-                }*/
-                let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
-                if(e.__editor__) e.__editor__.ignoredAttrMap = {href: CSSFilePath};
-                console.log(CSSFilePath);
-                let fileName = CSSFilePath.match(/[^\/]\w+\.\w+$/ig);
-                //let newCSSFilePath = CSSFilePath;
-                //doWriteServer("fullCopy", CSSFilePath, CSSFilePath);
-                //e.setAtttribute("href", newCSSfilePath);
-                //CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
-                let CSSvalue = doReadServer("read", CSSFilePath);
-                //console.log(CSSFilePath.match(/server-elm-style/g));
-                if(!(CSSFilePath.match(/server-elm-style/g)) && CSSvalue) {
-                  CSSvalue = CSSvalue.slice(1);
-                  rawCSS.push({text: CSSvalue, tag: e});
-=======
                 let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));                
                 if(!(e.className && e.className === "editor-interface")/*!(CSSFilePath.match(/server-elm-style/g))*/ && (CSSFilePath.indexOf("http") < 0)) {
                   if(!(e.getAttribute("ghost-href"))) {
@@ -3545,7 +3533,6 @@ lastEditScript = """
                     //console.log("css value loaded is:", CSSvalue);
                     rawCSS.push({text: CSSvalue.slice(1), tag: e});
                   }
->>>>>>> CSSFile
                 }
               }
               else if(e.tagName === "STYLE" && !e.getAttribute("isghost")) {
@@ -3571,19 +3558,11 @@ lastEditScript = """
                       var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
                         mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
-<<<<<<< HEAD
-                        before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
-                      /*console.log("Insert media:");
-                      console.log(insertMedia);
-                      fullCSS.push(insertMedia);
-                      console.log("got here first!");*/
-=======
                         before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
                       //console.log("Insert media:");
                       //console.log(insertMedia);
                       fullCSS.push(insertMedia);
                       //console.log("got here first!");
->>>>>>> CSSFile
                     }
                   }
                 }
@@ -3592,16 +3571,10 @@ lastEditScript = """
                     && parsedCSS[i].value.startsWith("\"") && parsedCSS[i].value.endsWith("\""))) {
                     sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
                   }
-<<<<<<< HEAD
                   if(editor_model.clickedElem.tagName != "STYLE" && editor_model.clickedElem.tagName != "LINK") {
                     fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
                       before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                   }
-=======
-                  //console.log("pushed charset");
-                  fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
-                    before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
->>>>>>> CSSFile
                 }
                 else if(parsedCSS[i].kind === '@@keyframes') {
                   keyframes.push({type: '@@keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
@@ -3614,10 +3587,6 @@ lastEditScript = """
                 if(i === parsedCSS.length - 1 && !fullCSS.length) {
                   console.log("Nothing relevant in style tag: ", rawCSS[z].tag);
                 }
-<<<<<<< HEAD
-=======
-                //console.log("got here!");
->>>>>>> CSSFile
               }
               //console.log("The parsed text looks like:", curCSS);
             }
@@ -3672,14 +3641,9 @@ lastEditScript = """
             }
             //if there is linked CSS text
             if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("href")) {
-<<<<<<< HEAD
               let CSSFilePath = relativeToAbsolute(clickedElem.getAttribute("href"));
               let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
-=======
-              let CSSFilePath = relativeToAbsolute(clickedELem.getAttribute("href"));
-              let CSSvalue = doReadServer("read", CSSFilePath);
->>>>>>> CSSFile
               CSSarea.append(
                 el("div", {"class": "CSS-modify-unit"}, [
                   el("textarea", {"class": "linked-CSS"}, [], {
@@ -3688,19 +3652,6 @@ lastEditScript = """
                       setCSSAreas();
                     },
                     oninput() {
-<<<<<<< HEAD
-                      let nextSibGhostCSS = clickedElem.nextElementSibling;
-                      if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
-                        nextSibGhostCSS.textContent = this.value;
-                      }
-                      else {
-                        clickedElem.parentElement.insertBefore(el("style", {"isghost": true, "class": "editor-interface ghost-CSS"}, [], {
-                            textContent: this.value
-                          }), 
-                          nextSibGhostCSS);
-                      }
-                      addFileToSave(CSSFilePath, CSSvalue, this.value);
-=======
                       (async () => {
                         editor_model.outputObserver.disconnect();
                         let oldHref = CSSFilePath, oldValue = await getServer("read", CSSFilePath);
@@ -3722,7 +3673,6 @@ lastEditScript = """
                             }
                           );
                       })();
->>>>>>> CSSFile
                     }
                   })
                 ])
@@ -3730,12 +3680,7 @@ lastEditScript = """
             }
             //inline styles 
             editor_model.inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
-<<<<<<< HEAD
-            if(typeof editor_model.inline === "string") {
-              //debugger;
-=======
             if(editor_model.inline) {
->>>>>>> CSSFile
               console.log("We have inline CSS!");
               let inlineCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "inline-CSS"}, [], {
@@ -3910,38 +3855,6 @@ lastEditScript = """
                       setCSSAreas();
                     }
                   },
-<<<<<<< HEAD
-                  oninput() {
-                    if(this.storedCSS.orgTag.tagName != "LINK") {
-                      let throwError = false;
-                      let curCSSState = CSSparser.parseCSS(this.value);
-                      //console.log(curCSSState);
-                      //check to make sure CSS is still relevant to clicked element.
-                      if(curCSSState.kind === 'cssBlock' && editor.matches(clickedElem, curCSSState.selector)) {
-                        sendNotification("CSS selector does not match");
-                        this.setAttribute("wrong-selector", true);
-                        this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
-                      }
-                      else {
-                        this.setAttribute("wrong-selector", false);
-                        this.removeAttribute("title");
-                      }
-                      //when a change is made, write first to stored 
-                      //"semi-parsed" CSS (CSS that contains location information)
-                      //then write to original style tag
-                      this.storedCSS.content = this.value;
-                      fullUnparseCSS(this.storedCSS);
-                      //setCSSAreas();
-                    }
-                    else {
-                      this.storedCSS.content = this.value;
-                      console.log(fullUnparseCSS(this.storedCSS));
-                      let nextSibGhostCSS = this.storedCSS.orgTag.nextElementSibling;
-                      console.log(nextSibGhostCSS);
-                      if(nextSibGhostCSS) console.log(nextSibGhostCSS.getAttribute("class"));
-                      if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
-                        nextSibGhostCSS.textContent = fullUnparseCSS(this.storedCSS);
-=======
                   oninput: function() {
                     (async () => {
                       if(this.storedCSS.orgTag.tagName != "LINK") {
@@ -3961,7 +3874,6 @@ lastEditScript = """
                         this.storedCSS.content = this.value;
                         fullUnparseCSS(this.storedCSS);
                         //setCSSAreas();
->>>>>>> CSSFile
                       }
                       else {
                         let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
@@ -3994,13 +3906,7 @@ lastEditScript = """
                           );
                         //console.log(doReadServer("read", CSSFilePath));
                       }
-<<<<<<< HEAD
-                      let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
-                      addFileToSave(CSSFilePath, this.orgValue, fullUnparseCSS(this.storedCSS));
-                    }
-=======
                     })();
->>>>>>> CSSFile
                   },
                   storedCSS: cssState
                 }),
@@ -4697,7 +4603,7 @@ lastEditScript = """
               return el("button", {"class":"draft-publish"}, ["Rename"],
               {
                 onclick: (event) => { 
-                  renameDraft(nm); //confirms + sends notif inside
+                  renameDraft(nm, verzExist); //confirms + sends notif inside
                 }
               })
             }
@@ -4941,6 +4847,7 @@ lastEditScript = """
     do_interfaces = true;
     // First time: We add the interface containers.
     if(!ifAlreadyRunning && do_interfaces) {
+      
       init_interfaces();
       //editor_model.visible = true;
       //updateInteractionDiv();
@@ -5021,44 +4928,8 @@ lastEditScript = """
       doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
       return 1;
     }
-    function deleteCurrentDraft() {
-      if (editor_model.version == "Live") throw "Shouldn't be able to call deleteCurrentDraft when in Live";
-      const ans = window.confirm("Are you sure you want to permanently delete " + editor_model.version + "?");
-      if (!ans) return;
-      //the path of the folder we want to delete is and always will be Thaditor/versions/<editor_model.version>/
-      const pth_to_delete = "Thaditor/versions/" + editor_model.version + "/";
-      doWriteServer("deletermrf", pth_to_delete);
-      navigateLocal("/?edit");
-      sendNotification("Permanently deleted draft named: " + editor_model.version);
-    }
-
-
-    function publishToLive() {
-      //Find which version we're at by examining editor_model.version and/or the path
-      //copy all of the files in the draft/ folder out to the public facing site.
-      //simple as thaditor_files.includes
-
-      const conf = window.confirm("Are you sure you want to publish " + editor_model.version + " to live?");
-      if (!conf) {
-        return;
-      }
-      if (isLive()) {
-        throw "Can't publish live to live";
-      }
-      let t_src = editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1);
-      copy_website(t_src, "");
-      const oldver = editor_model.version;
-      editor_model.version = "Live";
-      navigateLocal("/?edit", true);
-      updateInteractionDiv();
-      sendNotification("Successfully published " + oldver + " to live.");
-      setTimeout (() => sendNotification("Switched to live."), 1500);
-    }
     
-    function deleteDraft(nm) {
-      if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
-      const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
-      if (!ans) return;
+    function deleteDraftDef(nm) { //definitely delete the draft, without a prompt
       //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
       const pth_to_delete = "Thaditor/versions/" + nm + "/";
       //here we want to hand doWriteServer to the worker in editor.js
@@ -5076,22 +4947,27 @@ lastEditScript = """
       updateInteractionDiv();
     }
 
-    function renameDraft(nm) {
-      //TODO
-      sendNotification("TODO rename draft");
+    function deleteDraft(nm) {
+      if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
+      const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
+      if (!ans) return;
+      deleteDraftDef(nm);
     }
 
-    function cloneSite(nm, verzExist) {
-      //verzExist tells us if we need to mkdir versions
-      //nm could be live or any draft ==> make f_pth
+
+    function getNewDraftName(nm, verzExist) {
       const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
       if (!draft_name) {
-        return;
+        return 0;
       }
+      
+      let is_draft_name_valid = (nm) => {
+        return !(nm.startsWith("[^a-zA-Z0-9]"));
+      };
 
       if (!is_draft_name_valid(draft_name)) {
         window.alert("Invalid draft name");
-        return;
+        return 0;
       }
       
       let fail = false;
@@ -5108,7 +4984,16 @@ lastEditScript = """
           }
         });
       }
-      if (fail) return;
+      if (fail) return 0;
+      return draft_name;
+    }
+
+
+    function cloneSite(nm, verzExist) {
+      //verzExist tells us if we need to mkdir versions
+      //nm could be live or any draft ==> make f_pth
+      const draft_name = getNewDraftName(nm, verzExist);
+      if (!draft_name) return 0;
       //all of that above ^^ needs to happen in the UI thread.
       const t_pth = "Thaditor/versions/" + draft_name + "/"
       const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
@@ -5117,7 +5002,23 @@ lastEditScript = """
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
       editor_model.serverWorker.postMessage(data);
-      sendNotification("Cloning draft " + nm + " to " + draft_name);
+      sendNotification("Creating draft " + draft_name + " from " + nm);
+    }
+    
+    function renameDraft(nm, verzExist) {
+      //verzExist tells us if we need to mkdir versions
+      //nm could be live or any draft ==> make f_pth
+      const draft_name = getNewDraftName(nm, verzExist);
+      if (!draft_name) return 0;
+      //all of that above ^^ needs to happen in the UI thread.
+      const t_pth = "Thaditor/versions/" + draft_name + "/"
+      const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
+      const data = {action:"drafts", subaction:"rename",
+                    draft_name:draft_name,
+                    t_pth:t_pth, f_pth:f_pth,
+                    nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
+      editor_model.serverWorker.postMessage(data);
+      sendNotification("Renaming draft " + nm + " to " + draft_name);
     }
 
     function publishDraft(nm) {
