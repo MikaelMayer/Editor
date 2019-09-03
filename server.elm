@@ -1814,6 +1814,7 @@ lastEditScript = """
     }
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
+        
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           editor_model.isSaving = false;
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
@@ -2033,71 +2034,7 @@ lastEditScript = """
                   aq:editor_model.askQuestions,
                   loc:location.pathname + location.search,
                   server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
-      editor_model.serverWorker.onmessage = function(e) {
-        //handle confirmDone
-        if (e.data.action == "confirmDone") {
-          let xmlhttp = new XHRequest();
-          xmlhttp.response.setHeader("newLocalURL", e.data.newLocalURL);
-          xmlhttp.response.setHeader("newQueryStr", e.data.newQueryStr);
-          xmlhttp.response.setHeader("ambiguityKey", e.data.ambiguityKey);
-          xmlhttp.response.setHeader("ambiguityNumber", e.data.ambiguityNumber);
-          xmlhttp.response.setHeader("ambiguitySelected", e.data.ambiguitySelected);
-          xmlhttp.response.setHeader("ambiguityEnd", e.data.ambiguityEnd);
-          xmlhttp.response.setHeader("ambiguitySummaries", e.data.ambiguitySummaries);
-          xmlhttp.response.setHeader("opSummaryEncoded", e.data.opSummaryEncoded);
-          xmlhttp.response.text = e.data.text;
-          /*
-            We want to undo everything in the undo stack that has been done since the save began.
-            In the process of vanilla undoing this (using mark's function), the items will be
-            pushed onto the redoStack in the normal way, s.t. we can redo them in a moment.
-            Once we're at the state we were at when we began to save, we re-write the page
-            with the confirmed content that the worker gave us.
-            Once the confirmed content has been rewritten, we have undo/redo stacks that point,
-            as the undo/redo stacks are an array of array of MutationRecords, all of whose target
-            has just been erased and replaced with a new object. 
-            So we need to convert the old UR stacks to be pointing to the right objects.
-            We solve this in the undo()/redo() functions, by checking to see if the object
-            pointed to in the mutationrecord is still connected to the active DOM. if not,
-            we use the inactive node to record the path up the tree, and search for the
-            corresponding node in the newly active tree, replacing the MR.target with the active one.
-            Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
-            the state pre-update & post-save.
-          */
-          const ads = editor_model.actionsDuringSave;
-          const adsLen = editor_model.actionsDuringSave.length;
-          ads.forEach((action) => {
-            if (action == "undo") {
-              undo();
-            } else if (action == "redo") {
-              redo();
-            } else {
-              throw new Error("Unidentified action in restoring post-save state post-save");
-            }
-          });
-          
-          editor_model.outputObserver.disconnect();
-          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {});
-          xmlhttp.readyState = XMLHttpRequest.DONE
-          xmlhttp.onreadystatechange();
-          const newAds = editor_model.actionsDuringSave;
-          const newAdsLen = newAds.length;
-          for (let i = 0; i < adsLen; i++) {
-            if (newAds[i] == "undo") {
-              undo();
-            } else if (newAds[i] == "redo") {
-              redo();
-            } else {
-              throw new Error("unidentified action in actionsduringsave");
-            }
-          }
-          updateInteractionDiv();
-          sendNotification("Save completed!");
-        } else if(e.data.action == "message") {
-          sendNotification(e.data.message)
-        } else if(e.data.action == "reconnect") {
-          thaditor_reconnect();
-        }
-      }
+      
       editor_model.serverWorker.postMessage(data);
     } //sendModificationsToServer
 
@@ -2764,6 +2701,7 @@ lastEditScript = """
         "ThaditorInstaller.htaccess", "composer.json", "composer.lock", "credentials.json", "cacert.pem", "versions",
         "vendor", "ssg", "cache"
       ];
+      
     }
     the_path = @(path |> jsCode.stringOf);
     if (isLive == undefined) {
@@ -2926,6 +2864,7 @@ lastEditScript = """
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //worker for interface with the server
       serverWorker: ifAlreadyRunning ? editor_model.serverWorker : new Worker("/Thaditor/editor.js"),
+      send_notif:ifAlreadyRunning ? editor_model.send_notif : "",
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
       show_log: ifAlreadyRunning ? editor_model.show_log : false, //here
@@ -2948,6 +2887,84 @@ lastEditScript = """
       interfaces: ifAlreadyRunning ? editor_model.interfaces : []
     }
     
+    if (!ifAlreadyRunning) {
+      editor_model.serverWorker.onmessage = function(e) {
+        //handle confirmDone
+        if (e.data.action == "confirmDone") {
+          let xmlhttp = new XHRequest();
+          xmlhttp.response.setHeader("newLocalURL", e.data.newLocalURL);
+          xmlhttp.response.setHeader("newQueryStr", e.data.newQueryStr);
+          xmlhttp.response.setHeader("ambiguityKey", e.data.ambiguityKey);
+          xmlhttp.response.setHeader("ambiguityNumber", e.data.ambiguityNumber);
+          xmlhttp.response.setHeader("ambiguitySelected", e.data.ambiguitySelected);
+          xmlhttp.response.setHeader("ambiguityEnd", e.data.ambiguityEnd);
+          xmlhttp.response.setHeader("ambiguitySummaries", e.data.ambiguitySummaries);
+          xmlhttp.response.setHeader("opSummaryEncoded", e.data.opSummaryEncoded);
+          xmlhttp.response.text = e.data.text;
+          /*
+            We want to undo everything in the undo stack that has been done since the save began.
+            In the process of vanilla undoing this (using mark's function), the items will be
+            pushed onto the redoStack in the normal way, s.t. we can redo them in a moment.
+            Once we're at the state we were at when we began to save, we re-write the page
+            with the confirmed content that the worker gave us.
+            Once the confirmed content has been rewritten, we have undo/redo stacks that point,
+            as the undo/redo stacks are an array of array of MutationRecords, all of whose target
+            has just been erased and replaced with a new object. 
+            So we need to convert the old UR stacks to be pointing to the right objects.
+            We solve this in the undo()/redo() functions, by checking to see if the object
+            pointed to in the mutationrecord is still connected to the active DOM. if not,
+            we use the inactive node to record the path up the tree, and search for the
+            corresponding node in the newly active tree, replacing the MR.target with the active one.
+            Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
+            the state pre-update & post-save.
+          */
+          const ads = editor_model.actionsDuringSave;
+          const adsLen = editor_model.actionsDuringSave.length;
+          ads.forEach((action) => {
+            if (action == "undo") {
+              undo();
+            } else if (action == "redo") {
+              redo();
+            } else {
+              throw new Error("Unidentified action in restoring post-save state post-save");
+            }
+          });
+          
+          editor_model.outputObserver.disconnect();
+          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {});
+          xmlhttp.readyState = XMLHttpRequest.DONE
+          xmlhttp.onreadystatechange();
+          const newAds = editor_model.actionsDuringSave;
+          const newAdsLen = newAds.length;
+          for (let i = 0; i < adsLen; i++) {
+            if (newAds[i] == "undo") {
+              undo();
+            } else if (newAds[i] == "redo") {
+              redo();
+            } else {
+              throw new Error("unidentified action in actionsduringsave");
+            }
+          }
+          updateInteractionDiv();
+          sendNotification("Save completed!");
+        } else if(e.data.action == "message") {
+          sendNotification(e.data.message)
+        } else if(e.data.action == "reconnect") {
+          thaditor_reconnect();
+        } else if (e.data.action == "delete_complete") {
+          //todo
+          updateInteractionDiv();
+          sendNotification("Permanently deleted draft named: " + e.data.nm);
+        } else if (e.data.action == "publish_complete") {
+          //just send a notif, no more naving to live
+          sendNotification("Successfully published " + e.data.nm + " to live.");
+        } else if (e.data.action == "clone_complete") {
+          //just send a notif, no more naving to the clone
+          updateInteractionDiv();
+          sendNotification("Successfully cloned " + e.data.nm + " to " + e.data.draft_name);
+        }
+      }
+    }
     
     // Helpers: Text preview and summary
     function textPreview(element, maxLength) {
@@ -2982,7 +2999,9 @@ lastEditScript = """
       summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
       return summary;
     }
-
+    let is_draft_name_valid = (nm) => {
+      return !(nm.startsWith("[^a-zA-Z0-9]"));
+    };
     function init_interfaces() {
       function findText(parsed, startIndex, endIndex) { //for css + img replacement
         //console.log("Start index is:", startIndex);
@@ -4379,7 +4398,7 @@ lastEditScript = """
                 onclick: (event) => {
                   editor_model.version = nm;
                   navigateLocal("/Thaditor/versions/" + nm + "/?edit");
-                  setTimeout(() => sendNotification("Switched to " + nm), 1500);
+                  setTimeout(() => sendNotification("Switched to " + nm), 2000);
                 }
               });
             };
@@ -4390,7 +4409,7 @@ lastEditScript = """
                 onclick: (event) => {
                   editor_model.version = "Live";
                   navigateLocal("/?edit");
-                  setTimeout(() => sendNotification("Switched to Live"), 1500);
+                  setTimeout(() => sendNotification("Switched to Live"), 2000);
                 }
               })
             }
@@ -4399,38 +4418,7 @@ lastEditScript = """
               return el("button", {"class":"draft-clone"}, ["Clone"],
               {
                 onclick: (event) => {
-                  //verzExist tells us if we need to mkdir versions
-                  //nm could be live or any draft ==> make f_pth
-                  const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
-                  if (!draft_name) {
-                    return;
-                  }
-                  let fail = false;
-                  if (!verzExist) {
-                    doWriteServer("mkdir", "Thaditor/versions");
-                  } else {
-                    let versionsList = JSON.parse(doReadServer("fullListDir", "Thaditor/versions/"));
-                    versionsList.forEach(val => {
-                      let [nm, isdir] = val;
-                      if (isdir) {
-                        if (nm == draft_name) {
-                          fail = window.confirm("Overwrite existing draft?");
-                        }
-                      }
-                    });
-                  }
-                  if (fail) return;
-                  doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
-                  let org_pth = editor_model.path;
-                  const t_pth = org_pth.slice(0, org_pth.lastIndexOf("/"));
-                  const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
-                  const success = copy_website(f_pth, "Thaditor/versions/" + draft_name + "/");
-                  //change our URL to the versions/draft/
-                  editor_model.version = draft_name;
-                  navigateLocal("/Thaditor/versions/" + draft_name + "/?edit");
-                  setTimeout( () => {
-                    sendNotification("Successfully created + switched to draft: " + draft_name);
-                  }, 1500);
+                  cloneSite(nm, verzExist); //confirms + sends notif inside method
                 }
               })  
             }
@@ -4444,28 +4432,37 @@ lastEditScript = """
               })  
             }
 
+            const get_rename_btn_for = (nm) => {
+              return el("button", {"class":"draft-publish"}, ["Rename"],
+              {
+                onclick: (event) => { 
+                  renameDraft(nm); //confirms + sends notif inside
+                }
+              })
+            }
+
             const get_publish_btn_for = (nm) => {
               return el("button", {"class":"draft-publish"}, ["Publish"],
               {
                 onclick: (event) => { 
-                  publishDraft(nm); //confirms + sends notif inside the method
+                  publishDraft(nm); //confirms + sends notif inside
                 }
               })
-            }
+            };
 
             const get_current_label = () => {
               return el("div", {"class":"draft-row", "id": "draft-title"},
                       [
                         el("label", {}, [editor_model.version], {}),
-                        (isLive() ? el("label", {}, [""]) : get_publish_btn_for(editor_model.version)),
-                        get_clone_btn_for("Live"),
+                        (isLive() ? el("label", {}, [""]) : get_rename_btn_for(editor_model.version)),
+                        get_clone_btn_for(editor_model.version),
                         (isLive() ? el("label", {}, ["Can't delete live"]):
                                                           el("button", {}, ["Delete"],
                                                           {
                                                             onclick: (event) => {
                                                               deleteDraft(editor_model.version);
                                                             }
-                                                          }))
+                                                          })),
 
                       ],
                       {
@@ -4475,11 +4472,43 @@ lastEditScript = """
                       })
             };
 
+            const get_current_label_live = () => {
+              return el("div", {"class":"draft-row", "id": "draft-title"},
+                      [
+                        el("label", {}, ["Live"], {}),
+                        get_clone_btn_for("Live"),
+                        
+
+                      ],
+                      {
+                        onclick: (event) => {
+                          //pass
+                        },
+                      })
+            };
+
+            const get_current_label_for = (nm) => {
+              return el("div", {"class":"draft-row", "id": "draft-title"},
+                      [
+                        el("label", {}, [nm], {}),
+                        get_rename_btn_for(editor_model.version),
+                        get_clone_btn_for(nm),
+                        get_delete_btn_for(nm),
+                        get_publish_btn_for(nm),
+                      ],
+                      {
+                        onclick: (event) => {
+                          //pass
+                        },
+                      })
+            };
+            
+
             const get_row_for_draft = (nm) => {
               return el("div", {"class": "draft-row"},
               [
                 get_switch_btn_for(nm),
-                get_publish_btn_for(nm),
+                get_rename_btn_for(nm),
                 get_clone_btn_for(nm),
                 get_delete_btn_for(nm),
               ]);
@@ -4493,12 +4522,13 @@ lastEditScript = """
               ])
             }
 
-
-            draftListDiv.append(get_current_label());
-            if (!isLive()) {
+            if (isLive()) {
+              draftListDiv.append(get_current_label_live());
+            } else {
+              draftListDiv.append(get_current_label_for(editor_model.version));
               draftListDiv.append(get_row_for_live());
             }
-            if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
+            if (verzExist) {
               const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
               vers.forEach(ver => {
                 if (!(ver == editor_model.version)){
@@ -4506,129 +4536,6 @@ lastEditScript = """
                 }
               });
             }
-
-            
-            const createNewDraft = () => {
-              return el("div", {"class": "childrenSelector"},
-                        [
-                          el("div", {"class": "childrenSelectorName"}, "Create new draft off of " + editor_model.version, {}),
-                        ], 
-                        {
-                          onclick: (event) => {
-                            /*
-                              Alright, for now, I'm going to launch the creation of versioning here.
-                              First, check to see if the versions folder exists. If it does, exit. 
-                              We don't want to overwrite anything.
-                            */
-                            const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
-                            if (!draft_name) {
-                              return;
-                            }
-                            const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
-                            let fail = false;
-                            if (!verzExist) {
-                              console.log ("making versions folder");
-                              doWriteServer("mkdir", "Thaditor/versions");
-                              console.log ("made versions folder?");
-                            } else 
-                            {
-                              //we need to make sure we're not overwriting anothe draft
-                              let versionsList = JSON.parse(doReadServer("fullListDir", "Thaditor/versions/"));
-                              versionsList.forEach(val => {
-                                let [nm, isdir] = val;
-                                if (isdir) {
-                                  if (nm == draft_name) {
-                                    window.alert("Can't overwrite an existing draft!");
-                                    fail = true;
-                                  }
-                                }
-                              });
-                            }
-                            if (fail) return;
-
-                            doWriteServer("mkdir", "Thaditor/versions/" + draft_name);
-                            const t_pth = editor_model.path.slice(0, editor_model.path.lastIndexOf("/"));
-                            const f_pth = (isLive() ? "" : editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1));
-                            const success = copy_website(f_pth, "Thaditor/versions/" + draft_name + "/");
-                            //change our URL to the versions/draft/
-                            editor_model.version = draft_name;
-                            navigateLocal("/Thaditor/versions/" + draft_name + "/?edit");
-                            setTimeout( () => {
-                              sendNotification("Successfully created + switched to draft: " + draft_name);
-                            }, 1500);
-                          }
-                        }
-                      );
-            };
-            const btnGetter = (name) => {
-              return el("div", {"class": "childrenSelector"},
-                        [
-                          el("div", {"class": "childrenSelectorName"}, name, {}),
-                        ], 
-                        {
-                          onclick: (event) => {
-                            navigateLocal("/Thaditor/versions/" + name + "/?edit");
-                            updateInteractionDiv();
-                            setTimeout( () => {
-                              sendNotification("Successfully switched to draft: " + name);
-                            }, 1500);
-                            
-                          }
-                        }
-                      );
-            };
-
-            const liveBtn = () => {
-              return el("div", {"class": "childrenSelector"},
-                        [
-                          el("div", {"class": "childrenSelectorName"}, "Live", {}),
-                        ], 
-                        {
-                          onclick: (event) => {
-                            navigateLocal("/?edit");
-                            updateInteractionDiv();
-                            setTimeout( () => {
-                              sendNotification("Switched to live");
-                            }, 1500);
-                          }
-                        });
-            };
-            
-            const publishToLiveBtn = () => {
-              return el("div", {"class": "childrenSelector"},
-                        [
-                          el("div", {"class": "childrenSelectorName"}, "Publish " + editor_model.version + " to live!", {}),
-                        ], 
-                        {
-                          onclick: (event) => {
-                            publishToLive();
-                          }
-                        });
-            };
-
-            const deleteCurrentDraftBtn = () => {
-              return el("div", {"class": "childrenSelector"},
-                        [
-                          el("div", {"class": "childrenSelectorName"}, "Irreversibly delete " + editor_model.version + "!", {}),
-                        ], 
-                        {
-                          onclick: (event) => {
-                            deleteCurrentDraft();
-                          }
-                        });
-            };
-
-            /*
-            if (JSON.parse(doReadServer("isdir", "Thaditor/versions/"))) {
-              const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
-              vers.forEach(ver => {
-                draftListDiv.append(btnGetter(ver));
-              });
-            }
-            if (!isLive()) draftListDiv.append(liveBtn());
-            if (!isLive()) draftListDiv.append(publishToLiveBtn());
-            draftListDiv.append(createNewDraft());
-            if (!isLive()) draftListDiv.append(deleteCurrentDraftBtn());*/
             return draftListDiv;
           } //end of draft container render
         });
@@ -4864,17 +4771,6 @@ lastEditScript = """
       sendNotification("Permanently deleted draft named: " + editor_model.version);
     }
 
-    function deleteDraft(nm) {
-      if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
-      const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
-      if (!ans) return;
-      //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
-      const pth_to_delete = "Thaditor/versions/" + nm + "/";
-      doWriteServer("deletermrf", pth_to_delete);
-      if (editor_model.version == nm) navigateLocal("/?edit");
-      sendNotification("Permanently deleted draft named: " + nm);
-      updateInteractionDiv();
-    }
 
     function publishToLive() {
       //Find which version we're at by examining editor_model.version and/or the path
@@ -4898,6 +4794,71 @@ lastEditScript = """
       setTimeout (() => sendNotification("Switched to live."), 1500)
     }
     
+    function deleteDraft(nm) {
+      if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
+      const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
+      if (!ans) return;
+      //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
+      const pth_to_delete = "Thaditor/versions/" + nm + "/";
+      //here we want to hand doWriteServer to the worker in editor.js
+
+      const data = {action:"drafts",
+                    subaction:"deletermrf",
+                    pth_to_delete:pth_to_delete,
+                    nm:nm, thaditor_files:thaditor_files, version:editor_model.version};
+      if (editor_model.version == nm) {
+        doWriteServer("deletermrf", pth_to_delete);
+        navigateLocal("/?edit");
+      } else {
+        editor_model.serverWorker.postMessage(data);
+      }
+      updateInteractionDiv();
+    }
+
+    function renameDraft(nm) {
+      //TODO
+      sendNotification("TODO rename draft");
+    }
+
+    function cloneSite(nm, verzExist) {
+      //verzExist tells us if we need to mkdir versions
+      //nm could be live or any draft ==> make f_pth
+      const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
+      if (!draft_name) {
+        return;
+      }
+
+      if (!is_draft_name_valid(draft_name)) {
+        window.alert("Invalid draft name");
+        return;
+      }
+      
+      let fail = false;
+      if (!verzExist) {
+        doWriteServer("mkdir", "Thaditor/versions");
+      } else {
+        let versionsList = JSON.parse(doReadServer("fullListDir", "Thaditor/versions/"));
+        versionsList.forEach(val => {
+          let [nm, isdir] = val;
+          if (isdir) {
+            if (nm == draft_name) {
+              fail = window.confirm("Overwrite existing draft?");
+            }
+          }
+        });
+      }
+      if (fail) return;
+      //all of that above ^^ needs to happen in the UI thread.
+      const t_pth = "Thaditor/versions/" + draft_name + "/"
+      const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
+      const data = {action:"drafts", subaction:"clone",
+                    draft_name:draft_name,
+                    t_pth:t_pth, f_pth:f_pth,
+                    nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
+      editor_model.serverWorker.postMessage(data);
+      sendNotification("Cloning draft " + nm + " to " + draft_name);
+    }
+
     function publishDraft(nm) {
       //We're copying out Thaditor/versions/$nm/ to "".
       if (nm == "Live") throw "Can't publish live to live";
@@ -4906,12 +4867,12 @@ lastEditScript = """
         return;
       }
       let t_src = "Thaditor/versions/" + nm + "/";
-      copy_website(t_src, "");
-      editor_model.version = "Live";
-      navigateLocal("/?edit", true);
-      updateInteractionDiv();
-      sendNotification("Successfully published " + nm + " to live.");
-      setTimeout (() => sendNotification("Switched to live."), 1500)
+      const data = {action:"drafts",
+                    subaction:"publish",
+                    t_src:t_src,
+                    nm:nm,thaditor_files:thaditor_files,
+                    version:editor_model.version};
+      editor_model.serverWorker.postMessage(data);
     }
     
 
@@ -5054,6 +5015,9 @@ lastEditScript = """
         modifyMenuDiv.append(modifyMenuHolder);
         modifyMenuHolder.scrollTop = old_scroll;
       }
+
+      
+
       let createButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
         button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
@@ -5351,6 +5315,7 @@ lastEditScript = """
           contextMenu.classList.remove("visible");
         }
       }
+      
       return true;
 
     } //end of updateInteractionDiv
