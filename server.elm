@@ -4791,7 +4791,7 @@ lastEditScript = """
       navigateLocal("/?edit", true);
       updateInteractionDiv();
       sendNotification("Successfully published " + oldver + " to live.");
-      setTimeout (() => sendNotification("Switched to live."), 1500)
+      setTimeout (() => sendNotification("Switched to live."), 1500);
     }
     
     function deleteDraft(nm) {
