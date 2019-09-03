@@ -2365,7 +2365,6 @@ lastEditScript = """
             }
             else {
               target.removeChild(uAddNodes.item(i));
-              
             }
           }
         }
