@@ -304,7 +304,7 @@ div.disambiguationMenu {
     height: 600px;
 }
 
-@media screen and (orientation: portrait) {
+@media screen and (max-width: 800px) {
     body {
         font-size: 48px;
     }
@@ -346,6 +346,7 @@ div#modify-menu textarea.inline-CSS {
     height: 100px;
     margin-bottom: 6px;
     overflow-y: auto;
+    color: black;
 }
 
 div#modify-menu #CSS-modification {
@@ -1181,7 +1182,7 @@ div.editor-container-content > div.draftList > div#draft-title > label:first-chi
     padding-right: 10px;
 }
 
-@media (pointer: coarse) {
+@media screen and (max-width: 800px) {
     div#modify-menu {
         -webkit-box-shadow: none;
         -moz-box-shadow: none;

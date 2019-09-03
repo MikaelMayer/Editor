@@ -1231,7 +1231,7 @@ main =
               if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
               serverOwned "edit prelude when not in edit mode" []) ++
              bodyChildren ++
-             Update.sizeFreeze [["div", [["id", "editor-files-to-overwrite"]], insertThereInstead insertedElementsToWriteFile True fileOperations]] ++
+             Update.sizeFreeze [["div", [["id", "editor-files-to-overwrite"], ["class", "editor-interface"]], insertThereInstead insertedElementsToWriteFile True fileOperations]] ++
              (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder editor-interface"> </div>, <script  id="thaditor-lastscript" class="editor-interface">@lastEditScript</script>] ++ insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
              )]
       ["head", headattrs, headChildren] ->
@@ -1614,7 +1614,7 @@ editor.remove = remove;
 -- Script added to the end of the page
 lastEditScript = """ 
     console.log("lastEditScript running");
-    var onMobile = () => window.matchMedia("(orientation: portrait)").matches;
+    var onMobile = () => window.matchMedia("(max-width: 800px)").matches;
     var buttonHeight = () => onMobile() ? 48 : 30;
     var buttonWidth  = () => onMobile() ? 48 : 40;
 
@@ -4424,7 +4424,7 @@ lastEditScript = """
         title: "Create",
         minimized: true,
         priority(editor_model) {
-          return editor_model.inserting;
+          return editor_model.insertElement;
         },
         enabled(editor_model) {
           return editor_model.clickedElem;
@@ -5154,6 +5154,7 @@ lastEditScript = """
       
       if(!modifyMenuDiv || !contextMenu) return;
       modifyMenuDiv.classList.toggle("editor-interface", true);
+      contextMenu.classList.toggle("editor-interface", true);
 
       // Display the interface or not
       modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
