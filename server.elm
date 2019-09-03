@@ -2962,6 +2962,18 @@ lastEditScript = """
           //just send a notif, no more naving to the clone
           updateInteractionDiv();
           sendNotification("Successfully cloned " + e.data.nm + " to " + e.data.draft_name);
+        } else if (e.data.action == "rename_complete") {
+          let marker = false;
+          if (e.data.nm == e.data.version) {
+            navigateLocal("/Thaditor/versions/" + e.data.draft_name + "/?edit");
+            marker = true;
+          }
+          updateInteractionDiv();
+          if (marker) {
+            setTimeout(sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name), 2000)
+          } else {
+            sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name);
+          }
         }
       }
     }
@@ -2999,9 +3011,6 @@ lastEditScript = """
       summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
       return summary;
     }
-    let is_draft_name_valid = (nm) => {
-      return !(nm.startsWith("[^a-zA-Z0-9]"));
-    };
     function init_interfaces() {
       function findText(parsed, startIndex, endIndex) { //for css + img replacement
         //console.log("Start index is:", startIndex);
@@ -4436,7 +4445,7 @@ lastEditScript = """
               return el("button", {"class":"draft-publish"}, ["Rename"],
               {
                 onclick: (event) => { 
-                  renameDraft(nm); //confirms + sends notif inside
+                  renameDraft(nm, verzExist); //confirms + sends notif inside
                 }
               })
             }
@@ -4680,6 +4689,7 @@ lastEditScript = """
     do_interfaces = true;
     // First time: We add the interface containers.
     if(!ifAlreadyRunning && do_interfaces) {
+      
       init_interfaces();
       //editor_model.visible = true;
       //updateInteractionDiv();
@@ -4760,44 +4770,8 @@ lastEditScript = """
       doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
       return 1;
     }
-    function deleteCurrentDraft() {
-      if (editor_model.version == "Live") throw "Shouldn't be able to call deleteCurrentDraft when in Live";
-      const ans = window.confirm("Are you sure you want to permanently delete " + editor_model.version + "?");
-      if (!ans) return;
-      //the path of the folder we want to delete is and always will be Thaditor/versions/<editor_model.version>/
-      const pth_to_delete = "Thaditor/versions/" + editor_model.version + "/";
-      doWriteServer("deletermrf", pth_to_delete);
-      navigateLocal("/?edit");
-      sendNotification("Permanently deleted draft named: " + editor_model.version);
-    }
-
-
-    function publishToLive() {
-      //Find which version we're at by examining editor_model.version and/or the path
-      //copy all of the files in the draft/ folder out to the public facing site.
-      //simple as thaditor_files.includes
-
-      const conf = window.confirm("Are you sure you want to publish " + editor_model.version + " to live?");
-      if (!conf) {
-        return;
-      }
-      if (isLive()) {
-        throw "Can't publish live to live";
-      }
-      let t_src = editor_model.path.slice(0, editor_model.path.lastIndexOf("/")+1);
-      copy_website(t_src, "");
-      const oldver = editor_model.version;
-      editor_model.version = "Live";
-      navigateLocal("/?edit", true);
-      updateInteractionDiv();
-      sendNotification("Successfully published " + oldver + " to live.");
-      setTimeout (() => sendNotification("Switched to live."), 1500);
-    }
     
-    function deleteDraft(nm) {
-      if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
-      const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
-      if (!ans) return;
+    function deleteDraftDef(nm) { //definitely delete the draft, without a prompt
       //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
       const pth_to_delete = "Thaditor/versions/" + nm + "/";
       //here we want to hand doWriteServer to the worker in editor.js
@@ -4815,22 +4789,27 @@ lastEditScript = """
       updateInteractionDiv();
     }
 
-    function renameDraft(nm) {
-      //TODO
-      sendNotification("TODO rename draft");
+    function deleteDraft(nm) {
+      if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
+      const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
+      if (!ans) return;
+      deleteDraftDef(nm);
     }
 
-    function cloneSite(nm, verzExist) {
-      //verzExist tells us if we need to mkdir versions
-      //nm could be live or any draft ==> make f_pth
+
+    function getNewDraftName(nm, verzExist) {
       const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
       if (!draft_name) {
-        return;
+        return 0;
       }
+      
+      let is_draft_name_valid = (nm) => {
+        return !(nm.startsWith("[^a-zA-Z0-9]"));
+      };
 
       if (!is_draft_name_valid(draft_name)) {
         window.alert("Invalid draft name");
-        return;
+        return 0;
       }
       
       let fail = false;
@@ -4847,7 +4826,16 @@ lastEditScript = """
           }
         });
       }
-      if (fail) return;
+      if (fail) return 0;
+      return draft_name;
+    }
+
+
+    function cloneSite(nm, verzExist) {
+      //verzExist tells us if we need to mkdir versions
+      //nm could be live or any draft ==> make f_pth
+      const draft_name = getNewDraftName(nm, verzExist);
+      if (!draft_name) return 0;
       //all of that above ^^ needs to happen in the UI thread.
       const t_pth = "Thaditor/versions/" + draft_name + "/"
       const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
@@ -4856,7 +4844,23 @@ lastEditScript = """
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
       editor_model.serverWorker.postMessage(data);
-      sendNotification("Cloning draft " + nm + " to " + draft_name);
+      sendNotification("Creating draft " + draft_name + " from " + nm);
+    }
+    
+    function renameDraft(nm, verzExist) {
+      //verzExist tells us if we need to mkdir versions
+      //nm could be live or any draft ==> make f_pth
+      const draft_name = getNewDraftName(nm, verzExist);
+      if (!draft_name) return 0;
+      //all of that above ^^ needs to happen in the UI thread.
+      const t_pth = "Thaditor/versions/" + draft_name + "/"
+      const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
+      const data = {action:"drafts", subaction:"rename",
+                    draft_name:draft_name,
+                    t_pth:t_pth, f_pth:f_pth,
+                    nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
+      editor_model.serverWorker.postMessage(data);
+      sendNotification("Renaming draft " + nm + " to " + draft_name);
     }
 
     function publishDraft(nm) {
