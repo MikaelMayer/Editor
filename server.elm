@@ -3619,7 +3619,7 @@ lastEditScript = """
           function setCSSAreas() {
             //console.log(CSSarea.firstChild);
             while(CSSarea.firstChild) {
-              //console.log("Removed child:", CSSarea.firstChild);
+              console.log("Removed child:", CSSarea.firstChild);
               CSSarea.removeChild(CSSarea.firstChild);
             }
             //if there is linked CSS text
@@ -3642,7 +3642,7 @@ lastEditScript = """
                         //add dummy counter, force reload  
                         CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
                         clickedElem.setAttribute("href", CSSFilePath);
-                        let m = {type: "file", target: clickedElem, oldValue: oldValue, action: "write", oldHref: oldHref};
+                        let m = {type: "file", target: clickedElem, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
                         sendToUndo(m, +new Date());
                         editor_model.outputObserver.observe
                           ( document.body.parentElement
@@ -3746,7 +3746,7 @@ lastEditScript = """
                             let CSSFilePath = oldHref.slice(0);
                             CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
                             clickedElem.setAttribute("href", CSSFilePath);
-                            let m = {type: "file", target: closestStyleLink, oldValue: oldValue, action: "write", oldHref: oldHref};
+                            let m = {type: "file", target: closestStyleLink, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
                             sendToUndo(m, +new Date());
                             editor_model.outputObserver.observe
                               ( document.body.parentElement
@@ -3769,7 +3769,6 @@ lastEditScript = """
                         //just default to style node for now
                         document.head.appendChild(el("style", {"class": "inserted-CSS"}, [], {textContent: postIndentCSS}));
                       }
-                      
                       clickedElem.removeAttribute("style");
                       setCSSAreas();
                     }
@@ -3901,10 +3900,11 @@ lastEditScript = """
                         editor_model.outputObserver.disconnect();
                         await postServer("write", CSSFilePath, fullUnparseCSS(linked_CSS.storedCSS));
                         CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
-                        linked_CSS.storedCSS.orgTag.setAttribute("href", CSSFilePath);
-                        let m = {type: "file", target: this.storedCSS.orgTag, oldValue: oldValue, action: "write", oldHref: oldHref};
+                        orgTag.setAttribute("href", CSSFilePath);
+                        let m = {type: "file", target: orgTag, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
                         sendToUndo(m, +new Date());
                         setCSSAreas();
+                        console.log("should have reloaded!");
                         editor_model.outputObserver.observe
                           (document.body.parentElement
                           , { attributes: true
