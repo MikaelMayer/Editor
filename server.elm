@@ -2320,9 +2320,9 @@ lastEditScript = """
             if(kidNodes.length === 0) {            
               if(undoElem[k].nextSibling == null && undoElem[k].previousSibling == null) {
                 for(i = 0; i < uRemNodes.length; i++) { 
-                  if(hasGhostAncestor(uRemNodes.item(i))) {
+                  /*if(hasGhostAncestor(uRemNodes.item(i))) {
                     continue;
-                  }
+                  }*/
                   target.appendChild(uRemNodes.item(i)); 
                 }
               }
@@ -2337,26 +2337,26 @@ lastEditScript = """
               if ((knode == ns || knode_may == ns || ns == undefined) &&
                   (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined)){
                 for(i = 0; i < uRemNodes.length; i++) { 
-                  if(hasGhostAncestor(uRemNodes.item(i))) {
+                  /*if(hasGhostAncestor(uRemNodes.item(i))) {
                     continue;
-                  }
+                  }*/
                   let uremnode = uRemNodes.item(i);
                   let urn = quicker(uremnode);
-                  target.insertBefore(urn == undefined ? uremnode : urn, knode_may == undefined ? knode : knode_may); 
+                  //debugger;
+                  target.insertBefore(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may); 
                 }
               }
             }
           }
           for(i = 0; i < uAddNodes.length; i++) {
-            if(hasGhostAncestor(uAddNodes.item(i))) {
+            /*if(hasGhostAncestor(uAddNodes.item(i))) {
               continue;
-            }
-            else if(!target.contains(uAddNodes.item(i))) {
+            }*/
+            if(!target.contains(uAddNodes.item(i))) {
               console.log("The item you are trying to undo doesn't exist in the parent node.");
             }
             else {
               target.removeChild(uAddNodes.item(i));
-              
             }
           }
         }
@@ -2431,18 +2431,21 @@ lastEditScript = """
               if ((knode == ns || knode_may == ns || ns == undefined) &&
                   (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined)) {
                 for(i = 0; i < rAddNodes.length; i++) {
+                  /*console.log(hasGhostAncestor);
                   if(hasGhostAncestor(rAddNodes.item(i))) {
                     continue;
-                  }
-                  target.insertBefore(ran == undefined ? rAddNodes.item(i) : ran, knode_may == undefined ? knode : knode_may);
+                  }*/
+                  console.log(rAddNodes.item(i));
+
+                  target.insertBefore(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
                 }
               }
             }
           }
           for(i = 0; i < rRemNodes.length; i++) {
-            if(hasGhostAncestor(rRemNodes.item(i))) {
+            /*if(hasGhostAncestor(rRemNodes.item(i))) {
               continue;
-            } else if(!target.parentElement.contains(quicker(rRemNodes.item(i)))) { //bc the node in rRemNodes isn't necessarily connected, we need to rewrite this.
+            }*/if(!target.parentElement.contains(quicker(rRemNodes.item(i)))) { //bc the node in rRemNodes isn't necessarily connected, we need to rewrite this.
               console.log("The item you are trying to redo doesn't exist in the parent node.");
             } else {
               target.removeChild(quicker(rRemNodes.item(i)));
@@ -3472,7 +3475,6 @@ lastEditScript = """
                 let fileName = CSSFilePath.match(/[^\/]\w+\.\w+$/ig);
                 //let newCSSFilePath = CSSFilePath;
                 //doWriteServer("fullCopy", CSSFilePath, CSSFilePath);
-                //debugger;
                 //e.setAtttribute("href", newCSSfilePath);
                 //CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
                 let CSSvalue = doReadServer("read", CSSFilePath);
@@ -3506,10 +3508,10 @@ lastEditScript = """
                         mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
                         before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
-                      console.log("Insert media:");
+                      /*console.log("Insert media:");
                       console.log(insertMedia);
                       fullCSS.push(insertMedia);
-                      console.log("got here first!");
+                      console.log("got here first!");*/
                     }
                   }
                 }
@@ -3534,7 +3536,6 @@ lastEditScript = """
                 if(i === parsedCSS.length - 1 && !fullCSS.length) {
                   console.log("Nothing relevant in style tag: ", rawCSS[z].tag);
                 }
-                console.log("got here!");
               }
               //console.log("The parsed text looks like:", curCSS);
             }
@@ -3578,7 +3579,7 @@ lastEditScript = """
             if(curTag.tagName === "LINK") {
               return CSSString;
             }
-            console.log("Text is:" + CSSString);
+            //console.log("Text is:" + CSSString);
             curTag.textContent = CSSString;
             //debugger
             //consolw.log("After");
@@ -3613,7 +3614,7 @@ lastEditScript = """
                           }), 
                           nextSibGhostCSS);
                       }
-                      addFileToSave(CSSFilePath, CSSvalue, this.value)
+                      addFileToSave(CSSFilePath, CSSvalue, this.value);
                     }
                   })
                 ])
@@ -3659,7 +3660,7 @@ lastEditScript = """
             }
             //rest of CSS
             editor_model.CSSState = fullParseCSS();
-            console.log("CSS state is:", editor_model.CSSState);
+            //console.log("CSS state is:", editor_model.CSSState);
             const count = (str) => {
               const re = /\n/g
               return ((str || '').match(re) || []).length
@@ -3667,7 +3668,7 @@ lastEditScript = """
             for(let i in editor_model.CSSState) {
               let cssState = editor_model.CSSState[i];
               let orgTag = cssState.orgTag;
-              console.log("cssState", cssState);
+              //console.log("cssState", cssState);
               let headerStr = orgTag.tagName.toLowerCase() + (orgTag.tagName === "LINK" ? " (" + orgTag.getAttribute("href")+":" + (count(cssState.before) + 1) + ")" : "");
               for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
