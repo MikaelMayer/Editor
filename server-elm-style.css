@@ -388,6 +388,12 @@ div#modify-menu #CSS-modification>.CSS-modify-unit {
     margin-bottom: 5px;
 }
 
+div#modify-menu #CSS-modification>.CSS-modify-unit>.CSS-buttons{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
 div#modify-menu #CSS-modification>.CSS-modify-unit > textarea {
     width: 100%;
     height: 100px;
@@ -404,7 +410,7 @@ div#modify-menu #CSS-modification>div.CSS-chain {
     margin-bottom: 6px;
 }
 
-div#modify-menu #CSS-modification>.CSS-modify-unit .delete-CSS:hover {
+div#modify-menu #CSS-modification>.CSS-modify-unit .CSS-action-button:hover {
     background-color: var(--context-button-color-hover);
 }
 
