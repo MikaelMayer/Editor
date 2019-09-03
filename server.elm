@@ -1617,37 +1617,8 @@ lastEditScript = """
     var onMobile = () => window.matchMedia("(orientation: portrait)").matches;
     var buttonHeight = () => onMobile() ? 48 : 30;
     var buttonWidth  = () => onMobile() ? 48 : 40;
-    
-    /*setTimeout(() => {document.querySelectorAll("link").forEach((e) => {
-      let nextSibGhostCSS = e.nextElementSibling;
-      if(nextSibGhostCSS && nextSibGhostCSS.tagName === "STYLE" && nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS") {
-        console.log("There is already a ghost CSS node here!");
-      }
-      else {
-        let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));
-        let CSSvalue = doReadServer("read", CSSFilePath);
-        //console.log(CSSFilePath.match(/server-elm-style/g));
-        if(!(CSSFilePath.match(/server-elm-style/g)) && CSSvalue) {
-          CSSvalue = CSSvalue.slice(1);
-          e.parentElement.insertBefore(el("style", {"isghost": true, "class": "editor-interface ghost-CSS"}, [], {
-              textContent: CSSvalue
-            }), 
-            nextSibGhostCSS);
-        }
-      }
-    });}, 500); */
 
 
-    // Before saving, call this function to that it eventually triggers a save action to any file.
-    function addFileToSave(path, oldcontent, newcontent) {
-      var placement = document.querySelector("#editor-files-to-overwrite");
-      if(!placement) {
-        console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
-        return;
-      }
-      placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}))   ;
-    }
-    
 	  // Before saving, call this function to that it eventually triggers a save action to any file.
 	  function addFileToSave(path, oldcontent, newcontent) {
 	    var placement = document.querySelector("#editor-files-to-overwrite");
@@ -1999,7 +1970,6 @@ lastEditScript = """
     //var serverWorker = new Worker("/Thaditor/editor.js");
 
     function sendModificationsToServer() {
-      
       if(document.getElementById("notification-menu") != null) {
         //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
         // TODO: Listen and gather subsequent modifications when it is loading
@@ -2101,15 +2071,18 @@ lastEditScript = """
       editor_model.serverWorker.postMessage(data);
     } //sendModificationsToServer
 
+    //remove and append dummy counter to end of url
+      function dummyCounter(path, search, insert) {
+        var dummyIndex = path.indexOf(search);
+        if(dummyIndex > -1) {
+          path = path.slice(0, dummyIndex);
+        }
+        if(insert) {
+          path += insert;
+        }
+        return path;
+      }
 
-    //other possible approaches
-    //add writable property (for oldValue) to mutation object
-    //create array with necessary properties/attributes
-    /*
-     * adds writiable properties to the MutationRecord objects so the undo/redo functions
-     * will actually function later on
-     */
-     //sends info over to the undostack
     function sendToUndo(m, time) {
       //for childLists, add mutable next/previous sibling properties
       if(m.type === "childList") {
@@ -2273,6 +2246,7 @@ lastEditScript = """
       else if (!editor_model.undoStack.length) {
         editor_model.canSave = false;
       }
+      (async () => {
       //TODO prevent pressing the undo button while save underway while letting Editor use the undo function. (just not the user);
       //need to disconnect the MutationObserver such that our undo does not get recorded as a mutation
       editor_model.outputObserver.disconnect();
@@ -2287,7 +2261,7 @@ lastEditScript = """
                         (qk == undefined ? undoElem[k].target : qk));
         //in each case, we reverse the change, setting the URValue/oldValue as the current value
         //at the target, and replacing the URValue/oldValue with the current value present in target
-        if(mutType == "attributes") {
+        if(mutType === "attributes") {
           let cur_attr = target.getAttribute(undoElem[k].attributeName);
           if(undoElem[k].URValue === null) {
             target.removeAttribute(undoElem[k].attributeName); 
@@ -2297,11 +2271,32 @@ lastEditScript = """
           }
           undoElem[k].URValue = cur_attr; 
         }
-        else if(mutType == "characterData") {
-          const cur_data = target.data;
-          target.data = undoElem[k].URValue;
+        else if(mutType === "characterData") {
+          const cur_data = target.textContent;
+          target.textContent = undoElem[k].URValue;
           undoElem[k].URValue = cur_data;
           //undoElem[k].isConnected ? undoElem[k].URValue : quicker(undoElem[k]).URValue = cur_data;
+        }
+        else if(mutType === "file") {
+            //console.log("Undo Element is:");
+            //console.log(undoElem[k]);
+            var keepUndo = undoElem[k];
+            let curHref = target.getAttribute("href");
+            //console.log(undoElem[k]);
+            let curValue = await getServer("read", dummyCounter(curHref, "?c="));
+            //console.log(keepUndo);
+            //console.log(curHref);
+            //console.log("2here?");
+            //console.log(keepUndo);
+            await postServer("write", dummyCounter(curHref, "?c="), keepUndo.oldValue);
+            //console.log("here?");
+            target.setAttribute("href", keepUndo.oldHref); 
+            keepUndo.oldValue = curValue.slice(1);
+            keepUndo.oldHref = curHref;
+            /*editor_model.redoStack.push(keepUndo);
+            debugger;
+            printstacks();
+            updateInteractionDiv();*/
         }
         else {
           let uRemNodes = undoElem[k].removedNodes;
@@ -2378,6 +2373,9 @@ lastEditScript = """
          }
        );
       updateInteractionDiv();
+      printstacks();
+      })();
+      console.log("REACH THIS POINT?");
       return 1;
     } //undo
 
@@ -2391,6 +2389,7 @@ lastEditScript = """
       if(redoElem === undefined) {
         return 0;
       }
+      (async () => {
       editor_model.outputObserver.disconnect();
       const quicker = node => recoverElementFromData(dataToRecoverElement(node));
       let k;
@@ -2400,7 +2399,7 @@ lastEditScript = """
         let target = (redoElem[k].target.isConnected ? 
                         redoElem[k].target : 
                         (qk == undefined ? redoElem[k].target : qk));
-        if(mutType == "attributes") {
+        if(mutType === "attributes") {
           let cur_attr = target.getAttribute(redoElem[k].attributeName);
           if (redoElem[k].URValue === null) {
             target.removeAttribute(redoElem[k].attributeName); 
@@ -2408,12 +2407,23 @@ lastEditScript = """
             target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
           }
           redoElem[k].URValue = cur_attr;
-        } else if(mutType == "characterData") {
-          let cur_data = target.data;
-          target.data = redoElem[k].URValue;  
+        } 
+        else if(mutType === "characterData") {
+          let cur_data = target.textConent;
+          target.textContent = redoElem[k].URValue;  
           redoElem[k].URValue = cur_data;
           //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
-        } else {
+        }
+        else if(mutType === "file") {
+            let keepRedo = redoElem[k];
+            let curHref = target.getAttribute("href");
+            let curValue = await getServer("read", dummyCounter(curHref, "?c="));
+            await postServer("write", dummyCounter(curHref, "?c="), keepRedo.oldValue);
+            target.setAttribute("href", keepRedo.oldHref); 
+            keepRedo.oldValue = curValue.slice(1);
+            keepRedo.oldHref = curHref;
+        } 
+        else {
           let rRemNodes = redoElem[k].removedNodes;
           let rAddNodes = redoElem[k].addedNodes;
           let i, j;
@@ -2427,7 +2437,6 @@ lastEditScript = """
               //if(kidNodes.item(j) === redoElem[k].nextSibling && kidNodes.item(j).previousSibling === redoElem[k].previousSibling)
               let ns = redoElem[k].nextSibling && redoElem[k].nextSibling.isConnected ? redoElem[k].nextSibling : quicker(redoElem[k].nextSibling);
               let ps = redoElem[k].previousSibling && redoElem[k].previousSibling.isConnected ? redoElem[k].previousSibling : quicker(redoElem[k].previousSibling);
-              
               if ((knode == ns || knode_may == ns || ns == undefined) &&
                   (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined)) {
                 for(i = 0; i < rAddNodes.length; i++) {
@@ -2468,8 +2477,10 @@ lastEditScript = """
          , subtree: true
          }
        );
-       updateInteractionDiv();
-       return 1;
+      updateInteractionDiv();
+      printstacks();
+      })();
+      return 1;
     } //end of redo
 
     function syncUndoRedoButtons() {
@@ -2988,14 +2999,8 @@ lastEditScript = """
 
     function init_interfaces() {
       function findText(parsed, startIndex, endIndex) { //for css + img replacement
-        //console.log("Start index is:", startIndex);
-        //console.log("End index is:", endIndex);
-        var textSegment = "";
-        //console.log("got to findtext");
-        //console.log("startIndex is:" + startIndex + " endIndex is:" + endIndex);
+        let textSegment = "";
         for(let i = startIndex; i < endIndex; i++) {
-          //console.log(parsed[0].directive);
-          //console.log(CSSparser.unparseRules([parsed[i]]));
           textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[i]]) :
             (parsed[0].directive ? CSSparser.unparseRules([parsed[i]]) : "") : "";
           //console.log(textSegment);
@@ -3213,7 +3218,6 @@ lastEditScript = """
                       if (!c.tagName) {
                         return;
                       }
-
                       if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
                         editor_model.displayClickedElemAsMainElem = false;
                       } else {
@@ -3415,7 +3419,7 @@ lastEditScript = """
                           document.querySelector("div.keyvalueadder input[name=value]").value
                         );
                         updateInteractionDiv();
-                        let d=  document.querySelector("div.keyvalue input#dom-attr-" + name);
+                        let d =  document.querySelector("div.keyvalue input#dom-attr-" + name);
                         if(d) d.focus();
                       }
                     },
@@ -3447,7 +3451,6 @@ lastEditScript = """
           return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
-          //id="CSS-modification"
           const clickedElem = editor_model.clickedElem;
           if(!clickedElem) {
             return "Click on an element to see its style";
@@ -3461,8 +3464,11 @@ lastEditScript = """
           function fullParseCSS() {
             var fullCSS = [], keyframes = [], rawCSS = [];
             //console.log("All style tags:", document.querySelectorAll("style"));
-            document.querySelectorAll("link, style").forEach((e) => {
+            let CSSstyles = document.querySelectorAll("link, style");
+            for(let i in CSSstyles) {
+              let e = CSSstyles[i];
               if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
+<<<<<<< HEAD
                 //console.log(e.nextElementSibling.getAttribute("class"));
                 /*if(e.nextElementSibling && e.nextElementSibling.tagName === "STYLE" && e.nextElementSibling.getAttribute("class") === "editor-interface ghost-CSS") {
                   //for all intents and purposes, the ghost style node will be the same as the link style CSS
@@ -3482,36 +3488,83 @@ lastEditScript = """
                 if(!(CSSFilePath.match(/server-elm-style/g)) && CSSvalue) {
                   CSSvalue = CSSvalue.slice(1);
                   rawCSS.push({text: CSSvalue, tag: e});
+=======
+                let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));                
+                if(!(e.className && e.className === "editor-interface")/*!(CSSFilePath.match(/server-elm-style/g))*/ && (CSSFilePath.indexOf("http") < 0)) {
+                  if(!(e.getAttribute("ghost-href"))) {
+                    //(async () => {
+                    e.setAttribute("ghost-href", CSSFilePath);
+                    //for now, we will increase # on temp#.css until we find a unique name
+                    editor_model.idNum += 1;
+                    let newFileName = `temp${editor_model.idNum}.css`;
+                    //console.log(CSSFilePath);
+                    while (CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName) {
+                      editor_model.idNum += 1;
+                      newFileName = `temp${editor_model.idNum}.css`;
+                    }
+                    let newFilePath = CSSFilePath.split("/");
+                    newFilePath[newFilePath.length - 1] = newFileName;
+                    newFilePath = newFilePath.join("/");
+                    console.log(newFilePath);
+                    //let CSSvalue = await getServer("read", CSSFilePath);
+                    let CSSvalue = doReadServer("read", CSSFilePath);
+                    if(CSSvalue) {
+                      CSSvalue = CSSvalue.slice(1);
+                      rawCSS.push({text: CSSvalue, tag: e});
+                    }
+                    //await postServer("write", newFilePath, CSSvalue);
+                    doWriteServer("write", newFilePath, CSSvalue);
+                    //console.log("CSS value is:" + CSSvalue);
+                    e.setAttribute("href", newFilePath);
+                    //})();
+                  }
+                  else {
+                    //geting rid of ?c= at the end of the temp.css
+                    CSSFilePath = dummyCounter(CSSFilePath, "?c=");
+                    //console.log("temp CSS loaded");
+                    let CSSvalue = doReadServer("read", CSSFilePath);
+                    //console.log("css value loaded is:", CSSvalue);
+                    rawCSS.push({text: CSSvalue.slice(1), tag: e});
+                  }
+>>>>>>> CSSFile
                 }
               }
               else if(e.tagName === "STYLE" && !e.getAttribute("isghost")) {
                 rawCSS.push({text: e.textContent, tag: e});
               }
-            });
+            }
             for(let z in rawCSS) {  
               var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
               for(let i in parsedCSS) {
                 if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector)) {
                   let content = CSSparser.unparseCSS([parsedCSS[i]]);
-                  let wsBefore = content.replace(/^(\s*\n)[\s\S]*$/g, (m, ws) => ws);
-                  let contentTrimmed = content.replace(/^\s*\n/,"");
+                  let wsBefore = content.replace(/^(\s*\n|)[\s\S]*$/g, (m, ws) => ws);
+                  let contentTrimmed = content.replace(/\s*\n/,"");
                   //calculating before and after text
                   fullCSS.push({type: 'cssBlock', content: contentTrimmed, 
-                    before: findText(parsedCSS, 0, i) + wsBefore, after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
+                    before: findText(parsedCSS, 0, Number(i)) + wsBefore, after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                 }
                 else if(parsedCSS[i].kind === '@@media' && window.matchMedia(parsedCSS[i].atNameValue).matches) {
                   let curMedia = parsedCSS[i];
                   for(let j in curMedia.content) {
-                    console.log(curMedia.content[j]);
+                    //console.log(curMedia.content[j]);
                     if(editor.matches(clickedElem, curMedia.content[j].selector)) {
                       var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
                         mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
+<<<<<<< HEAD
                         before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
                       /*console.log("Insert media:");
                       console.log(insertMedia);
                       fullCSS.push(insertMedia);
                       console.log("got here first!");*/
+=======
+                        before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
+                      //console.log("Insert media:");
+                      //console.log(insertMedia);
+                      fullCSS.push(insertMedia);
+                      //console.log("got here first!");
+>>>>>>> CSSFile
                     }
                   }
                 }
@@ -3520,14 +3573,20 @@ lastEditScript = """
                     && parsedCSS[i].value.startsWith("\"") && parsedCSS[i].value.endsWith("\""))) {
                     sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
                   }
+<<<<<<< HEAD
                   if(editor_model.clickedElem.tagName != "STYLE" && editor_model.clickedElem.tagName != "LINK") {
                     fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
                       before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
                   }
+=======
+                  //console.log("pushed charset");
+                  fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
+                    before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
+>>>>>>> CSSFile
                 }
                 else if(parsedCSS[i].kind === '@@keyframes') {
                   keyframes.push({type: '@@keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
-                    before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag,
+                    before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag,
                     animationName: parsedCSS[i].atNameValue});
                 }
                 else if(parsedCSS[i].kind === 'whitespace') { 
@@ -3536,6 +3595,10 @@ lastEditScript = """
                 if(i === parsedCSS.length - 1 && !fullCSS.length) {
                   console.log("Nothing relevant in style tag: ", rawCSS[z].tag);
                 }
+<<<<<<< HEAD
+=======
+                //console.log("got here!");
+>>>>>>> CSSFile
               }
               //console.log("The parsed text looks like:", curCSS);
             }
@@ -3561,10 +3624,6 @@ lastEditScript = """
           }
           
           function fullUnparseCSS(curCSS) {
-            //console.log("Before unparse update:")
-            //document.querySelectorAll("style").forEach((e) => { 
-              //console.log(CSSparser.parseCSS(e.textContent));
-            //});
             let curTag = curCSS.orgTag;
             let CSSString = "";
             if(curCSS.type === 'cssBlock' || curCSS.type === "@@charset") {
@@ -3587,15 +3646,21 @@ lastEditScript = """
           var curCSSWindow = undefined;
 
           function setCSSAreas() {
+            //console.log(CSSarea.firstChild);
             while(CSSarea.firstChild) {
-              //console.log("Removed child:", CSSarea.firstChild);
+              console.log("Removed child:", CSSarea.firstChild);
               CSSarea.removeChild(CSSarea.firstChild);
             }
             //if there is linked CSS text
             if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("href")) {
+<<<<<<< HEAD
               let CSSFilePath = relativeToAbsolute(clickedElem.getAttribute("href"));
               let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
+=======
+              let CSSFilePath = relativeToAbsolute(clickedELem.getAttribute("href"));
+              let CSSvalue = doReadServer("read", CSSFilePath);
+>>>>>>> CSSFile
               CSSarea.append(
                 el("div", {"class": "CSS-modify-unit"}, [
                   el("textarea", {"class": "linked-CSS"}, [], {
@@ -3604,6 +3669,7 @@ lastEditScript = """
                       setCSSAreas();
                     },
                     oninput() {
+<<<<<<< HEAD
                       let nextSibGhostCSS = clickedElem.nextElementSibling;
                       if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
                         nextSibGhostCSS.textContent = this.value;
@@ -3615,6 +3681,29 @@ lastEditScript = """
                           nextSibGhostCSS);
                       }
                       addFileToSave(CSSFilePath, CSSvalue, this.value);
+=======
+                      (async () => {
+                        editor_model.outputObserver.disconnect();
+                        let oldHref = CSSFilePath, oldValue = await getServer("read", CSSFilePath);
+                        await postServer("write", CSSFilePath, this.value);
+                        editor_model.idNum += 1;
+                        //add dummy counter, force reload  
+                        CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
+                        clickedElem.setAttribute("href", CSSFilePath);
+                        let m = {type: "file", target: clickedElem, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
+                        sendToUndo(m, +new Date());
+                        editor_model.outputObserver.observe
+                          ( document.body.parentElement
+                          , { attributes: true
+                            , childList: true
+                            , characterData: true
+                            , attributeOldValue: true
+                            , characterDataOldValue: true
+                            , subtree: true
+                            }
+                          );
+                      })();
+>>>>>>> CSSFile
                     }
                   })
                 ])
@@ -3622,8 +3711,12 @@ lastEditScript = """
             }
             //inline styles 
             editor_model.inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
+<<<<<<< HEAD
             if(typeof editor_model.inline === "string") {
               //debugger;
+=======
+            if(editor_model.inline) {
+>>>>>>> CSSFile
               console.log("We have inline CSS!");
               let inlineCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "inline-CSS"}, [], {
@@ -3635,27 +3728,125 @@ lastEditScript = """
                     clickedElem.setAttribute("style", this.value);
                   }
                 }),
-                el("div", {"class": "delete-CSS"}, [], {
-                  innerHTML: wasteBasketSVG,
-                  onclick() {
-                    let inline_CSS = document.querySelectorAll(".inline-CSS");
-                    inline_CSS.value = "";
-                    clickedElem.setAttribute("style", inline_CSS.value);
-                    setCSSAreas();
-                  }
-                })
+                el("div", {"class": "CSS-buttons"}, [
+                  el("div", {"class": "CSS-action-button"}, [], {
+                    innerHTML: cloneSVG,
+                    onclick() {
+                      let closestStyleLink;
+                      let closestStyleLinkAll = document.querySelectorAll("link, style");
+                      console.log("hi!", closestStyleLinkAll);
+                      for(let e in closestStyleLinkAll) {
+                        if(closestStyleLinkAll[e].tagName === "STYLE") {
+                          closestStyleLink = closestStyleLinkAll[e];
+                          break;
+                        }
+                        else if(closestStyleLinkAll[e].tagName === "LINK" && (closestStyleLinkAll[e].tagName.indexOf("http") < 0) && (closestStyleLinkAll[e].className != "editor-interface")) {
+                          closestStyleLink = closestStyleLinkAll[e];
+                          break;
+                        }
+                      }
+                      console.log("Closest CSS source:", closestStyleLink);
+                      let inline_CSS = document.querySelectorAll(".inline-CSS");
+                      console.log("Finding inline CSS textarea:", inline_CSS);  
+                      let postIndentCSS = "";
+                      let preIndentCSS = inline_CSS[0].value.split("\n");
+                      for(let i = 0; i < preIndentCSS.length; i++) {
+                        if(i !== preIndentCSS.length-1) {
+                          postIndentCSS += "\t" + preIndentCSS[i] + "\n";
+                        }
+                        else {
+                          postIndentCSS += "\t" + preIndentCSS[i]; 
+                        }
+                      }
+                      //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
+                      //split between common (section, div, span, p, ul,  etc...) and rare/better semantically defined tags (pre)
+
+                      //check if selector applies to any ancestors or descendants, then its ok
+                      //else add class or use > selector until it is precise 
+                      let curselector;
+                      if(clickedElem.getAttribute("id")) {
+                        curSelector = "#" + clickedElem.getAttribute("id")
+                      } 
+                      else if (clickedElem.getAttribute("class"))
+                        curSelector = "." + clickedElem.getAttribute("class");
+                      else {
+                        curSelector = clickedElem.tagName.toLowerCase();
+                      }
+                      //checking ancestors
+                      let selectorIsOrg = true;
+                      for(let curAncestor = clickedElem.parentNode; curAncestor; curAncestor = curAncestor.parentNode) {
+                        if(editor.matches(curAncestor, curSelector)) {
+                          selectorIsOrg = false;
+                        }
+                      }
+                      //checking descendants
+                      if(clickedElem.querySelector(curSelector)) {
+                        selectorIsOrg = false;
+                      } 
+                      if(!selectorIsOrg) {
+                        let curSelector = clickedElem.tagName.toLowerCase();
+                        for(let curElem = clickedElem.parentElement; curElem; curElem = curElem.parentElement) {
+                          curSelector =  curElem.tagName.toLowerCase() + " > " + curSelector; 
+                        }
+                      }
+                      postIndentCSS = "\n" + curSelector + "{\n" + postIndentCSS + "\n}";   
+                      console.log("closestStyleLink is:", closestStyleLink);     
+                      if(closestStyleLink) {
+                        if(closestStyleLink.tagName === "LINK") {
+                          (async () => {
+                            editor_model.outputObserver.disconnect();
+                            let oldHref = closestStyleLink.getAttribute("href"), oldValue = await getServer("read", oldHref);
+                            await postServer("write", oldHref, oldValue + postIndentCSS);
+                            let CSSFilePath = oldHref.slice(0);
+                            CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
+                            clickedElem.setAttribute("href", CSSFilePath);
+                            let m = {type: "file", target: closestStyleLink, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
+                            sendToUndo(m, +new Date());
+                            editor_model.outputObserver.observe
+                              ( document.body.parentElement
+                              , { attributes: true
+                                , childList: true
+                                , characterData: true
+                                , attributeOldValue: true
+                                , characterDataOldValue: true
+                                , subtree: true
+                                }
+                              );
+                          })();
+                        }
+                        else {
+                          let curValue = closestStyleLink.textContent.slice(0);
+                          closestStyleLink.textContent = curValue + postIndentCSS;
+                        }
+                      }
+                      else {
+                        //just default to style node for now
+                        document.head.appendChild(el("style", {"class": "inserted-CSS"}, [], {textContent: postIndentCSS}));
+                      }
+                      clickedElem.removeAttribute("style");
+                      setCSSAreas();
+                    }
+                  }),
+                  el("div", {"class": "CSS-action-button"}, [], {
+                    innerHTML: wasteBasketSVG,
+                    onclick() {
+                      let inline_CSS = document.querySelectorAll(".inline-CSS");
+                      inline_CSS.value = "";
+                      clickedElem.setAttribute("style", inline_CSS.value);
+                      setCSSAreas();
+                    }
+                  })
+                ])
               ]);
-              CSSarea.append(el("span", {}, [], {innerHTML: "Inline styles:"}));
+              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "Inline styles:"}));
               CSSarea.append(inlineCSS);
-              //debugger;
             }
             else{
               CSSarea.append(el("button", {"id": "add-inline-style"}, [], {
                 innerHTML: "Add inline style",
                 onclick() {
-                  clickedElem.setAttribute("style", "");
-                  editor_model.inline = true;
-                  setCSSAreas();
+                  clickedElem.setAttribute("style", " ");
+                  updateInteractionDiv();
                 }}));
             }
             //rest of CSS
@@ -3695,12 +3886,12 @@ lastEditScript = """
               let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
                 el("textarea", {"class": "CSS-selectors" }, [], {
                   defaultValue: cssState.content,
-                  orgValue: doReadServer("read", cssState.orgTag.href).slice(1),
                   onfocusout() {
                     if(this.storedCSS.orgTag.tagName != "LINK") {
                       setCSSAreas();
                     }
                   },
+<<<<<<< HEAD
                   oninput() {
                     if(this.storedCSS.orgTag.tagName != "LINK") {
                       let throwError = false;
@@ -3731,33 +3922,102 @@ lastEditScript = """
                       if(nextSibGhostCSS) console.log(nextSibGhostCSS.getAttribute("class"));
                       if(nextSibGhostCSS && (nextSibGhostCSS.getAttribute("class") === "editor-interface ghost-CSS")) {
                         nextSibGhostCSS.textContent = fullUnparseCSS(this.storedCSS);
+=======
+                  oninput: function() {
+                    (async () => {
+                      if(this.storedCSS.orgTag.tagName != "LINK") {
+                        let throwError = false;
+                        curCSSState = CSSparser.parseCSS(this.value);
+                        //console.log(curCSSState);
+                        //check to make sure CSS is still relevant to clicked element.
+                        if(curCSSState[i].kind === 'cssBlock' && editor.matches(clickedElem, curCSSState[i].selector)) {
+                          sendNotification("CSS selector does not match");
+                          this.setAttribute("wrong-selector", true);
+                          this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
+                        }
+                        else {
+                          this.setAttribute("wrong-selector", false);
+                          this.removeAttribute("title");
+                        }
+                        this.storedCSS.content = this.value;
+                        fullUnparseCSS(this.storedCSS);
+                        //setCSSAreas();
+>>>>>>> CSSFile
                       }
                       else {
-                        console.log("now inserting a new ghost style");
-                        this.storedCSS.orgTag.parentElement.insertBefore(el("style", {"isghost": true, class: "editor-interface ghost-CSS"}, [], {
-                            textContent: fullUnparseCSS(this.storedCSS)
-                          }), 
-                          nextSibGhostCSS);
+                        let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
+                        let oldHref = CSSFilePath, oldValue = await getServer("read", CSSFilePath);
+                        CSSFilePath = dummyCounter(CSSFilePath, "?c=");
+                        console.log("Current file path is:", CSSFilePath);
+                        this.storedCSS.content = this.value;
+                        
+                        await postServer("write", CSSFilePath, fullUnparseCSS(this.storedCSS));
+                        editor_model.outputObserver.disconnect();
+                        console.log("success");
+                        editor_model.idNum += 1;
+                        //add dummy counter, force reload
+                        CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`)
+                        console.log("new file path:" + CSSFilePath);
+                        this.storedCSS.orgTag.setAttribute("href", CSSFilePath);
+                        let m = {type: "file", target: this.storedCSS.orgTag, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
+                        console.log(m);
+                        sendToUndo(m, +new Date());
+                        printstacks();
+                        editor_model.outputObserver.observe
+                          ( document.body.parentElement
+                          , { attributes: true
+                            , childList: true
+                            , characterData: true
+                            , attributeOldValue: true
+                            , characterDataOldValue: true
+                            , subtree: true
+                            }
+                          );
+                        //console.log(doReadServer("read", CSSFilePath));
                       }
+<<<<<<< HEAD
                       let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
                       addFileToSave(CSSFilePath, this.orgValue, fullUnparseCSS(this.storedCSS));
                     }
+=======
+                    })();
+>>>>>>> CSSFile
                   },
                   storedCSS: cssState
                 }),
                 orgTag.tagName === "LINK" ?
-                  el("div", {"class": "delete-CSS", "title": "Delete this entire window of CSS"}, [], {
+                  el("div", {"class": "CSS-action-button", "title": "Delete this entire window of CSS"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick() {
-                      let linked_CSS = this.parentElement.childNodes[0];
-                      linked_CSS.value = "";
-                      let CSSFilePath = relativeToAbsolute(this.parentElement.childNodes[0].storedCSS.orgTag.getAttribute("href"));
-                      let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
-                      addFileToSave(CSSFilePath, CSSvalue, linked_CSS.value);
-                      setCSSAreas();
+                      (async () => {
+                        let linked_CSS = this.parentElement.childNodes[0];
+                        linked_CSS.value = "";
+                        linked_CSS.storedCSS.content = linked_CSS.value;
+                        editor_model.idNum += 1;
+                        let CSSFilePath = relativeToAbsolute(this.parentElement.childNodes[0].storedCSS.orgTag.getAttribute("href"));
+                        let oldHref = CSSFilePath, oldValue = await getServer("read", CSSFilePath);
+                        editor_model.outputObserver.disconnect();
+                        await postServer("write", CSSFilePath, fullUnparseCSS(linked_CSS.storedCSS));
+                        CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
+                        orgTag.setAttribute("href", CSSFilePath);
+                        let m = {type: "file", target: orgTag, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
+                        sendToUndo(m, +new Date());
+                        setCSSAreas();
+                        console.log("should have reloaded!");
+                        editor_model.outputObserver.observe
+                          (document.body.parentElement
+                          , { attributes: true
+                            , childList: true
+                            , characterData: true
+                            , attributeOldValue: true
+                            , characterDataOldValue: true
+                            , subtree: true
+                            }
+                          );
+                      }) ();
                     }
                   }) :
-                  el("div", {"class": "delete-CSS", "title": "Delete this entire window of CSS"}, [], {
+                  el("div", {"class": "CSS-action-button", "title": "Delete this entire window of CSS"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick() {
                       //console.log(this.parentElements.childNodes);
@@ -5120,14 +5380,35 @@ lastEditScript = """
             : function(event) {
               if (editor_model.isSaving) {
                 sendNotification("Can't save while save is being undertaken");
-              }else {
-                if(!this.classList.contains("disabled")) {
-                  if (apache_server) {
-                    sendModificationsToServer();
-                  } else {
-                    sendModificationsToServerNode();
+              }
+              else {
+                //temp place to put CSS file loading stuff (may well be moved later)
+                let allPageLinks = document.querySelectorAll("link");
+                (async () => {
+                  for(let e = 0; e < allPageLinks.length; e++) {
+                    console.log("current element:");
+                    console.log(allPageLinks[e]);
+                    console.log(allPageLinks[e].getAttribute("ghost-href"));
+                    if(!isGhostNode(allPageLinks[e]) && allPageLinks[e].getAttribute("ghost-href")) {
+                      let trueTempPath = dummyCounter(allPageLinks[e].getAttribute("href"), "?c=");
+                      let trueCSSPath = dummyCounter(allPageLinks[e].getAttribute("ghost-href"), "?timestamp=");
+                      await postServer("fullCopy", trueTempPath, trueCSSPath);
+                      console.log("true temp path:" + trueTempPath);
+                      console.log("true CSS path:" + trueCSSPath);
+                      trueCSSPath += `?timestamp=${+new Date()}`;
+                      allPageLinks[e].setAttribute("href", trueCSSPath);
+                      console.log("after:" + allPageLinks[e].getAttribute("href"));
+                      await postServer("unlink", trueTempPath);
+                    }                 
                   }
-                }
+                  if(!this.classList.contains("disabled")) {
+                    if (apache_server) {
+                      sendModificationsToServer();
+                    } else {
+                      sendModificationsToServerNode();
+                    }
+                  }
+                })();
               }
             }
           }
