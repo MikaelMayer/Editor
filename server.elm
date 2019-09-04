@@ -3984,7 +3984,7 @@ lastEditScript = """
         //checks the inline CSS of the clicked node/element to see if background or background-image is a rule, and if 
         //a link to an image is provided as part of the value for this rule;
         //TODO: expand the set of CSS being checked to any style tags as well.
-        checkForBackgroundImg(clickedElem) {
+        checkForBackgroundImg(clickedElem, findURLS) {
           //console.log("clicked element is:", clickedElem);
           //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
           var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
@@ -3995,7 +3995,7 @@ lastEditScript = """
           for(let i in clickedStyle) {
             for(let j in clickedStyle[i]) {
               if(clickedStyle[i][j].directive === "background") {
-                clickedStyle[i][j].value = this.findURLS(clickedStyle[i][j].value);  
+                clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
                 if(clickedStyle[i][j].value.length) {
                   //console.log(clickedStyle[i][j]);
                   return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
@@ -4009,7 +4009,7 @@ lastEditScript = """
               if(clickedStyle[i][j].directive === "background-image") {
                 //console.log("hello?");
                 //console.log(clickedStyle[i][j].value);
-                clickedStyle[i][j].value = this.findURLS(clickedStyle[i][j].value);  
+                clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
                 if(clickedStyle[i][j].value.length) {
                   return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
                     imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
@@ -4022,7 +4022,7 @@ lastEditScript = """
         },
         enabled(editor_model) {
           let clickedElem = editor_model.clickedElem;
-          let backgroundImgSrc = this.checkForBackgroundImg(clickedElem);
+          let backgroundImgSrc = this.checkForBackgroundImg(clickedElem, this.findURLS);
           const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
           this.backgroundImgSrc = backgroundImgSrc;
           return do_img_rpl;
@@ -4092,7 +4092,7 @@ lastEditScript = """
               }
             }
           }
-          function showListsImages(srcName, backImgObj) {
+          function showListsImages(srcName, backImgObj, checkBackImgObj, findURLS) {
             if (isAbsolute(srcName)) {
               return;
             }
@@ -4167,7 +4167,7 @@ lastEditScript = """
                       }
                       else {
                         console.log("Second time around:");
-                        backImgObj = this.checkForBackgroundImg(clickedElem);
+                        backImgObj = checkBackImgObj(clickedElem, findURLS);
                         backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url('+ this.children[0].getAttribute("src") +')';
                       }
                       //console.log("current link", this.children[0].getAttribute("src"));
@@ -4248,7 +4248,7 @@ lastEditScript = """
                 updateInteractionDiv();
               }}));
           } else {
-            showListsImages(srcName, backgroundImgSrc);
+            showListsImages(srcName, backgroundImgSrc, this.checkForBackgroundImg, this.findURLS);
             // show lists of images in selected image's folder
           }
           return ret;
