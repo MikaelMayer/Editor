@@ -3504,7 +3504,8 @@ lastEditScript = """
             for(let z in rawCSS) {  
               var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
               for(let i in parsedCSS) {
-                if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector)) {
+                let checkSelector = parsedCSS[i].selector.replace(/:(?=(after|before|hover))[^,]*(?=,|$)/g, "");
+                if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, checkSelector)) {
                   let content = CSSparser.unparseCSS([parsedCSS[i]]);
                   let wsBefore = content.replace(/^(\s*\n|)[\s\S]*$/g, (m, ws) => ws);
                   let contentTrimmed = content.replace(/\s*\n/,"");
@@ -3516,7 +3517,8 @@ lastEditScript = """
                   let curMedia = parsedCSS[i];
                   for(let j in curMedia.content) {
                     //console.log(curMedia.content[j]);
-                    if(editor.matches(clickedElem, curMedia.content[j].selector)) {
+                    let checkSelector = curMedia.content[j].selector.replace(/:(?=(after|before|hover))[^,]*(?=,|$)/g, "");
+                    if(editor.matches(clickedElem, checkSelector)) {
                       var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
                         mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace,
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
@@ -3857,10 +3859,12 @@ lastEditScript = """
                     setCSSAreas();
                   },
                   oninput() {
+                    
                     this.storedCSS.content = this.value;
-                    curCSSState = CSSparser.parseCSS(this.value);
+                    let curCSSState = CSSparser.parseCSS(this.value);
+                    let checkSelector = curCSSState.selector.replace(/:(?=(after|before|hover))[^,]*(?=,|$)/g, "");
                     //check to make sure CSS is still relevant to clicked element.
-                    if((curCSSState[i].kind === 'cssBlock' && !(editor.matches(clickedElem, curCSSState[i].selector)))) {
+                    if((curCSSState[i].kind === 'cssBlock' && !(editor.matches(clickedElem, checkSelector)))) {
                       sendNotification("CSS selector does not match");
                       this.setAttribute("wrong-selector", true);
                       this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");  
