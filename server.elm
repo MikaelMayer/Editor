@@ -1128,6 +1128,7 @@ evaluatedPage =
         var extensionIcon = name => {
           let extension = name.replace(/^(?:(?!\.(?=[^\.]*$)).)*\.?/, "");
           if("." + extension == name || extension === "") extension = "-";
+          console.log ({extension});
           var d = el("div", {}, [], {innerHTML: 
           `<svg class="file-extension-icon" width="60" height="30">
             <text x="0" y="25">${extension}
@@ -1138,7 +1139,7 @@ evaluatedPage =
         var fileItemDisplay = function(link, name, isDir) {
            return el("div", {class:"file-item"}, [
               el("input", getRecordForCheckbox(name), ""),
-              el("label", {for:name, value:name}, [
+              el("label", {for:name, value:name}, [ 
                 isDir ? dirIcon() : extensionIcon(name),
                 el("a", {href:link}, name, {onclick: function(event) {
                   event.preventDefault();
@@ -1146,10 +1147,19 @@ evaluatedPage =
                   doReloadPage(link);
                 }})])]);
         }
+        var otherItemDisplay = function(link, name) {
+           return el("div", {class:"file-item"}, [
+              el("input", getRecordForCheckbox(name), ""),
+              el("label", {for:name, value:name}, [ 
+                extensionIcon(name),
+                el("a", {href:link}, name)
+                ])
+              ]);
+        }
         //el(tag, attributes, children, properties)
         if (path != "") {
-          var link = "../" + "?ls=true";
-          form.append(fileItemDisplay(link, "..", true));
+          var link = "../" + "?ls";
+          form.append(otherItemDisplay(link, ".."));
         }
         // directories before files, sorted case-insensitive
         files.sort(([name1, isDir1], [name2, isDir2]) =>
@@ -1157,8 +1167,19 @@ evaluatedPage =
           name1.toLowerCase() < name2.toLowerCase() ? -1 : 0);
         for (i = 0; i < files.length; i++) {
           var [name, isDir] = files[i];
-          var link = isDir ? name + "/?ls" : name + "/?edit";
-          form.append(fileItemDisplay(link, name, isDir));
+          let extension = name.replace(/^(?:(?!\.(?=[^\.]*$)).)*\.?/, "");
+          if("." + extension == name || extension === "") extension = "-";
+          const img_exts = ["jpeg", "jpg", "png", "svg", "tiff", "tif", "gif", "pdf"]
+          const is_img = img_exts.includes(extension.toLowerCase());
+          if (!is_img) {
+            if (isDir) {
+              form.append(otherItemDisplay((name + "/?ls"), name))
+            } else {
+              form.append(fileItemDisplay((name + "/?edit"), name, isDir));
+            }
+          } else {
+            form.append(otherItemDisplay(name, name));
+          }
         }
 
         form.append(el("input", {type:"file", id:"fileElem", onchange:"handleFiles(this.files)"}, [], {}));
