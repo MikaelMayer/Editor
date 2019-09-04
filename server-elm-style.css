@@ -1182,6 +1182,10 @@ div.editor-container-content > div.draftList > div#draft-title > label:first-chi
     padding-right: 10px;
 }
 
+label.switch {
+  position: relative;
+}
+
 @media screen and (max-width: 800px) {
     div#modify-menu {
         -webkit-box-shadow: none;
