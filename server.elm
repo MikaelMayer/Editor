@@ -2448,6 +2448,47 @@ lastEditScript = """
       if(redoButton) redoButton.classList.toggle("disabled", !canRedo());
     }
     
+    document.addEventListener("selectionchange", fixSelection);
+    
+    // When selecting some text, mouse up on document, the focus node is outside of the anchor node. We want to prevent this from happening
+    function fixSelection() {
+      var sel = window.getSelection().getRangeAt(0);
+      if(!sel) return;
+      if(sel.startContainer.nodeType !== 3) return;
+      if(sel.endContainer.nodeType !== 1) return;
+      // We'll ensure that the end of selection is inside a text node.
+      if(sel.endContainer.childNodes[sel.endOffset].previousElementSibling === sel.startContainer.parentElement) {
+        // Triple click chrome bug.
+        let finalTextNode = sel.startContainer.parentElement;
+        while(finalTextNode && finalTextNode.nodeType !== 3) {
+          var candidateChild = finalTextNode.childNodes[finalTextNode.childNodes.length - 1];
+          while(candidateChild && candidateChild.textContent === "") {
+            candidateChild = candidateChild.previousSibling;
+          } // We select the last child that contains some text, until we reach the text node.
+          finalTextNode = candidateChild;
+        }
+        if(finalTextNode) { // finalTextNode.nodeType === 3
+          var range = document.createRange();
+          range.setStart(sel.startContainer, sel.startOffset);
+          range.setEnd(finalTextNode, finalTextNode.textContent.length);
+          clearSelection();
+          window.getSelection().addRange(range)        
+        }
+      }
+    }
+    
+    function clearSelection() {
+      if (window.getSelection) {
+        if (window.getSelection().empty) {  // Chrome
+          window.getSelection().empty();
+        } else if (window.getSelection().removeAllRanges) {  // Firefox
+          window.getSelection().removeAllRanges();
+        }
+      } else if (document.selection) {  // IE?
+        document.selection.empty();
+      }
+    }
+    
     function pasteHtmlAtCaret(html) {
       var sel, range;
       if (window.getSelection) {
