@@ -1199,7 +1199,7 @@ label.switch {
         min-height: 350px;
         transform: translate(0px, 100%);
         padding: 0;
-        padding-bottom: 80px;
+        padding-bottom: 8px;
     }
     div#modify-menu>div.modify-menu-icons.pinned {
         width: auto;
