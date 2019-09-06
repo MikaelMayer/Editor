@@ -1133,8 +1133,7 @@ div.editor-container-content > div.draftList > div.draft-row > button.draft-swit
 
 div.modify-menu-icons > button#update-thaditor-btn {
     color: white;
-    background: linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
-    background: -webkit-linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
+    background: var(--context-dom-children-selector-color);
     border: none;
     font-size: 0.8em;
     margin-top: 6px;
