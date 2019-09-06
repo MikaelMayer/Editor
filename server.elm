@@ -3519,7 +3519,6 @@ lastEditScript = """
             if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
               CSSvalue = CSSvalue.slice(1);
             }
-            //(async () => {
             linkNode.setAttribute("ghost-href", oldHref);
             //for now, we will increase # on temp#.css until we find a unique name
             
@@ -3568,7 +3567,7 @@ lastEditScript = """
               if(linkOrStyleNode.tagName === "LINK" && linkOrStyleNode.getAttribute("rel") === "stylesheet" &&
                  linkOrStyleNode.getAttribute("href") && !linkOrStyleNode.getAttribute("isghost")) {
                 let CSSFilePath = relativeToAbsolute(linkOrStyleNode.getAttribute("href"));
-                if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface")/*!(CSSFilePath.match(/server-elm-style/g))*/ && (CSSFilePath.indexOf("http") < 0)) {
+                if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface") && (CSSFilePath.indexOf("http") < 0)) {
                   if(!(linkOrStyleNode.getAttribute("ghost-href"))) {
                     let CSSvalue = doReadServer("read", CSSFilePath);
                     if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
@@ -3592,7 +3591,7 @@ lastEditScript = """
             for(let z in rawCSS) {  
               var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
               for(let i in parsedCSS) {
-                if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector)) {
+                if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector.replace(/:(?=(after|before|hover))[^,]*(?=,|$)/g, ""))) {
                   let content = CSSparser.unparseCSS([parsedCSS[i]]);
                   let wsBefore = content.replace(/^(\s*\n|)[\s\S]*$/g, (m, ws) => ws);
                   let contentTrimmed = content.replace(/\s*\n/,"");
@@ -3604,7 +3603,7 @@ lastEditScript = """
                   let curMedia = parsedCSS[i];
                   for(let j in curMedia.content) {
                     //console.log(curMedia.content[j]);
-                    if(editor.matches(clickedElem, curMedia.content[j].selector)) {
+                    if(editor.matches(clickedElem, curMedia.content[j].selector.replace(/:(?=(after|before|hover))[^,]*(?=,|$)/g, ""))) {
                       var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
                         mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
@@ -3945,7 +3944,6 @@ lastEditScript = """
                         this.storedCSS.content = this.value;
                         await postServer("write", CSSFilePath, fullUnparseCSS(this.storedCSS));
                         await updateHrefCounter(this.storedCSS.orgTag, oldHref, mbOldValue.slice(1));
-                        //console.log(doReadServer("read", CSSFilePath));
                       }
                     })();
                   },
