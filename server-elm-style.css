@@ -361,8 +361,7 @@ div#modify-menu #CSS-modification > button#add-inline-style {
     margin-top: 4px;
     margin-bottom: 4px;
     border-radius: 0.2em;
-    background: linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
-    background: -webkit-linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
+    background: var(--context-dom-children-selector-color);
     font-weight: bold;
     padding: 4px;
     border: none;

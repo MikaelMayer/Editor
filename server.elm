@@ -233,6 +233,7 @@ luca =
     }
     var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
     var apache_server = @(if browserSide then "true" else "false");
+    userName = typeof userName === "string" ? userName : "anonymous";
     function doReadServer(action, name, onOk, onErr) {
       if (typeof readServer != "undefined") {
         console.log("reading server");
@@ -2041,7 +2042,8 @@ lastEditScript = """
         return path;
       }
 
-    function sendToUndo(m, time) {
+    function sendToUndo(m) {
+      var time = +new Date();
       //for childLists, add mutable next/previous sibling properties
       if(m.type === "childList") {
           /*Object.defineProperty(m, 'rePrevSib', {value: m.previousSibling /*&& !(m.previousSibling.nodeType == 1)) ? 
@@ -2084,8 +2086,6 @@ lastEditScript = """
       console.log ("handle muts");
       console.log ({mutations, observer});
       var onlyGhosts = true;
-      let cur_date = new Date();
-      let cur_time = cur_date.getTime();
       for(var i = 0; i < mutations.length; i++) {
         // A mutation is a ghost if either
         // -- The attribute starts with 'ghost-'
@@ -2107,7 +2107,7 @@ lastEditScript = """
               ) {
           } else {
             onlyGhosts = false;
-            sendToUndo(mutation, cur_time);
+            sendToUndo(mutation);
             // Please do not comment out this line until we get proper clever save.
             console.log("Attribute is not ghost", mutation);
           }
@@ -2116,7 +2116,7 @@ lastEditScript = """
             for(var j = 0; j < mutation.addedNodes.length; j++) {
               if(!hasGhostAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
-                sendToUndo(mutation, cur_time);
+                sendToUndo(mutation);
                 // Please do not comment out this line until we get proper clever save.
                 console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
               }
@@ -2124,7 +2124,7 @@ lastEditScript = """
             for(var j = 0; j < mutation.removedNodes.length; j++) {
               if(!isGhostNode(mutation.removedNodes[j])) {
                 onlyGhosts = false;
-                sendToUndo(mutation, cur_time);
+                sendToUndo(mutation);
                 // Please do not comment out this line until we get proper clever save.
                 console.log(`Removed node ${j} was not a ghost`, mutation);
               }
@@ -2132,7 +2132,7 @@ lastEditScript = """
           }
         } else {
           onlyGhosts = false;
-          sendToUndo(mutation, cur_time);
+          sendToUndo(mutation);
           // Please do not comment out this line until we get proper clever save.
           console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
         }
@@ -3510,54 +3510,83 @@ lastEditScript = """
           if (!do_css) return CSSarea;
           //parse relevant CSS, recording prior and post CSS text as well 
 
+          // Creates a temporary file to replace this CSS file for editing, if it does not already exists
+          async function makeLinkPointToTempCss(linkNode) {
+            if(linkNode.getAttribute("ghost-href")) return;
+            let oldHref = linkNode.getAttribute("href");
+            let CSSFilePath = relativeToAbsolute(oldHref);
+            let CSSvalue = await getServer("read", CSSFilePath);
+            if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
+              CSSvalue = CSSvalue.slice(1);
+            }
+            //(async () => {
+            linkNode.setAttribute("ghost-href", oldHref);
+            //for now, we will increase # on temp#.css until we find a unique name
+            
+            let newFilePath = CSSFilePath.split("/");
+            let newFileName = "";
+            do {
+              editor_model.idNum += 1;
+              newFileName = `tmp${editor_model.idNum}-${userName}-${newFilePath[newFilePath.length - 1]}`;
+            } while(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName)
+            newFilePath[newFilePath.length - 1] = newFileName;
+            newFilePath = newFilePath.join("/");
+            await postServer("write", newFilePath, CSSvalue);
+            linkNode.setAttribute("href", newFilePath);
+          }
+                        
+          async function updateHrefCounter(linkNode, oldHref, oldValue) {
+            editor_model.outputObserver.disconnect();
+            console.log("success");
+            editor_model.idNum += 1;
+            //add dummy counter, force reload
+            let newRef = dummyCounter(oldHref, "?c=", `?c=${editor_model.idNum}`)
+            console.log("new relative file path:" + newRef);
+            linkNode.setAttribute("href", newRef);
+            let m = {type: "file", target: linkNode, oldValue: oldValue, action: "write", oldHref: oldHref};
+            console.log(m);
+            sendToUndo(m);
+            printstacks();
+            editor_model.outputObserver.observe
+              ( document.body.parentElement
+              , { attributes: true
+                , childList: true
+                , characterData: true
+                , attributeOldValue: true
+                , characterDataOldValue: true
+                , subtree: true
+                }
+              );
+          }
+
           function fullParseCSS() {
             var fullCSS = [], keyframes = [], rawCSS = [];
             //console.log("All style tags:", document.querySelectorAll("style"));
             let CSSstyles = document.querySelectorAll("link, style");
             for(let i in CSSstyles) {
-              let e = CSSstyles[i];
-              if(e.tagName === "LINK" && e.getAttribute("type") === "text/css" && e.getAttribute("href") && !e.getAttribute("isghost")) {
-                let CSSFilePath = relativeToAbsolute(e.getAttribute("href"));                
-                if(!(e.className && e.className === "editor-interface")/*!(CSSFilePath.match(/server-elm-style/g))*/ && (CSSFilePath.indexOf("http") < 0)) {
-                  if(!(e.getAttribute("ghost-href"))) {
-                    //(async () => {
-                    e.setAttribute("ghost-href", CSSFilePath);
-                    //for now, we will increase # on temp#.css until we find a unique name
-                    editor_model.idNum += 1;
-                    let newFileName = `temp${editor_model.idNum}.css`;
-                    //console.log(CSSFilePath);
-                    while (CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName) {
-                      editor_model.idNum += 1;
-                      newFileName = `temp${editor_model.idNum}.css`;
-                    }
-                    let newFilePath = CSSFilePath.split("/");
-                    newFilePath[newFilePath.length - 1] = newFileName;
-                    newFilePath = newFilePath.join("/");
-                    console.log(newFilePath);
-                    //let CSSvalue = await getServer("read", CSSFilePath);
+              let linkOrStyleNode = CSSstyles[i];
+              if(linkOrStyleNode.tagName === "LINK" && linkOrStyleNode.getAttribute("rel") === "stylesheet" &&
+                 linkOrStyleNode.getAttribute("href") && !linkOrStyleNode.getAttribute("isghost")) {
+                let CSSFilePath = relativeToAbsolute(linkOrStyleNode.getAttribute("href"));
+                if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface")/*!(CSSFilePath.match(/server-elm-style/g))*/ && (CSSFilePath.indexOf("http") < 0)) {
+                  if(!(linkOrStyleNode.getAttribute("ghost-href"))) {
                     let CSSvalue = doReadServer("read", CSSFilePath);
-                    if(CSSvalue) {
+                    if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
                       CSSvalue = CSSvalue.slice(1);
-                      rawCSS.push({text: CSSvalue, tag: e});
+                      rawCSS.push({text: CSSvalue, tag: linkOrStyleNode});
                     }
-                    //await postServer("write", newFilePath, CSSvalue);
-                    doWriteServer("write", newFilePath, CSSvalue);
-                    //console.log("CSS value is:" + CSSvalue);
-                    e.setAttribute("href", newFilePath);
-                    //})();
-                  }
-                  else {
+                  } else { // Already being edited.
                     //geting rid of ?c= at the end of the temp.css
                     CSSFilePath = dummyCounter(CSSFilePath, "?c=");
                     //console.log("temp CSS loaded");
                     let CSSvalue = doReadServer("read", CSSFilePath);
                     //console.log("css value loaded is:", CSSvalue);
-                    rawCSS.push({text: CSSvalue.slice(1), tag: e});
+                    rawCSS.push({text: CSSvalue.slice(1), tag: linkOrStyleNode});
                   }
                 }
               }
-              else if(e.tagName === "STYLE" && !e.getAttribute("isghost")) {
-                rawCSS.push({text: e.textContent, tag: e});
+              else if(linkOrStyleNode.tagName === "STYLE" && !linkOrStyleNode.getAttribute("isghost")) {
+                rawCSS.push({text: linkOrStyleNode.textContent, tag: linkOrStyleNode});
               }
             }
             for(let z in rawCSS) {  
@@ -3647,6 +3676,7 @@ lastEditScript = """
             if(curTag.tagName === "LINK") {
               return CSSString;
             }
+            // Style elements
             //console.log("Text is:" + CSSString);
             curTag.textContent = CSSString;
             //debugger
@@ -3661,28 +3691,29 @@ lastEditScript = """
               CSSarea.removeChild(CSSarea.firstChild);
             }
             //if there is linked CSS text
-            if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("type") === "text/css" && clickedElem.getAttribute("href")) {
-              let CSSFilePath = relativeToAbsolute(clickedElem.getAttribute("href"));
+            if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("rel") === "stylesheet" && clickedElem.getAttribute("href")) {
+              let oldHref = clickedElem.getAttribute("href");
+              let CSSFilePath = relativeToAbsolute(oldHref);
               let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
               CSSarea.append(
                 el("div", {"class": "CSS-modify-unit"}, [
                   el("textarea", {"class": "linked-CSS"}, [], {
-                    defaultValue: CSSvalue,
+                    value: CSSvalue,
                     onfocusout() {
                       setCSSAreas();
                     },
                     oninput() {
                       (async () => {
-                        editor_model.outputObserver.disconnect();
-                        let oldHref = CSSFilePath, oldValue = await getServer("read", CSSFilePath);
+                        let mbOldValue = await getServer("read", CSSFilePath);
                         await postServer("write", CSSFilePath, this.value);
                         editor_model.idNum += 1;
                         //add dummy counter, force reload  
-                        CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
-                        clickedElem.setAttribute("href", CSSFilePath);
-                        let m = {type: "file", target: clickedElem, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
-                        sendToUndo(m, +new Date());
+                        var newHref = dummyCounter(oldHref, "?c=", `?c=${editor_model.idNum}`);
+                        editor_model.outputObserver.disconnect();
+                        clickedElem.setAttribute("href", newHref);
+                        let m = {type: "file", target: clickedElem, oldValue: mbOldValue.slice(1), action: "write", oldHref: oldHref};
+                        sendToUndo(m);
                         editor_model.outputObserver.observe
                           ( document.body.parentElement
                           , { attributes: true
@@ -3780,13 +3811,12 @@ lastEditScript = """
                         if(closestStyleLink.tagName === "LINK") {
                           (async () => {
                             editor_model.outputObserver.disconnect();
-                            let oldHref = closestStyleLink.getAttribute("href"), oldValue = await getServer("read", oldHref);
-                            await postServer("write", oldHref, oldValue + postIndentCSS);
-                            let CSSFilePath = oldHref.slice(0);
-                            CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
-                            clickedElem.setAttribute("href", CSSFilePath);
-                            let m = {type: "file", target: closestStyleLink, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
-                            sendToUndo(m, +new Date());
+                            let oldHref = closestStyleLink.getAttribute("href"), mbOldValue = await getServer("read", oldHref);
+                            await postServer("write", oldHref, mbOldValue.slice(1) + postIndentCSS);
+                            let newHref = dummyCounter(oldHref, "?c=", `?c=${editor_model.idNum}`);
+                            clickedElem.setAttribute("href", newHref);
+                            let m = {type: "file", target: closestStyleLink, oldValue: mbOldValue.slice(1), action: "write", oldHref: oldHref};
+                            sendToUndo(m);
                             editor_model.outputObserver.observe
                               ( document.body.parentElement
                               , { attributes: true
@@ -3859,11 +3889,22 @@ lastEditScript = """
               if(cssState.type === '@@media') {
                 CSSarea.append(el("div", {"class": "@media-selector", "contenteditable": true}, [], {
                 oninput: (cssState => function() {
-                  if(window.matchMedia(cssState.selector).matches ? editor.matches(clickedElem, cssState.content.selector) : false) {
-                    //implement throwError;
-                  }
-                  cssState.mediaSelector = this.value;
-                  fullUnparseCSS(cssState);
+                  (async () => {
+                    if(window.matchMedia(cssState.selector).matches ? editor.matches(clickedElem, cssState.content.selector) : false) {
+                      //implement throwError;
+                    }
+                    cssState.mediaSelector = this.value;
+                    if(cssState.orgTag.tagName != "LINK") {
+                      fullUnparseCSS(cssState);
+                    } else {
+                      let oldHref = cssState.orgTag.getAttribute("href");
+                      let CSSFilePath = relativeToAbsolute(oldHref);
+                      let mbOldValue = await getServer("read", CSSFilePath);
+                      await makeLinkPointToTempCss(cssState.orgTag);
+                      await postServer("write", CSSFilePath, fullUnparseCSS(cssState));
+                      await updateHrefCounter(cssState.orgTag, oldHref, mbOldValue.slice(1));
+                    }
+                  })();
                 })(cssState),
                 innerHTML: cssState.mediaSelector
                 }))
@@ -3878,7 +3919,7 @@ lastEditScript = """
                   },
                   oninput: function() {
                     (async () => {
-                      if(this.storedCSS.orgTag.tagName != "LINK") {
+                      if(this.storedCSS.orgTag.tagName != "LINK") { // style node
                         let throwError = false;
                         curCSSState = CSSparser.parseCSS(this.value);
                         //console.log(curCSSState);
@@ -3896,35 +3937,14 @@ lastEditScript = """
                         fullUnparseCSS(this.storedCSS);
                         //setCSSAreas();
                       }
-                      else {
-                        let CSSFilePath = relativeToAbsolute(this.storedCSS.orgTag.getAttribute("href"));
-                        let oldHref = CSSFilePath, oldValue = await getServer("read", CSSFilePath);
-                        CSSFilePath = dummyCounter(CSSFilePath, "?c=");
-                        console.log("Current file path is:", CSSFilePath);
+                      else { // Link
+                        await makeLinkPointToTempCss(this.storedCSS.orgTag);
+                        let oldHref = this.storedCSS.orgTag.getAttribute("href");
+                        let CSSFilePath = relativeToAbsolute(oldHref);
+                        let mbOldValue = await getServer("read", CSSFilePath);
                         this.storedCSS.content = this.value;
-                        
                         await postServer("write", CSSFilePath, fullUnparseCSS(this.storedCSS));
-                        editor_model.outputObserver.disconnect();
-                        console.log("success");
-                        editor_model.idNum += 1;
-                        //add dummy counter, force reload
-                        CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`)
-                        console.log("new file path:" + CSSFilePath);
-                        this.storedCSS.orgTag.setAttribute("href", CSSFilePath);
-                        let m = {type: "file", target: this.storedCSS.orgTag, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
-                        console.log(m);
-                        sendToUndo(m, +new Date());
-                        printstacks();
-                        editor_model.outputObserver.observe
-                          ( document.body.parentElement
-                          , { attributes: true
-                            , childList: true
-                            , characterData: true
-                            , attributeOldValue: true
-                            , characterDataOldValue: true
-                            , subtree: true
-                            }
-                          );
+                        await updateHrefCounter(this.storedCSS.orgTag, oldHref, mbOldValue.slice(1));
                         //console.log(doReadServer("read", CSSFilePath));
                       }
                     })();
@@ -3932,37 +3952,25 @@ lastEditScript = """
                   storedCSS: cssState
                 }),
                 orgTag.tagName === "LINK" ?
-                  el("div", {"class": "CSS-action-button", "title": "Delete this entire window of CSS"}, [], {
+                  el("div", {"class": "CSS-action-button", "title": "Delete this snippet of CSS"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick() {
                       (async () => {
+                        await makeLinkPointToTempCss(orgTag);
                         let linked_CSS = this.parentElement.childNodes[0];
                         linked_CSS.value = "";
                         linked_CSS.storedCSS.content = linked_CSS.value;
                         editor_model.idNum += 1;
-                        let CSSFilePath = relativeToAbsolute(this.parentElement.childNodes[0].storedCSS.orgTag.getAttribute("href"));
-                        let oldHref = CSSFilePath, oldValue = await getServer("read", CSSFilePath);
-                        editor_model.outputObserver.disconnect();
+                        let oldHref = this.parentElement.childNodes[0].storedCSS.orgTag.getAttribute("href");
+                        let CSSFilePath = relativeToAbsolute(oldHref);
+                        let mbOldValue = await getServer("read", CSSFilePath);
+
                         await postServer("write", CSSFilePath, fullUnparseCSS(linked_CSS.storedCSS));
-                        CSSFilePath = dummyCounter(CSSFilePath, "?c=", `?c=${editor_model.idNum}`);
-                        orgTag.setAttribute("href", CSSFilePath);
-                        let m = {type: "file", target: orgTag, oldValue: oldValue.slice(1), action: "write", oldHref: oldHref};
-                        sendToUndo(m, +new Date());
+                        await updateHrefCounter(orgTag, oldHref, mbOldValue.slice(1));
                         setCSSAreas();
-                        console.log("should have reloaded!");
-                        editor_model.outputObserver.observe
-                          (document.body.parentElement
-                          , { attributes: true
-                            , childList: true
-                            , characterData: true
-                            , attributeOldValue: true
-                            , characterDataOldValue: true
-                            , subtree: true
-                            }
-                          );
                       }) ();
                     }
-                  }) :
+                  }) : // inline style case
                   el("div", {"class": "CSS-action-button", "title": "Delete this entire window of CSS"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick() {
@@ -5273,18 +5281,20 @@ lastEditScript = """
                 let allPageLinks = document.querySelectorAll("link");
                 (async () => {
                   for(let e = 0; e < allPageLinks.length; e++) {
+                    let linkNode = allPageLinks[e];
                     console.log("current element:");
-                    console.log(allPageLinks[e]);
-                    console.log(allPageLinks[e].getAttribute("ghost-href"));
-                    if(!isGhostNode(allPageLinks[e]) && allPageLinks[e].getAttribute("ghost-href")) {
-                      let trueTempPath = dummyCounter(allPageLinks[e].getAttribute("href"), "?c=");
-                      let trueCSSPath = dummyCounter(allPageLinks[e].getAttribute("ghost-href"), "?timestamp=");
-                      await postServer("fullCopy", trueTempPath, trueCSSPath);
+                    console.log(linkNode);
+                    console.log(linkNode.getAttribute("ghost-href"));
+                    if(!isGhostNode(linkNode) && linkNode.getAttribute("ghost-href")) {
+                      let trueTempPath = dummyCounter(linkNode.getAttribute("href"), "?c="); // This one is absolute normally
+                      let trueCSSPath = dummyCounter(linkNode.getAttribute("ghost-href"), "?timestamp=");
+                      let absTrueCSSPath = relativeToAbsolute(trueCSSPath);
+                      await postServer("fullCopy", trueTempPath, absTrueCSSPath);
                       console.log("true temp path:" + trueTempPath);
                       console.log("true CSS path:" + trueCSSPath);
                       trueCSSPath += `?timestamp=${+new Date()}`;
-                      allPageLinks[e].setAttribute("href", trueCSSPath);
-                      console.log("after:" + allPageLinks[e].getAttribute("href"));
+                      linkNode.setAttribute("href", trueCSSPath);
+                      console.log("after:" + linkNode.getAttribute("href"));
                       await postServer("unlink", trueTempPath);
                     }                 
                   }
