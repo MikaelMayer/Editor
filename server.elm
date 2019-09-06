@@ -2453,7 +2453,7 @@ lastEditScript = """
     // When selecting some text, mouse up on document, the focus node is outside of the anchor node. We want to prevent this from happening
     function fixSelection() {
       var sel = window.getSelection().getRangeAt(0);
-      if(!sel) return;
+      if(!sel || !sel.rangeCount) return;
       if(sel.startContainer.nodeType !== 3) return;
       if(sel.endContainer.nodeType !== 1) return;
       // We'll ensure that the end of selection is inside a text node.
@@ -2471,13 +2471,16 @@ lastEditScript = """
           var range = document.createRange();
           range.setStart(sel.startContainer, sel.startOffset);
           range.setEnd(finalTextNode, finalTextNode.textContent.length);
-          clearSelection();
+          clearTextSelection();
           window.getSelection().addRange(range)        
         }
       }
     }
     
-    function clearSelection() {
+    function clearTextSelection() {
+      var sel = window.getSelection();
+      if(!sel || !sel.rangeCount) return;
+      var selection = sel.getRangeAt(0);
       if (window.getSelection) {
         if (window.getSelection().empty) {  // Chrome
           window.getSelection().empty();
@@ -2487,6 +2490,7 @@ lastEditScript = """
       } else if (document.selection) {  // IE?
         document.selection.empty();
       }
+      return selection;
     }
     
     function pasteHtmlAtCaret(html) {
@@ -2925,6 +2929,7 @@ lastEditScript = """
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
       notextselection: false, // When using the relative DOM selector, set to true to avoid considering the caret (e.g. for insertions and deletions)
+      savedTextSelection: undefined, // Text range to restore when the edition bar closes, on mobile
       selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
       caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
@@ -3135,12 +3140,12 @@ lastEditScript = """
           return editor_model.clickedElem;
         },
         render: function render(editor_model, innerBox) {
-          let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
+          let domSelector = el("div.dom-selector.noselect"); // create dom selector interface
           const clickedElem = editor_model.clickedElem;
           if (!clickedElem) return "Click on an element to view its location in DOM tree";
           domSelector.classList.add("dom-selector-style");
-          let mainElemDiv = el("div", {"class": "mainElem"}, []);
-          let childrenElemDiv = el("div", {"class": "childrenElem"}, []);
+          let mainElemDiv = el("div.mainElem");
+          let childrenElemDiv = el("div.childrenElem");
           domSelector.append(
             mainElemDiv, childrenElemDiv
           );
@@ -3209,6 +3214,7 @@ lastEditScript = """
                 editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = c;
                 editor_model.notextselection = true;
+                if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
                 updateInteractionDiv();
               }
             } else {
@@ -3235,6 +3241,7 @@ lastEditScript = """
               editor_model.clickedElem.removeAttribute("ghost-hovered");
               editor_model.clickedElem = c;
               editor_model.notextselection = true;
+              if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
               updateInteractionDiv();
             }
             if (selectMiddleChild) {
@@ -3256,6 +3263,7 @@ lastEditScript = """
                 editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = c;
                 editor_model.notextselection = true;
+                if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
                 updateInteractionDiv();
               }
             } else {
@@ -3265,7 +3273,6 @@ lastEditScript = """
             }
           }
           // editor itself should be invisible
-          console.log ("here invis");
           if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
             if (!clickedElem.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
               editor_model.displayClickedElemAsMainElem = false;
@@ -3283,6 +3290,7 @@ lastEditScript = """
                 editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = clickedElem;
                 editor_model.notextselection = true;
+                if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
                 updateInteractionDiv();
               }
               displayElemAttr(mainElemDiv, clickedElem);
@@ -3353,6 +3361,7 @@ lastEditScript = """
                   editor_model.clickedElem.removeAttribute("ghost-hovered");
                   editor_model.clickedElem = clickedElem.parentElement;
                   editor_model.notextselection = true;
+                  if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
                   updateInteractionDiv();
                 }
                 displayElemAttr(mainElemDiv, clickedElem.parentElement);
@@ -3643,8 +3652,7 @@ lastEditScript = """
                 else if(parsedCSS[i].kind === '@@media' && window.matchMedia(parsedCSS[i].atNameValue).matches) {
                   let curMedia = parsedCSS[i];
                   for(let j in curMedia.content) {
-                    //console.log(curMedia.content[j]);
-                    if(editor.matches(clickedElem, curMedia.content[j].selector.replace(/:(?=(after|before|hover))[^,]*(?=,|$)/g, ""))) {
+                    if(curMedia.content[j].kind === 'cssBlock' && editor.matches(clickedElem, curMedia.content[j].selector.replace(/:(?=(after|before|hover))[^,]*(?=,|$)/g, ""))) {
                       var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
                         mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
@@ -5284,6 +5292,10 @@ lastEditScript = """
               editor_model.visible = !editor_model.visible;
               setTimeout(maybeRepositionContextMenu, 500);
               this.innerHTML = panelOpenCloseIcon();
+              if(onMobile() && editor_model.savedTextSelection) {
+                window.getSelection().addRange(editor_model.savedTextSelection);
+                editor_model.savedTextSelection = undefined;
+              }
             }
         });
         addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
