@@ -2332,7 +2332,7 @@ lastEditScript = """
          }
        );
       updateInteractionDiv();
-      printstacks();
+      //printstacks();
       })();
       console.log("REACH THIS POINT?");
       return 1;
@@ -3565,9 +3565,9 @@ lastEditScript = """
           //parse relevant CSS, recording prior and post CSS text as well 
 
           // Creates a temporary file to replace this CSS file for editing, if it does not already exists
-          async function makeLinkPointToTempCss(linkNode) {
-            if(linkNode.getAttribute("ghost-href")) return;
+          async function getTempLinkToSaveCSS(linkNode) {
             let oldHref = linkNode.getAttribute("href");
+            if(linkNode.getAttribute("ghost-href")) return oldHref;
             let CSSFilePath = relativeToAbsolute(oldHref);
             let CSSvalue = await getServer("read", CSSFilePath);
             if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
@@ -3584,22 +3584,22 @@ lastEditScript = """
             } while(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName)
             newFilePath[newFilePath.length - 1] = newFileName;
             newFilePath = newFilePath.join("/");
+            newFilePath = dummyCounter(newFilePath, "?timestamp=", "?timestamp="+(+new Date()));
             await postServer("write", newFilePath, CSSvalue);
-            linkNode.setAttribute("href", newFilePath);
+            return newFilePath;
           }
                         
-          async function updateHrefCounter(linkNode, oldHref, oldValue) {
+          async function setReversibleLinkHref(linkNode, oldHref, newHref, oldValue) {
             editor_model.outputObserver.disconnect();
-            console.log("success");
-            editor_model.idNum += 1;
             //add dummy counter, force reload
-            let newRef = dummyCounter(oldHref, "?c=", `?c=${editor_model.idNum}`)
-            console.log("new relative file path:" + newRef);
-            linkNode.setAttribute("href", newRef);
+            linkNode.setAttribute("href", newHref);
             let m = {type: "file", target: linkNode, oldValue: oldValue, action: "write", oldHref: oldHref};
             console.log(m);
             sendToUndo(m);
-            printstacks();
+            syncUndoRedoButtons();
+            editor_model.canSave = true;
+            document.querySelector("#savebutton").classList.toggle("disabled", false);
+            //printstacks();
             editor_model.outputObserver.observe
               ( document.body.parentElement
               , { attributes: true
@@ -3800,30 +3800,27 @@ lastEditScript = """
                   el("div", {"class": "CSS-action-button"}, [], {
                     innerHTML: cloneSVG,
                     onclick() {
-                      let closestStyleLink;
-                      let closestStyleLinkAll = document.querySelectorAll("link, style");
-                      console.log("hi!", closestStyleLinkAll);
-                      for(let e in closestStyleLinkAll) {
-                        if(closestStyleLinkAll[e].tagName === "STYLE") {
-                          closestStyleLink = closestStyleLinkAll[e];
-                          break;
-                        }
-                        else if(closestStyleLinkAll[e].tagName === "LINK" && (closestStyleLinkAll[e].tagName.indexOf("http") < 0) && (closestStyleLinkAll[e].className != "editor-interface")) {
-                          closestStyleLink = closestStyleLinkAll[e];
-                          break;
-                        }
+                      let stylesLinks = document.querySelectorAll("style, link");
+                      let i = stylesLinks.length - 1;
+                      let lastStyleLink = stylesLinks[i];
+                      while(i >= 0 && lastStyleLink.matches(".editor-interface, .editor-interface *")) {
+                        i--;
+                        lastStyleLink = stylesLinks[i];
                       }
-                      console.log("Closest CSS source:", closestStyleLink);
+                      if(lastStyleLink && (lastStyleLink.isghost || lastStyleLink.tagName === "LINK" && lastStyleLink.tagName.indexOf("http") >= 0)) {
+                        lastStyleLink = undefined;
+                      }
+                      console.log("Closest CSS source:", lastStyleLink);
                       let inline_CSS = document.querySelectorAll(".inline-CSS");
                       console.log("Finding inline CSS textarea:", inline_CSS);  
                       let postIndentCSS = "";
                       let preIndentCSS = inline_CSS[0].value.split("\n");
                       for(let i = 0; i < preIndentCSS.length; i++) {
                         if(i !== preIndentCSS.length-1) {
-                          postIndentCSS += "\t" + preIndentCSS[i] + "\n";
+                          postIndentCSS += "  " + preIndentCSS[i] + "\n";
                         }
                         else {
-                          postIndentCSS += "\t" + preIndentCSS[i]; 
+                          postIndentCSS += "  " + preIndentCSS[i]; 
                         }
                       }
                       //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
@@ -3831,67 +3828,64 @@ lastEditScript = """
 
                       //check if selector applies to any ancestors or descendants, then its ok
                       //else add class or use > selector until it is precise 
-                      let curselector;
+                      let curSelector = clickedElem.tagName.toLowerCase();
                       if(clickedElem.getAttribute("id")) {
-                        curSelector = "#" + clickedElem.getAttribute("id")
-                      } 
-                      else if (clickedElem.getAttribute("class"))
-                        curSelector = "." + clickedElem.getAttribute("class");
-                      else {
-                        curSelector = clickedElem.tagName.toLowerCase();
+                        curSelector += "#" + clickedElem.getAttribute("id")
+                      }
+                      if (clickedElem.getAttribute("class")) {
+                        curSelector += "." + clickedElem.getAttribute("class").replace(/\s+/g, ".");
                       }
                       //checking ancestors
-                      let selectorIsOrg = true;
-                      for(let curAncestor = clickedElem.parentNode; curAncestor; curAncestor = curAncestor.parentNode) {
-                        if(editor.matches(curAncestor, curSelector)) {
+                      let consideredParent = clickedElem.parentNode;
+                      do {
+                        var selectorIsOrg = true;
+                        for(let curAncestor = clickedElem.parentNode; curAncestor; curAncestor = curAncestor.parentNode) {
+                          if(editor.matches(curAncestor, curSelector)) {
+                            selectorIsOrg = false;
+                          }
+                        }
+                        //checking descendants
+                        if(clickedElem.querySelector(curSelector)) {
                           selectorIsOrg = false;
                         }
-                      }
-                      //checking descendants
-                      if(clickedElem.querySelector(curSelector)) {
-                        selectorIsOrg = false;
-                      } 
-                      if(!selectorIsOrg) {
-                        let curSelector = clickedElem.tagName.toLowerCase();
-                        for(let curElem = clickedElem.parentElement; curElem; curElem = curElem.parentElement) {
-                          curSelector =  curElem.tagName.toLowerCase() + " > " + curSelector; 
+                        if(!selectorIsOrg) {
+                          curSelector =  consideredParent.toLowerCase() + " > " + curSelector; 
+                          consideredParent = consideredParent.parentNode;
                         }
-                      }
-                      postIndentCSS = "\n" + curSelector + "{\n" + postIndentCSS + "\n}";   
-                      console.log("closestStyleLink is:", closestStyleLink);     
-                      if(closestStyleLink) {
-                        if(closestStyleLink.tagName === "LINK") {
+                      } while(!selectorIsOrg && consideredParent);
+                      postIndentCSS = "\n" + curSelector + " {\n" + postIndentCSS + "\n}";   
+                      console.log("lastStyleLink is:", lastStyleLink);     
+                      if(lastStyleLink) {
+                        if(lastStyleLink.tagName === "LINK") {
                           (async () => {
-                            editor_model.outputObserver.disconnect();
-                            let oldHref = closestStyleLink.getAttribute("href"), mbOldValue = await getServer("read", oldHref);
-                            await postServer("write", oldHref, mbOldValue.slice(1) + postIndentCSS);
-                            let newHref = dummyCounter(oldHref, "?c=", `?c=${editor_model.idNum}`);
-                            clickedElem.setAttribute("href", newHref);
-                            let m = {type: "file", target: closestStyleLink, oldValue: mbOldValue.slice(1), action: "write", oldHref: oldHref};
-                            sendToUndo(m);
-                            editor_model.outputObserver.observe
-                              ( document.body.parentElement
-                              , { attributes: true
-                                , childList: true
-                                , characterData: true
-                                , attributeOldValue: true
-                                , characterDataOldValue: true
-                                , subtree: true
-                                }
-                              );
+                            console.log("lastStyleLink", lastStyleLink.outerHTML);
+                            let oldHref = lastStyleLink.getAttribute("href");
+                            console.log("oldHref", oldHref);
+                            let newHref = await getTempLinkToSaveCSS(lastStyleLink);
+                            console.log("lastStyleLink", lastStyleLink.outerHTML);
+                            console.log("newHref", newHref);
+                            let CSSPath = relativeToAbsolute(dummyCounter(newHref, "?timestamp="));
+                            console.log("CSSPath", CSSPath);
+                            let mbOldValue = await getServer("read", CSSPath);
+                            await postServer("write", CSSPath, mbOldValue.slice(1) + postIndentCSS);
+                            await setReversibleLinkHref(lastStyleLink, oldHref, newHref, mbOldValue.slice(1));
+                            clickedElem.removeAttribute("style");
+                            setCSSAreas();
                           })();
                         }
-                        else {
-                          let curValue = closestStyleLink.textContent.slice(0);
-                          closestStyleLink.textContent = curValue + postIndentCSS;
+                        else { // lastStyleLink is a <style>
+                          let curValue = lastStyleLink.textContent;
+                          lastStyleLink.textContent = curValue + postIndentCSS;
+                          clickedElem.removeAttribute("style");
+                          setCSSAreas();
                         }
                       }
                       else {
                         //just default to style node for now
-                        document.head.appendChild(el("style", {"class": "inserted-CSS"}, [], {textContent: postIndentCSS}));
+                        document.body.appendChild(el("style.inserted-CSS", {}, postIndentCSS));
+                        clickedElem.removeAttribute("style");
+                        setCSSAreas();
                       }
-                      clickedElem.removeAttribute("style");
-                      setCSSAreas();
                     }
                   }),
                   el("div", {"class": "CSS-action-button"}, [], {
@@ -3951,11 +3945,11 @@ lastEditScript = """
                       fullUnparseCSS(cssState);
                     } else {
                       let oldHref = cssState.orgTag.getAttribute("href");
-                      let CSSFilePath = relativeToAbsolute(oldHref);
+                      let newHref = await getTempLinkToSaveCSS(cssState.orgTag);
+                      let CSSFilePath = relativeToAbsolute(dummyCounter(newHref, "?timestamp="));
                       let mbOldValue = await getServer("read", CSSFilePath);
-                      await makeLinkPointToTempCss(cssState.orgTag);
                       await postServer("write", CSSFilePath, fullUnparseCSS(cssState));
-                      await updateHrefCounter(cssState.orgTag, oldHref, mbOldValue.slice(1));
+                      await setReversibleLinkHref(cssState.orgTag, oldHref, newHref, mbOldValue.slice(1));
                     }
                   })();
                 })(cssState),
@@ -3991,13 +3985,13 @@ lastEditScript = """
                         //setCSSAreas();
                       }
                       else { // Link
-                        await makeLinkPointToTempCss(this.storedCSS.orgTag);
                         let oldHref = this.storedCSS.orgTag.getAttribute("href");
-                        let CSSFilePath = relativeToAbsolute(oldHref);
+                        let newHref = await getTempLinkToSaveCSS(this.storedCSS.orgTag);
+                        let CSSFilePath = relativeToAbsolute(dummyCounter(newHref, "?timestamp="));
                         let mbOldValue = await getServer("read", CSSFilePath);
                         this.storedCSS.content = this.value;
                         await postServer("write", CSSFilePath, fullUnparseCSS(this.storedCSS));
-                        await updateHrefCounter(this.storedCSS.orgTag, oldHref, mbOldValue.slice(1));
+                        await setReversibleLinkHref(this.storedCSS.orgTag, oldHref, newHref, mbOldValue.slice(1));
                       }
                     })();
                   },
@@ -4008,17 +4002,16 @@ lastEditScript = """
                     innerHTML: wasteBasketSVG,
                     onclick() {
                       (async () => {
-                        await makeLinkPointToTempCss(orgTag);
                         let linked_CSS = this.parentElement.childNodes[0];
+                        let orgTag = linked_CSS.storedCSS.orgTag;
+                        let oldHref = orgTag.getAttribute("href");
+                        let newHref = await getTempLinkToSaveCSS(orgTag);
+                        let CSSFilePath = relativeToAbsolute(dummyCounter(newHref, "?timestamp="));
                         linked_CSS.value = "";
                         linked_CSS.storedCSS.content = linked_CSS.value;
-                        editor_model.idNum += 1;
-                        let oldHref = this.parentElement.childNodes[0].storedCSS.orgTag.getAttribute("href");
-                        let CSSFilePath = relativeToAbsolute(oldHref);
                         let mbOldValue = await getServer("read", CSSFilePath);
-
                         await postServer("write", CSSFilePath, fullUnparseCSS(linked_CSS.storedCSS));
-                        await updateHrefCounter(orgTag, oldHref, mbOldValue.slice(1));
+                        await setReversibleLinkHref(orgTag, oldHref, newHref, mbOldValue.slice(1));
                         setCSSAreas();
                       }) ();
                     }
