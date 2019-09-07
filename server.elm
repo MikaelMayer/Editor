@@ -4629,9 +4629,11 @@ lastEditScript = """
           enabled(editor_model) {
             return true;
           },
-          render: () => (async (editor_model, innerBox) => {
+          render: (editor_model, innerBox) => {
+            
             let draftListDiv = el("div", {"class":"draftList"}, [], {});
 
+            (async () => {
             const verzExist = JSON.parse(await getServer("isdir", "Thaditor/versions"));
 
             const get_switch_btn_for = (nm) => {
@@ -4778,8 +4780,9 @@ lastEditScript = """
                 }
               });
             }
+            })();
             return draftListDiv;
-          })() //end of draft container render
+          }
         });
        }
       editor_model.interfaces.push({ 
