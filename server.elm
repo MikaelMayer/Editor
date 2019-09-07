@@ -441,9 +441,10 @@ luca =
       storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "/");
       return storageFolder;
     }
-	  editor.fs = { listdir: 
-		    function(dirname) {
-          return JSON.parse(doReadServer("listdir", dirname) || "[]");
+	  editor.fs = { 
+      listdir: 
+		    async function(dirname) {
+          return JSON.parse(await getServer("listdir", dirname) || "[]");
 		    }
 	  };
     editor.toTreasureMap = function(oldNode) {
@@ -2448,16 +2449,17 @@ lastEditScript = """
       if(redoButton) redoButton.classList.toggle("disabled", !canRedo());
     }
     
-    document.addEventListener("selectionchange", fixSelection);
-    
     // When selecting some text, mouse up on document, the focus node is outside of the anchor node. We want to prevent this from happening
     function fixSelection() {
-      var sel = window.getSelection().getRangeAt(0);
+      var sel = window.getSelection();
       if(!sel || !sel.rangeCount) return;
+      sel = sel.getRangeAt(0);
       if(sel.startContainer.nodeType !== 3) return;
       if(sel.endContainer.nodeType !== 1) return;
       // We'll ensure that the end of selection is inside a text node.
-      if(sel.endContainer.childNodes[sel.endOffset].previousElementSibling === sel.startContainer.parentElement) {
+      if(sel.startContainer.parentElement === sel.endContainer.childNodes[sel.endOffset].previousElementSibling ||
+         sel.startContainer.parentElement.nextElementSibling === sel.endContainer && sel.endOffset === 0
+      ) {
         // Triple click chrome bug.
         let finalTextNode = sel.startContainer.parentElement;
         while(finalTextNode && finalTextNode.nodeType !== 3) {
@@ -2476,6 +2478,8 @@ lastEditScript = """
         }
       }
     }
+    
+    document.addEventListener("selectionchange", fixSelection);
     
     function clearTextSelection() {
       var sel = window.getSelection();
@@ -2609,7 +2613,7 @@ lastEditScript = """
         }
       };
       
-      var bodyeditable = document.querySelector("body[contenteditable=true]");
+      var bodyeditable = document.querySelector("body[contenteditable]");
       var onKeypress = e => {
         if(e.keyCode==13 && !e.shiftKey){ // [Enter] key
             // If we are inside a paragraph, we split the paragraph.
@@ -3608,7 +3612,7 @@ lastEditScript = """
               );
           }
 
-          function fullParseCSS() {
+          async function fullParseCSS() {
             var fullCSS = [], keyframes = [], rawCSS = [];
             //console.log("All style tags:", document.querySelectorAll("style"));
             let CSSstyles = document.querySelectorAll("link, style");
@@ -3619,7 +3623,7 @@ lastEditScript = """
                 let CSSFilePath = relativeToAbsolute(linkOrStyleNode.getAttribute("href"));
                 if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface") && (CSSFilePath.indexOf("http") < 0)) {
                   if(!(linkOrStyleNode.getAttribute("ghost-href"))) {
-                    let CSSvalue = doReadServer("read", CSSFilePath);
+                    let CSSvalue = await getServer("read", CSSFilePath);
                     if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
                       CSSvalue = CSSvalue.slice(1);
                       rawCSS.push({text: CSSvalue, tag: linkOrStyleNode});
@@ -3628,7 +3632,7 @@ lastEditScript = """
                     //geting rid of ?c= at the end of the temp.css
                     CSSFilePath = dummyCounter(CSSFilePath, "?c=");
                     //console.log("temp CSS loaded");
-                    let CSSvalue = doReadServer("read", CSSFilePath);
+                    let CSSvalue = await getServer("read", CSSFilePath);
                     //console.log("css value loaded is:", CSSvalue);
                     rawCSS.push({text: CSSvalue.slice(1), tag: linkOrStyleNode});
                   }
@@ -3707,7 +3711,7 @@ lastEditScript = """
             }
             //console.log(fullCSS);
             return fullCSS;
-          }
+          } // fullParseCSS
           
           function fullUnparseCSS(curCSS) {
             let curTag = curCSS.orgTag;
@@ -3729,7 +3733,7 @@ lastEditScript = """
             curTag.textContent = CSSString;
             //debugger
             //consolw.log("After");
-          }
+          } // fullUnparseCSS
           var curCSSWindow = undefined;
 
           function setCSSAreas() {
@@ -3903,7 +3907,7 @@ lastEditScript = """
               ]);
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "Inline styles:"}));
               CSSarea.append(inlineCSS);
-            }
+            } // inline style present
             else{
               CSSarea.append(el("button", {"id": "add-inline-style"}, [], {
                 innerHTML: "Add inline style",
@@ -3912,8 +3916,9 @@ lastEditScript = """
                   updateInteractionDiv();
                 }}));
             }
+            (async () => {
             //rest of CSS
-            editor_model.CSSState = fullParseCSS();
+            editor_model.CSSState = await fullParseCSS();
             //console.log("CSS state is:", editor_model.CSSState);
             const count = (str) => {
               const re = /\n/g
@@ -4031,7 +4036,8 @@ lastEditScript = """
               ]);
               CSSarea.append(eachCSS);
             }
-          }
+            })(); // Async css set.
+          } // function setCSSAreas()
           setCSSAreas();   
           return CSSarea;
         }
@@ -4177,7 +4183,7 @@ lastEditScript = """
               }
             }
           }
-          function showListsImages(srcName, backImgObj, checkBackImgObj, findURLS) {
+          async function showListsImages(srcName, backImgObj, checkBackImgObj, findURLS) {
             if (isAbsolute(srcName)) {
               return;
             }
@@ -4188,7 +4194,7 @@ lastEditScript = """
             for(let i = 0, arr = srcName.split(/\\|\//); i < arr.length - 1; ++i) {
               dir += (arr[i] + "/");
             }
-            files = editor.fs.listdir(dir);
+            files = await editor.fs.listdir(dir);
             
             let images = [];
             let currentSelectedImage;
@@ -4630,10 +4636,10 @@ lastEditScript = """
           enabled(editor_model) {
             return true;
           },
-          render: function render(editor_model, innerBox) {
+          render: () => (async (editor_model, innerBox) => {
             let draftListDiv = el("div", {"class":"draftList"}, [], {});
 
-            const verzExist = JSON.parse(doReadServer("isdir", "Thaditor/versions"));
+            const verzExist = JSON.parse(await getServer("isdir", "Thaditor/versions"));
 
             const get_switch_btn_for = (nm) => {
               return el("button", {"class":"draft-switch"}, [nm], 
@@ -4772,7 +4778,7 @@ lastEditScript = """
               draftListDiv.append(get_row_for_live());
             }
             if (verzExist) {
-              const vers = JSON.parse(doReadServer("listdir", "Thaditor/versions/"));
+              const vers = JSON.parse(await getServer("listdir", "Thaditor/versions/"));
               vers.forEach(ver => {
                 if (!(ver == editor_model.version)){
                   draftListDiv.append(get_row_for_draft(ver));
@@ -4780,7 +4786,7 @@ lastEditScript = """
               });
             }
             return draftListDiv;
-          } //end of draft container render
+          })() //end of draft container render
         });
        }
       editor_model.interfaces.push({ 
