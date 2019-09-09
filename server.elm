@@ -13,13 +13,15 @@
 ---------------------------------------------------------}
 listGetOrElse key listDict default = listDict.get key listDict |> Maybe.withDefault default
 
-{--
+{--}
 updatecheckpoint name x = {
   apply x = x
   update {input, outputNew, diffs} =
     let _ = Debug.log """Checkpoint @name""" () in  
     Ok (InputsWithDiffs [(outputNew, Just diffs)])
 }.apply x
+
+debugcheckpoint name x = let _ = Debug.log name () in x
 --}
 
 preludeEnv = let _ = googlesigninbutton in -- Forces googlesigninbutton to be evaluated before preludeEnv
@@ -77,7 +79,7 @@ permissionToEditServer = boolVar "superadmin" False -- should be possibly get fr
 
 canEditPage = userpermissions.pageowner && varedit && not varls
 
-{freezeWhen} = Update
+freezeWhen = Update.freezeWhen
 
 serverOwned what obj = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
 
@@ -110,10 +112,15 @@ path =
  Retrieves the string content of the path. For folders, creates a custom page
 ----------------------------------------------------------------------------}
 
+mbDotEditorFile = 
+  let prefix = Regex.extract "^(.*/)[^/]*$" path |> Maybe.map (\[prefix] -> prefix) |> Maybe.withDefault "" in
+  let dotEditor = prefix +  ".editor" in
+  fs.read dotEditor
+
 applyDotEditor source = 
   let prefix = Regex.extract "^(.*/)[^/]*$" path |> Maybe.map (\[prefix] -> prefix) |> Maybe.withDefault "" in
   let dotEditor = prefix +  ".editor" in
-  case fs.read dotEditor of
+  case mbDotEditorFile of
     Nothing -> source
     Just modifier ->
       case __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::("content", source)::preludeEnv) modifier of
@@ -124,37 +131,39 @@ applyDotEditor source =
 isTextFile path =
   Regex.matchIn """\.(?:txt|css|js|sass|scss)$""" path
 
-(sourcecontent, folderView): (String, Boolean)
-(sourcecontent, folderView) = --updatecheckpoint "sourcecontent" <|
-  Tuple.mapFirst String.newlines.toUnix <| --updatecheckpoint "newlines restored" <|
+(withoutPipeline, hydefilepath, hydefileSource) = case hydefilecache of
+  Just {file=hydefile} ->
+    case hydefilecache of
+      Just {cacheContent} ->
+        case evaluate cacheContent of
+          {inputFiles, outputFiles} ->
+            (List.find (\e -> e == path || e == "/" + path) inputFiles == Nothing &&
+             List.find (\e -> e == path || e == "/" + path) outputFiles == Nothing,
+               hydefile, fs.read hydefile)
+          _ -> (False, hydefile, fs.read hydefile)
+      _ -> (False, hydefile, fs.read hydefile) -- Need to recompute the cache anyway
+  _ -> (False, "", Nothing)
+
+(folderView, mbSourcecontentAny): (String, Boolean)
+(folderView, mbSourcecontentAny) =
   if path == "server.elm" then
-    ("""<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""", False)
+    (False, Just """<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""")
+  else if fs.isdir path then
+    (True, Just "")
   else
-    if fs.isdir path then
-      ("", True)
-    else
-      flip (,) False <|
-      if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
-        """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
-      else
-        (if hydefilecache == Nothing then fs.read path else
+    (False,
+     if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
+        Just """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
+     else
+        if hydefilecache == Nothing then fs.read path else -- At least a Hydefile source
           case hydefilecache of
             Just {file=hydefile} ->
-              let withoutPipeline = 
-                    case hydefilecache of
-                      Just {cacheContent} ->
-                        case evaluate cacheContent of
-                          {inputFiles, outputFiles} ->
-                            List.find (\e -> e == path || e == "/" + path) inputFiles == Nothing &&
-                            List.find (\e -> e == path || e == "/" + path) outputFiles == Nothing
-                          _ -> False
-                      _ -> False -- Need to recompute the cache anyway
-              in
               if withoutPipeline then fs.read path else
-              let source = fs.read hydefile |>
-                      Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@hydefile' not found?!"]""")
-                  source = source + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
-                  fileDirectory = Regex.replace "/[^/]*$" "" hydefile
+              let x = Debug.log "evaluating pipeline start" () in
+              let sourceRaw = hydefileSource |>
+                      Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@hydefilepath' not found?!"]""")
+                  source = sourceRaw + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
+                  fileDirectory = Regex.replace "/[^/]*$" "" hydefilepath
                   inDirectory name = if fileDirectory == "" then name else
                     fileDirectory  + "/" + name
                   fsReadRecord = 
@@ -180,9 +189,9 @@ isTextFile path =
                         flip (,) (Just diffs) |>
                         List.singleton |> InputsWithDiffs |> Ok
                     } fileOperations
-              in
-              let (generatedFilesDict, errors) =
-                    __evaluate__ (("fs", fsHyde)::preludeEnv) source
+                  evaluatedHydeFile = __evaluate__ (("fs", fsHyde)::preludeEnv) source
+                  (generatedFilesDict, errors) =
+                    evaluatedHydeFile
                     |> Result.map (\writtenContent ->
                         let (written, errors) = List.partition (case of Write -> True; _ -> False) writtenContent in
                         let tuplesToWrite =
@@ -193,9 +202,9 @@ isTextFile path =
                         let _ = recordOutputFiles tuplesToWrite in -- Writes on disk and caches the names of written files
                         (tuplesToWrite, joinedErrors))
                     |> Result.withDefaultMapError (\msg -> ([], msg))
+                  x = cacheResult ()
               in
-              let _ = cacheResult () in
-              --let _ = Debug.log "generatedFilesDict" generatedFilesDict in
+              let x = Debug.log "evaluating pipeline end" () in
               case listDict.get ("/" + path) generatedFilesDict of
                 Nothing ->
                   case listDict.get path generatedFilesDict of
@@ -210,14 +219,18 @@ isTextFile path =
                     x -> x
                 x -> x
             _ -> fs.read path
-        )
-      |> Maybe.withDefaultReplace (
-        serverOwned "404 page" (if isTextFile path then
-               if permissionToCreate then freeze """@path does not exist yet. Modify this page to create it!""" else """Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)"""
-            else """<html><head></head><body>@(
-              if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
-                )</body></html>""")
-      )
+    )
+
+sourcecontentAny = Maybe.withDefaultReplace (
+    serverOwned "404 page" (if isTextFile path then
+           if permissionToCreate then freeze """@path does not exist yet. Modify this page to create it!""" else """Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)"""
+        else """<html><head></head><body>@(
+          if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
+            )</body></html>""")
+  ) mbSourcecontentAny
+
+sourcecontent = String.newlines.toUnix sourcecontentAny
+
 {---------------------------------------------------------------------------
 Utility functions to be inherited by the main body of any
 view of editor (edit / file listing / word processor / etc)
@@ -2084,8 +2097,6 @@ lastEditScript = """
     } //sendToUndo
     
     function handleMutations(mutations, observer) {
-      console.log ("handle muts");
-      console.log ({mutations, observer});
       var onlyGhosts = true;
       for(var i = 0; i < mutations.length; i++) {
         // A mutation is a ghost if either
