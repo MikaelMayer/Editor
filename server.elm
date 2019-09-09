@@ -131,6 +131,11 @@ applyDotEditor source =
 isTextFile path =
   Regex.matchIn """\.(?:txt|css|js|sass|scss)$""" path
 
+---------------------
+-- Hyde file support.
+-- Everything unrolled on the main let definitions to benefit from caching
+---------------------
+
 (withoutPipeline, hydefilepath, hydefileSource) = case hydefilecache of
   Just {file=hydefile} ->
     case hydefilecache of
@@ -144,82 +149,103 @@ isTextFile path =
       _ -> (False, hydefile, fs.read hydefile) -- Need to recompute the cache anyway
   _ -> (False, "", Nothing)
 
-(folderView, mbSourcecontentAny): (String, Boolean)
-(folderView, mbSourcecontentAny) =
+(folderView, mbSourcecontentAny1, hydeNotNeeded): (Boolean, Maybe String, Boolean)
+(folderView, mbSourcecontentAny1, hydeNotNeeded) =
   if path == "server.elm" then
-    (False, Just """<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""")
+    (False, Just """<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""", True)
   else if fs.isdir path then
-    (True, Just "")
+    (True, Just "", True)
+  else if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
+    (False, Just """<html><head><title>@path</title></head><body><img src="@path"></body></html>""", True)
+  else if hydefilecache == Nothing || withoutPipeline then
+    (False, fs.read path, True)
   else
-    (False,
-     if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
-        Just """<html><head><title>@path</title></head><body><img src="@path"></body></html>"""
-     else
-        if hydefilecache == Nothing then fs.read path else -- At least a Hydefile source
-          case hydefilecache of
-            Just {file=hydefile} ->
-              if withoutPipeline then fs.read path else
-              let x = Debug.log "evaluating pipeline start" () in
-              let sourceRaw = hydefileSource |>
-                      Maybe.withDefaultLazy (\_ -> """all = [Error "hydefile '@hydefilepath' not found?!"]""")
-                  source = sourceRaw + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
-                  fileDirectory = Regex.replace "/[^/]*$" "" hydefilepath
-                  inDirectory name = if fileDirectory == "" then name else
-                    fileDirectory  + "/" + name
-                  fsReadRecord = 
-                      { directReadFileSystem |
-                        read name =
-                          let name = inDirectory name in
-                          let _ = recordFileRead name in
-                          fs.read name,
-                        listdir name =
-                          let name = inDirectory name in
-                          let _ = recordFolderList name in
-                          fs.listdir name
-                      }
-                  fsHyde = nodejs.delayedFS fsReadRecord <|
-                    Update.lens {
-                      apply = identity
-                      update {outputNew, diffs} = -- input and outputOld were empty, diffs is valid
-                      -- We just need to change the paths
-                        outputNew |>
-                        List.map (case of
-                          (name, Rename newName) -> (inDirectory name, Rename (inDirectory newName))
-                          (name, x) -> (inDirectory name, x))|>
-                        flip (,) (Just diffs) |>
-                        List.singleton |> InputsWithDiffs |> Ok
-                    } fileOperations
-                  evaluatedHydeFile = __evaluate__ (("fs", fsHyde)::preludeEnv) source
-                  (generatedFilesDict, errors) =
-                    evaluatedHydeFile
-                    |> Result.map (\writtenContent ->
-                        let (written, errors) = List.partition (case of Write -> True; _ -> False) writtenContent in
-                        let tuplesToWrite =
-                              List.map (case of Write name content -> (inDirectory name, content)) written
-                            joinedErrors = 
-                              List.map (case of Error msg -> msg) errors |> String.join "\n"
-                        in
-                        let _ = recordOutputFiles tuplesToWrite in -- Writes on disk and caches the names of written files
-                        (tuplesToWrite, joinedErrors))
-                    |> Result.withDefaultMapError (\msg -> ([], msg))
-                  x = cacheResult ()
-              in
-              let x = Debug.log "evaluating pipeline end" () in
-              case listDict.get ("/" + path) generatedFilesDict of
-                Nothing ->
-                  case listDict.get path generatedFilesDict of
-                    Nothing ->
-                      if errors == "" then
-                        let _ = Debug.log """Unable to read (/)@path from output of hydefile""" () in
-                        fs.read path
-                      else
-                        Just <|
-                        serverOwned "error recovery of hyde build tool" <|
-                        """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
-                    x -> x
-                x -> x
-            _ -> fs.read path
-    )
+    (False, Nothing, False)
+
+hyde_sourceRaw = if hydeNotNeeded then "" else
+  hydefileSource |> Maybe.withDefaultLazy (\_ -> """all = [Error "hyde file '@hydefilepath' not found?!"]""")
+
+hyde_source = if hydeNotNeeded then "" else
+  hyde_sourceRaw + Update.freeze "\n\nlet t = " + (listDict.get "task" vars |> Maybe.withDefault "all") + "\n    t = if typeof t == 'function' then t () else t\n    t = if typeof t == 'list' then t else [t]\nin t"
+
+hyde_fileDirectory = if hydeNotNeeded then "" else
+  Regex.replace "/[^/]*$" "" hydefilepath
+
+hyde_inDirectory name =
+  if hyde_fileDirectory == "" then name else
+    hyde_fileDirectory  + "/" + name
+
+hyde_fs = 
+  if hydeNotNeeded then {} else
+  let hyde_fsReadRecord = 
+        { directReadFileSystem |
+          read name =
+            let name = hyde_inDirectory name in
+            let _ = recordFileRead name in
+            fs.read name,
+          listdir name =
+            let name = hyde_inDirectory name in
+            let _ = recordFolderList name in
+            fs.listdir name
+        } in
+  nodejs.delayedFS hyde_fsReadRecord <|
+  Update.lens {
+    apply = identity
+    update {outputNew, diffs} = -- input and outputOld were empty, diffs is valid
+    -- We just need to change the paths
+      outputNew |>
+      List.map (case of
+        (name, Rename newName) -> (hyde_inDirectory name, Rename (hyde_inDirectory newName))
+        (name, x) -> (hyde_inDirectory name, x))|>
+      flip (,) (Just diffs) |>
+      List.singleton |> InputsWithDiffs |> Ok
+  } fileOperations
+
+hyde_resEvaluatedHydeFile =
+  if hydeNotNeeded then {} else
+  __evaluateWithCache__ (("fs", hyde_fs)::preludeEnv) hyde_source
+
+(hyde_generatedFilesDict, hyde_errors) =
+  if hydeNotNeeded then (False, False) else
+  case hyde_resEvaluatedHydeFile of
+    Err msg -> ([], msg)
+    Ok (writtenContent, _) ->
+      let (written, errors) = List.partition (case of Write -> True; _ -> False) writtenContent in
+      let tuplesToWrite =
+            List.map (case of Write name content -> (hyde_inDirectory name, content)) written
+          joinedErrors = 
+            List.map (case of Error msg -> msg) errors |> String.join "\n"
+      in
+      (tuplesToWrite, joinedErrors)
+
+hyde_record_output_files =
+  if hydeNotNeeded then False else
+  let hyde_dummy = recordOutputFiles hyde_generatedFilesDict in  -- Writes on disk 
+  False
+
+hyde_dummy = if hydeNotNeeded then (False, False) else
+  let x = hyde_generatedFilesDict in
+  cacheResult () -- Caches the names of written files
+
+mbSourcecontentAny =
+  if hydeNotNeeded then mbSourcecontentAny1 else
+  case listDict.get ("/" + path) hyde_generatedFilesDict of
+    Nothing ->
+      case listDict.get path hyde_generatedFilesDict of
+        Nothing ->
+          if hyde_errors == "" then
+            let _ = Debug.log """Unable to read (/)@path from output of hydefile""" () in
+            fs.read path
+          else
+            Just <|
+            serverOwned "error recovery of hyde build tool" <|
+            """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
+        x -> x
+    x -> x
+
+---------------------------------
+-- Hyde file support ends here --
+---------------------------------
 
 sourcecontentAny = Maybe.withDefaultReplace (
     serverOwned "404 page" (if isTextFile path then
