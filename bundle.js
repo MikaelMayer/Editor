@@ -1,21 +1,22 @@
 const fs = require("fs");
 const sns = require("sketch-n-sketch");
 
-var res = sns.string.evaluate(`
+var res = sns.string.evaluateWithoutCache(`
 fs = nodejs.delayedFS nodejs.nodeFS nodejs.nodeFSWrite
 
 elmserver = fs.read "server.elm" |> Maybe.withDefaultLazy (\\_ -> error "server.elm not found")
 
 server_elm_style = fs.read "server-elm-style.css" |> Maybe.withDefaultLazy (\\_ -> error "server-elm-style.css not found")
 
-elmserver = Regex.replace """<link rel="stylesheet" type="text/css" href="/server-elm-style.css">""" (
+elmserver = Regex.replace """<link[^>]*href="/server-elm-style.css"[^>]*>""" (
   \\_ -> "<style>" + server_elm_style + "</style>"
 ) elmserver
 
 fs.read "bin/server.js"
 |> Maybe.withDefaultLazy (\\_ -> error "bin/server.js not found")
-|> Regex.replace "const defaultServerContent = .*;" (\\_ ->
-  """const defaultServerContent = @(jsCode.stringOf elmserver);""")
+|> Regex.replace "const defaultServerContent = .*;\\\\s*const useDefaultServerContent = false;" (\\_ ->
+  """const defaultServerContent = @(jsCode.stringOf elmserver);
+const useDefaultServerContent = true;""")
 `);
 
 if(res.ctor == "Err") {

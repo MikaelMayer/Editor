@@ -2948,7 +2948,7 @@ lastEditScript = """
       //observer to listen for muts
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //worker for interface with the server
-      serverWorker: ifAlreadyRunning ? editor_model.serverWorker : new Worker("/Thaditor/editor.js"),
+      serverWorker: ifAlreadyRunning ? editor_model.serverWorker : apache_server ? new Worker("/Thaditor/editor.js") : undefined,
       send_notif:ifAlreadyRunning ? editor_model.send_notif : "",
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
@@ -2972,7 +2972,7 @@ lastEditScript = """
       interfaces: ifAlreadyRunning ? editor_model.interfaces : []
     }
     
-    if (!ifAlreadyRunning) {
+    if (!ifAlreadyRunning && editor_model.serverWorker) {
       editor_model.serverWorker.onmessage = function(e) {
         //handle confirmDone
         if (e.data.action == "confirmDone") {
@@ -4812,17 +4812,19 @@ lastEditScript = """
               }
             }
           );
-          retDiv.append(
-            el("button", {type:"", "id": "update-thaditor-btn"}, "Update Thaditor", {onclick() {
-              if(confirm("Are you ready to upgrade Thaditor?")) {
-                doWriteServer("updateversion", "latest", "", response => {
-                  console.log("Result from Updating Thaditor to latest:");
-                  console.log(response);
-                  location.reload(true);
-                });
-              }
-            } })
-          );
+          if(apache_server) {
+            retDiv.append(
+              el("button", {type:"", "id": "update-thaditor-btn"}, "Update Thaditor", {onclick() {
+                if(confirm("Are you ready to upgrade Thaditor?")) {
+                  doWriteServer("updateversion", "latest", "", response => {
+                    console.log("Result from Updating Thaditor to latest:");
+                    console.log(response);
+                    location.reload(true);
+                  });
+                }
+              } })
+            );
+          }
           retDiv.append(
             el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
               [el("input", {class: "global-setting", id: "input-question", type: "checkbox"}, [], {

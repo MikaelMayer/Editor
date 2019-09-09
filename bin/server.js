@@ -92,12 +92,13 @@ async function start() {
 
 // Don't modify, this will be replaced by the content of 'server.elm'
 const defaultServerContent = "<html><head></head><body>Server not available.</body></html>";
+const useDefaultServerContent = false;
 
 const defaultHtAccessFileContent = `if Regex.matchIn """\\.\\.(?:/|\\\\)|(?:/|\\\\)\\.\\.|^\\.\\.$""" path then False else
     not (Regex.matchIn """.*\\.pem""" path)`
 
 function readServerFile() {
-  if(fs.existsSync(serverFile)) {
+  if(fs.existsSync(serverFile) && !useDefaultServerContent) {
     return fs.readFileSync(serverFile, "utf8");
   } else
     return defaultServerContent;
@@ -113,7 +114,7 @@ function readHtAccessFile() {
 const sns = require("sketch-n-sketch");
 
 function evaluateToHtml(path, env, serverFileContent) {
-  var result = sns.objEnv.string.evaluate(env)(serverFileContent);
+  var result = sns.objEnv.string.evaluateWithoutCache(env)(serverFileContent);
   if(result.ctor == "Ok") {
     var out = sns.valToHTMLSource(result._0)
     if(out.ctor == "Ok") {
@@ -187,7 +188,7 @@ function getOneSolution(path, serverFileContent, allSolutions) {
   var {_0: newEnv, _1: newServerFileContent} = sns.lazyList.head(allSolutions);
   if(newServerFileContent != serverFileContent) { // server file itself modified from the update method
     var d =
-      sns.process(sns.objEnv.string.evaluate({x: serverFileContent, y: newServerFileContent})(`__diff__ x y`))(sns.valToNative)
+      sns.process(sns.objEnv.string.evaluateWithoutCache({x: serverFileContent, y: newServerFileContent})(`__diff__ x y`))(sns.valToNative)
     var diffsServerFileContent = 
       d.ctor == "Ok" ? d._0 ? d._0.args ? d._0.args._1 ? d._0.args._1.args ? d._0.args._1.args._1 ? d._0.args._1.args._1 :
         false : false : false : false : false : false;
@@ -363,7 +364,7 @@ function loadpage(path, vars, user, newvalue) {
     if(hydefilecache.cache) {
       console.log("overriding cache", [filesToWatch, foldersToWatch, writtenFiles, hydefilecache.cachefile]);
       let newCacheContent =
-            sns.valToNative(sns.objEnv.string.evaluate(
+            sns.valToNative(sns.objEnv.string.evaluateWithoutCache(
               {a: {inputFiles: filesToWatch,
                    inputFolders: foldersToWatch,
                    outputFiles: writtenFiles
@@ -375,7 +376,7 @@ function loadpage(path, vars, user, newvalue) {
   } else { // We update the page and re-render it.
     var newVal = sns.nativeToVal(newvalue);
     console.log("Started to update...");
-    var result = sns.objEnv.string.update(env)(serverFileContent)(newVal);
+    var result = sns.objEnv.string.updateWithoutCache(env)(serverFileContent)(newVal);
     console.log("Update finished (first solution)");
     if(result.ctor == "Ok") {
       var allSolutions = result._0;
@@ -451,7 +452,7 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
   var query = toLeoQuery(urlParts.query);
   var pn = urlParts.pathname;
   var path = decodeURIComponent(pn.length && pn[0] == "/" ? pn.substring(1) : pn); // Without the slash.
-  var accessResult = sns.objEnv.string.evaluate({path:path,method:request.method})(readHtAccessFile());
+  var accessResult = sns.objEnv.string.evaluateWithoutCache({path:path,method:request.method})(readHtAccessFile());
   var access = sns.process(accessResult)(sns.valToNative);
   var header = 'text/html; charset=utf-8';
   if(access.ctor == "Err") {
