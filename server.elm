@@ -2274,25 +2274,14 @@ lastEditScript = """
           //undoElem[k].isConnected ? undoElem[k].URValue : quicker(undoElem[k]).URValue = cur_data;
         }
         else if(mutType === "file") {
-            //console.log("Undo Element is:");
-            //console.log(undoElem[k]);
             var keepUndo = undoElem[k];
             let curHref = target.getAttribute("href");
-            //console.log(undoElem[k]);
             let curValue = await getServer("read", dummyCounter(curHref, "?c="));
-            //console.log(keepUndo);
-            //console.log(curHref);
-            //console.log("2here?");
-            //console.log(keepUndo);
             await postServer("write", dummyCounter(curHref, "?c="), keepUndo.oldValue);
             //console.log("here?");
             target.setAttribute("href", keepUndo.oldHref); 
             keepUndo.oldValue = curValue.slice(1);
             keepUndo.oldHref = curHref;
-            /*editor_model.redoStack.push(keepUndo);
-            debugger;
-            printstacks();
-            updateInteractionDiv();*/
         }
         else {
           let uRemNodes = undoElem[k].removedNodes;
@@ -2326,7 +2315,7 @@ lastEditScript = """
               let knode_may = quicker(knode);
               //if(kidNodes.item(j) === undoElem[k].nextSibling && kidNodes.item(j).previousSibling === undoElem[k].previousSibling) {
               if ((knode == ns || knode_may == ns || ns == undefined) &&
-                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined)){
+                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))){
                 for(i = 0; i < uRemNodes.length; i++) { 
                   /*if(hasGhostAncestor(uRemNodes.item(i))) {
                     continue;
@@ -2334,7 +2323,12 @@ lastEditScript = """
                   let uremnode = uRemNodes.item(i);
                   let urn = quicker(uremnode);
                   //debugger;
-                  target.insertBefore(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may); 
+                  if (ns) {
+                    target.insertBefore(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may); 
+                  }
+                  else {
+                    target.appendChild(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may);
+                  }
                 }
               }
             }
@@ -2434,7 +2428,7 @@ lastEditScript = """
               let ns = redoElem[k].nextSibling && redoElem[k].nextSibling.isConnected ? redoElem[k].nextSibling : quicker(redoElem[k].nextSibling);
               let ps = redoElem[k].previousSibling && redoElem[k].previousSibling.isConnected ? redoElem[k].previousSibling : quicker(redoElem[k].previousSibling);
               if ((knode == ns || knode_may == ns || ns == undefined) &&
-                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined)) {
+                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))) {
                 for(i = 0; i < rAddNodes.length; i++) {
                   /*console.log(hasGhostAncestor);
                   if(hasGhostAncestor(rAddNodes.item(i))) {
@@ -2442,7 +2436,13 @@ lastEditScript = """
                   }*/
                   console.log(rAddNodes.item(i));
 
-                  target.insertBefore(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
+                  if(ns) {
+                    target.insertBefore(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
+                  }
+                  else {
+                    target.appendChild(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
+
+                  }
                 }
               }
             }
