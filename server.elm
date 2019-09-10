@@ -147,7 +147,7 @@ isTextFile path =
                hydefile, fs.read hydefile)
           _ -> (False, hydefile, fs.read hydefile)
       _ -> (False, hydefile, fs.read hydefile) -- Need to recompute the cache anyway
-  _ -> (False, "", Nothing)
+  _ -> (True, "", Nothing)
 
 (folderView, mbSourcecontentAny1, hydeNotNeeded): (Boolean, Maybe String, Boolean)
 (folderView, mbSourcecontentAny1, hydeNotNeeded) =
@@ -2483,10 +2483,11 @@ lastEditScript = """
       if(sel.endContainer.nodeType !== 1) return;
       // We'll ensure that the end of selection is inside a text node.
       if(sel.startContainer.parentElement === sel.endContainer.childNodes[sel.endOffset].previousElementSibling ||
-         sel.startContainer.parentElement.nextElementSibling === sel.endContainer && sel.endOffset === 0
+         sel.startContainer.parentElement.nextElementSibling === sel.endContainer && sel.endOffset === 0 ||
+         sel.startContainer.parentElement.nextElementSibling === sel.endContainer.parentElement && sel.endOffset === 0
       ) {
         // Triple click chrome bug.
-        let finalTextNode = sel.startContainer.parentElement;
+        var finalTextNode = sel.startContainer.parentElement;
         while(finalTextNode && finalTextNode.nodeType !== 3) {
           var candidateChild = finalTextNode.childNodes[finalTextNode.childNodes.length - 1];
           while(candidateChild && candidateChild.textContent === "") {
@@ -4433,7 +4434,7 @@ lastEditScript = """
         title: "Create",
         minimized: true,
         priority(editor_model) {
-          return editor_model.insertElement;
+          return editor_model.insertElement ? 1 : undefined;
         },
         enabled(editor_model) {
           return editor_model.clickedElem;
@@ -4945,6 +4946,10 @@ lastEditScript = """
           return ret;
         }
       });
+    }
+    
+    function getEditorInterfaceByTitle(title) {
+      return editor_model.interfaces.find(x => x.title === title);
     }
 
 
@@ -5559,6 +5564,8 @@ lastEditScript = """
                 editor_model.clickedElem = clickedElem;
                 editor_model.displayClickedElemAsMainElem = true;
                 editor_model.insertElement = true;
+                editor_model.visible = true;
+                getEditorInterfaceByTitle("Create").minimized = false;
                 updateInteractionDiv();
                 restoreCaretPosition();
               }});
