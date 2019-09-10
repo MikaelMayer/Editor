@@ -239,7 +239,7 @@ mbSourcecontentAny =
           else
             Just <|
             serverOwned "error recovery of hyde build tool" <|
-            """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@errors</pre></body></html>"""
+            """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@hyde_errors</pre></body></html>"""
         x -> x
     x -> x
 
@@ -1958,7 +1958,7 @@ lastEditScript = """
         xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
       }
       var result = callback(xmlhttp);
-      xmlhttp.send(result || "{\"a\":1}");
+      xmlhttp.send(result || "{\"a\":2}");
     }
     
     function reloadPage() { // Use this only after a successful login
@@ -5701,7 +5701,7 @@ lastEditScript = """
           xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
           xmlhttp.open("POST", location.pathname + location.search, false); // Async
           xmlhttp.setRequestHeader("close", "true");
-          xmlhttp.send("{\"a\":1}");
+          xmlhttp.send("{\"a\":3}");
         }
     }; //end of window.onbeforeload
     if (typeof editor_model === "object" && typeof editor_model.outputObserver !== "undefined") {
