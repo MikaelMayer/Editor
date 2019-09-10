@@ -2029,8 +2029,6 @@ lastEditScript = """
         })
       }, 0);
     }
-    
-    //var serverWorker = new Worker("/Thaditor/editor.js");
 
     function sendModificationsToServer() {
       if(document.getElementById("notification-menu") != null) {
@@ -2049,16 +2047,6 @@ lastEditScript = """
       editor_model.actionsDuringSave = [];
       updateInteractionDiv();
       sendNotification("Beginning save!");
-      /*
-        Spawn new worker thread to 
-          (1) read SERVER_CONTENT. 
-            set up xmlhttp request over in a worker thread and wait for the promise to be fullfilled.
-          (2) save - also on worker thread
-            on message over here will be notified when the save it complete and will be given the new 
-            page content within the xmlhttp response. We need to rewrite the page with these data.
-      */
-      
-      //let serverWorker = new Worker("/Thaditor/editor.js");
       const tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
       let data = {action:"sendMods", 
                   toSend:tosend,
@@ -2985,7 +2973,10 @@ lastEditScript = """
       //observer to listen for muts
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //worker for interface with the server
-      serverWorker: ifAlreadyRunning ? editor_model.serverWorker : apache_server ? new Worker("/Thaditor/editor.js") : undefined,
+      serverWorker: ifAlreadyRunning ? editor_model.serverWorker :
+                    apache_server ?
+                      typeof thaditor_worker != "undefined" ? thaditor_worker : new Worker("/Thaditor/editor.js") :
+                      undefined,
       send_notif:ifAlreadyRunning ? editor_model.send_notif : "",
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
