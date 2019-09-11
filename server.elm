@@ -1837,7 +1837,6 @@ lastEditScript = """
     }
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
-        
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           editor_model.isSaving = false;
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
@@ -1922,7 +1921,7 @@ lastEditScript = """
             } 
           }
           if(newLocalURL) { // Overrides query parameters
-            window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+            window.history[xmlhttp.customRequestHeaders.replaceState == "true" ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
           } else if(strQuery) {
             window.history.replaceState({}, "Current page", strQuery);
           }
@@ -1939,22 +1938,25 @@ lastEditScript = """
         }
     };
     
-    notifyServer = callback => {
+    notifyServer = (requestHeaders, result) => {
       var xmlhttp = new XHRequest();
       xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
       xmlhttp.open("POST", location.pathname + location.search);
       xmlhttp.setRequestHeader("Content-Type", "application/json");
-      if(googleAuthIdToken) {
+      if(googleAuthIdToken) { // Obsolete
         xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
       }
-      var result = callback(xmlhttp);
+      if(requestHeaders) {
+        for(let k in requestHeaders) {
+          xmlhttp.setRequestHeader(k, requestHeaders[k]);
+        }
+      }
+      xmlhttp.customRequestHeaders = requestHeaders;
       xmlhttp.send(result || "{\"a\":2}");
     }
     
-    function reloadPage() { // Use this only after a successful login
-      notifyServer(xmlhttp => {
-        xmlhttp.setRequestHeader("reload", "true");
-      })
+    function reloadPage() {
+      notifyServer({reload: "true"});
     }
     function relativeToAbsolute(url) {
       if(isAbsolute(url) || url && url.length && url[0] == "/") return url;
@@ -1967,34 +1969,19 @@ lastEditScript = """
       }
     }
     function navigateLocal(url, replaceState) {
-      notifyServer(xmlhttp => {
-        xmlhttp.setRequestHeader("reload", "true");
-        xmlhttp.setRequestHeader("url", url);
-        console.log("setting url to ", url);
-        xmlhttp.replaceState = replaceState;
-      });
+      notifyServer({reload: "true", url: url, replaceState: ""+replaceState});
     }
     
     function selectAmbiguity(key, num) {
-      notifyServer(xmlhttp => {
-        xmlhttp.setRequestHeader("ambiguity-key", key);
-        xmlhttp.setRequestHeader("select-ambiguity", JSON.stringify(num));
-        xmlhttp.setRequestHeader("question", "true");
-      });
+      notifyServer({"ambiguity-key": key, "select-ambiguity": JSON.stringify(num), "question": "true"});
     }
     
     function acceptAmbiguity(key, num) {
-      notifyServer(xmlhttp => {
-        xmlhttp.setRequestHeader("ambiguity-key", key);
-        xmlhttp.setRequestHeader("accept-ambiguity", JSON.stringify(num));
-      });
+      notifyServer({"ambiguity-key": key, "accept-ambiguity": JSON.stringify(num)});
     }
     
     function cancelAmbiguity(key, num) {
-      notifyServer(xmlhttp => {
-        xmlhttp.setRequestHeader("ambiguity-key", key);
-        xmlhttp.setRequestHeader("cancel-ambiguity", JSON.stringify(num));
-      });
+      notifyServer({"ambiguity-key": key, "cancel-ambiguity": JSON.stringify(num)});
     }
     function sendModificationsToServerNode() {
       if(document.getElementById("notification-menu") != null) {
@@ -2013,10 +2000,8 @@ lastEditScript = """
       saveDisplayProperties();
       updateInteractionDiv();
       setTimeout( () => {
-        notifyServer(xmlhttp => {
-          xmlhttp.setRequestHeader("question", editor_model.askQuestions ? "true" : "false");
-          return JSON.stringify(domNodeToNativeValue(document.body.parentElement));
-        })
+        notifyServer({"question": editor_model.askQuestions ? "true" : "false"},
+          JSON.stringify(domNodeToNativeValue(document.body.parentElement)));
       }, 0);
     }
 
