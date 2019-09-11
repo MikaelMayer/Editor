@@ -275,7 +275,6 @@ luca =
     userName = typeof userName === "string" ? userName : "anonymous";
     function doReadServer(action, name, onOk, onErr) {
       if (typeof readServer != "undefined") {
-        console.log("reading server");
         return readServer(action, name, onOk, onErr);
       } else {
         var request = new XMLHttpRequest();
@@ -300,7 +299,6 @@ luca =
     }
     function doWriteServer(action, name, content, onOk, onErr) {
       if (typeof writeServer != "undefined") {
-        console.log("about to write to server");
         return writeServer(action, name, content, onOk, onErr);
       } else {
         var request = new XMLHttpRequest();
@@ -1838,14 +1836,6 @@ lastEditScript = """
       writeDocument(NC);
     }
     
-    var t = undefined;
-    
-    onResponse = (xmlhttp) => function() {
-      if(xmlhttp.readyState == XMLHttpRequest.DONE) {
-        replaceContent(xmlhttp.responseText);
-      }
-    }
-    
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
         
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
@@ -1907,8 +1897,9 @@ lastEditScript = """
             editor_model.notextselection = false;
             editor_model.caretPosition = undefined;
             editor_model.link = undefined;
+            var advancedBlock = getEditorInterfaceByTitle("Advanced");
+            if(advancedBlock) advancedBlock.minimized = false;
             editor_model.visible = true;
-            set_state_advanced();
             //editor_model.displaySource: false, // Keep source opened or closed
             // TODO: Disable click or change in DOM until ambiguity is resolved.
           } else { //no ambiguity
@@ -1917,10 +1908,9 @@ lastEditScript = """
             if(opSummaryEncoded) {
               var opSummary = decodeURI(opSummaryEncoded);
               let newMenu = el("menuitem#lastaction", {},
-                  el("span.summary", {}, "Last action: " + opSummary)) 
-              editor_model.feedback = newMenu;
-              var newmenutimeout = setTimeout(function() { editor_model.feedback = undefined; newMenu.remove(); }, 2000);
-              newMenu.onclick = ((n) => () => clearTimeout(n))(newmenutimeout);
+                  el("span.summary", {}, "Last action: " + opSummary));
+              editor_model.editor_log.push(opSummary);
+              // sendNotification(opSummary);
             }
           } // /noambiguity
           var strQuery = "";
@@ -2032,7 +2022,7 @@ lastEditScript = """
 
     function sendModificationsToServer() {
       if(document.getElementById("notification-menu") != null) {
-        //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
+        //document.getElementById("notification-menu").innerHTML = `Please wait until previous saving completes.`
         // TODO: Listen and gather subsequent modifications when it is loading
         return;
       }
@@ -2059,16 +2049,16 @@ lastEditScript = """
     } //sendModificationsToServer
 
     //remove and append dummy counter to end of url
-      function dummyCounter(path, search, insert) {
-        var dummyIndex = path.indexOf(search);
-        if(dummyIndex > -1) {
-          path = path.slice(0, dummyIndex);
-        }
-        if(insert) {
-          path += insert;
-        }
-        return path;
+    function dummyCounter(path, search, insert) {
+      var dummyIndex = path.indexOf(search);
+      if(dummyIndex > -1) {
+        path = path.slice(0, dummyIndex);
       }
+      if(insert) {
+        path += insert;
+      }
+      return path;
+    }
 
     function sendToUndo(m) {
       var time = +new Date();
@@ -2109,6 +2099,9 @@ lastEditScript = """
         editor_model.undoStack.push(lastUndo);
       }     
     } //sendToUndo
+
+    // Timeout for autosave
+    var t = undefined;
     
     function handleMutations(mutations, observer) {
       var onlyGhosts = true;
@@ -2129,8 +2122,7 @@ lastEditScript = """
           var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(mutation.target);
           if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
              mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue ||
-             isIgnoredAttributeKey(mutation.attributeName)
-              ) {
+             isIgnoredAttributeKey(mutation.attributeName)) {
           } else {
             onlyGhosts = false;
             sendToUndo(mutation);
@@ -2963,7 +2955,6 @@ lastEditScript = """
       selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
       caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
-      displaySource: ifAlreadyRunning ? editor_model.displaySource : false,
       disambiguationMenu: undefined, //here
       isSaving: false,
       //data structures to represent undo/redo "stack"
@@ -2986,7 +2977,6 @@ lastEditScript = """
       linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
-      curScrollPos: ifAlreadyRunning ? editor_model.curScrollPos : 0,
       textareaPropertiesSaved: ifAlreadyRunning ? editor_model.textareaPropertiesSaved : [],
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
                     @(case listDict.get "question" vars of
@@ -2998,7 +2988,8 @@ lastEditScript = """
                       _ -> if boolVar "autosave" True then "true" else "false"),
       path: @(path |> jsCode.stringOf),
       version : verz,
-      interfaces: ifAlreadyRunning ? editor_model.interfaces : []
+      interfaces: ifAlreadyRunning ? editor_model.interfaces : [],
+      disambiguationMenu: ifAlreadyRunning ? editor_model.disambiguationMenu : undefined
     }
     
     if (!ifAlreadyRunning && editor_model.serverWorker) {
@@ -3006,14 +2997,14 @@ lastEditScript = """
         //handle confirmDone
         if (e.data.action == "confirmDone") {
           let xmlhttp = new XHRequest();
-          xmlhttp.response.setHeader("newLocalURL", e.data.newLocalURL);
-          xmlhttp.response.setHeader("newQueryStr", e.data.newQueryStr);
-          xmlhttp.response.setHeader("ambiguityKey", e.data.ambiguityKey);
-          xmlhttp.response.setHeader("ambiguityNumber", e.data.ambiguityNumber);
-          xmlhttp.response.setHeader("ambiguitySelected", e.data.ambiguitySelected);
-          xmlhttp.response.setHeader("ambiguityEnd", e.data.ambiguityEnd);
-          xmlhttp.response.setHeader("ambiguitySummaries", e.data.ambiguitySummaries);
-          xmlhttp.response.setHeader("opSummaryEncoded", e.data.opSummaryEncoded);
+          xmlhttp.response.setHeader("New-Local-URL", e.data.newLocalURL);
+          xmlhttp.response.setHeader("New-Query", e.data.newQueryStr);
+          xmlhttp.response.setHeader("Ambiguity-Key", e.data.ambiguityKey);
+          xmlhttp.response.setHeader("Ambiguity-Number", e.data.ambiguityNumber);
+          xmlhttp.response.setHeader("Ambiguity-Selected", e.data.ambiguitySelected);
+          xmlhttp.response.setHeader("Ambiguity-End", e.data.ambiguityEnd);
+          xmlhttp.response.setHeader("Ambiguity-Summaries", e.data.ambiguitySummaries);
+          xmlhttp.response.setHeader("Operations-Summary", e.data.opSummaryEncoded);
           xmlhttp.response.text = e.data.text;
           /*
             We want to undo everything in the undo stack that has been done since the save began.
@@ -3046,7 +3037,7 @@ lastEditScript = """
           
           editor_model.outputObserver.disconnect();
           xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {});
-          xmlhttp.readyState = XMLHttpRequest.DONE
+          xmlhttp.readyState = XMLHttpRequest.DONE;
           xmlhttp.onreadystatechange();
           const newAds = editor_model.actionsDuringSave;
           const newAdsLen = newAds.length;
@@ -4397,8 +4388,7 @@ lastEditScript = """
                 el("textarea", {class:"textChildNodeContent"},
                 [], {
                   value: node.textContent,
-                  onkeyup: (node => function() { node.textContent = this.value; })(node),
-                  onscroll: ((node, i) => function() { editor_model.textareaScroll = this.scrollTop })(node),
+                  onkeyup: (node => function() { node.textContent = this.value; })(node)
                 })
               )
             } else if(node.nodeType === 1) { // Make this a shortcut for the node
@@ -4818,7 +4808,7 @@ lastEditScript = """
         title: "Advanced",
         minimized: true,
         priority(editor_model) {
-          return undefined;
+          return editor_model.disambiguationMenu ? 0 : undefined;
         },
         enabled(editor_model) {
           return true;
@@ -4828,7 +4818,7 @@ lastEditScript = """
           //We need 3 btns: refresh, filesystem + help.
           add_btn_to_div(retDiv, reloadSVG,
             {"class": "tagName", title: "Reload the current page"},
-              {onclick: function(event) { editor_model.curScrollPos = (editor_model.displaySource ? document.getElementById("sourcecontentmodifier").scrollTop : 0);
+              {onclick: function(event) {
                 reloadPage(); } }
             );
           add_btn_to_div(retDiv, folderSVG,
@@ -4890,6 +4880,9 @@ lastEditScript = """
                   }
                 }})
             );
+          }
+          if(editor_model.disambiguationMenu) {
+            retDiv.append(editor_model.disambiguationMenu);
           }
           return retDiv;
         }
