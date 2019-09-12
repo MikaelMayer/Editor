@@ -357,17 +357,30 @@ div#modify-menu #CSS-modification {
     flex: 1;
 }
 
-div#modify-menu #CSS-modification > button#add-inline-style {
-    margin-top: 4px;
-    margin-bottom: 4px;
-    border-radius: 0.2em;
-    background: var(--context-dom-children-selector-color);
-    font-weight: bold;
-    padding: 4px;
-    border: none;
-    font-size: 1em;
+div#modify-menu button.action-button {
     color: white;
+    background: var(--context-dom-children-selector-color);
+    font-size: 1em;
+    margin-top: 6px;
+    margin-bottom: 6px;
+    display: block;
+    border-radius: 0.4em;
+    height: 2em;
+    font-weight: normal;
+    padding: 6px;
+    border: none;
 }
+
+
+div#modify-menu button.action-button:hover {
+    -webkit-filter: contrast(125%);
+    /* Chrome, Opera */
+    -moz-filter: blur(125%);
+    -ms-filter: blur(125%);
+    filter: blur(125%);
+    border: none;
+}
+
 
 div#modify-menu #CSS-modification > button#add-inline-style:hover {
     -webkit-filter: contrast(125%);
@@ -426,6 +439,10 @@ div#modify-menu #CSS-modification>.CSS-modify-unit .CSS-selectors {
     padding: 6px;
 }
 
+div#modify-menu div#fullLog {
+  max-height: 50%;
+}
+
 .summary {
     color: green;
 }
@@ -451,9 +468,12 @@ div#modify-menu {
 
 .modify-menu-holder {
     width: 100%;
-    height: 100%;
+    height: calc(100% - 10px);
     overflow-y: scroll;
     font-family: Arial, Helvetica, sans-serif;
+}
+div.modify-menu-icons:not(.pinned) ~ div.modify-menu-holder {
+  height: calc(100% - 50px);
 }
 
 .modify-menu-icon {
@@ -468,8 +488,9 @@ div#modify-menu {
 
 div#modify-menu>div.modify-menu-icons:not(.pinned) {
     width: 100%;
+    height: 30px;
     overflow-x: auto;
-    margin: 0.4rem;
+    margin: 5px;
 }
 
 div#modify-menu>div.modify-menu-icons.pinned {
@@ -997,6 +1018,7 @@ textarea.textChildNodeContent {
 textarea.templateengine {
     width: 100%;
     height: 100%;
+    max-height: 50%;
     color: black;
     border-radius: 0.4rem;
     border: 0;
@@ -1129,28 +1151,6 @@ div.editor-container-content > div.draftList > div.draft-row > button.draft-swit
     background: linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
     background: -webkit-linear-gradient(left, var(--context-dom-selector-color) , var(--context-dom-children-selector-color));
     flex-basis: 10px;
-}
-
-div.modify-menu-icons > button#update-thaditor-btn {
-    color: white;
-    background: var(--context-dom-children-selector-color);
-    border: none;
-    font-size: 0.8em;
-    margin-top: 6px;
-    margin-bottom: 6px;
-    display: block;
-    border-radius: 0.4em;
-    height: 2em;
-    font-weight: bold;
-}
-
-div.modify-menu-icons > button#update-thaditor-btn:hover {
-    -webkit-filter: contrast(125%);
-    /* Chrome, Opera */
-    -moz-filter: blur(125%);
-    -ms-filter: blur(125%);
-    filter: blur(125%);
-    border: none;
 }
 
 div.draftList > div.draft-row > button.draft-publish,

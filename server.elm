@@ -376,17 +376,8 @@ luca =
       notifBox.style.zIndex = 100;
       notifBox.style.visibility = true;
       editor_model.editor_log.push(msg);
-      const issaving = editor_model.isSaving;
-      let log = document.getElementById("fullLog");
-      if (log) {
-        let elog = editor_model.editor_log;
-        let logtxt = "";
-        for (let i = 0; i < editor_model.editor_log.length; i++) {
-          logtxt = logtxt + editor_model.editor_log[i] + "\n";
-        }
-        logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
-        log.style.display = 'block';
-      }
+      var logWindow = getEditorInterfaceByTitle("Log");
+      if(logWindow) logWindow.refresh();
       setTimeout(hideNotification, timeout ? timeout : 3000);
     }
 
@@ -1887,7 +1878,7 @@ lastEditScript = """
               disambiguationMenuContent.push(el("span.solution" + (i == selected ? ".selected" : "") + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
               title: i == selected ? "Currently displaying this solution" : "Select this solution" + (i == n && ambiguityEnd != 'true' ? " (compute further solutions after if any)" : ""), onclick: i == selected ? `` : `this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})`}, "", {innerHTML: "#" + i + " " + summary}));
             }
-            //disambiguationMenuContent.push(el("button.modifyMenuButton#cancelAmbiguity", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
+            disambiguationMenuContent.push(el("button#cancelAmbiguity.action-button", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
             editor_model.disambiguationMenu = el("div.disambiguationMenu", {}, disambiguationMenuContent);
             editor_model.disambiguationMenu.ambiguityKey = ambiguityKey;
             editor_model.disambiguationMenu.selected = selected;
@@ -1902,12 +1893,23 @@ lastEditScript = """
             //editor_model.displaySource: false, // Keep source opened or closed
             // TODO: Disable click or change in DOM until ambiguity is resolved.
           } else { //no ambiguity
+            if(editor_model.disambiguationMenu && editor_model.disambiguationMenu.replayActionsAfterSave) {
+              console.log("disambiguationMenu was there. replaying actions");
+              editor_model.disambiguationMenu.replayActionsAfterSave("Modifications applied");
+            } else {
+              console.log("disambiguationMenu is not there.");
+            }
             editor_model.disambiguationMenu = undefined;
             let opSummaryEncoded = xmlhttp.getResponseHeader("Operations-Summary");
             if(opSummaryEncoded) {
               var opSummary = decodeURI(opSummaryEncoded);
-              let newMenu = el("menuitem#lastaction", {},
-                  el("span.summary", {}, "Last action: " + opSummary));
+              opSummary =
+                opSummary.
+                replace(/</g, "&lt;").
+                replace(/---\)/g, "</span>").
+                replace(/\(---/g, "<span class='remove'>").
+                replace(/\+\+\+\)/g, "</span>").
+                replace(/\(\+\+\+/g, "<span class='add'>");
               editor_model.editor_log.push(opSummary);
               // sendNotification(opSummary);
             }
@@ -1921,7 +1923,7 @@ lastEditScript = """
             } 
           }
           if(newLocalURL) { // Overrides query parameters
-            window.history[xmlhttp.customRequestHeaders.replaceState == "true" ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+            window.history[xmlhttp.customRequestHeaders && xmlhttp.customRequestHeaders.replaceState == "true" ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
           } else if(strQuery) {
             window.history.replaceState({}, "Current page", strQuery);
           }
@@ -1938,25 +1940,37 @@ lastEditScript = """
         }
     };
     
-    notifyServer = (requestHeaders, result) => {
-      var xmlhttp = new XHRequest();
-      xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-      xmlhttp.open("POST", location.pathname + location.search);
-      xmlhttp.setRequestHeader("Content-Type", "application/json");
-      if(googleAuthIdToken) { // Obsolete
-        xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
-      }
-      if(requestHeaders) {
-        for(let k in requestHeaders) {
-          xmlhttp.setRequestHeader(k, requestHeaders[k]);
+    notifyServer = (requestHeaders, toSend, what) => {
+      if(apache_server) {
+        let data = {action:"sendRequest",
+                    toSend: toSend || "{\"a\":2}",
+                    gaidt:googleAuthIdToken,
+                    aq:editor_model.askQuestions,
+                    loc: location.pathname + location.search,
+                    requestHeaders: requestHeaders,
+                    what: what,
+                    server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
+        editor_model.serverWorker.postMessage(data);
+      } else {
+        var xmlhttp = new XHRequest();
+        xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+        xmlhttp.open("POST", location.pathname + location.search);
+        xmlhttp.setRequestHeader("Content-Type", "application/json");
+        if(googleAuthIdToken) { // Obsolete
+          xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
         }
+        if(requestHeaders) {
+          for(let k in requestHeaders) {
+            xmlhttp.setRequestHeader(k, requestHeaders[k]);
+          }
+        }
+        xmlhttp.customRequestHeaders = requestHeaders;
+        xmlhttp.send(toSend || "{\"a\":2}");
       }
-      xmlhttp.customRequestHeaders = requestHeaders;
-      xmlhttp.send(result || "{\"a\":2}");
     }
     
     function reloadPage() {
-      notifyServer({reload: "true"});
+      notifyServer({reload: "true"}, undefined, "Reload");
     }
     function relativeToAbsolute(url) {
       if(isAbsolute(url) || url && url.length && url[0] == "/") return url;
@@ -1969,7 +1983,7 @@ lastEditScript = """
       }
     }
     function navigateLocal(url, replaceState) {
-      notifyServer({reload: "true", url: url, replaceState: ""+replaceState});
+      notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined);
     }
     
     function selectAmbiguity(key, num) {
@@ -2021,13 +2035,14 @@ lastEditScript = """
       }
       editor_model.actionsDuringSave = [];
       updateInteractionDiv();
-      sendNotification("Beginning save!");
+      sendNotification("Saving...");
       const tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
-      let data = {action:"sendMods", 
+      let data = {action:"sendRequest", 
                   toSend:tosend,
                   gaidt:googleAuthIdToken,
                   aq:editor_model.askQuestions,
                   loc:location.pathname + location.search,
+                  what: "Save",
                   server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
       
       editor_model.serverWorker.postMessage(data);
@@ -2330,7 +2345,6 @@ lastEditScript = """
       updateInteractionDiv();
       //printstacks();
       })();
-      console.log("REACH THIS POINT?");
       return 1;
     } //undo
 
@@ -2439,7 +2453,7 @@ lastEditScript = """
          }
        );
       updateInteractionDiv();
-      printstacks();
+      //printstacks();
       })();
       return 1;
     } //end of redo
@@ -2981,6 +2995,7 @@ lastEditScript = """
       editor_model.serverWorker.onmessage = function(e) {
         //handle confirmDone
         if (e.data.action == "confirmDone") {
+          console.log("confirmDone", e.data);
           let xmlhttp = new XHRequest();
           xmlhttp.response.setHeader("New-Local-URL", e.data.newLocalURL);
           xmlhttp.response.setHeader("New-Query", e.data.newQueryStr);
@@ -2990,6 +3005,7 @@ lastEditScript = """
           xmlhttp.response.setHeader("Ambiguity-End", e.data.ambiguityEnd);
           xmlhttp.response.setHeader("Ambiguity-Summaries", e.data.ambiguitySummaries);
           xmlhttp.response.setHeader("Operations-Summary", e.data.opSummaryEncoded);
+          xmlhttp.customRequestHeaders = e.data.customRequestHeaders;
           xmlhttp.response.text = e.data.text;
           /*
             We want to undo everything in the undo stack that has been done since the save began.
@@ -3008,6 +3024,7 @@ lastEditScript = """
             Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
             the state pre-update & post-save.
           */
+          // TODO: In case of ambiguity, only replay undo/redo after ambiguity has been resolved.
           const ads = editor_model.actionsDuringSave;
           const adsLen = editor_model.actionsDuringSave.length;
           ads.forEach((action) => {
@@ -3024,19 +3041,34 @@ lastEditScript = """
           xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {});
           xmlhttp.readyState = XMLHttpRequest.DONE;
           xmlhttp.onreadystatechange();
-          const newAds = editor_model.actionsDuringSave;
-          const newAdsLen = newAds.length;
-          for (let i = 0; i < adsLen; i++) {
-            if (newAds[i] == "undo") {
-              undo();
-            } else if (newAds[i] == "redo") {
-              redo();
-            } else {
-              throw new Error("unidentified action in actionsduringsave");
+          var replayActionsAfterSave = msg => function(msgOverride) {
+            console.log("replaying actions after save");
+            const newAds = editor_model.actionsDuringSave;
+            const newAdsLen = newAds.length;
+            for (let i = 0; i < adsLen; i++) {
+              if (newAds[i] == "undo") {
+                undo();
+              } else if (newAds[i] == "redo") {
+                redo();
+              } else {
+                throw new Error("unidentified action in actionsduringsave");
+              }
+            }
+            if(newAdsLen) {
+              updateInteractionDiv();
+            }
+            if(msg) {
+              setTimeout(() => {
+                 sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
+              }, 0);
             }
           }
-          updateInteractionDiv();
-          sendNotification("Save completed!");
+          let what = e.data.what ? e.data.what + " completed." : undefined;
+          if(!e.data.isAmbiguous || !editor_model.disambiguationMenu) {
+            replayActionsAfterSave(what)();
+          } else {
+            editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
+          }
         } else if(e.data.action == "message") {
           sendNotification(e.data.message)
         } else if(e.data.action == "reconnect") {
@@ -3908,7 +3940,7 @@ lastEditScript = """
               CSSarea.append(inlineCSS);
             } // inline style present
             else{
-              CSSarea.append(el("button", {"id": "add-inline-style"}, [], {
+              CSSarea.append(el("button.action-button#add-inline-style", {}, [], {
                 innerHTML: "Add inline style",
                 onclick() {
                   clickedElem.setAttribute("style", " ");
@@ -4818,7 +4850,7 @@ lastEditScript = """
           );
           if(apache_server) {
             retDiv.append(
-              el("button", {type:"", "id": "update-thaditor-btn"}, "Update Thaditor", {onclick() {
+              el("button.action-button#update-thaditor-btn", {type: ""}, "Update Thaditor", {onclick() {
                 if(confirm("Are you ready to upgrade Thaditor?")) {
                   doWriteServer("updateversion", "latest", "", response => {
                     console.log("Result from Updating Thaditor to latest:");
@@ -4882,21 +4914,24 @@ lastEditScript = """
         enabled(editor_model) {
           return true;
         },
+        currentBox: undefined,
         render: function render(editor_model, innerBox) {
-          let retDiv = el("div", {"class":"modify-menu-icons"});
-          let log = document.getElementById("fullLog");
-          if (!log) {
-            log = el("textarea", {id:"fullLog", class:"textarea logger", readonly:true, isghost:true, value:"(no log)"}, [], {});
-          }
+          let retDiv = el("div#fullLog", {"class":"modify-menu-icons"});
           let logtxt = "";
           const elog = editor_model.editor_log;
           for (let i = 0; i < elog.length; i++) {
             const l = elog[i];
-            logtxt = logtxt + l + "\n";
+            logtxt = logtxt + (i > 0 ? "<br>" : "") + l;
           }
-          logtxt == "" ? log.value = "(no log)" : log.value = logtxt;
-          retDiv.append(log);
+          retDiv.innerHTML = logtxt;
+          this.currentBox = retDiv;
           return retDiv;
+        },
+        refresh() {
+          let currentBox = this.currentBox;
+          let newBox = this.render(editor_model);
+          currentBox.parentNode.insertBefore(newBox, currentBox);
+          currentBox.remove();
         }
       });
       editor_model.interfaces.push({
@@ -5265,7 +5300,7 @@ lastEditScript = """
         modifyMenuHolder.append(menu);
       }
       if (do_interfaces) {
-        console.log ({old_scroll, modifyMenuHolder});
+        //console.log ({old_scroll, modifyMenuHolder});
         modifyMenuDiv.append(modifyMenuHolder);
         modifyMenuHolder.scrollTop = old_scroll;
       }
