@@ -1970,6 +1970,7 @@ lastEditScript = """
     }
     
     function reloadPage() {
+      sendNotification("Reloading...");
       notifyServer({reload: "true"}, undefined, "Reload");
     }
     function relativeToAbsolute(url) {
@@ -1983,7 +1984,8 @@ lastEditScript = """
       }
     }
     function navigateLocal(url, replaceState) {
-      notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined);
+      sendNotification("Loading...");
+      notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
     }
     
     function selectAmbiguity(key, num) {
@@ -4959,6 +4961,9 @@ lastEditScript = """
           return ret;
         }
       });
+      if(typeof thaditor !== "undefined" && thaditor.customInterfaces) {
+        editor_model.interfaces.push(...thaditor.customInterfaces);
+      }
     }
     
     function getEditorInterfaceByTitle(title) {
@@ -5302,10 +5307,8 @@ lastEditScript = """
       if (do_interfaces) {
         //console.log ({old_scroll, modifyMenuHolder});
         modifyMenuDiv.append(modifyMenuHolder);
-        modifyMenuHolder.scrollTop = old_scroll;
+        if(modifyMenuHolder) modifyMenuHolder.scrollTop = old_scroll;
       }
-
-      
 
       let createButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);

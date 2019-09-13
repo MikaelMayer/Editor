@@ -1184,6 +1184,17 @@ label.switch {
   position: relative;
 }
 
+div#modify-menu div.translation-title {
+  font-weight: bold;
+  margin-top: 5px;
+}
+div#modify-menu textarea.translation-content {
+  color: black;
+  width: 100%;
+  height: 120px;
+  max-height: 50%;
+}
+
 @media screen and (max-width: 800px) {
     div#modify-menu {
         -webkit-box-shadow: none;
