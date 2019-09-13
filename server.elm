@@ -5223,8 +5223,6 @@ lastEditScript = """
       let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
       let modifyMenuHolder = el("div", {"class": "modify-menu-holder", "id":"modify-menu-holder"});
       modifyMenuDiv.append(modifyMenuPinnedIconsDiv); // Keep this one as it.
-      modifyMenuDiv.append(modifyMenuIconsDiv);       // TODO: Move to editor_model.interfaces
-      modifyMenuDiv.append(domSelector);              // TODO: Move to editor_model.interfaces
       
       /*
         Render interfaces / containers
@@ -5316,9 +5314,6 @@ lastEditScript = """
         button.classList.add("modify-menu-button");
         button.innerHTML = innerHTML;
         return button;
-      }
-      let addModifyMenuIcon = function(innerHTML, attributes, properties) {
-        modifyMenuIconsDiv.append(createButton(innerHTML, attributes, properties));
       }
       let addPinnedModifyMenuIcon = function(innerHTML, attributes, properties) {
         modifyMenuPinnedIconsDiv.append(createButton(innerHTML, attributes, properties));
@@ -5449,6 +5444,7 @@ lastEditScript = """
         var noContextMenu = false;
         // What to put in context menu?
         if(onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
+          modifyMenuPinnedIconsDiv.parentElement.insertBefore(modifyMenuIconsDiv, modifyMenuPinnedIconsDiv.nextSibling);
           whereToAddContextButtons = modifyMenuIconsDiv;
           noContextMenu = true;
         }

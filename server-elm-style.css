@@ -469,7 +469,7 @@ div#modify-menu {
 .modify-menu-holder {
     width: 100%;
     height: calc(100% - 10px);
-    overflow-y: scroll;
+    overflow-y: auto;
     font-family: Arial, Helvetica, sans-serif;
 }
 div.modify-menu-icons:not(.pinned) ~ div.modify-menu-holder {
