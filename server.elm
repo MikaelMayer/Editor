@@ -5659,7 +5659,23 @@ lastEditScript = """
          }
        }
     }
-
+    
+    // Mobile only
+    document.addEventListener("deviceready", function onDeviceReady(){
+      document.addEventListener("backbutton", function onBackKeyDown(){
+        if(editor_model.visible) {
+          editor_model.visible = false;
+          updateInteractionDiv();
+          //Hide the menu
+          //This is also working fine
+          return false;
+        }
+        else //nothing is visible, exit the app
+        {
+          return true;
+        }
+      }, false);
+    }, false);
     
     @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then
       -- Special case when ?edit=false but the default behavior is edit=true if nothing is set.
@@ -5683,37 +5699,39 @@ lastEditScript = """
          document.addEventListener('mousedown', onMouseDownGlobal, false);
       """
     else "")
-      window.addEventListener("error", function (message, source, lineno, colno, error) {
-        let msg;
-        if(message instanceof ErrorEvent) {
-          msg = message.message;
-        } else {
-          msg = message + " from " + source + " L" + lineno + "C" + colno;
-        }
-        editor_model.editor_log.push(msg);
-      });
-       
-      window.onbeforeunload = function (e) {
-        e = e || window.event;
-        var askConfirmation = editor_model.canSave || editor_model.isSaving || editor_model.disambiguationMenu;
-        const confirmation = 'You have unsaved modifications. Do you still want to exit?';
-        // For IE and Firefox prior to version 4
-        if (e) {
-          if(askConfirmation) {
-            e.returnValue = confirmation;
-          }
-        }
+    window.addEventListener("error", function (message, source, lineno, colno, error) {
+      let msg;
+      if(message instanceof ErrorEvent) {
+        msg = message.message;
+      } else {
+        msg = message + " from " + source + " L" + lineno + "C" + colno;
+      }
+      editor_model.editor_log.push(msg);
+    });
+    
+    function editor_onbeforeunload(e) {
+      e = e || window.event;
+      var askConfirmation = editor_model.canSave || editor_model.isSaving || editor_model.disambiguationMenu;
+      const confirmation = 'You have unsaved modifications. Do you still want to exit?';
+      // For IE and Firefox prior to version 4
+      if (e) {
         if(askConfirmation) {
-          // For Safari
-          return confirmation;
-        } else {
-          var xmlhttp = new XHRequest();
-          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
-          xmlhttp.open("POST", location.pathname + location.search, false); // Async
-          xmlhttp.setRequestHeader("close", "true");
-          xmlhttp.send("{\"a\":3}");
+          e.returnValue = confirmation;
         }
-    }; //end of window.onbeforeload
+      }
+      if(askConfirmation) {
+        // For Safari
+        return confirmation;
+      } else {
+        var xmlhttp = new XHRequest();
+        xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+        xmlhttp.open("POST", location.pathname + location.search, false); // Async
+        xmlhttp.setRequestHeader("close", "true");
+        xmlhttp.send("{\"a\":3}");
+      }
+    } // End of editor_onbeforeunload
+     
+    window.onbeforeunload = editor_onbeforeunload;
     if (typeof editor_model === "object" && typeof editor_model.outputObserver !== "undefined") {
       editor_model.outputObserver.disconnect();
     }
