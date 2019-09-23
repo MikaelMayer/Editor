@@ -3439,7 +3439,7 @@ lastEditScript = """
               el("span", {class:"attribute-key-value"}, [
                 el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
                   [], {
-                    onkeyup() {
+                    oninput() {
                       let applyNewTagNameButton = document.querySelector("#applyNewTagName");
                       applyNewTagNameButton.classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w*$/));
                       applyNewTagNameButton.value = this.value === "" ? "-" : "Set";
@@ -3497,7 +3497,7 @@ lastEditScript = """
                   el("span", {title: "Element attribute name"}, name + ": "),
                   el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
                     el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
-                        onkeyup: ((name, isHref) => function () {
+                        oninput: ((name, isHref) => function () {
                             clickedElem.setAttribute(name, this.value);
                             if(isHref) {
                               let livelinks = document.querySelectorAll(".livelink");
@@ -3549,7 +3549,7 @@ lastEditScript = """
           if(clickedElem.nodeType === 1) {
             keyvalues.append(
               el("div", {"class": "keyvalue keyvalueadder"}, [
-                el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {onkeyup: highlightsubmit})),
+                el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {oninput: highlightsubmit})),
                 el("span", {class: "attribute-key-value"}, [
                   el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
                     onfocus: function() {
@@ -3565,7 +3565,7 @@ lastEditScript = """
                         if(d) d.focus();
                       }
                     },
-                    onkeyup: highlightsubmit})),
+                    oninput: highlightsubmit})),
                   el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
                     disabled: true,
                     onclick() {
@@ -3575,7 +3575,7 @@ lastEditScript = """
                       );
                       updateInteractionDiv();
                     },
-                    onkeyup: highlightsubmit })])
+                    oninput: highlightsubmit })])
               ])
             );
           }
@@ -4407,7 +4407,7 @@ lastEditScript = """
                 el("textarea", {class:"textChildNodeContent"},
                 [], {
                   value: node.textContent,
-                  onkeyup: (node => function() { node.textContent = this.value; })(node)
+                  oninput: (node => function() { node.textContent = this.value; })(node)
                 })
               )
             } else if(node.nodeType === 1) { // Make this a shortcut for the node
@@ -4642,7 +4642,7 @@ lastEditScript = """
 
           ret.append(
             el("div", {"class": "tagName", id: "customHTML"}, [
-              el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", onkeyup: "this.innerHTMLCreate = this.value"}),
+              el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", oninput: "this.innerHTMLCreate = this.value"}),
               el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
                   innerHTML: plusSVG, 
                   onclick: function(event) {
@@ -4952,7 +4952,7 @@ lastEditScript = """
              [el("textarea",
                   {style: "width:100%",
                    id: "sourcecontentmodifier", placeholder: "Source of the page, before evaluation", "class": "templateengine"}, [], {
-                onkeyup: function() {
+                oninput: function() {
                   if(document.querySelector("#modify-menu").getAttribute('sourcecontent') !== this.value)
                     document.querySelector("#modify-menu").setAttribute('sourcecontent', this.value);
                   },
@@ -5660,21 +5660,20 @@ lastEditScript = """
        }
     }
     
+    function editor_close() {
+      if(editor_model.visible) {
+        editor_model.visible = false;
+        updateInteractionDiv();
+        //Hide the menu
+        //This is also working fine
+        return false;
+      }
+      return true;
+    }
+    
     // Mobile only
     document.addEventListener("deviceready", function onDeviceReady(){
-      document.addEventListener("backbutton", function onBackKeyDown(){
-        if(editor_model.visible) {
-          editor_model.visible = false;
-          updateInteractionDiv();
-          //Hide the menu
-          //This is also working fine
-          return false;
-        }
-        else //nothing is visible, exit the app
-        {
-          return true;
-        }
-      }, false);
+      document.addEventListener("backbutton", editor_close, false);
     }, false);
     
     @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then
@@ -5711,6 +5710,11 @@ lastEditScript = """
     
     function editor_onbeforeunload(e) {
       e = e || window.event;
+      if(onMobile() && editor_model.visible) { // Hack to ask before saving.
+        e.preventDefault();
+        e.returnValue = '';
+        return editor_close();
+      }
       var askConfirmation = editor_model.canSave || editor_model.isSaving || editor_model.disambiguationMenu;
       const confirmation = 'You have unsaved modifications. Do you still want to exit?';
       // For IE and Firefox prior to version 4
@@ -5722,7 +5726,7 @@ lastEditScript = """
       if(askConfirmation) {
         // For Safari
         return confirmation;
-      } else {
+      } else { // Send a close message in case this was a file opened from Desktop
         var xmlhttp = new XHRequest();
         xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search, false); // Async
