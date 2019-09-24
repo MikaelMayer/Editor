@@ -2130,6 +2130,13 @@ lastEditScript = """
             sendToUndo(mutation);
             // Please do not comment out this line until we get proper clever save.
             console.log("Attribute is not ghost", mutation);
+            console.log("Use this script if you want to mark it as ghost:");
+            let sel = getShortestUniqueSelector(mutation.target);
+            if(typeof mutation.oldValue === "undefined") {
+              console.log("editor.ghostAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : [])")
+            } else {
+              console.log("editor.ignoredAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : [])")
+            }
           }
         } else if(mutation.type == "childList") {
           if(!areChildrenGhosts(mutation.target)) {
@@ -3862,36 +3869,7 @@ lastEditScript = """
                           postIndentCSS += "  " + preIndentCSS[i]; 
                         }
                       }
-                      //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
-                      //split between common (section, div, span, p, ul,  etc...) and rare/better semantically defined tags (pre)
-
-                      //check if selector applies to any ancestors or descendants, then its ok
-                      //else add class or use > selector until it is precise 
-                      let curSelector = clickedElem.tagName.toLowerCase();
-                      if(clickedElem.getAttribute("id")) {
-                        curSelector += "#" + clickedElem.getAttribute("id")
-                      }
-                      if (clickedElem.getAttribute("class")) {
-                        curSelector += "." + clickedElem.getAttribute("class").replace(/\s+/g, ".");
-                      }
-                      //checking ancestors
-                      let consideredParent = clickedElem.parentNode;
-                      do {
-                        var selectorIsOrg = true;
-                        for(let curAncestor = clickedElem.parentNode; curAncestor; curAncestor = curAncestor.parentNode) {
-                          if(editor.matches(curAncestor, curSelector)) {
-                            selectorIsOrg = false;
-                          }
-                        }
-                        //checking descendants
-                        if(clickedElem.querySelector(curSelector)) {
-                          selectorIsOrg = false;
-                        }
-                        if(!selectorIsOrg) {
-                          curSelector =  consideredParent.toLowerCase() + " > " + curSelector; 
-                          consideredParent = consideredParent.parentNode;
-                        }
-                      } while(!selectorIsOrg && consideredParent);
+                      let curSelector = getShortestUniqueSelector(clickedElem);
                       postIndentCSS = "\n" + curSelector + " {\n" + postIndentCSS + "\n}";   
                       console.log("lastStyleLink is:", lastStyleLink);     
                       if(lastStyleLink) {
@@ -4982,6 +4960,40 @@ lastEditScript = """
       init_interfaces();
       //editor_model.visible = true;
       //updateInteractionDiv();
+    }
+    
+    //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
+    //split between common (section, div, span, p, ul,  etc...) and rare/better semantically defined tags (pre)
+
+    //check if selector applies to any ancestors or descendants, then its ok
+    //else add class or use > selector until it is precise 
+    function getShortestUniqueSelector(clickedElem) {
+      let curSelector = clickedElem.tagName.toLowerCase();
+      if(clickedElem.getAttribute("id")) {
+        curSelector += "#" + clickedElem.getAttribute("id")
+      }
+      if (clickedElem.getAttribute("class")) {
+        curSelector += "." + clickedElem.getAttribute("class").replace(/\s+/g, ".");
+      }
+      //checking ancestors
+      let consideredParent = clickedElem.parentNode;
+      do {
+        var selectorIsOrg = true;
+        for(let curAncestor = clickedElem.parentNode; curAncestor; curAncestor = curAncestor.parentNode) {
+          if(editor.matches(curAncestor, curSelector)) {
+            selectorIsOrg = false;
+          }
+        }
+        //checking descendants
+        if(clickedElem.querySelector(curSelector)) {
+          selectorIsOrg = false;
+        }
+        if(!selectorIsOrg) {
+          curSelector =  consideredParent.toLowerCase() + " > " + curSelector; 
+          consideredParent = consideredParent.parentNode;
+        }
+      } while(!selectorIsOrg && consideredParent);
+      return curSelector;
     }
     
 
