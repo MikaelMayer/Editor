@@ -2050,15 +2050,16 @@ lastEditScript = """
       editor_model.serverWorker.postMessage(data);
     } //sendModificationsToServer
 
-    //remove and append dummy counter to end of url
-    function dummyCounter(path, search, insert) {
-      var dummyIndex = path.indexOf(search);
+    function removeTimestamp(path) {
+      var dummyIndex = path.indexOf("?");
       if(dummyIndex > -1) {
         path = path.slice(0, dummyIndex);
       }
-      if(insert) {
-        path += insert;
-      }
+      return path;
+    }
+    function setTimestamp(path) {
+      path = removeTimestamp(path);
+      path += "?timestamp=" + (+new Date());
       return path;
     }
 
@@ -2265,8 +2266,9 @@ lastEditScript = """
         else if(mutType === "file") {
             var keepUndo = undoElem[k];
             let curHref = target.getAttribute("href");
-            let curValue = await getServer("read", dummyCounter(curHref, "?c="));
-            await postServer("write", dummyCounter(curHref, "?c="), keepUndo.oldValue);
+            let filePath = relativeToAbsolute(removeTimestamp(curHref));
+            let curValue = await getServer("read", filePath);
+            await postServer("write", filePath, keepUndo.oldValue);
             //console.log("here?");
             target.setAttribute("href", keepUndo.oldHref); 
             keepUndo.oldValue = curValue.slice(1);
@@ -2393,13 +2395,14 @@ lastEditScript = """
           //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
         }
         else if(mutType === "file") {
-            let keepRedo = redoElem[k];
-            let curHref = target.getAttribute("href");
-            let curValue = await getServer("read", dummyCounter(curHref, "?c="));
-            await postServer("write", dummyCounter(curHref, "?c="), keepRedo.oldValue);
-            target.setAttribute("href", keepRedo.oldHref); 
-            keepRedo.oldValue = curValue.slice(1);
-            keepRedo.oldHref = curHref;
+          let keepRedo = redoElem[k];
+          let curHref = target.getAttribute("href");
+          let filePath = relativeToAbsolute(removeTimestamp(curHref));
+          let curValue = await getServer("read", filePath);
+          await postServer("write", filePath, keepRedo.oldValue);
+          target.setAttribute("href", keepRedo.oldHref); 
+          keepRedo.oldValue = curValue.slice(1);
+          keepRedo.oldHref = curHref;
         } 
         else {
           let rRemNodes = redoElem[k].removedNodes;
@@ -3142,6 +3145,69 @@ lastEditScript = """
       summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
       return summary;
     }
+    
+    // Make sure we use a temporary file to replace this CSS file for editing, if it does not already exists
+    // Returns the temporary href after setting it on the element.
+    // Stores the original href as the attribute ghost-href.
+    async function getTempLinkToSaveCSS(linkNode) {
+      let oldHref = linkNode.getAttribute("href");
+      if(linkNode.getAttribute("ghost-href")) return oldHref;
+      let CSSFilePath = relativeToAbsolute(oldHref);
+      let CSSvalue = await getServer("read", CSSFilePath);
+      if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
+        CSSvalue = CSSvalue.slice(1);
+      }
+      linkNode.setAttribute("ghost-href", oldHref);
+      let newFilePath = CSSFilePath.split("/");
+      let newFileName = "";
+      do {
+        editor_model.idNum += 1;
+        newFileName = `tmp${editor_model.idNum}-${userName}-${newFilePath[newFilePath.length - 1]}`;
+      } while(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName)
+      newFilePath[newFilePath.length - 1] = newFileName;
+      newFilePath = newFilePath.join("/");
+      newFilePath = setTimestamp(newFilePath);
+      await postServer("write", newFilePath, CSSvalue);
+      return newFilePath;
+    }
+         
+    // When undoing href attribute change, we should first
+    // undo the change on the file and then on the href attribute.
+    // Else chrome will pick the wrong version of the file.
+    // Unless we always have counters to indicate the newest/oldest version of the file.
+    async function setReversibleLinkHref(linkNode, oldHref, newHref, oldValue) {
+      editor_model.outputObserver.disconnect();
+      //add dummy counter, force reload
+      linkNode.setAttribute("href", newHref);
+      let m = {type: "file", target: linkNode, oldValue: oldValue, action: "write", oldHref: oldHref};
+      console.log(m);
+      sendToUndo(m);
+      syncUndoRedoButtons();
+      editor_model.canSave = true;
+      document.querySelector("#savebutton").classList.toggle("disabled", false);
+      //printstacks();
+      editor_model.outputObserver.observe
+        ( document.body.parentElement
+        , { attributes: true
+          , childList: true
+          , characterData: true
+          , attributeOldValue: true
+          , characterDataOldValue: true
+          , subtree: true
+          }
+        );
+    }
+    
+    // Change a link href and the target file content in a reversible way.
+    // newValue is either a String or a function that transforms the old value
+    async function reversibleChangeLinkCSSFile(linkNode, oldHref, CSSFilePath, newValue, newHref) {
+      let mbOldValue = await getServer("read", CSSFilePath);
+      let oldValue = mbOldValue.slice(1);
+      await postServer("write", CSSFilePath, typeof newValue === "function" ? newValue(oldValue) : newValue);
+      newHref = setTimestamp(newHref || oldHref);
+      setReversibleLinkHref(linkNode, oldHref, newHref, oldValue);
+    }
+    
     function init_interfaces() {
       function findText(parsed, startIndex, endIndex) { //for css + img replacement
         let textSegment = "";
@@ -3589,6 +3655,7 @@ lastEditScript = """
           return keyvalues;
         }
       });
+      
       editor_model.interfaces.push({
         title: "Style",
         minimized: true,
@@ -3610,54 +3677,6 @@ lastEditScript = """
           if (!do_css) return CSSarea;
           //parse relevant CSS, recording prior and post CSS text as well 
 
-          // Creates a temporary file to replace this CSS file for editing, if it does not already exists
-          async function getTempLinkToSaveCSS(linkNode) {
-            let oldHref = linkNode.getAttribute("href");
-            if(linkNode.getAttribute("ghost-href")) return oldHref;
-            let CSSFilePath = relativeToAbsolute(oldHref);
-            let CSSvalue = await getServer("read", CSSFilePath);
-            if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
-              CSSvalue = CSSvalue.slice(1);
-            }
-            linkNode.setAttribute("ghost-href", oldHref);
-            //for now, we will increase # on temp#.css until we find a unique name
-            
-            let newFilePath = CSSFilePath.split("/");
-            let newFileName = "";
-            do {
-              editor_model.idNum += 1;
-              newFileName = `tmp${editor_model.idNum}-${userName}-${newFilePath[newFilePath.length - 1]}`;
-            } while(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName)
-            newFilePath[newFilePath.length - 1] = newFileName;
-            newFilePath = newFilePath.join("/");
-            newFilePath = dummyCounter(newFilePath, "?timestamp=", "?timestamp="+(+new Date()));
-            await postServer("write", newFilePath, CSSvalue);
-            return newFilePath;
-          }
-                        
-          async function setReversibleLinkHref(linkNode, oldHref, newHref, oldValue) {
-            editor_model.outputObserver.disconnect();
-            //add dummy counter, force reload
-            linkNode.setAttribute("href", newHref);
-            let m = {type: "file", target: linkNode, oldValue: oldValue, action: "write", oldHref: oldHref};
-            console.log(m);
-            sendToUndo(m);
-            syncUndoRedoButtons();
-            editor_model.canSave = true;
-            document.querySelector("#savebutton").classList.toggle("disabled", false);
-            //printstacks();
-            editor_model.outputObserver.observe
-              ( document.body.parentElement
-              , { attributes: true
-                , childList: true
-                , characterData: true
-                , attributeOldValue: true
-                , characterDataOldValue: true
-                , subtree: true
-                }
-              );
-          }
-
           async function fullParseCSS() {
             var fullCSS = [], keyframes = [], rawCSS = [];
             //console.log("All style tags:", document.querySelectorAll("style"));
@@ -3675,8 +3694,8 @@ lastEditScript = """
                       rawCSS.push({text: CSSvalue, tag: linkOrStyleNode});
                     }
                   } else { // Already being edited.
-                    //geting rid of ?c= at the end of the temp.css
-                    CSSFilePath = dummyCounter(CSSFilePath, "?c=");
+                    //geting rid of ?timestamp= at the end of the temp.css
+                    CSSFilePath = removeTimestamp(CSSFilePath);
                     //console.log("temp CSS loaded");
                     let CSSvalue = await getServer("read", CSSFilePath);
                     //console.log("css value loaded is:", CSSvalue);
@@ -3802,26 +3821,10 @@ lastEditScript = """
                       setCSSAreas();
                     },
                     oninput() {
-                      (async () => {
-                        let mbOldValue = await getServer("read", CSSFilePath);
-                        await postServer("write", CSSFilePath, this.value);
-                        editor_model.idNum += 1;
-                        //add dummy counter, force reload  
-                        var newHref = dummyCounter(oldHref, "?c=", `?c=${editor_model.idNum}`);
-                        editor_model.outputObserver.disconnect();
-                        clickedElem.setAttribute("href", newHref);
-                        let m = {type: "file", target: clickedElem, oldValue: mbOldValue.slice(1), action: "write", oldHref: oldHref};
-                        sendToUndo(m);
-                        editor_model.outputObserver.observe
-                          ( document.body.parentElement
-                          , { attributes: true
-                            , childList: true
-                            , characterData: true
-                            , attributeOldValue: true
-                            , characterDataOldValue: true
-                            , subtree: true
-                            }
-                          );
+                      (async () => { // Maybe create a new temporary CSS file.
+                        let newHref = await getTempLinkToSaveCSS(clickedElem);
+                        let CSSFilePath = relativeToAbsolute(removeTimestamp(newHref));
+                        await reversibleChangeLinkCSSFile(clickedElem, oldHref, CSSFilePath, this.value, newHref);
                       })();
                     }
                   })
@@ -3875,17 +3878,10 @@ lastEditScript = """
                       if(lastStyleLink) {
                         if(lastStyleLink.tagName === "LINK") {
                           (async () => {
-                            console.log("lastStyleLink", lastStyleLink.outerHTML);
                             let oldHref = lastStyleLink.getAttribute("href");
-                            console.log("oldHref", oldHref);
                             let newHref = await getTempLinkToSaveCSS(lastStyleLink);
-                            console.log("lastStyleLink", lastStyleLink.outerHTML);
-                            console.log("newHref", newHref);
-                            let CSSPath = relativeToAbsolute(dummyCounter(newHref, "?timestamp="));
-                            console.log("CSSPath", CSSPath);
-                            let mbOldValue = await getServer("read", CSSPath);
-                            await postServer("write", CSSPath, mbOldValue.slice(1) + postIndentCSS);
-                            await setReversibleLinkHref(lastStyleLink, oldHref, newHref, mbOldValue.slice(1));
+                            let CSSPath = relativeToAbsolute(removeTimestamp(newHref));
+                            await reversibleChangeLinkCSSFile(lastStyleLink, oldHref, CSSPath, oldValue => oldValue + postIndentCSS, newHref);
                             clickedElem.removeAttribute("style");
                             setCSSAreas();
                           })();
@@ -3963,10 +3959,8 @@ lastEditScript = """
                     } else {
                       let oldHref = cssState.orgTag.getAttribute("href");
                       let newHref = await getTempLinkToSaveCSS(cssState.orgTag);
-                      let CSSFilePath = relativeToAbsolute(dummyCounter(newHref, "?timestamp="));
-                      let mbOldValue = await getServer("read", CSSFilePath);
-                      await postServer("write", CSSFilePath, fullUnparseCSS(cssState));
-                      await setReversibleLinkHref(cssState.orgTag, oldHref, newHref, mbOldValue.slice(1));
+                      let CSSFilePath = relativeToAbsolute(removeTimestamp(newHref));
+                      await reversibleChangeLinkCSSFile(cssState.orgTag, oldHref, CSSFilePath, fullUnparseCSS(cssState), newHref);
                     }
                   })();
                 })(cssState),
@@ -4004,11 +3998,9 @@ lastEditScript = """
                       else { // Link
                         let oldHref = this.storedCSS.orgTag.getAttribute("href");
                         let newHref = await getTempLinkToSaveCSS(this.storedCSS.orgTag);
-                        let CSSFilePath = relativeToAbsolute(dummyCounter(newHref, "?timestamp="));
-                        let mbOldValue = await getServer("read", CSSFilePath);
+                        let CSSFilePath = relativeToAbsolute(removeTimestamp(newHref));
                         this.storedCSS.content = this.value;
-                        await postServer("write", CSSFilePath, fullUnparseCSS(this.storedCSS));
-                        await setReversibleLinkHref(this.storedCSS.orgTag, oldHref, newHref, mbOldValue.slice(1));
+                        await reversibleChangeLinkCSSFile(this.storedCSS.orgTag, oldHref, CSSFilePath, fullUnparseCSS(this.storedCSS), newHref);
                       }
                     })();
                   },
@@ -4023,12 +4015,10 @@ lastEditScript = """
                         let orgTag = linked_CSS.storedCSS.orgTag;
                         let oldHref = orgTag.getAttribute("href");
                         let newHref = await getTempLinkToSaveCSS(orgTag);
-                        let CSSFilePath = relativeToAbsolute(dummyCounter(newHref, "?timestamp="));
+                        let CSSFilePath = relativeToAbsolute(removeTimestamp(newHref));
                         linked_CSS.value = "";
                         linked_CSS.storedCSS.content = linked_CSS.value;
-                        let mbOldValue = await getServer("read", CSSFilePath);
-                        await postServer("write", CSSFilePath, fullUnparseCSS(linked_CSS.storedCSS));
-                        await setReversibleLinkHref(orgTag, oldHref, newHref, mbOldValue.slice(1));
+                        await reversibleChangeLinkCSSFile(orgTag, oldHref, CSSFilePath, fullUnparseCSS(linked_CSS.storedCSS), newHref);
                         setCSSAreas();
                       }) ();
                     }
@@ -5397,15 +5387,22 @@ lastEditScript = """
                     console.log(linkNode);
                     console.log(linkNode.getAttribute("ghost-href"));
                     if(!isGhostNode(linkNode) && linkNode.getAttribute("ghost-href")) {
-                      let trueTempPath = dummyCounter(linkNode.getAttribute("href"), "?c="); // This one is absolute normally
-                      let trueCSSPath = dummyCounter(linkNode.getAttribute("ghost-href"), "?timestamp=");
-                      let absTrueCSSPath = relativeToAbsolute(trueCSSPath);
-                      await postServer("fullCopy", trueTempPath, absTrueCSSPath);
-                      console.log("true temp path:" + trueTempPath);
-                      console.log("true CSS path:" + trueCSSPath);
-                      trueCSSPath += `?timestamp=${+new Date()}`;
-                      linkNode.setAttribute("href", trueCSSPath);
-                      console.log("after:" + linkNode.getAttribute("href"));
+                      let linkNodeTmpHref = linkNode.getAttribute("href");
+                      let linkNodeOriginalHref = linkNode.getAttribute("ghost-href");
+                      let trueTempPath = removeTimestamp(linkNodeTmpHref); // This one is absolute normally
+                      let originalPath = removeTimestamp(linkNodeOriginalHref);
+                      let originalAbsPath = relativeToAbsolute(originalPath);
+                      let mbOldValue = await getServer("read", originalAbsPath);
+                      let oldValue = mbOldValue.slice(1);
+                      let mbNewValue = await getServer("read", trueTempPath);
+                      let newValue = mbNewValue.slice(1);
+                      await postServer("write", originalAbsPath, newValue);
+                      let newHref = originalPath + `?timestamp=${+new Date()}`;
+                      // Since we delete the temporary file, we cannot revert to the temporary href.
+                      // Problem: it's not possible to undo small changes.
+                      // Worse: The deletion of the tmp css file will make it impossible to undo to states before of before this saving.
+                      // Ghost attributes are not restored when doing undo.
+                      await setReversibleLinkHref(linkNode, oldHref, newHref, oldValue);
                       await postServer("unlink", trueTempPath);
                     }                 
                   }
