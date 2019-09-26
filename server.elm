@@ -2172,10 +2172,6 @@ lastEditScript = """
       syncUndoRedoButtons();
       
       if(!editor_model.autosave) {
-        if(editor_model.undoStack.length)
-        {
-          editor_model.canSave = true;
-        }
         var saveButtons = document.querySelectorAll(".saveButton");
         // TODO: Can we regenerate the whole interface for consistency?
         for(let sb of saveButtons) {
@@ -2226,11 +2222,7 @@ lastEditScript = """
       let undoElem = editor_model.undoStack.pop();
       //need to check if undoStack is empty s.t. we can set the "savability" of the document accurately
       if(undoElem == undefined) {
-        editor_model.canSave = false;
         return 0;
-      }
-      else if (!editor_model.undoStack.length) {
-        editor_model.canSave = false;
       }
       (async () => {
       //TODO prevent pressing the undo button while save underway while letting Editor use the undo function. (just not the user);
@@ -2453,7 +2445,6 @@ lastEditScript = """
       if (editor_model.isSaving) {
         editor_model.actionsDuringSave.unshift("undo");
       }
-      editor_model.canSave = true;
       editor_model.outputObserver.observe
        ( document.body.parentElement
        , { attributes: true
@@ -2968,6 +2959,7 @@ lastEditScript = """
       link: undefined,
       disambiguationMenu: undefined, //here
       isSaving: false,
+      undosBeforeSave: ifAlreadyRunning ? editor_model.undosBeforeSave : 0,
       //data structures to represent undo/redo "stack"
       undoStack: ifAlreadyRunning ? editor_model.undoStack : [],
       redoStack: ifAlreadyRunning ? editor_model.redoStack : [],
@@ -3183,7 +3175,6 @@ lastEditScript = """
       console.log(m);
       sendToUndo(m);
       syncUndoRedoButtons();
-      editor_model.canSave = true;
       document.querySelector("#savebutton").classList.toggle("disabled", false);
       //printstacks();
       editor_model.outputObserver.observe
@@ -5367,7 +5358,7 @@ lastEditScript = """
           }
         );
         addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
-        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_model.canSave || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
+        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_canSave() || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           id: "savebutton"  
         },
           {onclick: editor_model.disambiguationMenu ? 
@@ -5406,6 +5397,8 @@ lastEditScript = """
                       await postServer("unlink", trueTempPath);
                     }                 
                   }
+                  console.log("undoStack.length at saving", editor_model.undoStack.length);
+                  editor_model.undosBeforeSave = editor_model.undoStack.length;
                   if(!this.classList.contains("disabled")) {
                     if (apache_server) {
                       sendModificationsToServer();
@@ -5717,6 +5710,10 @@ lastEditScript = """
       editor_model.editor_log.push(msg);
     });
     
+    function editor_canSave() {
+      return editor_model.undoStack.length !== editor_model.undosBeforeSave;
+    }
+    
     function editor_onbeforeunload(e) {
       e = e || window.event;
       if(onMobile() && editor_model.visible) { // Hack to ask before saving.
@@ -5724,7 +5721,7 @@ lastEditScript = """
         e.returnValue = '';
         return editor_close();
       }
-      var askConfirmation = editor_model.canSave || editor_model.isSaving || editor_model.disambiguationMenu;
+      var askConfirmation = editor_canSave() || editor_model.isSaving || editor_model.disambiguationMenu;
       const confirmation = 'You have unsaved modifications. Do you still want to exit?';
       // For IE and Firefox prior to version 4
       if (e) {
