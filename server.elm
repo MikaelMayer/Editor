@@ -2381,7 +2381,7 @@ lastEditScript = """
           redoElem[k].URValue = cur_attr;
         } 
         else if(mutType === "characterData") {
-          let cur_data = target.textConent;
+          let cur_data = target.textContent;
           target.textContent = redoElem[k].URValue;  
           redoElem[k].URValue = cur_data;
           //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
