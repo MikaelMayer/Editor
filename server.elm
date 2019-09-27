@@ -2371,7 +2371,8 @@ lastEditScript = """
           //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
         }
         else if(mutType === "linkHrefCSS") {
-          await assignTmpCss(keepRedo.target, keepUndo.newValue, true);
+          let keepRedo = redoElem[k];
+          await assignTmpCss(keepRedo.target, keepRedo.newValue, true);
         }
         else {
           let rRemNodes = redoElem[k].removedNodes;
