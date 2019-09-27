@@ -2227,7 +2227,7 @@ lastEditScript = """
       (async () => {
       //TODO prevent pressing the undo button while save underway while letting Editor use the undo function. (just not the user);
       //need to disconnect the MutationObserver such that our undo does not get recorded as a mutation
-      editor_model.outputObserver.disconnect();
+      editor_stopWatching();
       const quicker = node => recoverElementFromData(dataToRecoverElement(node));
       let k;
       for(k = undoElem.length - 1; k >= 0; k--) {
@@ -2257,7 +2257,7 @@ lastEditScript = """
         }
         else if(mutType === "linkHrefCSS") { // There should be only one such even
           var keepUndo = undoElem[k];
-          assignTmpCss(keepUndo.target, keepUndo.oldValue);
+          await assignTmpCss(keepUndo.target, keepUndo.oldValue, true);
         }
         else {
           let uRemNodes = undoElem[k].removedNodes;
@@ -2328,16 +2328,7 @@ lastEditScript = """
       }
       //TODO make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
       //turn MutationObserver back on
-      editor_model.outputObserver.observe
-       ( document.body.parentElement
-       , { attributes: true
-         , childList: true
-         , characterData: true
-         , attributeOldValue: true
-         , characterDataOldValue: true
-         , subtree: true
-         }
-       );
+      editor_resumeWatching();
       updateInteractionDiv();
       //printstacks();
       })();
@@ -2355,7 +2346,7 @@ lastEditScript = """
         return 0;
       }
       (async () => {
-      editor_model.outputObserver.disconnect();
+      editor_stopWatching();
       const quicker = node => recoverElementFromData(dataToRecoverElement(node));
       let k;
       for(k = 0; k < redoElem.length; k++) {
@@ -2380,7 +2371,7 @@ lastEditScript = """
           //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
         }
         else if(mutType === "linkHrefCSS") {
-          assignTmpCss(keepRedo.target, keepUndo.newValue);
+          await assignTmpCss(keepRedo.target, keepUndo.newValue, true);
         }
         else {
           let rRemNodes = redoElem[k].removedNodes;
@@ -2431,16 +2422,7 @@ lastEditScript = """
       if (editor_model.isSaving) {
         editor_model.actionsDuringSave.unshift("undo");
       }
-      editor_model.outputObserver.observe
-       ( document.body.parentElement
-       , { attributes: true
-         , childList: true
-         , characterData: true
-         , attributeOldValue: true
-         , characterDataOldValue: true
-         , subtree: true
-         }
-       );
+      editor_resumeWatching();
       updateInteractionDiv();
       //printstacks();
       })();
@@ -3129,7 +3111,6 @@ lastEditScript = """
       let newFileName = `tmp-${userName}-${newFilePath[newFilePath.length - 1]}`;
       newFilePath[newFilePath.length - 1] = newFileName;
       newFilePath = newFilePath.join("/");
-      newFilePath = setTimestamp(newFilePath);
       return newFilePath;
     }
     
@@ -3150,14 +3131,16 @@ lastEditScript = """
     }
     
     // newValue can be a function, in which it should be applied on the current content.
+    // Returns the old value.
     async function assignTmpCss(linkNode, newValue, notUndoable) {
       if(!notUndoable) { // We send this to undo.
         editor_stopWatching();
-        let [oldValue, newValue] = await assignTmpCss(linkNode, newValue, true);
+        let oldValue = await assignTmpCss(linkNode, newValue, true);
         let m = {type: "linkHrefCSS", target: linkNode, oldValue: oldValue, newValue: newValue};
         sendToUndo(m);
         syncUndoRedoButtons();
         editor_resumeWatching();
+        return;
       }
       // Here the change should not take care of doing the undo/redo part. 
       let ghostHref = linkNode.getAttribute("ghost-href");
@@ -3170,6 +3153,7 @@ lastEditScript = """
         linkNode.cachedContent = currentContent;
       }
       if(hasGhostHref) { // Proxied
+        console.log("Was proxied");
         let tmpCachedContent = typeof linkNode.tmpCachedContent == "string" ? linkNode.tmpCachedContent :
                                (await getServer("read", linkNode.getAttribute("href"))).slice(1);
         if(typeof linkNode.tmpCachedContent !== "string") {
@@ -3182,19 +3166,22 @@ lastEditScript = """
           if(!notUndoable) {
             editor_model.outputObserver.disconnect();
           }
-          linkNode.setAttribute("href", oldHref);
           let CSSTmpFilePath = linkNode.getAttribute("href");
-          await postServer("unlink", CSSTmpFilePath);
+          await postServer("unlink", removeTimestamp(CSSTmpFilePath));
+          linkNode.setAttribute("href", oldHref);
+          linkNode.removeAttribute("ghost-href");
         } else { // We keep the proxy, just update the href
           let CSSTmpFilePath = linkNode.getAttribute("href");
-          await postServer("write", CSSTmpFilePath, newValue);
+          await postServer("write", removeTimestamp(CSSTmpFilePath), newValue);
         }
-        return [tmpCachedContent, newValue];
+        return tmpCachedContent;
       } else {// Unproxied
+        console.log("Was not proxied")
         if(typeof newValue === "function") {
           newValue = newValue(currentContent);
         }
         if(currentContent !== newValue) { // Create the proxy file
+          console.log("Value updated")
           //add dummy counter, force reload
           linkNode.setAttribute("ghost-href", oldHref);
           let CSSTmpFilePath = getTempCSSName(CSSFilePath);
@@ -3202,7 +3189,7 @@ lastEditScript = """
           linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
           linkNode.tmpCachedContent = newValue;
         } // else nothing to change, leave unproxied.
-        return [currentContent, newValue];
+        return currentContent;
       }
     }
          
@@ -3918,7 +3905,7 @@ lastEditScript = """
               let cssState = editor_model.CSSState[i];
               let orgTag = cssState.orgTag;
               //console.log("cssState", cssState);
-              let headerStr = orgTag.tagName.toLowerCase() + (orgTag.tagName === "LINK" ? " (" + orgTag.getAttribute("href")+":" + (count(cssState.before) + 1) + ")" : "");
+              let headerStr = orgTag.tagName.toLowerCase() + (orgTag.tagName === "LINK" ? " (" + removeTimestamp(orgTag.getAttribute("ghost-href") || orgTag.getAttribute("href"))+":" + (count(cssState.before) + 1) + ")" : "");
               for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
                 headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
               }
@@ -3956,6 +3943,7 @@ lastEditScript = """
                     }
                   },
                   oninput: function() {
+                    console.log("oninput called");
                     (async () => {
                       if(this.storedCSS.orgTag.tagName != "LINK") { // style node
                         let throwError = false;
@@ -3976,6 +3964,7 @@ lastEditScript = """
                         //setCSSAreas();
                       }
                       else { // Link
+                        this.storedCSS.content = this.value;
                         await assignTmpCss(this.storedCSS.orgTag, fullUnparseCSS(this.storedCSS));
                       }
                     })();
