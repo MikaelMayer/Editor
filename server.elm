@@ -2435,6 +2435,8 @@ lastEditScript = """
       let redoButton = document.querySelector("#redoButton");
       if(undoButton) undoButton.classList.toggle("disabled", !canUndo());
       if(redoButton) redoButton.classList.toggle("disabled", !canRedo());
+      let saveButton = document.querySelector(".saveButton");
+      if(saveButton) saveButton.classList.toggle("disabled", !editor_canSave() && !editor_model.disambiguationMenu);
     }
     
     // When selecting some text, mouse up on document, the focus node is outside of the anchor node. We want to prevent this from happening
