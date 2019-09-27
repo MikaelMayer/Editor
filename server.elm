@@ -2255,16 +2255,9 @@ lastEditScript = """
           undoElem[k].URValue = cur_data;
           //undoElem[k].isConnected ? undoElem[k].URValue : quicker(undoElem[k]).URValue = cur_data;
         }
-        else if(mutType === "file") {
-            var keepUndo = undoElem[k];
-            let curHref = target.getAttribute("href");
-            let filePath = relativeToAbsolute(removeTimestamp(curHref));
-            let curValue = await getServer("read", filePath);
-            await postServer("write", filePath, keepUndo.oldValue);
-            //console.log("here?");
-            target.setAttribute("href", keepUndo.oldHref); 
-            keepUndo.oldValue = curValue.slice(1);
-            keepUndo.oldHref = curHref;
+        else if(mutType === "linkHrefCSS") { // There should be only one such even
+          var keepUndo = undoElem[k];
+          assignTmpCss(keepUndo.target, keepUndo.oldValue);
         }
         else {
           let uRemNodes = undoElem[k].removedNodes;
@@ -2386,16 +2379,9 @@ lastEditScript = """
           redoElem[k].URValue = cur_data;
           //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
         }
-        else if(mutType === "file") {
-          let keepRedo = redoElem[k];
-          let curHref = target.getAttribute("href");
-          let filePath = relativeToAbsolute(removeTimestamp(curHref));
-          let curValue = await getServer("read", filePath);
-          await postServer("write", filePath, keepRedo.oldValue);
-          target.setAttribute("href", keepRedo.oldHref); 
-          keepRedo.oldValue = curValue.slice(1);
-          keepRedo.oldHref = curHref;
-        } 
+        else if(mutType === "linkHrefCSS") {
+          assignTmpCss(keepRedo.target, keepUndo.newValue);
+        }
         else {
           let rRemNodes = redoElem[k].removedNodes;
           let rAddNodes = redoElem[k].addedNodes;
@@ -3138,45 +3124,20 @@ lastEditScript = """
       return summary;
     }
     
-    // Make sure we use a temporary file to replace this CSS file for editing, if it does not already exists
-    // Returns the temporary href after setting it on the element.
-    // Stores the original href as the attribute ghost-href.
-    async function getTempLinkToSaveCSS(linkNode) {
-      let oldHref = linkNode.getAttribute("href");
-      if(linkNode.getAttribute("ghost-href")) return oldHref;
-      let CSSFilePath = relativeToAbsolute(oldHref);
-      let CSSvalue = await getServer("read", CSSFilePath);
-      if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
-        CSSvalue = CSSvalue.slice(1);
-      }
-      linkNode.setAttribute("ghost-href", oldHref);
+    function getTempCSSName(CSSFilePath) {
       let newFilePath = CSSFilePath.split("/");
-      let newFileName = "";
-      do {
-        editor_model.idNum += 1;
-        newFileName = `tmp${editor_model.idNum}-${userName}-${newFilePath[newFilePath.length - 1]}`;
-      } while(CSSFilePath.match(/[^\/]\w+\.\w+$/ig) === newFileName)
+      let newFileName = `tmp-${userName}-${newFilePath[newFilePath.length - 1]}`;
       newFilePath[newFilePath.length - 1] = newFileName;
       newFilePath = newFilePath.join("/");
       newFilePath = setTimestamp(newFilePath);
-      await postServer("write", newFilePath, CSSvalue);
       return newFilePath;
     }
-         
-    // When undoing href attribute change, we should first
-    // undo the change on the file and then on the href attribute.
-    // Else chrome will pick the wrong version of the file.
-    // Unless we always have counters to indicate the newest/oldest version of the file.
-    async function setReversibleLinkHref(linkNode, oldHref, newHref, oldValue) {
+    
+    function editor_stopWatching() {
       editor_model.outputObserver.disconnect();
-      //add dummy counter, force reload
-      linkNode.setAttribute("href", newHref);
-      let m = {type: "file", target: linkNode, oldValue: oldValue, action: "write", oldHref: oldHref};
-      console.log(m);
-      sendToUndo(m);
-      syncUndoRedoButtons();
-      document.querySelector("#savebutton").classList.toggle("disabled", false);
-      //printstacks();
+    }
+    
+    function editor_resumeWatching() {
       editor_model.outputObserver.observe
         ( document.body.parentElement
         , { attributes: true
@@ -3185,20 +3146,66 @@ lastEditScript = """
           , attributeOldValue: true
           , characterDataOldValue: true
           , subtree: true
+          });
+    }
+    
+    // newValue can be a function, in which it should be applied on the current content.
+    async function assignTmpCss(linkNode, newValue, notUndoable) {
+      if(!notUndoable) { // We send this to undo.
+        editor_stopWatching();
+        let [oldValue, newValue] = await assignTmpCss(linkNode, newValue, true);
+        let m = {type: "linkHrefCSS", target: linkNode, oldValue: oldValue, newValue: newValue};
+        sendToUndo(m);
+        syncUndoRedoButtons();
+        editor_resumeWatching();
+      }
+      // Here the change should not take care of doing the undo/redo part. 
+      let ghostHref = linkNode.getAttribute("ghost-href");
+      let hasGhostHref = typeof ghostHref === "string";
+      let oldHref = hasGhostHref ? ghostHref : linkNode.getAttribute("href")
+      let CSSFilePath = relativeToAbsolute(removeTimestamp(oldHref));
+      let currentContent = typeof linkNode.cachedContent === "string" ? linkNode.cachedContent :
+                               (await getServer("read", CSSFilePath)).slice(1);
+      if(typeof linkNode.cachedContent !== "string") {
+        linkNode.cachedContent = currentContent;
+      }
+      if(hasGhostHref) { // Proxied
+        let tmpCachedContent = typeof linkNode.tmpCachedContent == "string" ? linkNode.tmpCachedContent :
+                               (await getServer("read", linkNode.getAttribute("href"))).slice(1);
+        if(typeof linkNode.tmpCachedContent !== "string") {
+          linkNode.tmpCachedContent = tmpCachedContent;
+        }
+        if(typeof newValue === "function") {
+          newValue = newValue(tmpCachedContent);
+        }
+        if(currentContent === newValue) { // We can remove the proxy
+          if(!notUndoable) {
+            editor_model.outputObserver.disconnect();
           }
-        );
+          linkNode.setAttribute("href", oldHref);
+          let CSSTmpFilePath = linkNode.getAttribute("href");
+          await postServer("unlink", CSSTmpFilePath);
+        } else { // We keep the proxy, just update the href
+          let CSSTmpFilePath = linkNode.getAttribute("href");
+          await postServer("write", CSSTmpFilePath, newValue);
+        }
+        return [tmpCachedContent, newValue];
+      } else {// Unproxied
+        if(typeof newValue === "function") {
+          newValue = newValue(currentContent);
+        }
+        if(currentContent !== newValue) { // Create the proxy file
+          //add dummy counter, force reload
+          linkNode.setAttribute("ghost-href", oldHref);
+          let CSSTmpFilePath = getTempCSSName(CSSFilePath);
+          await postServer("write", CSSTmpFilePath, newValue);
+          linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
+          linkNode.tmpCachedContent = newValue;
+        } // else nothing to change, leave unproxied.
+        return [currentContent, newValue];
+      }
     }
-    
-    // Change a link href and the target file content in a reversible way.
-    // newValue is either a String or a function that transforms the old value
-    async function reversibleChangeLinkCSSFile(linkNode, oldHref, CSSFilePath, newValue, newHref) {
-      let mbOldValue = await getServer("read", CSSFilePath);
-      let oldValue = mbOldValue.slice(1);
-      await postServer("write", CSSFilePath, typeof newValue === "function" ? newValue(oldValue) : newValue);
-      newHref = setTimestamp(newHref || oldHref);
-      setReversibleLinkHref(linkNode, oldHref, newHref, oldValue);
-    }
-    
+         
     function init_interfaces() {
       function findText(parsed, startIndex, endIndex) { //for css + img replacement
         let textSegment = "";
@@ -3676,22 +3683,12 @@ lastEditScript = """
               let linkOrStyleNode = CSSstyles[i];
               if(linkOrStyleNode.tagName === "LINK" && linkOrStyleNode.getAttribute("rel") === "stylesheet" &&
                  linkOrStyleNode.getAttribute("href") && !linkOrStyleNode.getAttribute("isghost")) {
-                let CSSFilePath = relativeToAbsolute(linkOrStyleNode.getAttribute("href"));
+                let CSSFilePath = relativeToAbsolute(removeTimestamp(linkOrStyleNode.getAttribute("href")));
                 if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface") && (CSSFilePath.indexOf("http") < 0)) {
-                  if(!(linkOrStyleNode.getAttribute("ghost-href"))) {
-                    let CSSvalue = await getServer("read", CSSFilePath);
-                    if(typeof CSSvalue === "string" && CSSvalue[0] === "1") {
-                      CSSvalue = CSSvalue.slice(1);
-                      rawCSS.push({text: CSSvalue, tag: linkOrStyleNode});
-                    }
-                  } else { // Already being edited.
-                    //geting rid of ?timestamp= at the end of the temp.css
-                    CSSFilePath = removeTimestamp(CSSFilePath);
-                    //console.log("temp CSS loaded");
-                    let CSSvalue = await getServer("read", CSSFilePath);
-                    //console.log("css value loaded is:", CSSvalue);
-                    rawCSS.push({text: CSSvalue.slice(1), tag: linkOrStyleNode});
-                  }
+                  let CSSvalue = typeof linkOrStyleNode.tmpCachedContent === "string" ?
+                        linkOrStyleNode.tmpCachedContent :
+                        (await getServer("read", CSSFilePath)).slice(1);
+                  rawCSS.push({text: CSSvalue, tag: linkOrStyleNode});
                 }
               }
               else if(linkOrStyleNode.tagName === "STYLE" && !linkOrStyleNode.getAttribute("isghost")) {
@@ -3701,7 +3698,7 @@ lastEditScript = """
             for(let z in rawCSS) {  
               var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
               for(let i in parsedCSS) {
-                if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector.replace(/:(?=(after|before|hover))[^,]*(?=,|$)/g, ""))) {
+                if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector.replace(/:(?=(:?after|:?before|:?hover))[^,]*(?=,|$)/g, ""))) {
                   let content = CSSparser.unparseCSS([parsedCSS[i]]);
                   let wsBefore = content.replace(/^(\s*\n|)[\s\S]*$/g, (m, ws) => ws);
                   let contentTrimmed = content.replace(/\s*\n/,"");
@@ -3712,7 +3709,7 @@ lastEditScript = """
                 else if(parsedCSS[i].kind === '@@media' && window.matchMedia(parsedCSS[i].atNameValue).matches) {
                   let curMedia = parsedCSS[i];
                   for(let j in curMedia.content) {
-                    if(curMedia.content[j].kind === 'cssBlock' && editor.matches(clickedElem, curMedia.content[j].selector.replace(/:(?=(after|before|hover))[^,]*(?=,|$)/g, ""))) {
+                    if(curMedia.content[j].kind === 'cssBlock' && editor.matches(clickedElem, curMedia.content[j].selector.replace(/:(?=(:?after|:?before|:?hover))[^,]*(?=,|$)/g, ""))) {
                       var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
                         mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
                         innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
@@ -3800,7 +3797,7 @@ lastEditScript = """
             }
             //if there is linked CSS text
             if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("rel") === "stylesheet" && clickedElem.getAttribute("href")) {
-              let oldHref = clickedElem.getAttribute("href");
+              let oldHref = clickedElem.getAttribute("href"); // Even if it's a temporary href
               let CSSFilePath = relativeToAbsolute(oldHref);
               let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
@@ -3813,9 +3810,7 @@ lastEditScript = """
                     },
                     oninput() {
                       (async () => { // Maybe create a new temporary CSS file.
-                        let newHref = await getTempLinkToSaveCSS(clickedElem);
-                        let CSSFilePath = relativeToAbsolute(removeTimestamp(newHref));
-                        await reversibleChangeLinkCSSFile(clickedElem, oldHref, CSSFilePath, this.value, newHref);
+                        await assignTmpCss(clickedElem, this.value);
                       })();
                     }
                   })
@@ -3869,10 +3864,7 @@ lastEditScript = """
                       if(lastStyleLink) {
                         if(lastStyleLink.tagName === "LINK") {
                           (async () => {
-                            let oldHref = lastStyleLink.getAttribute("href");
-                            let newHref = await getTempLinkToSaveCSS(lastStyleLink);
-                            let CSSPath = relativeToAbsolute(removeTimestamp(newHref));
-                            await reversibleChangeLinkCSSFile(lastStyleLink, oldHref, CSSPath, oldValue => oldValue + postIndentCSS, newHref);
+                            await assignTmpCss(lastStyleLink, oldValue => oldValue + postIndentCSS);
                             clickedElem.removeAttribute("style");
                             setCSSAreas();
                           })();
@@ -3948,10 +3940,7 @@ lastEditScript = """
                     if(cssState.orgTag.tagName != "LINK") {
                       fullUnparseCSS(cssState);
                     } else {
-                      let oldHref = cssState.orgTag.getAttribute("href");
-                      let newHref = await getTempLinkToSaveCSS(cssState.orgTag);
-                      let CSSFilePath = relativeToAbsolute(removeTimestamp(newHref));
-                      await reversibleChangeLinkCSSFile(cssState.orgTag, oldHref, CSSFilePath, fullUnparseCSS(cssState), newHref);
+                      await assignTmpCss(cssState.orgTag, fullUnparseCSS(cssState));
                     }
                   })();
                 })(cssState),
@@ -3987,11 +3976,7 @@ lastEditScript = """
                         //setCSSAreas();
                       }
                       else { // Link
-                        let oldHref = this.storedCSS.orgTag.getAttribute("href");
-                        let newHref = await getTempLinkToSaveCSS(this.storedCSS.orgTag);
-                        let CSSFilePath = relativeToAbsolute(removeTimestamp(newHref));
-                        this.storedCSS.content = this.value;
-                        await reversibleChangeLinkCSSFile(this.storedCSS.orgTag, oldHref, CSSFilePath, fullUnparseCSS(this.storedCSS), newHref);
+                        await assignTmpCss(this.storedCSS.orgTag, fullUnparseCSS(this.storedCSS));
                       }
                     })();
                   },
@@ -4003,13 +3988,9 @@ lastEditScript = """
                     onclick() {
                       (async () => {
                         let linked_CSS = this.parentElement.childNodes[0];
-                        let orgTag = linked_CSS.storedCSS.orgTag;
-                        let oldHref = orgTag.getAttribute("href");
-                        let newHref = await getTempLinkToSaveCSS(orgTag);
-                        let CSSFilePath = relativeToAbsolute(removeTimestamp(newHref));
                         linked_CSS.value = "";
                         linked_CSS.storedCSS.content = linked_CSS.value;
-                        await reversibleChangeLinkCSSFile(orgTag, oldHref, CSSFilePath, fullUnparseCSS(linked_CSS.storedCSS), newHref);
+                        await assignTmpCss(linked_CSS.storedCSS.orgTag, fullUnparseCSS(linked_CSS.storedCSS));
                         setCSSAreas();
                       }) ();
                     }
@@ -5374,30 +5355,26 @@ lastEditScript = """
                 (async () => {
                   for(let e = 0; e < allPageLinks.length; e++) {
                     let linkNode = allPageLinks[e];
-                    console.log("current element:");
-                    console.log(linkNode);
-                    console.log(linkNode.getAttribute("ghost-href"));
                     if(!isGhostNode(linkNode) && linkNode.getAttribute("ghost-href")) {
                       let linkNodeTmpHref = linkNode.getAttribute("href");
                       let linkNodeOriginalHref = linkNode.getAttribute("ghost-href");
                       let trueTempPath = removeTimestamp(linkNodeTmpHref); // This one is absolute normally
-                      let originalPath = removeTimestamp(linkNodeOriginalHref);
-                      let originalAbsPath = relativeToAbsolute(originalPath);
-                      let mbOldValue = await getServer("read", originalAbsPath);
-                      let oldValue = mbOldValue.slice(1);
-                      let mbNewValue = await getServer("read", trueTempPath);
-                      let newValue = mbNewValue.slice(1);
+                      let originalAbsPath = relativeToAbsolute(removeTimestamp(linkNodeOriginalHref));
+                      let newValue = (await getServer("read", trueTempPath)).slice(1);
                       await postServer("write", originalAbsPath, newValue);
-                      let newHref = originalPath + `?timestamp=${+new Date()}`;
+                      linkNode.cachedContent = newValue;
+                      linkNode.tmpCachedContent = newValue;
                       // Since we delete the temporary file, we cannot revert to the temporary href.
                       // Problem: it's not possible to undo small changes.
                       // Worse: The deletion of the tmp css file will make it impossible to undo to states before of before this saving.
                       // Ghost attributes are not restored when doing undo.
-                      await setReversibleLinkHref(linkNode, oldHref, newHref, oldValue);
+                      editor_stopWatching();
+                      linkNode.setAttribute("href", setTimestamp(linkNodeOriginalHref));
+                      linkNode.removeAttribute("ghost-href");
+                      editor_resumeWatching();
                       await postServer("unlink", trueTempPath);
                     }                 
                   }
-                  console.log("undoStack.length at saving", editor_model.undoStack.length);
                   editor_model.undosBeforeSave = editor_model.undoStack.length;
                   if(!this.classList.contains("disabled")) {
                     if (apache_server) {
