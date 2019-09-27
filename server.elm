@@ -2257,7 +2257,7 @@ lastEditScript = """
         }
         else if(mutType === "linkHrefCSS") { // There should be only one such even
           var keepUndo = undoElem[k];
-          await assignTmpCss(keepUndo.target, keepUndo.oldValue, true);
+          await assignTmpCss(target, keepUndo.oldValue, true);
         }
         else {
           let uRemNodes = undoElem[k].removedNodes;
@@ -2372,7 +2372,7 @@ lastEditScript = """
         }
         else if(mutType === "linkHrefCSS") {
           let keepRedo = redoElem[k];
-          await assignTmpCss(keepRedo.target, keepRedo.newValue, true);
+          await assignTmpCss(target, keepRedo.newValue, true);
         }
         else {
           let rRemNodes = redoElem[k].removedNodes;
