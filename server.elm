@@ -264,14 +264,25 @@ LUCA stands for "Last Universal Common Ancestor"
 ----------------------------------------------------------------------------}
 
 luca = 
-  [<script id="thaditor-luca" class="editor-interface">
+  [<script id="thaditor-vars" class="editor-interface">
+     var path = @(jsCode.stringOf path);
+     var varedit = @(if varedit then "true" else "false");
+     var askQuestions = @(case listDict.get "question" vars of
+                       Just questionattr -> "true"
+                       _ -> if boolVar "question" True then "true" else 'false');
+     var autosave = @(case listDict.get "autosave" vars of
+                      Just autosaveattr -> "true"
+                      _ -> if boolVar "autosave" True then "true" else "false");
+     var editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
+   </script>,
+   <script id="thaditor-luca" class="editor-interface">
     function writeDocument(NC) {
       document.open();
       document.write(NC);
       document.close();
     }
-    var XHRequest = @(if browserSide then "ProxiedServerRequest" else "XMLHttpRequest");
-    var apache_server = @(if browserSide then "true" else "false");
+    var XHRequest = typeof ProxiedServerRequest != "undefined" ? ProxiedServerRequest : XMLHttpRequest;
+    var apache_server = typeof thaditor_worker !== "undefined";
     userName = typeof userName === "string" ? userName : "anonymous";
     function doReadServer(action, name, onOk, onErr) {
       if (typeof readServer != "undefined") {
@@ -431,12 +442,12 @@ luca =
         }
         var progbar = document.getElementById("progress-bar");
       })(xhr, file);
-      @(if listDict.get "browserSide" defaultOptions == Just True then """
-      xhr.open("POST", "/Thaditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
-      """ else """
-      xhr.open("POST", targetPathName, false);
-      xhr.setRequestHeader("write-file", file.type);
-      """);
+      if(apache_server) {
+        xhr.open("POST", "/Thaditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+      } else {
+        xhr.open("POST", targetPathName, false);
+        xhr.setRequestHeader("write-file", file.type);
+      }
       xhr.send(file);
     }
     // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
@@ -701,7 +712,6 @@ evaluatedPage =
         script.setAttribute("isghost", "true");
         ace = undefined;
         document.head.appendChild(script);
-        var path = @(jsCode.stringOf path);
         onAceLoaded = (delay) => () => {
           if(typeof ace != "undefined") {
             console.log("ace loaded.")
@@ -934,7 +944,7 @@ evaluatedPage =
       <form id="fileListing"></form>
       <script>
       var fullListDir = (path) => JSON.parse(doReadServer("fullListDir", path));
-      var thisListDir = fullListDir ("@path");
+      var thisListDir = fullListDir(path);
       var folders = thisListDir.filter((i) => i[1] == true);
       var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
       var warnSelectFile = reason => window.alert (reason + ", please select some and click this button again");
@@ -983,7 +993,7 @@ evaluatedPage =
           const doit = window.confirm("Are you sure you want to overwrite an existing file with the name " + newname + "?");
           if (!doit) return;
         }
-        var x = doWriteServer("rename", "@path" + sel.id, "@path" + newname);
+        var x = doWriteServer("rename", path + sel.id, path + newname);
         console.log ("renamed", sel.id, newname);
         goodReload();
       }
@@ -1007,10 +1017,10 @@ evaluatedPage =
             var isfolder = folders.filter((j) => j[0] == selected[i].id); //optomizable
             console.log (isfolder);
             if (isfolder.length != 0) {
-              doWriteServer("rmdir", "@path" + selected[i].id); //does this work on non-empty stuff? idts....
+              doWriteServer("rmdir", path + selected[i].id); //does this work on non-empty stuff? idts....
               continue;
             }
-            doWriteServer("unlink", "@path" + selected[i].id);
+            doWriteServer("unlink", path + selected[i].id);
           }
           goodReload();
           return;
@@ -1031,14 +1041,14 @@ evaluatedPage =
           nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
         }
         var newname = window.prompt("Name for duplicate: ", nn);
-        var contents = doReadServer("read", "@path" + sel.id);
+        var contents = doReadServer("read", path + sel.id);
         if (contents[0] != "1") {
           window.alert ("Couldn't read the file for some reason. aborting.");
           console.error ("couldn't read the file for some reason. aborting.");
           return;
         }
         contents = contents.substring(1, contents.length);
-        var resp = doWriteServer("create", "@path" + newname, contents);
+        var resp = doWriteServer("create", path + newname, contents);
         goodReload();
       }
       function createFolder() {
@@ -1069,7 +1079,7 @@ evaluatedPage =
           window.alert("Can't change the up dir");
           return;
         }
-        var newpath = window.prompt("New path to file (relative to root of server):", "@path");
+        var newpath = window.prompt("New path to file (relative to root of server):", "");
         if (newpath == null) return;
         if (newpath[newpath.length -1] != "/") {
           newpath = newpath + "/";
@@ -1085,9 +1095,9 @@ evaluatedPage =
           return;
         }
         console.log ("move approved");
-        var oldloc = ("@path" + btn.id);
+        var oldloc = (path + btn.id);
         var newloc = newpath == "/" ? btn.id : (newpath + btn.id);
-        console.log ("renamimg\n%s\n%s", ("@path" + btn.id), (newpath + btn.id));
+        console.log ("renamimg\n%s\n%s", (path + btn.id), (newpath + btn.id));
         doWriteServer("rename", oldloc, newloc); 
         console.log ("rename successful");
         goodReload();
@@ -1114,7 +1124,7 @@ evaluatedPage =
         initializeProgress(files.length);
         var didUp = false;
         ([...files]).forEach((fl) => {
-          editor.uploadFile("@path" + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
+          editor.uploadFile(path + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
           didUp = true;
           
         });
@@ -1137,7 +1147,6 @@ evaluatedPage =
       }
       function loadFileList() {
         let form = document.getElementById("fileListing");
-        let path = @(jsCode.stringOf path);
         let files = thisListDir;
         function getRecordForCheckbox(file) {
           var rec = {type:"checkbox",
@@ -1217,7 +1226,7 @@ evaluatedPage =
       loadFileList();
       var goodReload = () => {
         document.getElementById("fileListing").innerHTML = "";
-        thisListDir = fullListDir ("@path");
+        thisListDir = fullListDir (path);
         loadFileList();
       }
     window.addEventListener('drop', handleDrop, false);
@@ -2190,7 +2199,7 @@ lastEditScript = """
         } else {
           sendModificationsToServerNode();
         }
-      }, @editdelay)
+      }, typeof editdelay != "undefined" ? editodelay : 1000)
     } //handleMutations
   
     //debugging function for printing both teh undo and redo stacks.
@@ -2538,20 +2547,11 @@ lastEditScript = """
         var targetPathName =  editor.getStorageFolder(file) + file.name;
         // if(file.size < 30000000)
         editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-          @(    
-            if folderView then 
-            """
-            reloadPage();
-            """
-            else
-            """
-            if(file.type.indexOf("image") == 0) {
-              pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${file.name}">`);
-            } else {
-              pasteHtmlAtCaret(`<a href="${path}">${path}</a>`); 
-            }
-            """
-          )
+          if(file.type.indexOf("image") == 0) {
+            pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${file.name}">`);
+          } else {
+            pasteHtmlAtCaret(`<a href="${path}">${path}</a>`); 
+          }
         });
       }
     }
@@ -2560,7 +2560,7 @@ lastEditScript = """
       evt.preventDefault();
       evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
     }
-    if(@(if varedit then "true" else "false")) {
+    if(typeof varedit == "boolean" && varedit || typeof varedit != "boolean") {
       var dropZone = document.body;
       dropZone.addEventListener('dragover', handleDragOver, false);
       dropZone.addEventListener('drop', handleFileSelect, false);
@@ -2759,8 +2759,7 @@ lastEditScript = """
     var logSVG = svgFromPath("M 17.24,16 A 1.24,2 0 0 1 16,18 1.24,2 0 0 1 14.76,16 1.24,2 0 0 1 16,14 1.24,2 0 0 1 17.24,16 Z M 20,16 21.24,16 21.24,16 A 1.24,2 0 0 1 20,18 1.24,2 0 0 1 18.76,16 1.24,2 0 0 1 20,14 1.33,2.16 0 0 1 21,15 M 12,14 12,18 14,18 M 10,12 23,12 23,20 10,20 Z M 23,6 23,11 28,11 M 14,6 14,12 10,12 10,20 14,20 14,25 28,25 28,11 23,6 14,6 Z");
     var sourceSVG = svgFromPath("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
     var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
-    var linkToEdit = @(if defaultVarEdit then "link => link" else 
-     """link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;""");
+    var linkToEdit = link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;
     var undoSVG = svgFromPath("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
     var redoSVG = svgFromPath("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
 
@@ -2770,7 +2769,6 @@ lastEditScript = """
     var checkSVG = svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor_model === "object";
     if (!ifAlreadyRunning) {
-      var the_path;
       var thaditor_files = [
         "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
         "ThaditorInstaller.htaccess", "composer.json", "composer.lock", "credentials.json", "cacert.pem", "versions",
@@ -2778,14 +2776,13 @@ lastEditScript = """
       ];
       
     }
-    the_path = @(path |> jsCode.stringOf);
     if (isLive == undefined) {
-      var isLive = () => !(the_path.includes("Thaditor/versions/"));
+      var isLive = () => !(path.includes("Thaditor/versions/"));
     }
 
     var verz = "Live";
     if (!isLive()) {
-      verz = the_path.slice(the_path.lastIndexOf("versions/")+9, the_path.lastIndexOf("/"));
+      verz = path.slice(path.lastIndexOf("versions/")+9, path.lastIndexOf("/"));
     }
     //hover mode functions for linkSelectMode
     function escapeLinkMode() {
@@ -2952,15 +2949,9 @@ lastEditScript = """
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       textareaPropertiesSaved: ifAlreadyRunning ? editor_model.textareaPropertiesSaved : [],
-      askQuestions: ifAlreadyRunning ? editor_model.askQuestions :
-                    @(case listDict.get "question" vars of
-                       Just questionattr -> "true"
-                       _ -> if boolVar "question" True then "true" else 'false'),
-      autosave: ifAlreadyRunning ? editor_model.autosave :
-                    @(case listDict.get "autosave" vars of
-                      Just autosaveattr -> "true"
-                      _ -> if boolVar "autosave" True then "true" else "false"),
-      path: @(path |> jsCode.stringOf),
+      askQuestions: ifAlreadyRunning ? editor_model.askQuestions : askQuestions,
+      autosave: ifAlreadyRunning ? editor_model.autosave : autosave,
+      path: path,
       version : verz,
       interfaces: ifAlreadyRunning ? editor_model.interfaces : [],
       disambiguationMenu: ifAlreadyRunning ? editor_model.disambiguationMenu : undefined
@@ -5647,9 +5638,9 @@ lastEditScript = """
       document.addEventListener("backbutton", editor_close, false);
     }, false);
     
-    @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then
-      -- Special case when ?edit=false but the default behavior is edit=true if nothing is set.
-      """document.onclick = function (e) {
+    if(editIsFalseButDefaultIsTrue) {
+      // Special case when ?edit=false but the default behavior is edit=true if nothing is set.
+      document.onclick = function (e) {
           e = e ||  window.event;
           var node = e.target || e.srcElement;
           while(node) {
@@ -5663,12 +5654,11 @@ lastEditScript = """
               node = node.parentNode;
             }
           }
-        }"""
-    else if varedit then
-      """document.addEventListener('click', onClickGlobal, false);
-         document.addEventListener('mousedown', onMouseDownGlobal, false);
-      """
-    else "")
+        }
+    } else if(varedit) {
+      document.addEventListener('click', onClickGlobal, false);
+      document.addEventListener('mousedown', onMouseDownGlobal, false);
+    }
     window.addEventListener("error", function (message, source, lineno, colno, error) {
       let msg;
       if(message instanceof ErrorEvent) {
