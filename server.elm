@@ -3159,9 +3159,6 @@ lastEditScript = """
         console.log("Was proxied");
         let tmpCachedContent = typeof linkNode.tmpCachedContent == "string" ? linkNode.tmpCachedContent :
                                (await getServer("read", linkNode.getAttribute("href"))).slice(1);
-        if(typeof linkNode.tmpCachedContent !== "string") {
-          linkNode.tmpCachedContent = tmpCachedContent;
-        }
         if(typeof newValue === "function") {
           newValue = newValue(tmpCachedContent);
         }
@@ -3173,9 +3170,12 @@ lastEditScript = """
           await postServer("unlink", removeTimestamp(CSSTmpFilePath));
           linkNode.setAttribute("href", oldHref);
           linkNode.removeAttribute("ghost-href");
+          linkNode.tmpCachedContent = newValue;
         } else { // We keep the proxy, just update the href
           let CSSTmpFilePath = linkNode.getAttribute("href");
           await postServer("write", removeTimestamp(CSSTmpFilePath), newValue);
+          linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
+          linkNode.tmpCachedContent = newValue;
         }
         return tmpCachedContent;
       } else {// Unproxied
