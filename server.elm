@@ -1277,6 +1277,12 @@ main =
   ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
     List.filter (case of [_, _] -> False; _ -> True) |>
     List.mapWithReverse identity (case of
+      ["head", headattrs, headChildren] ->
+        let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
+        ["head", headattrs,
+           insertThereInstead identity True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
+           serverOwned "initial script" initialScript ++
+           (serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface"> :: headChildren)]
       ["body", bodyattrs, bodyChildren] ->
         let bodyChildren = if jsEnabled then bodyChildren else List.map removeJS bodyChildren in
         ["body",
@@ -1294,13 +1300,7 @@ main =
              Update.sizeFreeze [["div", [["id", "editor-files-to-overwrite"], ["class", "editor-interface"]], insertThereInstead insertedElementsToWriteFile True fileOperations]] ++
              (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder editor-interface"> </div>, <script  id="thaditor-lastscript" class="editor-interface">@lastEditScript</script>] ++ insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
              )]
-      ["head", headattrs, headChildren] ->
-        let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
-        ["head", headattrs,
-           insertThereInstead identity True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
-           serverOwned "initial script" initialScript ++
-           (serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface"> :: headChildren)]
-      x -> x -- head
+      x -> x -- anything else?
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
