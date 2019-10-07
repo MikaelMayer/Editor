@@ -443,7 +443,7 @@ luca =
         var progbar = document.getElementById("progress-bar");
       })(xhr, file);
       if(apache_server) {
-        xhr.open("POST", "/Thaditor/editor.php?action=write&name=" + encodeURIComponent(targetPathName), false);
+        xhr.open("POST", "/Thaditor/editor.php?action=write&" + "name=" + encodeURIComponent(targetPathName), false);
       } else {
         xhr.open("POST", targetPathName, false);
         xhr.setRequestHeader("write-file", file.type);
@@ -1248,7 +1248,7 @@ recoveredEvaluatedPage: Html
 recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
   case evaluatedPage of
   Err msg -> serverOwned "Error Report" <|
-    <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
+    <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><button onclick="reloadPage();" title="Reload the current page">Reload</button><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
   Ok page -> page
 
 jsEnabled = boolVar "js" True
