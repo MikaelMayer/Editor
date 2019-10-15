@@ -3659,7 +3659,7 @@ lastEditScript = """
           async function fullParseCSS() {
             var fullCSS = [], keyframes = [], rawCSS = [];
             //console.log("All style tags:", document.querySelectorAll("style"));
-            let CSSstyles = document.querySelectorAll("link, style");
+            let CSSstyles = document.querySelectorAll("link[rel=stylesheet], style");
             for(let i in CSSstyles) {
               let linkOrStyleNode = CSSstyles[i];
               if(linkOrStyleNode.tagName === "LINK" && linkOrStyleNode.getAttribute("rel") === "stylesheet" &&
@@ -3816,14 +3816,14 @@ lastEditScript = """
                   el("div", {"class": "CSS-action-button"}, [], {
                     innerHTML: cloneSVG,
                     onclick() {
-                      let stylesLinks = document.querySelectorAll("style, link");
+                      let stylesLinks = document.querySelectorAll("style, link[rel=stylesheet]");
                       let i = stylesLinks.length - 1;
                       let lastStyleLink = stylesLinks[i];
                       while(i >= 0 && lastStyleLink.matches(".editor-interface, .editor-interface *")) {
                         i--;
                         lastStyleLink = stylesLinks[i];
                       }
-                      if(lastStyleLink && (lastStyleLink.isghost || lastStyleLink.tagName === "LINK" && lastStyleLink.tagName.indexOf("http") >= 0)) {
+                      if(lastStyleLink && (lastStyleLink.isghost || lastStyleLink.tagName === "LINK" lastStyleLink.tagName.indexOf("http") >= 0)) {
                         lastStyleLink = undefined;
                       }
                       console.log("Closest CSS source:", lastStyleLink);
@@ -5334,7 +5334,7 @@ lastEditScript = """
               }
               else {
                 //temp place to put CSS file loading stuff (may well be moved later)
-                let allPageLinks = document.querySelectorAll("link");
+                let allPageLinks = document.querySelectorAll("link[rel=stylesheet]");
                 (async () => {
                   for(let e = 0; e < allPageLinks.length; e++) {
                     let linkNode = allPageLinks[e];
