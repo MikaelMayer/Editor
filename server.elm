@@ -5424,7 +5424,7 @@ lastEditScript = """
             {title: "Go to " + model.link, "class": "inert"});
         }
         var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
-        var isDisplayInline = computedStyle && computedStyle.display.startsWith("inline");
+        var isDisplayInline = computedStyle && (computedStyle.display.startsWith("inline") || computedStyle.display === "table-cell");
         if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
           addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
           {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
