@@ -3823,7 +3823,7 @@ lastEditScript = """
                         i--;
                         lastStyleLink = stylesLinks[i];
                       }
-                      if(lastStyleLink && (lastStyleLink.isghost || lastStyleLink.tagName === "LINK" lastStyleLink.tagName.indexOf("http") >= 0)) {
+                      if(lastStyleLink && (lastStyleLink.isghost || lastStyleLink.tagName === "LINK" && lastStyleLink.tagName.indexOf("http") >= 0)) {
                         lastStyleLink = undefined;
                       }
                       console.log("Closest CSS source:", lastStyleLink);
