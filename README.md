@@ -187,6 +187,7 @@ Insert the following in a script after the &lt;body> tag:
 * `(typeof editor == "object" ? editor.ghostAttrs : []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be considered as ghost.
 * `(typeof editor == "object" ? editor.ignoredAttrs : []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be ignored.
 * `(typeof editor == "object" ? editor.ghostChildNodes : []).push(node => PREDICATE);`: For any node, if this predicate returns `true`, Editor will mark and consider all children as ghosts.
+* `(typeof editor == "object" ? editor.ignoredChildNodes : []).push(node => PREDICATE);`: For any node, if this predicate returns `true`, Editor will ignore any modification to the children and return the original value of children.
 
 Instead of putting this code right into your page, you can also create a file `.editor` where your document is located, and insert the following script:
 
@@ -197,6 +198,7 @@ Regex.replace "(?=</head>)" (\_ -> """
     editor.ghostAttrs.push(insertedNode =>  /*ARRAY OF STRINGS*/);
     editor.ignoredAttrs.push(insertedNode =>  /*ARRAY OF STRINGS*/);
     editor.ghostChildNodes.push(insertedNode => /*PREDICATE ON insertedNode*/);
+    editor.ignoredChildNodes.push(insertedNode => /*PREDICATE ON insertedNode*/);
   </script>
 """) content
 ```

@@ -1407,6 +1407,11 @@ function hasGhostAncestor(htmlElem) {
   if(isGhostNode(htmlElem)) return true;
   return areChildrenGhosts(htmlElem.parentNode) || (htmlElem.parentNode == null && htmlElem.nodeType !== 9 /*document*/) || hasGhostAncestor(htmlElem.parentNode);
 }
+// Return true if this htmlElem is inside an element that ignores its children.
+function hasIgnoringAncestor(htmlElem) {
+  if(htmlElem == null) return false;
+  return isIgnoringChildNodes(htmlElem.parentNode) || hasIgnoringAncestor(htmlElem.parentNode);
+}
 function isGhostAttributeKey(name) {
   return name.startsWith("ghost-");
 }
@@ -1452,6 +1457,22 @@ editor.ghostAttrs.push(n =>
 );
 // attribute of some chrome extensions
 editor.ghostAttrs.push(n => ["bis_skin_checked"]);
+
+// Array of functions on nodes returning an array of predicates such that if one is true, the children of this element will be ignored (i.e. their old value is always returned on back-propagation)
+editor.ignoredChildNodes = [];
+
+function isIgnoringChildNodes(n) {
+  return editor.ignoredChildNodes.find(f => f(n));
+}
+function cacheChildNodes(n) {
+  let res = [];
+  for(let k = 0; k < n.childNodes.length; k++) {
+    res.push(domNodeToNativeValue(n.childNodes[k]));
+  }
+  // Let's store the tree of this element.
+  n.__editor__ = n.__editor__ || {};
+  n.__editor__.ignoredChildNodes = res;
+}
 
 // Array of functions on nodes returning an array of attributes that should be ignored (i.e. old value returned on back-propagation)
 editor.ignoredAttrs = [];
@@ -1545,6 +1566,7 @@ editor.ghostNodes.push(insertedNode =>
   editor.matches(insertedNode, ".gr-top-z-index, .gr-top-zero")
 );
 
+// Mark nodes as ghost on insertion, if they are so.
 function handleScriptInsertion(mutations) {
   for(var i = 0; i < mutations.length; i++) {
     // A mutation is a ghost if either
@@ -1552,7 +1574,7 @@ function handleScriptInsertion(mutations) {
     // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
     // -- It is the modification of a node or an attribute inside a ghost node.
     var mutation = mutations[i];
-    if(hasGhostAncestor(mutation.target)) continue;
+    if(hasGhostAncestor(mutation.target) || hasIgnoringAncestor(mutation.target)) continue;
     if(mutation.type == "childList") {
       for(var j = 0; j < mutation.addedNodes.length; j++) {
         var insertedNode = mutation.addedNodes[j];
@@ -1615,7 +1637,7 @@ function emptyTextContent(node) {
     if(node.nodeType == 3) {
       node.textContent = "";
     } else {
-      for(i in node.childNodes) {
+      for(let i = 0; i < node.childNodes.length; i++) {
         emptyTextContent(node.childNodes[i]);
       }
     }
@@ -1769,7 +1791,6 @@ lastEditScript = """
         }
       }
     }
-   
     
     function domNodeToNativeValue(n) {
       if(n.nodeType == 3) {
@@ -1791,15 +1812,19 @@ lastEditScript = """
           }
         }
         var children = [];
-        var childNodes = n.childNodes;
-        if(n.tagName.toLowerCase() === "noscript" && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
-          // We'll recover the associated HTML node
-          childNodes = el("div", {}, [], {innerHTML: n.childNodes[0].textContent, parentNode: n}).childNodes;
-        }
-        if(!areChildrenGhosts(n)) {
-          for(i = 0; i < childNodes.length; i++) {
-            if(!isGhostNode(childNodes[i])) {
-              children.push(domNodeToNativeValue(childNodes[i]));
+        if(n.__editor__ && n.__editor__.ignoredChildNodes) {
+          children = n.__editor__.ignoredChildNodes;
+        } else {
+          var childNodes = n.childNodes;
+          if(n.tagName.toLowerCase() === "noscript" && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
+            // We'll recover the associated HTML node
+            childNodes = el("div", {}, [], {innerHTML: n.childNodes[0].textContent, parentNode: n}).childNodes;
+          }
+          if(!areChildrenGhosts(n)) {
+            for(i = 0; i < childNodes.length; i++) {
+              if(!isGhostNode(childNodes[i])) {
+                children.push(domNodeToNativeValue(childNodes[i]));
+              }
             }
           }
         }
@@ -2154,7 +2179,7 @@ lastEditScript = """
         } else if(mutation.type == "childList") {
           if(!areChildrenGhosts(mutation.target)) {
             for(var j = 0; j < mutation.addedNodes.length; j++) {
-              if(!hasGhostAncestor(mutation.addedNodes[j])) {
+              if(!hasGhostAncestor(mutation.addedNodes[j]) && !hasIgnoringAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation);
                 // Please do not comment out this line until we get proper clever save.
@@ -2162,7 +2187,7 @@ lastEditScript = """
               }
             }
             for(var j = 0; j < mutation.removedNodes.length; j++) {
-              if(!isGhostNode(mutation.removedNodes[j])) {
+              if(!isGhostNode(mutation.removedNodes[j]) && !isIgnoringChildNodes(mutation.target) && !hasIgnoringAncestor(mutation.target)) {
                 onlyGhosts = false;
                 sendToUndo(mutation);
                 // Please do not comment out this line until we get proper clever save.
@@ -4312,7 +4337,7 @@ lastEditScript = """
         enabled(editor_model) {
           const clickedElem = editor_model.clickedElem;
           if(!clickedElem) return false;
-          for(let i in clickedElem.childNodes) {
+          for(let i = 0; i < clickedElem.childNodes.length; i++) {
             let node = clickedElem.childNodes[i];
             if(node.nodeType === 3 && node.textContent.trim() !== "") {
               return true;
@@ -4326,7 +4351,7 @@ lastEditScript = """
           const clickedElem = editor_model.clickedElem;
           //textarea textChildNodeContent
           let ret = el("div", {id: "textChildNodeContentDiv"}, []);
-          for(let i in clickedElem.childNodes) {
+          for(let i = 0; i < clickedElem.childNodes.length; i++) {
             let node = clickedElem.childNodes[i];
             if(node.nodeType === 3 && node.textContent.trim() !== "") { // Non-empty text nodes.
               ret.append(
@@ -5719,6 +5744,16 @@ lastEditScript = """
         , subtree: true
         }
       );
+    
+    // Store the current child list of nodes that ignore their children totally
+    (function() {
+      var elems = document.querySelectorAll("*");
+      for(var i = 0; i < elems.length; i++) {
+        if(isIgnoringChildNodes(elems[i])) {
+          cacheChildNodes(elems[i]);
+        }
+      }
+    })();
 """--end of lastEditionScript
 
 googlesigninbutton = serverOwned "the google sign-in button" [
