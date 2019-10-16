@@ -186,6 +186,7 @@ Insert the following in a script after the &lt;body> tag:
   A simple predicate to filter out inserted nodes which have the class "dummy" would look like: `insertedNode.nodeType == 1 && insertedNode.classList && insertedNode.classList.contains("dummy")`.
 * `(typeof editor == "object" ? editor.ghostAttrs : []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be considered as ghost.
 * `(typeof editor == "object" ? editor.ignoredAttrs : []).push(node => /*ARRAY OF STRINGS*/);`: For any node, the array of strings respresents attribute names that should always be ignored.
+* `(typeof editor == "object" ? editor.ghostChildNodes : []).push(node => PREDICATE);`: For any node, if this predicate returns `true`, Editor will mark and consider all children as ghosts.
 
 Instead of putting this code right into your page, you can also create a file `.editor` where your document is located, and insert the following script:
 
@@ -195,6 +196,7 @@ Regex.replace "(?=</head>)" (\_ -> """
     editor.ghostNodes.push(insertedNode => /*PREDICATE ON insertedNode*/);
     editor.ghostAttrs.push(insertedNode =>  /*ARRAY OF STRINGS*/);
     editor.ignoredAttrs.push(insertedNode =>  /*ARRAY OF STRINGS*/);
+    editor.ghostChildNodes.push(insertedNode => /*PREDICATE ON insertedNode*/);
   </script>
 """) content
 ```

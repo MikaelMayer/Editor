@@ -1399,7 +1399,8 @@ function areChildrenGhosts(n) {
   return n && n.getAttribute && (
     n.getAttribute("children-are-ghosts") == "true" ||
     n.getAttribute("children-are-ghost") == "true"
-  );
+  ) ||
+  editor.ghostChildNodes.find(f => f(n));
 }
 function hasGhostAncestor(htmlElem) {
   if(htmlElem == null) return false;
@@ -1496,6 +1497,8 @@ function ignoredAttributeValue(n, name) {
 
 // Array of predicates that, if they return true on a node, Editor will mark this node as ghost.
 editor.ghostNodes = [];
+// Array of predicates that, if they return true on a node, Editor will mark all the children of this node as ghosts
+editor.ghostChildNodes = [];
 
 // Analytics scripts
 editor.ghostNodes.push(insertedNode =>
