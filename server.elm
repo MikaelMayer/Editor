@@ -1421,10 +1421,16 @@ function isGhostAttributeKey(name) {
 editor = typeof editor === "object" ? editor : {};
 
 editor.matches = function(elem, selector) {
+  if(typeof selector == "undefined") { // Then selector is in the elem variable
+    return (selector => function(elem) {
+      return editor.matches(elem, selector);
+    })(elem);
+  }
   if(elem && elem.matches) {
     try {
       return elem.matches(selector);
     } catch(e) {
+      console.log("error while matching selector " + selector, e);
       return false;
     }
   }
@@ -1542,9 +1548,8 @@ editor.ghostNodes.push(insertedNode => {
   }
 );
 // For Google sign-in buttons and i-frames
-editor.ghostNodes.push(insertedNode =>
-  editor.matches(insertedNode, "div.abcRioButton") ||
-  editor.matches(insertedNode, "iframe#ssIFrame_google")
+editor.ghostNodes.push(
+  editor.matches("div.abcRioButton, iframe#ssIFrame_google")
 );
 // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
  editor.ghostNodes.push(insertedNode => 
@@ -1562,8 +1567,8 @@ editor.ghostNodes.push(insertedNode =>
   insertedNode.tagName == "ACE_OUTER"
 );
 // For the grammarly extension
-editor.ghostNodes.push(insertedNode =>
-  editor.matches(insertedNode, ".gr-top-z-index, .gr-top-zero")
+editor.ghostNodes.push(
+  editor.matches(".gr-top-z-index, .gr-top-zero")
 );
 
 // Mark nodes as ghost on insertion, if they are so.
@@ -1803,8 +1808,9 @@ lastEditScript = """
         var isIgnoredAttributeKey =  isIgnoredAttributeKeyFromNode(n); // TODO recover ignored value
         for(var i = 0; i < n.attributes.length; i++) {
           var key = n.attributes[i].name;
-          if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key)) {
-            var value = isIgnoredAttributeKey(key) ? ignoredAttributeValue(n, key) : n.attributes[i].value;
+          var ignored = isIgnoredAttributeKey(key);
+          if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key) || ignored) {
+            var value = ignored ? ignoredAttributeValue(n, key) : n.attributes[i].value;
             if(key == "style") {
               value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
             }
@@ -2168,12 +2174,12 @@ lastEditScript = """
             sendToUndo(mutation);
             // Please do not comment out this line until we get proper clever save.
             console.log("Attribute is not ghost", mutation);
-            console.log("Use this script if you want to mark it as ghost:");
+            console.log("TIP: Use this script if you want to mark it as ghost:");
             let sel = getShortestUniqueSelector(mutation.target);
             if(typeof mutation.oldValue === "undefined") {
-              console.log("editor.ghostAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : [])")
+              console.log("editor.ghostAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
             } else {
-              console.log("editor.ignoredAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : [])")
+              console.log("editor.ignoredAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
             }
           }
         } else if(mutation.type == "childList") {
@@ -2184,6 +2190,14 @@ lastEditScript = """
                 sendToUndo(mutation);
                 // Please do not comment out this line until we get proper clever save.
                 console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
+                console.log("TIP: Ignore node and siblings with this script:");
+                let sel = getShortestUniqueSelector(mutation.target);
+                console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
+                if(mutation.addedNodes[j].nodeType === 1) {
+                  console.log("TIP: Mark this element as ghost:");
+                  sel = getShortestUniqueSelector(mutation.addedNodes[j]);
+                  console.log("editor.ghostNodes.push(editor.matches('"+sel+"'));");
+                }
               }
             }
             for(var j = 0; j < mutation.removedNodes.length; j++) {
@@ -2192,6 +2206,9 @@ lastEditScript = """
                 sendToUndo(mutation);
                 // Please do not comment out this line until we get proper clever save.
                 console.log(`Removed node ${j} was not a ghost`, mutation);
+                console.log("TIP: Mark this element as ghost:");
+                let sel = getShortestUniqueSelector(mutation.target);
+                console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
               }
             }
           }
@@ -2764,7 +2781,7 @@ lastEditScript = """
       // Check if the event.target matches some selector, and do things...
     } //end of onClickGlobal
 
-
+    var parentUpSVG = svgFromPath("M 20,5 20,25 M 15,10 20,5 25,10");
     var editorContainerArrowDown = svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true, 30, 20, [0, 0, 40, 30]);
     var editorContainerArrowUp = svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true, 30, 20, [0, 0, 40, 30]);
     var arrowDown = svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true);
@@ -4962,7 +4979,7 @@ lastEditScript = """
           selectorIsOrg = false;
         }
         if(!selectorIsOrg) {
-          curSelector =  consideredParent.toLowerCase() + " > " + curSelector; 
+          curSelector =  consideredParent.tagName.toLowerCase() + " > " + curSelector; 
           consideredParent = consideredParent.parentNode;
         }
       } while(!selectorIsOrg && consideredParent);
@@ -5451,6 +5468,16 @@ lastEditScript = """
           addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
             {title: "Go to " + model.link, "class": "inert"});
         }
+        if(!model.selectionRange && clickedElem && clickedElem.parentNode) {
+          addContextMenuButton(parentUpSVG,
+          {title: "Select parent", "class":"inert"},
+            {onclick: (c => event => {
+              editor_model.clickedElem = c;
+              updateInteractionDiv();
+            })(clickedElem.parentNode)}
+          );
+        }
+        
         var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
         var isDisplayInline = computedStyle && (computedStyle.display.startsWith("inline") || computedStyle.display === "table-cell");
         if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
