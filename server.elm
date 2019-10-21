@@ -265,6 +265,7 @@ LUCA stands for "Last Universal Common Ancestor"
 
 luca = 
   [<script id="thaditor-vars" class="editor-interface">
+     var EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
      var path = @(jsCode.stringOf path);
      var varedit = @(if varedit then "true" else "false");
      var askQuestions = @(case listDict.get "question" vars of
@@ -3270,6 +3271,12 @@ lastEditScript = """
       let add_btn_to_div = (div, innerHTML, attributes, properties) => {
         div.append(createButton(innerHTML, attributes, properties));
       };
+      if(!(EDITOR_VERSION & 1)) {
+        if(typeof simple_editor_interface !== "undefined") {
+          editor_model.interfaces.push(simple_editor_interface);
+        }
+        return;
+      }
       editor_model.interfaces.push({
         title: "Selected Element Tree",
         minimized: true,
@@ -5348,24 +5355,26 @@ lastEditScript = """
               }
             }
         });
-        addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
-          {"class": "inert" + (canUndo() ? "" : " disabled"), title: "Undo most recent change",
-            id: "undobutton"
-          },
-          {onclick: function(event) {
-            if(!undo()) sendNotification("Nothing to undo!");
+        if(EDITOR_VERSION & 1) {
+          addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
+            {"class": "inert" + (canUndo() ? "" : " disabled"), title: "Undo most recent change",
+              id: "undobutton"
+            },
+            {onclick: function(event) {
+              if(!undo()) sendNotification("Nothing to undo!");
+              }
+            }   
+          );
+          addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
+            {"class": "inert" + (canRedo() ? "" : " disabled"), title: "Redo most recent undo",
+              id: "redobutton"
+            },
+            {onclick: function(event) {
+             if(!redo()) sendNotification("Nothing to redo!");
+              }
             }
-          }   
-        );
-        addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
-          {"class": "inert" + (canRedo() ? "" : " disabled"), title: "Redo most recent undo",
-            id: "redobutton"
-          },
-        	{onclick: function(event) {
-        	 if(!redo()) sendNotification("Nothing to redo!");
-            }
-          }
-        );
+          );
+        }
         addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
         {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_canSave() || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           id: "savebutton"  
@@ -5468,7 +5477,7 @@ lastEditScript = """
           addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
             {title: "Go to " + model.link, "class": "inert"});
         }
-        if(!model.selectionRange && clickedElem && clickedElem.parentNode) {
+        if(!model.selectionRange && clickedElem && clickedElem.parentNode && EDITOR_VERSION & 1) {
           addContextMenuButton(parentUpSVG,
           {title: "Select parent", "class":"inert"},
             {onclick: (c => event => {
@@ -5480,7 +5489,7 @@ lastEditScript = """
         
         var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
         var isDisplayInline = computedStyle && (computedStyle.display.startsWith("inline") || computedStyle.display === "table-cell");
-        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem)) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && EDITOR_VERSION & 1) {
           addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
           {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
           {onclick: (c => event => {
@@ -5496,7 +5505,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling)) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && EDITOR_VERSION & 1) {
           addContextMenuButton(isDisplayInline ? arrowRight : arrowDown,
           {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
           {onclick: (c => (event) => {
@@ -5512,7 +5521,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD") {
+        if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && EDITOR_VERSION & 1) {
           addContextMenuButton(cloneSVG,
             {title: "Clone selected element"},
             {onclick: ((c, contextMenu) => event => {
@@ -5534,7 +5543,7 @@ lastEditScript = """
               })(clickedElem)
             });
         }
-        if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer)) {
+        if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer) && EDITOR_VERSION & 1) {
           addContextMenuButton(plusSVG,
               {title: "Wrap selection"},
               {onclick: (s => event => {
@@ -5586,7 +5595,7 @@ lastEditScript = """
               })(model.selectionRange)}
               )
         }
-        if(!model.selectionRange) {
+        if(!model.selectionRange && EDITOR_VERSION & 1) {
           addContextMenuButton(plusSVG,
               {title: "Insert element", contenteditable: false},
               {onclick: event => {
