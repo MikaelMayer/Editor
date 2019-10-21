@@ -3277,6 +3277,9 @@ lastEditScript = """
         }
         return;
       }
+      if(typeof simple_editor_interface !== "undefined" && EDITOR_VERSION & 16) {
+        editor_model.interfaces.push(simple_editor_interface);
+      }
       editor_model.interfaces.push({
         title: "Selected Element Tree",
         minimized: true,
