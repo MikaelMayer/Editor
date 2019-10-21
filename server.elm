@@ -4643,7 +4643,7 @@ lastEditScript = """
             const verzExist = JSON.parse(await getServer("isdir", "Thaditor/versions"));
 
             const get_switch_btn_for = (nm) => {
-              return el("button", {"class":"draft-switch"}, [nm], 
+              return el("button", {"class":"draft-switch"}, ["Open " + nm], 
               {
                 onclick: (event) => {
                   editor_model.version = nm;
@@ -4654,18 +4654,18 @@ lastEditScript = """
             };
 
             const get_switch_btn_live = () => {
-              return el("button", {class:"draft-switch-live"}, ["Live"],
+              return el("button", {class:"draft-switch-live draft-switch"}, ["Open live website"],
               {
                 onclick: (event) => {
                   editor_model.version = "Live";
                   navigateLocal("/?edit");
-                  setTimeout(() => sendNotification("Switched to Live"), 2000);
+                  setTimeout(() => sendNotification("Switched to Live version"), 2000);
                 }
               })
             }
 
             const get_clone_btn_for = (nm) => {
-              return el("button", {"class":"draft-clone"}, ["Clone"],
+              return el("button", {"class":"draft-clone", title: "Clone " + nm + " to a new version"}, ["Clone"],
               {
                 onclick: (event) => {
                   cloneSite(nm, verzExist); //confirms + sends notif inside method
@@ -4674,7 +4674,7 @@ lastEditScript = """
             }
 
             const get_delete_btn_for = (nm) => {
-              return el("button", {"class":"draft-delete"}, ["Delete"],
+              return el("button", {"class":"draft-delete", title: "Delete version " + nm}, ["Delete"],
               {
                 onclick: (event) => {
                   deleteDraft(nm); //confirms + sends notif inside the method
@@ -4683,7 +4683,7 @@ lastEditScript = """
             }
 
             const get_rename_btn_for = (nm) => {
-              return el("button", {"class":"draft-publish"}, ["Rename"],
+              return el("button", {"class":"draft-publish", title: "Rename " + nm}, ["Rename"],
               {
                 onclick: (event) => { 
                   renameDraft(nm, verzExist); //confirms + sends notif inside
@@ -4692,7 +4692,7 @@ lastEditScript = """
             }
 
             const get_publish_btn_for = (nm) => {
-              return el("button", {"class":"draft-publish"}, ["Publish"],
+              return el("button", {"class":"draft-publish", title: "Publish " + nm + " to live"}, ["Publish"],
               {
                 onclick: (event) => { 
                   publishDraft(nm); //confirms + sends notif inside
@@ -4725,7 +4725,7 @@ lastEditScript = """
             const get_current_label_live = () => {
               return el("div", {"class":"draft-row", "id": "draft-title"},
                       [
-                        el("label", {}, ["Live"], {}),
+                        el("label", {style:"font-style:italic"}, ["Currently viewing live website"], {}),
                         get_clone_btn_for("Live"),
                         
 
@@ -4740,7 +4740,7 @@ lastEditScript = """
             const get_current_label_for = (nm) => {
               return el("div", {"class":"draft-row", "id": "draft-title"},
                       [
-                        el("label", {}, [nm], {}),
+                        el("label", {title: "Currently viewing " + nm + " version"}, [nm], {}),
                         get_rename_btn_for(editor_model.version),
                         get_clone_btn_for(nm),
                         get_delete_btn_for(nm),

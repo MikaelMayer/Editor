@@ -1133,6 +1133,7 @@ div.editor-container-content > div.draftList > div.draft-row > button {
     font-size: 0.88em;
     border: none;
     height: 1.6em;
+    cursor: pointer;
 }
 
 div.editor-container-content > div.draftList > div.draft-row > button:hover {
