@@ -4972,8 +4972,8 @@ lastEditScript = """
       if(clickedElem.getAttribute("id")) {
         curSelector += "#" + clickedElem.getAttribute("id")
       }
-      if (clickedElem.getAttribute("class")) {
-        curSelector += "." + clickedElem.getAttribute("class").replace(/\s+/g, ".");
+      if (clickedElem.getAttribute("class") && clickedElem.getAttribute("class") != "") {
+        curSelector += (" " + clickedElem.getAttribute("class")).replace(/\s+/g, ".");
       }
       //checking ancestors
       let consideredParent = clickedElem.parentNode;
@@ -5758,7 +5758,7 @@ lastEditScript = """
       if(askConfirmation) {
         // For Safari
         return confirmation;
-      } else { // Send a close message in case this was a file opened from Desktop
+      } else if(!apache_server) { // Send a close message in case this was a file opened from Desktop
         var xmlhttp = new XHRequest();
         xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search, false); // Async
