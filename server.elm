@@ -65,9 +65,9 @@ boolVar name resDefault =
 browserSide = listDict.get "browserSide" defaultOptions == Just True
 
 varadmin = boolVar "admin" False
-varedit = boolVar "edit" False
-varls = boolVar "ls" False
 varraw = boolVar "raw" False
+varedit = boolVar "edit" False || varraw
+varls = boolVar "ls" False
 defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
@@ -2798,7 +2798,7 @@ lastEditScript = """
     var closeBottomSVG = svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
     var wasteBasketSVG = svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
     var plusSVG = svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
-    var liveLinkSVG = link => `<a class="livelink" href="javascript:navigateLocal(relativeToAbsolute('${link}'))">${svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
+    var liveLinkSVG = link => `<a class="livelink" href="javascript:if(nothingToLose()) { navigateLocal(relativeToAbsolute('${link}')) }">${svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
     var gearSVG = svgFromPath("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
     var folderSVG = svgFromPath("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
     var reloadSVG = svgFromPath("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
@@ -2947,6 +2947,21 @@ lastEditScript = """
     function recoverSelectionRangeFromData(data) { // TODO
       if(!data) return;
       return undefined;
+    }
+    function nothingToLose() {
+      if(editor_canSave()) {
+        var x = confirm("There are unsaved modifications. Do you want to discard them?");
+        if(x) {
+          editor_model.undoStack = [];
+          editor_model.redoStack = [];
+          return true;
+        } else {
+          return false;
+        }
+      }
+      editor_model.undoStack = [];
+      editor_model.redoStack = [];
+      return true;
     }
     //(outer lastEditScript)
     /*
@@ -3610,7 +3625,7 @@ lastEditScript = """
                               let livelinks = document.querySelectorAll(".livelink");
                               for(let livelink of livelinks) {
                                 let finalLink = livelink.matches("#context-menu *") ?
-                                  `javascript:navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}'))` : this.value;
+                                  `javascript:if(nothingToLose()) { navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}')) }` : this.value;
                                 livelink.setAttribute("href", finalLink);
                                 livelink.setAttribute("title", "Go to " + this.value);
                               }
@@ -4817,7 +4832,10 @@ lastEditScript = """
           add_btn_to_div(retDiv, reloadSVG,
             {"class": "tagName", title: "Reload the current page"},
               {onclick: function(event) {
-                reloadPage(); } }
+                if(nothingToLose()) {
+                  reloadPage();
+                }
+              } }
             );
           add_btn_to_div(retDiv, folderSVG,
             {"class": "tagName", title: "List files in current directory"},
@@ -4825,7 +4843,9 @@ lastEditScript = """
                 let u =  new URL(location.href);
                 u.pathname = u.pathname.replace(/[^\/]*$/, "");
                 u.searchParams.set("ls", "true");
-                navigateLocal(u.href);
+                if(nothingToLose()) {
+                  navigateLocal(u.href);
+                }
               }
             }
           );
