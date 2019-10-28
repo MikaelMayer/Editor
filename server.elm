@@ -157,7 +157,7 @@ isTextFile path =
     (True, Just "", True)
   else if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
     (False, Just """<html><head><title>@path</title></head><body><img src="@path"></body></html>""", True)
-  else if hydefilecache == Nothing || withoutPipeline then
+  else if hydefilecache == Nothing || withoutPipeline || varraw then
     (False, fs.read path, True)
   else
     (False, Nothing, False)
