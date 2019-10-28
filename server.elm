@@ -201,9 +201,22 @@ hyde_fs =
       List.singleton |> InputsWithDiffs |> Ok
   } fileOperations
 
+-- A Hyde plug-is a function that transforms a list of Write into another list of Write
+plugin name =
+  fs.read (hyde_inDirectory ("hydefile-plugin-" + name + ".leo")) |>
+  Maybe.andThen (\plugin_content ->
+    case __evaluate__ (("fs", hyde_fs)::("plugin", plugin)::preludeEnv) plugin_content of
+      Ok x -> Just x
+      Err msg -> 
+        let _ = Debug.log ("loading of plugin " + name + " failed:" + msg) () in
+        Nothing
+  ) |> Maybe.withDefaultLazy (\_ ->
+   let _ = Debug.log ("plugin " + name + " not found") () in
+   \options -> identity)
+
 hyde_resEvaluatedHydeFile =
   if hydeNotNeeded then {} else
-  __evaluateWithCache__ (("fs", hyde_fs)::preludeEnv) hyde_source
+  __evaluateWithCache__ (("fs", hyde_fs)::("plugin", plugin)::preludeEnv) hyde_source
 
 (hyde_generatedFilesDict, hyde_errors) =
   if hydeNotNeeded then (False, False) else
@@ -224,8 +237,11 @@ hyde_record_output_files =
   False
 
 hyde_dummy = if hydeNotNeeded then (False, False) else
-  let x = hyde_generatedFilesDict in
-  cacheResult () -- Caches the names of written files
+  let x = hyde_generatedFilesDict in -- to make sure dependency is executed
+  if hyde_errors == "" then
+    cacheResult () -- Caches the names of written files
+  else 
+    ()
 
 mbSourcecontentAny =
   if hydeNotNeeded then mbSourcecontentAny1 else
