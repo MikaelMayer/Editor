@@ -3999,7 +3999,7 @@ lastEditScript = """
                         curCSSState = CSSparser.parseCSS(this.value);
                         //console.log(curCSSState);
                         //check to make sure CSS is still relevant to clicked element.
-                        if(curCSSState[i].kind === 'cssBlock' && editor.matches(clickedElem, curCSSState[i].selector)) {
+                        if(curCSSState[i].kind === 'cssBlock' && !editor.matches(clickedElem, curCSSState[i].selector)) {
                           sendNotification("CSS selector does not match");
                           this.setAttribute("wrong-selector", true);
                           this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
