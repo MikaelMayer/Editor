@@ -4033,13 +4033,14 @@ lastEditScript = """
                       }) ();
                     }
                   }) : // inline style case
-                  el("div", {"class": "CSS-action-button", "title": "Delete this entire window of CSS"}, [], {
+                  el("div", {"class": "CSS-action-button", "title": "Delete this CSS snippet"}, [], {
                     innerHTML: wasteBasketSVG,
                     onclick() {
+                      let linked_CSS = this.parentElement.childNodes[0];
                       //console.log(this.parentElements.childNodes);
-                      this.parentElement.childNodes[0].value = "";
-                      this.parentElement.childNodes[0].storedCSS.content = this.parentElement.childNodes[0].value;
-                      fullUnparseCSS(editor_model.CSSState);
+                      linked_CSS.value = "";
+                      linked_CSS.storedCSS.content = linked_CSS.value;
+                      fullUnparseCSS(linked_CSS.storedCSS);
                       setCSSAreas();
                     }
                   })
