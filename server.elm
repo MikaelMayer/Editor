@@ -3648,8 +3648,8 @@ lastEditScript = """
                             }
                         })(name, isHref)
                       }),
-                    isHref ? el("div", {title: "Go to " + editor_model.link, "class": "modify-menu-icon inert"}, [], {
-                      innerHTML: liveLinkSVG(editor_model.link)
+                    isHref ? el("div", {title: "Go to " + value, "class": "modify-menu-icon inert"}, [], {
+                      innerHTML: liveLinkSVG(value)
                     }) : undefined,
                     isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
                       innerHTML: linkModeSVG,
