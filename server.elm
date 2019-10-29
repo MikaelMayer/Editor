@@ -1696,7 +1696,22 @@ function duplicate(node, options) {
         }
       }
     }
-    var cloned = options.onBeforeInsert(node.cloneNode(true));
+    var duplicated = node.cloneNode(true);
+    function removeEditorAttributes(node) {
+      if(node.nodeType != 1) return;
+      let attrs = [...node.attributes];
+      for(var i = 0; i < attrs.length; i++) {
+        if(attrs[i].name.match(/^ghost-clicked$|^translate-id.*$/)) {
+          node.removeAttribute(attrs[i].name);
+        }
+      }
+      for(var i = 0; i < node.childNodes; i++) {
+        removeEditorAttributes(node.childNodes[i]);
+      }
+    }
+    removeEditorAttributes(duplicated);
+    
+    var cloned = options.onBeforeInsert(duplicated);
     insertBefore(parentInsertion, cloned, insertBeforeNode);
     return cloned;
   }
