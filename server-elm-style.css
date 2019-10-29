@@ -1196,6 +1196,10 @@ div#modify-menu textarea.translation-content {
   max-height: 50%;
 }
 
+.translate-select {
+  color: black;
+}
+
 @media screen and (max-width: 800px) {
     div#modify-menu {
         -webkit-box-shadow: none;
