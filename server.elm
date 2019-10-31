@@ -201,7 +201,10 @@ hyde_fs =
       List.singleton |> InputsWithDiffs |> Ok
   } fileOperations
 
--- A Hyde plug-is a function that transforms a list of Write into another list of Write
+-- A Hyde plug-is a function that takes two arguments
+--   options (as a list, object or tuple)
+--   a list of Write
+-- Returns a list of Write
 plugin name =
   fs.read (hyde_inDirectory ("hydefile-plugin-" + name + ".leo")) |>
   Maybe.andThen (\plugin_content ->
@@ -5232,10 +5235,9 @@ lastEditScript = """
       editor_model.serverWorker.postMessage(data);
     }
     
+    editor.refresh = updateInteractionDiv;
 
     updateInteractionDiv(); //outer lastEditScript
-
-    
 
     function updateInteractionDiv() {
       const menuholder = document.querySelector("#modify-menu-holder");
