@@ -4194,17 +4194,16 @@ lastEditScript = """
               valueText += (Number(i) !== 0 ? ", " : "") + backImgObj.relCSS.value[i].remainderBefore + backImgObj.relCSS.value[i].url + backImgObj.relCSS.value[i].remainderAfter;
               //console.log(valueText);
             }
-            backImgObj.relCSS.value = valueText;
             //console.log("Object about to be unparsed:");
             //console.log(backImgObj);
-            return backImgObj.beforeCSS + findText([backImgObj.relCSS], 0, 1) + backImgObj.afterCSS;
+            return backImgObj.beforeCSS + findText([{...backImgObj.relCSS, value: valueText}], 0, 1) + backImgObj.afterCSS;
           }
           function uploadImagesAtCursor(files, srcName, backImgObj) {
             for (var i = 0, file; file = files[i]; i++) {
               var targetPathName =  editor.getStorageFolder(file) + file.name;
               editor.uploadFile(targetPathName, file, (targetPathName, file) => {
                 if(backImgObj) {
-                  backImgObj.imageSelection = (() => {
+                  backImgObj.imageSelection = backImgObj.relCSS.value.length == 1 ? 0 : (() => {
                     let radios = document.querySelectorAll(".background-img-radio");
                     let defaultValue = 0;
                     for (let i in radios) {
@@ -4364,7 +4363,7 @@ lastEditScript = """
             e.preventDefault();
             var files = e.dataTransfer.files; // FileList object
             if (files && files[0]) {
-              uploadImagesAtCursor(files);
+              uploadImagesAtCursor(files, srcName, backgroundImgSrc);
             }
           }
           // radio buttons for cases when there are two background images
