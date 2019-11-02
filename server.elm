@@ -68,6 +68,7 @@ varadmin = boolVar "admin" False
 varraw = boolVar "raw" False
 varedit = boolVar "edit" False || varraw
 varls = boolVar "ls" False
+varclearhydecache = boolVar "clearhydecache" False
 defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
@@ -138,7 +139,7 @@ isTextFile path =
 
 (withoutPipeline, hydefilepath, hydefileSource) = case hydefilecache of
   Just {file=hydefile} ->
-    case hydefilecache of
+    case if varclearhydecache then Nothing else hydefilecache of
       Just {cacheContent} ->
         case evaluate cacheContent of
           {inputFiles, outputFiles} ->
@@ -2688,7 +2689,7 @@ lastEditScript = """
       var onKeypress = e => {
         if(e.keyCode==13 && !e.shiftKey){ // [Enter] key
             // If we are inside a paragraph, we split the paragraph.
-            // If we are directly inside a div, we add a paragraph separator.
+            // If we are directly inside a div, we add a <br> separator.
             // We delete everything between anchorNode and focusNode
             // TODO: Handle ul and li
             var caretSelection = document.getSelection();
@@ -3768,7 +3769,9 @@ lastEditScript = """
               let linkOrStyleNode = CSSstyles[i];
               if(linkOrStyleNode.tagName === "LINK" && linkOrStyleNode.getAttribute("rel") === "stylesheet" &&
                  linkOrStyleNode.getAttribute("href") && !linkOrStyleNode.getAttribute("isghost")) {
-                let CSSFilePath = relativeToAbsolute(removeTimestamp(linkOrStyleNode.getAttribute("href")));
+                   let href = linkOrStyleNode.getAttribute("href");
+                   if(isAbsolute(href)) continue;
+                let CSSFilePath = relativeToAbsolute(removeTimestamp(href));
                 if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface") && (CSSFilePath.indexOf("http") < 0)) {
                   let CSSvalue = typeof linkOrStyleNode.tmpCachedContent === "string" ?
                         linkOrStyleNode.tmpCachedContent :
@@ -4113,21 +4116,15 @@ lastEditScript = """
           var diffPics = styleStr.split(",");
           for(let k in diffPics) {
             //extracts only url(...)
-            var matches = diffPics[k].match(/url\((.*?)\)/g);
-            console.log("the matches are:", matches);
-            //deepcopy string
-            var remainStr = diffPics[k].slice(0); 
-            for(let j in matches) {
-              //from current understanding, there should only be one url(...) per split of ,
-              console.log("the current match is:", matches[j]);
-              if(j == 1) {
-                console.log(`Odd syntax, ${matches[j]} also matched!`);
-              }
-              let sIndex = diffPics[k].indexOf(matches[j]);
+            let regex = new RegExp("(url\\([\"']?)([^\\)'\"]+?)([\"']?\\))", "g");
+            let m;
+            let remainStr = diffPics[k];
+            while(m = regex.exec(remainStr)) {
+              let sIndex = m.index + m[1].length;
               //extracting the rest of the string 
-              afterStr = remainStr.slice(sIndex + matches[j].length);
-              beforeStr = remainStr.slice(0, sIndex);
-              urls.push({remainderBefore: beforeStr, url: matches[j], remainderAfter: afterStr});  
+              let afterStr = remainStr.slice(sIndex + m[2].length);
+              let beforeStr = remainStr.slice(0, sIndex);
+              urls.push({remainderBefore: beforeStr, url: m[2], remainderAfter: afterStr});  
             }
           }
           return urls;
@@ -4247,7 +4244,6 @@ lastEditScript = """
             if (isAbsolute(srcName)) {
               return;
             }
-            console.log("hello!");
             console.log("Source name is:", srcName);
             srcName = relativeToAbsolute(srcName)
             let dir = "";
@@ -4354,8 +4350,7 @@ lastEditScript = """
             }
           
           }
-          let remParentheses = /\((.*?)\)/g;
-          let srcName = backgroundImgSrc ? remParentheses.exec(backgroundImgSrc.relCSS.value[0].url)[1] : clickedElem.getAttribute("src");
+          let srcName = backgroundImgSrc ? backgroundImgSrc.relCSS.value[0].url : clickedElem.getAttribute("src");
 
           //console.log(srcName);
           //console.log(backgroundImgSrc.relCSS.value[0].url);
@@ -4371,7 +4366,6 @@ lastEditScript = """
               uploadImagesAtCursor(files);
             }
           }
-
           // radio buttons for cases when there are two background images
           if(backgroundImgSrc && backgroundImgSrc.relCSS.value.length > 1) {
             for(let i in backgroundImgSrc.relCSS.value) {
@@ -5028,7 +5022,7 @@ lastEditScript = """
         curSelector += "#" + clickedElem.getAttribute("id")
       }
       if (clickedElem.getAttribute("class") && clickedElem.getAttribute("class") != "") {
-        curSelector += (" " + clickedElem.getAttribute("class")).replace(/\s+/g, ".");
+        curSelector += ("." + clickedElem.getAttribute("class")).trim().replace(/\s+/g, ".");
       }
       //checking ancestors
       let consideredParent = clickedElem.parentNode;
