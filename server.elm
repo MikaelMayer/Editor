@@ -4213,11 +4213,12 @@ lastEditScript = """
                     }
                     return defaultValue;
                   })();
-                  backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url("'+ targetPathName +'")';
+                  backImgObj.relCSS.value[backImgObj.imageSelection].url = targetPathName;
                   clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
                 }
                 else {
-                  document.getElementById("dom-attr-src").setAttribute("value", file.name);
+                  let d = document.getElementById("dom-attr-src");
+                  if(d) { d.setAttribute("value", file.name); }
                   clickedElem.setAttribute("src", targetPathName);
                 }
                 // adapt to HTML5 new attribute 'srcset'
@@ -4310,12 +4311,12 @@ lastEditScript = """
                         //console.log("Here?");
                         //console.log(JSON.stringify(backImgObj));
                         //console.log(backImgObj.relCSS.value.length);
-                        backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url('+ this.children[0].getAttribute("src") +')';
+                        backImgObj.relCSS.value[backImgObj.imageSelection].url = this.children[0].getAttribute("src");
                       }
                       else {
                         console.log("Second time around:");
                         backImgObj = checkBackImgObj(clickedElem, findURLS);
-                        backImgObj.relCSS.value[backImgObj.imageSelection].url = 'url('+ this.children[0].getAttribute("src") +')';
+                        backImgObj.relCSS.value[backImgObj.imageSelection].url = this.children[0].getAttribute("src");
                       }
                       //console.log("current link", this.children[0].getAttribute("src"));
                       //console.log("current section number is:", backImgObj.imageSelection);
