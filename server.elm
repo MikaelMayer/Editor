@@ -143,7 +143,8 @@ isTextFile path =
       Just {cacheContent} ->
         case evaluate cacheContent of
           {inputFiles, outputFiles} ->
-            (List.find (\e -> e == path || e == "/" + path) inputFiles == Nothing &&
+            (not (List.isEmpty outputFiles) &&
+             List.find (\e -> e == path || e == "/" + path) inputFiles == Nothing &&
              List.find (\e -> e == path || e == "/" + path) outputFiles == Nothing,
                hydefile, fs.read hydefile)
           _ -> (False, hydefile, fs.read hydefile)
