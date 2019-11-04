@@ -4698,7 +4698,7 @@ lastEditScript = """
             const verzExist = JSON.parse(await getServer("isdir", "Thaditor/versions"));
 
             const get_switch_btn_for = (nm) => {
-              return el("button", {"class":"draft-switch"}, ["Open " + nm], 
+              return el("button", {"class":"draft-switch", title: "Open version '" + nm + "'"}, [nm], 
               {
                 onclick: (event) => {
                   editor_model.version = nm;
