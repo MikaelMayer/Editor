@@ -670,7 +670,7 @@ evaluatedPage =
   if canEvaluate /= "true" then
     Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
   else if isTextFile path || varraw then
-    Ok <html>
+    Ok <html style="height:100%;">
         <head>
         <title>@path</title>
         <style type="text/css" media="screen">
@@ -720,7 +720,7 @@ evaluatedPage =
           }
         </script>
         </head>
-        <body>
+        <body style="height:100%">
         <div id="aceeditor" list-ghost-attributes="class draggable style" children-are-ghosts="true"
           save-ghost-attributes="style ghost-anchor-column ghost-anchor-row ghost-lead-column ghost-lead-row" initdata=@sourcecontent></div>
         <script>
@@ -729,7 +729,7 @@ evaluatedPage =
         );
         
         var script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/ace.js';
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.6/ace.js';
         script.async = false;
         script.setAttribute("isghost", "true");
         ace = undefined;
@@ -1582,7 +1582,7 @@ editor.ghostNodes.push(
 // For ace script for syntax highlight
 editor.ghostNodes.push(insertedNode =>
   editor.matches(insertedNode, "script[src]") &&
-     insertedNode.getAttribute("src").startsWith("https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.2/mode-j")
+     insertedNode.getAttribute("src").startsWith("https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.6/mode-j")
 );
 // For ace script for syntax highlight
 editor.ghostNodes.push(insertedNode =>
@@ -5018,12 +5018,13 @@ lastEditScript = """
     //check if selector applies to any ancestors or descendants, then its ok
     //else add class or use > selector until it is precise 
     function getShortestUniqueSelector(clickedElem) {
+      console.log("clickedElem", clickedElem);
       let curSelector = clickedElem.tagName.toLowerCase();
       if(clickedElem.getAttribute("id")) {
-        curSelector += "#" + clickedElem.getAttribute("id")
+        curSelector += "#" + clickedElem.getAttribute("id");
       }
       if (clickedElem.getAttribute("class") && clickedElem.getAttribute("class") != "") {
-        curSelector += ("." + clickedElem.getAttribute("class")).trim().replace(/\s+/g, ".");
+        curSelector += (" " + clickedElem.getAttribute("class").trim()).replace(/\s+/g, ".");
       }
       //checking ancestors
       let consideredParent = clickedElem.parentNode;
