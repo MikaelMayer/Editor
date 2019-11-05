@@ -2632,7 +2632,7 @@ lastEditScript = """
           if(file.type.indexOf("image") == 0) {
             pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${file.name}">`);
           } else {
-            pasteHtmlAtCaret(`<a href="${path}">${path}</a>`); 
+            pasteHtmlAtCaret(`<a href="${targetPathName}">${targetPathName}</a>`); 
           }
         });
       }
