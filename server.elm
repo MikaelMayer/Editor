@@ -4025,7 +4025,7 @@ lastEditScript = """
                     if(window.matchMedia(cssState.selector).matches ? editor.matches(clickedElem, cssState.content.selector) : false) {
                       //implement throwError;
                     }
-                    cssState.mediaSelector = this.value;
+                    cssState.mediaSelector = this.textContent;
                     if(cssState.orgTag.tagName != "LINK") {
                       fullUnparseCSS(cssState);
                     } else {
