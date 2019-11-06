@@ -2765,7 +2765,7 @@ lastEditScript = """
       }
       
       var clickedElem = event.target;
-      console.log(typeof event.target);
+      console.log("click event", event.target);
       var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
       var matchOptions = function(clickedElem) {
         var result = true;
@@ -4049,13 +4049,13 @@ lastEditScript = """
                     (async () => {
                       if(this.storedCSS.orgTag.tagName != "LINK") { // style node
                         let throwError = false;
-                        curCSSState = CSSparser.parseCSS(this.value);
+                        let curCSSState = CSSparser.parseCSS(this.value);
                         //console.log(curCSSState);
                         //check to make sure CSS is still relevant to clicked element.
-                        if(curCSSState[i].kind === 'cssBlock' && !editor.matches(clickedElem, curCSSState[i].selector)) {
+                        if(curCSSState && curCSSState.length && curCSSState[0].kind === 'cssBlock' && !editor.matches(clickedElem, curCSSState[0].selector)) {
                           sendNotification("CSS selector does not match");
                           this.setAttribute("wrong-selector", true);
-                          this.setAttribute("title", "The current CSS selector doesn't apply to the selected element!");
+                          this.setAttribute("title", "The first CSS selector does not apply to the selected element!");
                         }
                         else {
                           this.setAttribute("wrong-selector", false);
