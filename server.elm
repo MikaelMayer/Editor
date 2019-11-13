@@ -643,6 +643,9 @@ phpToElmFinal path string =
               _ ->
             case Regex.extract """\s*(?:echo|print)\s+([^;]+?);\s*""" code of
               Just [content] -> echoRaw content
+              _ ->
+            case Regex.extract """\s*([\$\w_]+\s*=\s*)([\s\S]+?)\s*;(?=\r?\n)""" code of
+              Just [varNameEqual,toAssign] -> "\n" + varNameEqual + phpStringToElmString toAssign
               res ->
                 "\n[convert" + code + "]\n" + toString res
           else
