@@ -804,12 +804,8 @@ evaluatedPage =
           Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
   else if Regex.matchIn """\.(elm|leo)$""" path then
     __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent
-  else if fs.isdir path then
-    let
-      pathprefix = if path == "" then path else path + "/"
-    in
+  else if folderView then
     Ok <html><head>
-      
       <script>
         var ispressed = false;
         var whichOne = "";
@@ -1741,7 +1737,7 @@ function switchEditBox(toEdit) {
   ], {
     isghost: true,
     onclick(event) {
-      if(location.search.match(new RegExp("edit" + prev)) == -1) {
+      if(!location.search.match(new RegExp("edit" + prev))) {
          location.search = location.search.startsWith("?") ? location.search + "&edit" + next : "?edit" + next
       } else {
          location.search = location.search.replace(new RegExp("edit" + prev, "g"), "edit" + next);
