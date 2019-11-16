@@ -289,6 +289,7 @@ luca =
      var EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
      var path = @(jsCode.stringOf path);
      var varedit = @(if varedit then "true" else "false");
+     var varls = @(if varls then "true" else "false");
      var askQuestions = @(case listDict.get "question" vars of
                        Just questionattr -> "true"
                        _ -> if boolVar "question" True then "true" else 'false');
@@ -1752,7 +1753,7 @@ setTimeout(function insertEditBox() {
   if(!document.body) {
     return setTimeout(insertEditBox, 100);
   }
-  if(typeof canEditPage == "boolean" && !canEditPage) {
+  if(typeof canEditPage == "boolean" && !canEditPage && !varls) {
     document.body.insertBefore(switchEditBox(true), document.body.childNodes[0]);
   } 
 }, 100);
