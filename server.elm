@@ -295,6 +295,7 @@ luca =
      var autosave = @(case listDict.get "autosave" vars of
                       Just autosaveattr -> "true"
                       _ -> if boolVar "autosave" True then "true" else "false");
+     var canEditPage = @(if canEditPage then "true" else "false");
      var editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
    </script>,
    <script id="thaditor-luca" class="editor-interface">
@@ -1322,8 +1323,7 @@ main =
         let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
         ["head", headattrs,
            insertThereInstead identity True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
-           serverOwned "initial script" initialScript ++
-           (serverOwned "stylesheet-of-server" <link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface"> :: headChildren)]
+           serverOwned "initial script and style " initialScript ++ headChildren]
       ["body", bodyattrs, bodyChildren] ->
         let bodyChildren = if jsEnabled then bodyChildren else List.map removeJS bodyChildren in
         ["body",
@@ -1754,7 +1754,8 @@ function remove(node, options) {
   node.remove();
 }
 editor.remove = remove;
-</script>
+</script>,
+<link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface">
 ]
 
 -- Script added to the end of the page
