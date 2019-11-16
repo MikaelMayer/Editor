@@ -298,14 +298,24 @@ luca =
      var editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
    </script>,
    <script id="thaditor-luca" class="editor-interface">
+    // Overwrite the entire document (head and body)
+    // I'm not sure there is a better way.
     function writeDocument(NC) {
       document.open();
       document.write(NC);
       document.close();
     }
+
+    // Requests to engine compatible with the Node.JS server. If Apache server, ProxiedServerRequest.
     var XHRequest = typeof ProxiedServerRequest != "undefined" ? ProxiedServerRequest : XMLHttpRequest;
+
+    // Are we one Apache server...
     var apache_server = typeof thaditor_worker !== "undefined";
+
+    // User name, if defined. Used to create personalized temporary CSS files.
     userName = typeof userName === "string" ? userName : "anonymous";
+
+    // Asynchronous if onOk is defined and readServer is defined. and asynchronous and returns result otherwise.
     function doReadServer(action, name, onOk, onErr) {
       if (typeof readServer != "undefined") {
         return readServer(action, name, onOk, onErr);
@@ -324,12 +334,15 @@ luca =
         }
       }
     }
-    // Use in async setting
+
+    // Returns a promise after performing a direct GET action on the server.
     function getServer(action, name) {
       return new Promise(function(resolve, reject) {
         doReadServer(action, name, resolve, reject);
       });
     }
+
+    // Asynchronous if onOk is defined and writeServer is defined. and asynchronous and returns result otherwise.
     function doWriteServer(action, name, content, onOk, onErr) {
       if (typeof writeServer != "undefined") {
         return writeServer(action, name, content, onOk, onErr);
@@ -349,11 +362,14 @@ luca =
         }
       }
     }
+
+    // Returns a promise after performing a direct POST action on the server.
     function postServer(action, name, content) {
       return new Promise(function(resolve, reject) {
         doWriteServer(action, name, content, resolve, reject);
       });
     }
+
     // Page reloading without trying to recover the editor's state.
     function doReloadPage(url, replaceState) {
       var xmlhttp = new XHRequest();
@@ -399,7 +415,7 @@ luca =
         return;
       }
       let notifBox = document.getElementById("notif-box");
-      if (!notifBox) { //function el(tag, attributes, children, properties) 
+      if (!notifBox) {
         notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
         modifyMenuDiv.append(notifBox);
       }
@@ -502,12 +518,12 @@ luca =
       storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "/");
       return storageFolder;
     }
-	  editor.fs = { 
+    editor.fs = { 
       listdir: 
-		    async function(dirname) {
+        async function(dirname) {
           return JSON.parse(await getServer("listdir", dirname) || "[]");
-		    }
-	  };
+        }
+    };
     editor.toTreasureMap = function(oldNode) {
       if(!oldNode) return undefined;
       if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
