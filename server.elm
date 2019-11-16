@@ -1504,7 +1504,6 @@ editor.ghostAttrs.push(n =>
 );
 // attribute of some chrome extensions
 editor.ghostAttrs.push(n => ["bis_skin_checked"]);
-
 // Array of functions on nodes returning an array of predicates such that if one is true, the children of this element will be ignored (i.e. their old value is always returned on back-propagation)
 editor.ignoredChildNodes = [];
 
@@ -1526,7 +1525,8 @@ editor.ignoredAttrs = [];
 editor.ignoredAttrs.push(n =>
   ((n && n.getAttribute && n.getAttribute("list-ignored-attributes")) || "").split(" ").concat(
     ((n && n.getAttribute && n.getAttribute("save-ignored-attributes")) || "").split(" ")).filter(a => a != "")
-)
+);
+editor.ignoredAttrs.push(n => editor.matches(n, "body") ? ["contenteditable"] : []);
 
 // Returns a method that, for each key name, return true if it is a ghost attribute for the node
 function isSpecificGhostAttributeKeyFromNode(n) {
@@ -1759,8 +1759,11 @@ editor.remove = remove;
 ]
 
 -- Script added to the end of the page
-lastEditScript = """ 
+lastEditScript = """
     console.log("lastEditScript running");
+    if(typeof canEditPage == "boolean" && canEditPage) {
+      document.body.setAttribute("contenteditable", "true");
+    }
     var onMobile = () => window.matchMedia("(max-width: 800px)").matches;
     var buttonHeight = () => onMobile() ? 48 : 30;
     var buttonWidth  = () => onMobile() ? 48 : 40;
