@@ -287,18 +287,25 @@ LUCA stands for "Last Universal Common Ancestor"
 luca = 
   [<script id="thaditor-vars" class="editor-interface">
      editor = typeof editor == "undefined" ? {} : editor;
-     editor.EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
-     editor.path = @(jsCode.stringOf path);
-     editor.varedit = @(if varedit then "true" else "false");
-     editor.varls = @(if varls then "true" else "false");
-     editor.askQuestions = @(case listDict.get "question" vars of
+     editor.config = {};
+     editor.config.EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
+     editor.config.path = @(jsCode.stringOf path);
+     editor.config.varedit = @(if varedit then "true" else "false");
+     editor.config.varls = @(if varls then "true" else "false");
+     editor.config.askQuestions = @(case listDict.get "question" vars of
                        Just questionattr -> "true"
                        _ -> if boolVar "question" True then "true" else 'false');
-     editor.autosave = @(case listDict.get "autosave" vars of
+     editor.config.autosave = @(case listDict.get "autosave" vars of
                       Just autosaveattr -> "true"
                       _ -> if boolVar "autosave" True then "true" else "false");
-     editor.canEditPage = @(if canEditPage then "true" else "false");
-     editor.editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
+     editor.config.canEditPage = @(if canEditPage then "true" else "false");
+     editor.config.editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
+     // Are we one Apache server...
+     editor.config.is_apache_server = typeof thaditor_worker !== "undefined";
+     // User name, if defined. Used to create personalized temporary CSS files.
+     editor.config.userName = typeof userName === "string" ? userName : "anonymous";
+     // Requests to engine compatible with the Node.JS server. If Apache server, ProxiedServerRequest.
+     editor.config.XHRequest = typeof ProxiedServerRequest != "undefined" ? ProxiedServerRequest : XMLHttpRequest;
    </script>,
    <script id="thaditor-luca" class="editor-interface">
     // Overwrite the entire document (head and body)
@@ -309,18 +316,9 @@ luca =
       document.close();
     }
 
-    // Requests to engine compatible with the Node.JS server. If Apache server, ProxiedServerRequest.
-    var XHRequest = typeof ProxiedServerRequest != "undefined" ? ProxiedServerRequest : XMLHttpRequest;
-
-    // Are we one Apache server...
-    var apache_server = typeof thaditor_worker !== "undefined";
-
-    // User name, if defined. Used to create personalized temporary CSS files.
-    userName = typeof userName === "string" ? userName : "anonymous";
-
     // Asynchronous if onOk is defined and readServer is defined. and asynchronous and returns result otherwise.
     function doReadServer(action, name, onOk, onErr) {
-      if (typeof readServer != "undefined") {
+      if (typeof readServer != "undefined") { // apache_server, everything goes through thaditor
         return readServer(action, name, onOk, onErr);
       } else {
         var request = new XMLHttpRequest();
@@ -375,7 +373,7 @@ luca =
 
     // Page reloading without trying to recover the editor's state.
     function doReloadPage(url, replaceState) {
-      var xmlhttp = new XHRequest();
+      var xmlhttp = new editor.config.XHRequest();
       xmlhttp.onreadystatechange = ((xmlhttp, replaceState) => () => {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           //source of the editing menu disappearing after reloading
@@ -483,7 +481,7 @@ luca =
         }
         var progbar = document.getElementById("progress-bar");
       })(xhr, file);
-      if(apache_server) {
+      if(editor.config.is_apache_server) {
         xhr.open("POST", "/Thaditor/editor.php?action=write&" + "name=" + encodeURIComponent(targetPathName), false);
       } else {
         xhr.open("POST", targetPathName, false);
@@ -709,13 +707,13 @@ evaluatedPage =
           function loadAceEditor() {
             console.log("executing script");
             var aceeditor = ace.edit("aceeditor");
-            var mode = editor.path.match(/\.js$/) ? "ace/mode/javascript" :
-                       editor.path.match(/\.html?$/) ? "ace/mode/html" :
-                       editor.path.match(/\.css$/) ? "ace/mode/css" :
-                       editor.path.match(/\.json$/) ? "ace/mode/json" :
-                       editor.path.match(/\.leo$/) ? "ace/mode/elm" :
-                       editor.path.match(/\.elm$/) ? "ace/mode/elm" :
-                       editor.path.match(/\.php$/) ? "ace/mode/php" :
+            var mode = editor.config.path.match(/\.js$/) ? "ace/mode/javascript" :
+                       editor.config.path.match(/\.html?$/) ? "ace/mode/html" :
+                       editor.config.path.match(/\.css$/) ? "ace/mode/css" :
+                       editor.config.path.match(/\.json$/) ? "ace/mode/json" :
+                       editor.config.path.match(/\.leo$/) ? "ace/mode/elm" :
+                       editor.config.path.match(/\.elm$/) ? "ace/mode/elm" :
+                       editor.config.path.match(/\.php$/) ? "ace/mode/php" :
                        "ace/mode/plain_text";
             aceeditor.session.setMode({path: mode, v: Date.now()});
             aceeditor.setOptions({
@@ -984,7 +982,7 @@ evaluatedPage =
       <form id="fileListing"></form>
       <script>
       var fullListDir = (path) => JSON.parse(doReadServer("fullListDir", path));
-      var thisListDir = fullListDir(editor.path);
+      var thisListDir = fullListDir(editor.config.path);
       var folders = thisListDir.filter((i) => i[1] == true);
       var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
       var warnSelectFile = reason => window.alert (reason + ", please select some and click this button again");
@@ -1033,7 +1031,7 @@ evaluatedPage =
           const doit = window.confirm("Are you sure you want to overwrite an existing file with the name " + newname + "?");
           if (!doit) return;
         }
-        var x = doWriteServer("rename", editor.path + sel.id, editor.path + newname);
+        var x = doWriteServer("rename", editor.config.path + sel.id, editor.config.path + newname);
         console.log ("renamed", sel.id, newname);
         goodReload();
       }
@@ -1057,10 +1055,10 @@ evaluatedPage =
             var isfolder = folders.filter((j) => j[0] == selected[i].id); //optomizable
             console.log (isfolder);
             if (isfolder.length != 0) {
-              doWriteServer("rmdir", editor.path + selected[i].id); //does this work on non-empty stuff? idts....
+              doWriteServer("rmdir", editor.config.path + selected[i].id); //does this work on non-empty stuff? idts....
               continue;
             }
-            doWriteServer("unlink", editor.path + selected[i].id);
+            doWriteServer("unlink", editor.config.path + selected[i].id);
           }
           goodReload();
           return;
@@ -1081,14 +1079,14 @@ evaluatedPage =
           nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
         }
         var newname = window.prompt("Name for duplicate: ", nn);
-        var contents = doReadServer("read", editor.path + sel.id);
+        var contents = doReadServer("read", editor.config.path + sel.id);
         if (contents[0] != "1") {
           window.alert ("Couldn't read the file for some reason. aborting.");
           console.error ("couldn't read the file for some reason. aborting.");
           return;
         }
         contents = contents.substring(1, contents.length);
-        var resp = doWriteServer("create", editor.path + newname, contents);
+        var resp = doWriteServer("create", editor.config.path + newname, contents);
         goodReload();
       }
       function createFolder() {
@@ -1135,9 +1133,9 @@ evaluatedPage =
           return;
         }
         console.log ("move approved");
-        var oldloc = (editor.path + btn.id);
+        var oldloc = (editor.config.path + btn.id);
         var newloc = newpath == "/" ? btn.id : (newpath + btn.id);
-        console.log ("renamimg\n%s\n%s", (editor.path + btn.id), (newpath + btn.id));
+        console.log ("renamimg\n%s\n%s", (editor.config.path + btn.id), (newpath + btn.id));
         doWriteServer("rename", oldloc, newloc); 
         console.log ("rename successful");
         goodReload();
@@ -1164,7 +1162,7 @@ evaluatedPage =
         initializeProgress(files.length);
         var didUp = false;
         ([...files]).forEach((fl) => {
-          editor.uploadFile(editor.path + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
+          editor.uploadFile(editor.config.path + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
           didUp = true;
           
         });
@@ -1236,7 +1234,7 @@ evaluatedPage =
               ]);
         }
         //el(tag, attributes, children, properties)
-        if (editor.path != "") {
+        if (editor.config.path != "") {
           var link = "../" + "?ls";
           form.append(otherItemDisplay(link, ".."));
         }
@@ -1266,7 +1264,7 @@ evaluatedPage =
       loadFileList();
       var goodReload = () => {
         document.getElementById("fileListing").innerHTML = "";
-        thisListDir = fullListDir (editor.path);
+        thisListDir = fullListDir (editor.config.path);
         loadFileList();
       }
     window.addEventListener('drop', handleDrop, false);
@@ -1754,7 +1752,7 @@ setTimeout(function insertEditBox() {
   if(!document.body) {
     return setTimeout(insertEditBox, 100);
   }
-  if(typeof editor.canEditPage == "boolean" && !editor.canEditPage && !editor.varls) {
+  if(typeof editor.config.canEditPage == "boolean" && !editor.config.canEditPage && !editor.config.varls) {
     document.body.insertBefore(switchEditBox(true), document.body.childNodes[0]);
   } 
 }, 100);
@@ -2027,7 +2025,7 @@ lastEditScript = """
     };
     
     notifyServer = (requestHeaders, toSend, what) => {
-      if(apache_server) {
+      if(editor.config.is_apache_server) {
         let data = {action:"sendRequest",
                     toSend: toSend || "{\"a\":2}",
                     gaidt:googleAuthIdToken,
@@ -2038,7 +2036,7 @@ lastEditScript = """
                     server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
         editor_model.serverWorker.postMessage(data);
       } else {
-        var xmlhttp = new XHRequest();
+        var xmlhttp = new editor.config.XHRequest();
         xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search);
         xmlhttp.setRequestHeader("Content-Type", "application/json");
@@ -2282,7 +2280,7 @@ lastEditScript = """
       }
       t = setTimeout(function() {
         t = undefined;
-        if (apache_server) {
+        if (editor.config.is_apache_server) {
           sendModificationsToServer();
         } else {
           sendModificationsToServerNode();
@@ -2648,7 +2646,7 @@ lastEditScript = """
       evt.preventDefault();
       evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
     }
-    if(typeof editor.varedit == "boolean" && editor.varedit || typeof editor.varedit != "boolean") {
+    if(typeof editor.config.varedit == "boolean" && editor.config.varedit || typeof editor.config.varedit != "boolean") {
       var dropZone = document.body;
       dropZone.addEventListener('dragover', handleDragOver, false);
       dropZone.addEventListener('drop', handleFileSelect, false);
@@ -2865,12 +2863,12 @@ lastEditScript = """
       
     }
     if (isLive == undefined) {
-      var isLive = () => !(editor.path.includes("Thaditor/versions/"));
+      var isLive = () => !(editor.config.path.includes("Thaditor/versions/"));
     }
 
     var verz = "Live";
     if (!isLive()) {
-      verz = editor.path.slice(editor.path.lastIndexOf("versions/")+9, editor.path.lastIndexOf("/"));
+      verz = editor.config.path.slice(editor.config.path.lastIndexOf("versions/")+9, editor.config.path.lastIndexOf("/"));
     }
     //hover mode functions for linkSelectMode
     function escapeLinkMode() {
@@ -3040,7 +3038,7 @@ lastEditScript = """
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //worker for interface with the server
       serverWorker: ifAlreadyRunning ? editor_model.serverWorker :
-                    apache_server ?
+                    editor.config.is_apache_server ?
                       typeof thaditor_worker != "undefined" ? thaditor_worker : new Worker("/Thaditor/editor.js") :
                       undefined,
       send_notif:ifAlreadyRunning ? editor_model.send_notif : "",
@@ -3052,9 +3050,9 @@ lastEditScript = """
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       textareaPropertiesSaved: ifAlreadyRunning ? editor_model.textareaPropertiesSaved : [],
-      askQuestions: ifAlreadyRunning ? editor_model.askQuestions : editor.askQuestions,
-      autosave: ifAlreadyRunning ? editor_model.autosave : editor.autosave,
-      path: editor.path,
+      askQuestions: ifAlreadyRunning ? editor_model.askQuestions : editor.config.askQuestions,
+      autosave: ifAlreadyRunning ? editor_model.autosave : editor.config.autosave,
+      path: editor.config.path,
       version : verz,
       interfaces: ifAlreadyRunning ? editor_model.interfaces : [],
       disambiguationMenu: ifAlreadyRunning ? editor_model.disambiguationMenu : undefined
@@ -3065,7 +3063,7 @@ lastEditScript = """
         //handle confirmDone
         if (e.data.action == "confirmDone") {
           console.log("confirmDone", e.data);
-          let xmlhttp = new XHRequest();
+          let xmlhttp = new editor.config.XHRequest();
           xmlhttp.response.setHeader("New-Local-URL", e.data.newLocalURL);
           xmlhttp.response.setHeader("New-Query", e.data.newQueryStr);
           xmlhttp.response.setHeader("Ambiguity-Key", e.data.ambiguityKey);
@@ -3205,7 +3203,7 @@ lastEditScript = """
     
     function getTempCSSName(CSSFilePath) {
       let newFilePath = CSSFilePath.split("/");
-      let newFileName = `tmp-${userName}-${newFilePath[newFilePath.length - 1]}`;
+      let newFileName = `tmp-${editor.config.userName}-${newFilePath[newFilePath.length - 1]}`;
       newFilePath[newFilePath.length - 1] = newFileName;
       newFilePath = newFilePath.join("/");
       return newFilePath;
@@ -3328,13 +3326,13 @@ lastEditScript = """
       let add_btn_to_div = (div, innerHTML, attributes, properties) => {
         div.append(createButton(innerHTML, attributes, properties));
       };
-      if(!(editor.EDITOR_VERSION & 1)) {
+      if(!(editor.config.EDITOR_VERSION & 1)) {
         if(typeof simple_editor_interface !== "undefined") {
           editor_model.interfaces.push(simple_editor_interface);
         }
         return;
       }
-      if(typeof simple_editor_interface !== "undefined" && editor.EDITOR_VERSION & 16) {
+      if(typeof simple_editor_interface !== "undefined" && editor.config.EDITOR_VERSION & 16) {
         editor_model.interfaces.push(simple_editor_interface);
       }
       editor_model.interfaces.push({
@@ -4686,7 +4684,7 @@ lastEditScript = """
           return ret;
         }
       });
-      if (apache_server) {
+      if (editor.config.is_apache_server) {
         editor_model.interfaces.push({
           title: "Drafts",
           minimized: true,
@@ -4884,7 +4882,7 @@ lastEditScript = """
               }
             }
           );
-          if(apache_server) {
+          if(editor.config.is_apache_server) {
             retDiv.append(
               el("button.action-button#update-thaditor-btn", {type: ""}, "Update Thaditor", {onclick() {
                 if(confirm("Are you ready to upgrade Thaditor?")) {
@@ -4916,7 +4914,7 @@ lastEditScript = """
           retDiv.append(
             el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
           
-          if(apache_server) {
+          if(editor.config.is_apache_server) {
             retDiv.append(
               el("a", {href:"javascript:0", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
                 onclick() {
@@ -5414,7 +5412,7 @@ lastEditScript = """
               }
             }
         });
-        if(editor.EDITOR_VERSION & 1) {
+        if(editor.config.EDITOR_VERSION & 1) {
           addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
             {"class": "inert" + (canUndo() ? "" : " disabled"), title: "Undo most recent change",
               id: "undobutton"
@@ -5473,7 +5471,7 @@ lastEditScript = """
                   }
                   editor_model.undosBeforeSave = editor_model.undoStack.length;
                   if(!this.classList.contains("disabled")) {
-                    if (apache_server) {
+                    if (editor.config.is_apache_server) {
                       sendModificationsToServer();
                     } else {
                       sendModificationsToServerNode();
@@ -5536,7 +5534,7 @@ lastEditScript = """
           addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
             {title: "Go to " + model.link, "class": "inert"});
         }
-        if(!model.selectionRange && clickedElem && clickedElem.parentNode && editor.EDITOR_VERSION & 1) {
+        if(!model.selectionRange && clickedElem && clickedElem.parentNode && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(parentUpSVG,
           {title: "Select parent", "class":"inert"},
             {onclick: (c => event => {
@@ -5548,7 +5546,7 @@ lastEditScript = """
         
         var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
         var isDisplayInline = computedStyle && (computedStyle.display.startsWith("inline") || computedStyle.display === "table-cell");
-        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && editor.EDITOR_VERSION & 1) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
           {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
           {onclick: (c => event => {
@@ -5564,7 +5562,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && editor.EDITOR_VERSION & 1) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(isDisplayInline ? arrowRight : arrowDown,
           {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
           {onclick: (c => (event) => {
@@ -5580,7 +5578,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && editor.EDITOR_VERSION & 1) {
+        if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(cloneSVG,
             {title: "Clone selected element"},
             {onclick: ((c, contextMenu) => event => {
@@ -5602,7 +5600,7 @@ lastEditScript = """
               })(clickedElem)
             });
         }
-        if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer) && editor.EDITOR_VERSION & 1) {
+        if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer) && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(plusSVG,
               {title: "Wrap selection"},
               {onclick: (s => event => {
@@ -5654,7 +5652,7 @@ lastEditScript = """
               })(model.selectionRange)}
               )
         }
-        if(!model.selectionRange && editor.EDITOR_VERSION & 1) {
+        if(!model.selectionRange && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(plusSVG,
               {title: "Insert element", contenteditable: false},
               {onclick: event => {
@@ -5761,7 +5759,7 @@ lastEditScript = """
       document.addEventListener("backbutton", editor_close, false);
     }, false);
     
-    if(editor.editIsFalseButDefaultIsTrue) {
+    if(editor.config.editIsFalseButDefaultIsTrue) {
       // Special case when ?edit=false but the default behavior is edit=true if nothing is set.
       document.onclick = function (e) {
           e = e ||  window.event;
@@ -5778,7 +5776,7 @@ lastEditScript = """
             }
           }
         }
-    } else if(editor.varedit) {
+    } else if(editor.config.varedit) {
       document.addEventListener('click', onClickGlobal, false);
       document.addEventListener('mousedown', onMouseDownGlobal, false);
     }
@@ -5814,8 +5812,8 @@ lastEditScript = """
       if(askConfirmation) {
         // For Safari
         return confirmation;
-      } else if(!apache_server) { // Send a close message in case this was a file opened from Desktop
-        var xmlhttp = new XHRequest();
+      } else if(!editor.config.is_apache_server) { // Send a close message in case this was a file opened from Desktop
+        var xmlhttp = new editor.config.XHRequest();
         xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search, false); // Async
         xmlhttp.setRequestHeader("close", "true");
@@ -5850,7 +5848,7 @@ lastEditScript = """
       }
     })();
     
-    if(typeof editor.canEditPage == "boolean" && editor.canEditPage) {
+    if(typeof editor.config.canEditPage == "boolean" && editor.config.canEditPage) {
       document.body.setAttribute("contenteditable", "true");
     }
 """ -- end of lastEditionScript
