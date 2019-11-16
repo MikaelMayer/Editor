@@ -1326,12 +1326,11 @@ main =
            serverOwned "initial script and style " initialScript ++ headChildren]
       ["body", bodyattrs, bodyChildren] ->
         let bodyChildren = if jsEnabled then bodyChildren else List.map removeJS bodyChildren in
-        ["body", bodyattrs, insertThereInstead identity True bodyChildren ++ luca ++
+        ["body", bodyattrs, insertThereInstead identity True bodyChildren ++
           if not varedit || varls then
             bodyChildren
           else 
              (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
-              if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
               serverOwned "edit prelude when not in edit mode" []) ++
              bodyChildren ++
              (serverOwned "synchronization script and placeholder" [
@@ -1355,62 +1354,15 @@ insertThereInstead onInsert atBeginning list =
 {---------------------------------------------------------------------------
  Definitions for the pipeline above
 ----------------------------------------------------------------------------}
-  
--- Box to switch to edit mode.
-switchEditBox toEdit = 
-  let prev = if toEdit then "false" else "true"
-      next = if toEdit then "true" else "false"
-      msg = if toEdit then "edit" else "x"
-      title = if toEdit then "Reload the page in edit mode" else "Reload the page without edit mode" in
-<div id="editbox" title=@title onclick="""
- if(location.search.indexOf("edit=@prev") == -1) {
-   location.search = location.search.startsWith("?") ? location.search + "&edit=@next" : "?edit=@next"
- } else {
-   location.search = location.search.replace(/edit=@prev/, "edit=@next");
- }
-""" class="editor-interface">
-<style>#editbox {
-  @(if toEdit then """position: fixed;
-  margin-top: 2px;
-  margin-left: 2px;
-  background: white;
-  padding: 2px;
-  border-radius: 10px;
-  transform: scale(0.6);
-  """ else """position: absolute;
-  color: white;
-  background: black;
-  font-family: 'Helvetica', 'Arial', sans-serif;
-  font-size: 2em;
-  font-weight: bold;
-  text-align: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 5px;
-  transform: translate(-0.7em, -0.7em) scale(0.3);
-  """
- )z-index: 20000;
-  opacity: 0.5;
-  cursor: pointer;
-}
-#editbox:hover {
-  opacity: 1;
-}
-</style>@msg
-</div>
-
-openEditBox = switchEditBox True
-closeEditBox = switchEditBox False
 
 boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false")
 
 -- Everything inside the modify menu is generated and is not visible to Editor
 editionmenu thesource = [
 <div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
-<div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>,
-if iscloseable then <span class="editor-interface" dummy=""></span> else closeEditBox]
+<div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>]
 
-initialScript = serverOwned "initial script" [
+initialScript = serverOwned "initial script" <| luca ++ [
 <script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js" list-ghost-attributes="gapi_processed"></script>,
 <script class="editor-interface">
 
@@ -1745,6 +1697,69 @@ function remove(node, options) {
   node.remove();
 }
 editor.remove = remove;
+
+var onMobile = () => window.matchMedia("(max-width: 800px)").matches;
+var touchScreen = () => window.matchMedia("(pointer: coarse)").matches;
+var buttonHeight = () => onMobile() ? 48 : 30;
+var buttonWidth  = () => onMobile() ? 48 : 40;
+
+function switchEditBox(toEdit) {
+  let prev = toEdit ? "=false" : "(=true|=?$|=?(?=&))",
+      next = toEdit ? ""  : "=false",
+      icon = toEdit ? svgFromPath("M 30.85,10.65 19.56,21.95 19.56,21.95 16.96,19.34 28.25,8.05 30.85,10.65 30.85,10.65 Z M 31.56,9.94 33.29,8.21 C 33.68,7.82 33.67,7.19 33.28,6.8 L 32.1,5.62 C 31.71,5.23 31.08,5.22 30.68,5.62 L 28.96,7.34 31.56,9.94 31.56,9.94 Z M 16.31,20.11 15.67,23.22 18.81,22.61 16.31,20.11 16.31,20.11 16.31,20.11 Z M 26.41,16.5 26.41,26.5 C 26.41,27.61 25.51,28.5 24.41,28.5 L 9.4,28.5 C 8.3,28.5 7.41,27.6 7.41,26.49 L 7.41,3.51 C 7.41,2.4 8.31,1.5 9.41,1.5 L 19.41,1.5 19.41,7.5 C 19.41,8.61 20.3,9.5 21.41,9.5 L 25.41,9.5 29.99,4.92 C 30.78,4.13 32.04,4.13 32.82,4.91 L 34,6.09 C 34.77,6.87 34.77,8.14 33.99,8.92 L 26.41,16.5 26.41,16.5 Z M 20.41,1.5 20.41,7.5 C 20.41,8.05 20.86,8.5 21.4,8.5 L 26.41,8.5 20.41,1.5 20.41,1.5 Z", true, 40, 40)  : "x",
+     title = toEdit ? "Reload the page in edit mode" : "Reload the page without edit mode";
+  return el("div#editbox.editor-interface", {title: title}, [
+    el("style.editor-interface", {}, `
+    #editbox {
+      ${toEdit ?
+     `position: fixed;
+      ${onMobile() ? "bottom" : "top"}: 0px;
+      right: 0px;
+      margin-${onMobile() ? "bottom" : "top"}: 25px;
+      margin-right: 25px;
+      border-radius: 60px;
+      background: var(--context-button-color);
+      ` :
+     `display: none`
+     }z-index: 20000;
+      opacity: 1;
+      cursor: pointer;
+    }
+    #editbox svg.context-menu-icon.fill>path {
+      fill: #ffffff;
+      fill-rule: evenodd;
+      stroke: #FFFFFF;
+      stroke-width: 0px;
+      stroke-linecap: none;
+      -linejoin: miter;
+      stroke-opacity: 0;
+    }
+    #editbox:hover {
+      background: var(--context-button-color-hover)
+    }`),
+    el("div.editor-interface", {}, [], { innerHTML: icon })
+  ], {
+    isghost: true,
+    onclick(event) {
+      if(location.search.match(new RegExp("edit" + prev)) == -1) {
+         location.search = location.search.startsWith("?") ? location.search + "&edit" + next : "?edit" + next
+      } else {
+         location.search = location.search.replace(new RegExp("edit" + prev, "g"), "edit" + next);
+      }
+    }
+    });
+}
+
+// After document loads so that the body exists.
+setTimeout(function insertEditBox() {
+  // not varedit && not iscloseable && not varproduction
+  if(!document.body) {
+    return setTimeout(insertEditBox, 100);
+  }
+  if(typeof canEditPage == "boolean" && !canEditPage) {
+    document.body.insertBefore(switchEditBox(true), document.body.childNodes[0]);
+  } 
+}, 100);
 </script>,
 <link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface">
 ]
@@ -1752,10 +1767,7 @@ editor.remove = remove;
 -- Script added to the end of the page
 lastEditScript = """
     console.log("lastEditScript running");
-    var onMobile = () => window.matchMedia("(max-width: 800px)").matches;
-    var buttonHeight = () => onMobile() ? 48 : 30;
-    var buttonWidth  = () => onMobile() ? 48 : 40;
-
+    
 	  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
 	  // Same for some attributes
 	  function saveGhostAttributes() {
