@@ -1326,11 +1326,7 @@ main =
            serverOwned "initial script and style " initialScript ++ headChildren]
       ["body", bodyattrs, bodyChildren] ->
         let bodyChildren = if jsEnabled then bodyChildren else List.map removeJS bodyChildren in
-        ["body",
-           (if canEditPage then
-             [["contenteditable", "true"]] |> serverOwned "contenteditable attribute of the body due to edit=true" 
-            else freeze []) ++
-           bodyattrs, insertThereInstead identity True bodyChildren ++ luca ++
+        ["body", bodyattrs, insertThereInstead identity True bodyChildren ++ luca ++
           if not varedit || varls then
             bodyChildren
           else 
@@ -1761,9 +1757,6 @@ editor.remove = remove;
 -- Script added to the end of the page
 lastEditScript = """
     console.log("lastEditScript running");
-    if(typeof canEditPage == "boolean" && canEditPage) {
-      document.body.setAttribute("contenteditable", "true");
-    }
     var onMobile = () => window.matchMedia("(max-width: 800px)").matches;
     var buttonHeight = () => onMobile() ? 48 : 30;
     var buttonWidth  = () => onMobile() ? 48 : 40;
@@ -5867,6 +5860,10 @@ lastEditScript = """
         }
       }
     })();
+    
+    if(typeof canEditPage == "boolean" && canEditPage) {
+      document.body.setAttribute("contenteditable", "true");
+    }
 """--end of lastEditionScript
 
 googlesigninbutton = serverOwned "the google sign-in button" [
