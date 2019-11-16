@@ -1545,10 +1545,10 @@ function isIgnoredAttributeKeyFromNode(n) {
   }
   return ((a, n) => (name, oldValue) => {
     let result = a.indexOf(name) != -1;
-    if(result) { // let's store the previous attribute's value
+    if(result) { // let's store the previous attribute's value, even if it did not exist.
       n.__editor__ = n.__editor__ || {};
       n.__editor__.ignoredAttrMap = n.__editor__.ignoredAttrMap || {};
-      if(!(name in n.__editor__.ignoredAttrMap) && typeof oldValue !== "undefined") {
+      if(!(name in n.__editor__.ignoredAttrMap)) {
         n.__editor__.ignoredAttrMap[name] = oldValue;
       }
     }
@@ -1557,10 +1557,10 @@ function isIgnoredAttributeKeyFromNode(n) {
 }
 function ignoredAttributeValue(n, name) {
   let result = n.__editor__.ignoredAttrMap[name];
-  if(typeof result === "undefined") {
-    return n.getAttribute(name);
+  if(name in n.__editor__.ignoredAttrMap) {
+    return result;
   }
-  return result;
+  return n.getAttribute(name);
 }
 
 // Array of predicates that, if they return true on a node, Editor will mark this node as ghost.
@@ -1868,6 +1868,7 @@ lastEditScript = """
           var ignored = isIgnoredAttributeKey(key);
           if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key) || ignored) {
             var value = ignored ? ignoredAttributeValue(n, key) : n.attributes[i].value;
+            if(typeof value == "undefined") continue;
             if(key == "style") {
               value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
             }
