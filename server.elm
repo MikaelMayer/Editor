@@ -1334,7 +1334,6 @@ main =
               if not varedit && not iscloseable && not varproduction then serverOwned "open edit box" [openEditBox] else
               serverOwned "edit prelude when not in edit mode" []) ++
              bodyChildren ++
-             Update.sizeFreeze [["div", [["id", "editor-files-to-overwrite"], ["class", "editor-interface"]], insertThereInstead insertedElementsToWriteFile True fileOperations]] ++
              (serverOwned "synchronization script and placeholder" [
                <script  id="thaditor-lastscript" class="editor-interface">@lastEditScript</script>] ++
               insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
@@ -1343,12 +1342,6 @@ main =
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
   --|> Update.debug "main"
-
-insertedElementsToWriteFile = List.map <| case of
-   [_, [["class", "file-overwrite"], ["name", name], ["oldcontent", oldcontent], ["newcontent", newcontent]], _] ->
-     (name, Write oldcontent newcontent (Update.diffs oldcontent newcontent |> Maybe.withDefault (VStringDiffs [])))
-   thisInstead ->
-     error """In #editor-files-to-overwrite, you should put attributes class="file-overwrite" name="[full path name]" oldcontent="[old file content]" newcontent="[new file content]"> in this order (even call the funciton addFileToSave(name, oldContent, newContent) fo simplicity. Got @thisInstead"""
 
 -- Returns an empty list. If elements are inserted, inserts them in the given list instead.
 insertThereInstead onInsert atBeginning list =
@@ -1763,24 +1756,6 @@ lastEditScript = """
     var buttonHeight = () => onMobile() ? 48 : 30;
     var buttonWidth  = () => onMobile() ? 48 : 40;
 
-
-	  // Before saving, call this function to that it eventually triggers a save action to any file.
-	  function addFileToSave(path, oldcontent, newcontent) {
-	    var placement = document.querySelector("#editor-files-to-overwrite");
-	    if(!placement) {
-	      console.log("could not save file " + name + "because #editor-files-to-overwrite not found.");
-	      return;
-	    }
-      let existingDiv = placement.querySelector("div[name='"+path+"']");
-      if(existingDiv) {
-        existingDiv.setAttribute("newcontent", newcontent);
-      } else {
-	      placement.append(el("div", {class: "file-overwrite", name:path, oldcontent: oldcontent, newcontent: newcontent}));
-      }
-	  }
-    
-
-  
 	  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
 	  // Same for some attributes
 	  function saveGhostAttributes() {
