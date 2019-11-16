@@ -286,8 +286,9 @@ LUCA stands for "Last Universal Common Ancestor"
 
 luca = 
   [<script id="thaditor-vars" class="editor-interface">
-     var EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
-     var path = @(jsCode.stringOf path);
+     editor = typeof editor == "undefined" ? {} : editor;
+     editor.EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
+     editor.path = @(jsCode.stringOf path);
      var varedit = @(if varedit then "true" else "false");
      var varls = @(if varls then "true" else "false");
      var askQuestions = @(case listDict.get "question" vars of
@@ -708,13 +709,13 @@ evaluatedPage =
           function loadAceEditor() {
             console.log("executing script");
             var aceeditor = ace.edit("aceeditor");
-            var mode = path.match(/\.js$/) ? "ace/mode/javascript" :
-                       path.match(/\.html?$/) ? "ace/mode/html" :
-                       path.match(/\.css$/) ? "ace/mode/css" :
-                       path.match(/\.json$/) ? "ace/mode/json" :
-                       path.match(/\.leo$/) ? "ace/mode/elm" :
-                       path.match(/\.elm$/) ? "ace/mode/elm" :
-                       path.match(/\.php$/) ? "ace/mode/php" :
+            var mode = editor.path.match(/\.js$/) ? "ace/mode/javascript" :
+                       editor.path.match(/\.html?$/) ? "ace/mode/html" :
+                       editor.path.match(/\.css$/) ? "ace/mode/css" :
+                       editor.path.match(/\.json$/) ? "ace/mode/json" :
+                       editor.path.match(/\.leo$/) ? "ace/mode/elm" :
+                       editor.path.match(/\.elm$/) ? "ace/mode/elm" :
+                       editor.path.match(/\.php$/) ? "ace/mode/php" :
                        "ace/mode/plain_text";
             aceeditor.session.setMode({path: mode, v: Date.now()});
             aceeditor.setOptions({
@@ -983,7 +984,7 @@ evaluatedPage =
       <form id="fileListing"></form>
       <script>
       var fullListDir = (path) => JSON.parse(doReadServer("fullListDir", path));
-      var thisListDir = fullListDir(path);
+      var thisListDir = fullListDir(editor.path);
       var folders = thisListDir.filter((i) => i[1] == true);
       var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
       var warnSelectFile = reason => window.alert (reason + ", please select some and click this button again");
@@ -1032,7 +1033,7 @@ evaluatedPage =
           const doit = window.confirm("Are you sure you want to overwrite an existing file with the name " + newname + "?");
           if (!doit) return;
         }
-        var x = doWriteServer("rename", path + sel.id, path + newname);
+        var x = doWriteServer("rename", editor.path + sel.id, editor.path + newname);
         console.log ("renamed", sel.id, newname);
         goodReload();
       }
@@ -1056,10 +1057,10 @@ evaluatedPage =
             var isfolder = folders.filter((j) => j[0] == selected[i].id); //optomizable
             console.log (isfolder);
             if (isfolder.length != 0) {
-              doWriteServer("rmdir", path + selected[i].id); //does this work on non-empty stuff? idts....
+              doWriteServer("rmdir", editor.path + selected[i].id); //does this work on non-empty stuff? idts....
               continue;
             }
-            doWriteServer("unlink", path + selected[i].id);
+            doWriteServer("unlink", editor.path + selected[i].id);
           }
           goodReload();
           return;
@@ -1080,14 +1081,14 @@ evaluatedPage =
           nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
         }
         var newname = window.prompt("Name for duplicate: ", nn);
-        var contents = doReadServer("read", path + sel.id);
+        var contents = doReadServer("read", editor.path + sel.id);
         if (contents[0] != "1") {
           window.alert ("Couldn't read the file for some reason. aborting.");
           console.error ("couldn't read the file for some reason. aborting.");
           return;
         }
         contents = contents.substring(1, contents.length);
-        var resp = doWriteServer("create", path + newname, contents);
+        var resp = doWriteServer("create", editor.path + newname, contents);
         goodReload();
       }
       function createFolder() {
@@ -1134,9 +1135,9 @@ evaluatedPage =
           return;
         }
         console.log ("move approved");
-        var oldloc = (path + btn.id);
+        var oldloc = (editor.path + btn.id);
         var newloc = newpath == "/" ? btn.id : (newpath + btn.id);
-        console.log ("renamimg\n%s\n%s", (path + btn.id), (newpath + btn.id));
+        console.log ("renamimg\n%s\n%s", (editor.path + btn.id), (newpath + btn.id));
         doWriteServer("rename", oldloc, newloc); 
         console.log ("rename successful");
         goodReload();
@@ -1163,7 +1164,7 @@ evaluatedPage =
         initializeProgress(files.length);
         var didUp = false;
         ([...files]).forEach((fl) => {
-          editor.uploadFile(path + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
+          editor.uploadFile(editor.path + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
           didUp = true;
           
         });
@@ -1235,7 +1236,7 @@ evaluatedPage =
               ]);
         }
         //el(tag, attributes, children, properties)
-        if (path != "") {
+        if (editor.path != "") {
           var link = "../" + "?ls";
           form.append(otherItemDisplay(link, ".."));
         }
@@ -1265,7 +1266,7 @@ evaluatedPage =
       loadFileList();
       var goodReload = () => {
         document.getElementById("fileListing").innerHTML = "";
-        thisListDir = fullListDir (path);
+        thisListDir = fullListDir (editor.path);
         loadFileList();
       }
     window.addEventListener('drop', handleDrop, false);
@@ -1758,6 +1759,8 @@ setTimeout(function insertEditBox() {
   } 
 }, 100);
 </script>,
+-- The following is replaced by an inline <style> for when Editor runs as a file opener.
+-- And the path is modified when Editor runs as Thaditor.
 <link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface">
 ]
 
@@ -2862,12 +2865,12 @@ lastEditScript = """
       
     }
     if (isLive == undefined) {
-      var isLive = () => !(path.includes("Thaditor/versions/"));
+      var isLive = () => !(editor.path.includes("Thaditor/versions/"));
     }
 
     var verz = "Live";
     if (!isLive()) {
-      verz = path.slice(path.lastIndexOf("versions/")+9, path.lastIndexOf("/"));
+      verz = editor.path.slice(editor.path.lastIndexOf("versions/")+9, editor.path.lastIndexOf("/"));
     }
     //hover mode functions for linkSelectMode
     function escapeLinkMode() {
@@ -3051,7 +3054,7 @@ lastEditScript = """
       textareaPropertiesSaved: ifAlreadyRunning ? editor_model.textareaPropertiesSaved : [],
       askQuestions: ifAlreadyRunning ? editor_model.askQuestions : askQuestions,
       autosave: ifAlreadyRunning ? editor_model.autosave : autosave,
-      path: path,
+      path: editor.path,
       version : verz,
       interfaces: ifAlreadyRunning ? editor_model.interfaces : [],
       disambiguationMenu: ifAlreadyRunning ? editor_model.disambiguationMenu : undefined
@@ -3325,13 +3328,13 @@ lastEditScript = """
       let add_btn_to_div = (div, innerHTML, attributes, properties) => {
         div.append(createButton(innerHTML, attributes, properties));
       };
-      if(!(EDITOR_VERSION & 1)) {
+      if(!(editor.EDITOR_VERSION & 1)) {
         if(typeof simple_editor_interface !== "undefined") {
           editor_model.interfaces.push(simple_editor_interface);
         }
         return;
       }
-      if(typeof simple_editor_interface !== "undefined" && EDITOR_VERSION & 16) {
+      if(typeof simple_editor_interface !== "undefined" && editor.EDITOR_VERSION & 16) {
         editor_model.interfaces.push(simple_editor_interface);
       }
       editor_model.interfaces.push({
@@ -5411,7 +5414,7 @@ lastEditScript = """
               }
             }
         });
-        if(EDITOR_VERSION & 1) {
+        if(editor.EDITOR_VERSION & 1) {
           addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
             {"class": "inert" + (canUndo() ? "" : " disabled"), title: "Undo most recent change",
               id: "undobutton"
@@ -5533,7 +5536,7 @@ lastEditScript = """
           addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
             {title: "Go to " + model.link, "class": "inert"});
         }
-        if(!model.selectionRange && clickedElem && clickedElem.parentNode && EDITOR_VERSION & 1) {
+        if(!model.selectionRange && clickedElem && clickedElem.parentNode && editor.EDITOR_VERSION & 1) {
           addContextMenuButton(parentUpSVG,
           {title: "Select parent", "class":"inert"},
             {onclick: (c => event => {
@@ -5545,7 +5548,7 @@ lastEditScript = """
         
         var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
         var isDisplayInline = computedStyle && (computedStyle.display.startsWith("inline") || computedStyle.display === "table-cell");
-        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && EDITOR_VERSION & 1) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && editor.EDITOR_VERSION & 1) {
           addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
           {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
           {onclick: (c => event => {
@@ -5561,7 +5564,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && EDITOR_VERSION & 1) {
+        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && editor.EDITOR_VERSION & 1) {
           addContextMenuButton(isDisplayInline ? arrowRight : arrowDown,
           {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
           {onclick: (c => (event) => {
@@ -5577,7 +5580,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && EDITOR_VERSION & 1) {
+        if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && editor.EDITOR_VERSION & 1) {
           addContextMenuButton(cloneSVG,
             {title: "Clone selected element"},
             {onclick: ((c, contextMenu) => event => {
@@ -5599,7 +5602,7 @@ lastEditScript = """
               })(clickedElem)
             });
         }
-        if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer) && EDITOR_VERSION & 1) {
+        if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer) && editor.EDITOR_VERSION & 1) {
           addContextMenuButton(plusSVG,
               {title: "Wrap selection"},
               {onclick: (s => event => {
@@ -5651,7 +5654,7 @@ lastEditScript = """
               })(model.selectionRange)}
               )
         }
-        if(!model.selectionRange && EDITOR_VERSION & 1) {
+        if(!model.selectionRange && editor.EDITOR_VERSION & 1) {
           addContextMenuButton(plusSVG,
               {title: "Insert element", contenteditable: false},
               {onclick: event => {
@@ -5850,7 +5853,7 @@ lastEditScript = """
     if(typeof canEditPage == "boolean" && canEditPage) {
       document.body.setAttribute("contenteditable", "true");
     }
-"""--end of lastEditionScript
+""" -- end of lastEditionScript
 
 googlesigninbutton = serverOwned "the google sign-in button" [
 <style>
