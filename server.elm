@@ -289,16 +289,16 @@ luca =
      editor = typeof editor == "undefined" ? {} : editor;
      editor.EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
      editor.path = @(jsCode.stringOf path);
-     var varedit = @(if varedit then "true" else "false");
-     var varls = @(if varls then "true" else "false");
-     var askQuestions = @(case listDict.get "question" vars of
+     editor.varedit = @(if varedit then "true" else "false");
+     editor.varls = @(if varls then "true" else "false");
+     editor.askQuestions = @(case listDict.get "question" vars of
                        Just questionattr -> "true"
                        _ -> if boolVar "question" True then "true" else 'false');
-     var autosave = @(case listDict.get "autosave" vars of
+     editor.autosave = @(case listDict.get "autosave" vars of
                       Just autosaveattr -> "true"
                       _ -> if boolVar "autosave" True then "true" else "false");
-     var canEditPage = @(if canEditPage then "true" else "false");
-     var editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
+     editor.canEditPage = @(if canEditPage then "true" else "false");
+     editor.editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
    </script>,
    <script id="thaditor-luca" class="editor-interface">
     // Overwrite the entire document (head and body)
@@ -1754,7 +1754,7 @@ setTimeout(function insertEditBox() {
   if(!document.body) {
     return setTimeout(insertEditBox, 100);
   }
-  if(typeof canEditPage == "boolean" && !canEditPage && !varls) {
+  if(typeof editor.canEditPage == "boolean" && !editor.canEditPage && !editor.varls) {
     document.body.insertBefore(switchEditBox(true), document.body.childNodes[0]);
   } 
 }, 100);
@@ -2648,7 +2648,7 @@ lastEditScript = """
       evt.preventDefault();
       evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
     }
-    if(typeof varedit == "boolean" && varedit || typeof varedit != "boolean") {
+    if(typeof editor.varedit == "boolean" && editor.varedit || typeof editor.varedit != "boolean") {
       var dropZone = document.body;
       dropZone.addEventListener('dragover', handleDragOver, false);
       dropZone.addEventListener('drop', handleFileSelect, false);
@@ -3052,8 +3052,8 @@ lastEditScript = """
       idNum: ifAlreadyRunning ? editor_model.idNum : 1,
       //new attribute to keep menu state after reload
       textareaPropertiesSaved: ifAlreadyRunning ? editor_model.textareaPropertiesSaved : [],
-      askQuestions: ifAlreadyRunning ? editor_model.askQuestions : askQuestions,
-      autosave: ifAlreadyRunning ? editor_model.autosave : autosave,
+      askQuestions: ifAlreadyRunning ? editor_model.askQuestions : editor.askQuestions,
+      autosave: ifAlreadyRunning ? editor_model.autosave : editor.autosave,
       path: editor.path,
       version : verz,
       interfaces: ifAlreadyRunning ? editor_model.interfaces : [],
@@ -5761,7 +5761,7 @@ lastEditScript = """
       document.addEventListener("backbutton", editor_close, false);
     }, false);
     
-    if(editIsFalseButDefaultIsTrue) {
+    if(editor.editIsFalseButDefaultIsTrue) {
       // Special case when ?edit=false but the default behavior is edit=true if nothing is set.
       document.onclick = function (e) {
           e = e ||  window.event;
@@ -5778,7 +5778,7 @@ lastEditScript = """
             }
           }
         }
-    } else if(varedit) {
+    } else if(editor.varedit) {
       document.addEventListener('click', onClickGlobal, false);
       document.addEventListener('mousedown', onMouseDownGlobal, false);
     }
@@ -5850,7 +5850,7 @@ lastEditScript = """
       }
     })();
     
-    if(typeof canEditPage == "boolean" && canEditPage) {
+    if(typeof editor.canEditPage == "boolean" && editor.canEditPage) {
       document.body.setAttribute("contenteditable", "true");
     }
 """ -- end of lastEditionScript
