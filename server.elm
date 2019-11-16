@@ -1335,7 +1335,9 @@ main =
               serverOwned "edit prelude when not in edit mode" []) ++
              bodyChildren ++
              Update.sizeFreeze [["div", [["id", "editor-files-to-overwrite"], ["class", "editor-interface"]], insertThereInstead insertedElementsToWriteFile True fileOperations]] ++
-             (serverOwned "synchronization script and placeholder" [<div class="bottom-placeholder editor-interface"> </div>, <script  id="thaditor-lastscript" class="editor-interface">@lastEditScript</script>] ++ insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
+             (serverOwned "synchronization script and placeholder" [
+               <script  id="thaditor-lastscript" class="editor-interface">@lastEditScript</script>] ++
+              insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
              )]
       x -> x -- anything else?
     )]
