@@ -654,7 +654,7 @@ evaluatedPage =
       <form id="fileListing"></form>
       <script>
       el = editor.el;
-      var fullListDir = (path) => JSON.parse(editor.doReadServer("fullListDir", path));
+      var fullListDir = (path) => JSON.parse(editor._internals.doReadServer("fullListDir", path));
       var thisListDir = fullListDir(editor.config.path);
       var folders = thisListDir.filter((i) => i[1] == true);
       var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
@@ -704,7 +704,7 @@ evaluatedPage =
           const doit = window.confirm("Are you sure you want to overwrite an existing file with the name " + newname + "?");
           if (!doit) return;
         }
-        var x = editor.doWriteServer("rename", editor.config.path + sel.id, editor.config.path + newname);
+        var x = editor._internals.doWriteServer("rename", editor.config.path + sel.id, editor.config.path + newname);
         console.log ("renamed", sel.id, newname);
         goodReload();
       }
@@ -728,10 +728,10 @@ evaluatedPage =
             var isfolder = folders.filter((j) => j[0] == selected[i].id); //optomizable
             console.log (isfolder);
             if (isfolder.length != 0) {
-              editor.doWriteServer("rmdir", editor.config.path + selected[i].id); //does this work on non-empty stuff? idts....
+              editor._internals.doWriteServer("rmdir", editor.config.path + selected[i].id); //does this work on non-empty stuff? idts....
               continue;
             }
-            editor.doWriteServer("unlink", editor.config.path + selected[i].id);
+            editor._internals.doWriteServer("unlink", editor.config.path + selected[i].id);
           }
           goodReload();
           return;
@@ -752,14 +752,14 @@ evaluatedPage =
           nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
         }
         var newname = window.prompt("Name for duplicate: ", nn);
-        var contents = editor.doReadServer("read", editor.config.path + sel.id);
+        var contents = editor._internals.doReadServer("read", editor.config.path + sel.id);
         if (contents[0] != "1") {
           window.alert ("Couldn't read the file for some reason. aborting.");
           console.error ("couldn't read the file for some reason. aborting.");
           return;
         }
         contents = contents.substring(1, contents.length);
-        var resp = editor.doWriteServer("create", editor.config.path + newname, contents);
+        var resp = editor._internals.doWriteServer("create", editor.config.path + newname, contents);
         goodReload();
       }
       function createFolder() {
@@ -780,7 +780,7 @@ evaluatedPage =
           const conf = window.confirm ("Are you sure you want to overwrite a folder with the name " + newname + " with an empty file? This would delete the folder.");
           if (!conf) return;
         }
-        editor.doWriteServer("mkdir", newname, "");
+        editor._internals.doWriteServer("mkdir", newname, "");
         goodReload();
       }
       function moveFs() {
@@ -809,7 +809,7 @@ evaluatedPage =
         var oldloc = (editor.config.path + btn.id);
         var newloc = newpath == "/" ? btn.id : (newpath + btn.id);
         console.log ("renamimg\n%s\n%s", (editor.config.path + btn.id), (newpath + btn.id));
-        editor.doWriteServer("rename", oldloc, newloc); 
+        editor._internals.doWriteServer("rename", oldloc, newloc); 
         console.log ("rename successful");
         goodReload();
       }
@@ -823,9 +823,21 @@ evaluatedPage =
           }
         }
       }
+      
+      // Returns a progress bar or reuses the existing one.
+      function initializeProgress() {
+        var progressBar = document.getElementById("progress-bar");
+        if (!progressBar) {
+          progressBar = el("progress", {id:"progress-bar", max:"100", value:"0", visible:false}, [], {isghost: true});
+        }
+        progressBar.value = 0;
+        progressBar.visible = true;
+        return progressBar;
+      }
+
       var handleFiles = (files) => {
         var pgbr = document.getElementById("forprog");
-        var progbar = initializeProgress(files.length);
+        var progbar = initializeProgress();
         pgbr.append(progbar);
         var uploadProgress = {};
         var didUp = false;
@@ -833,10 +845,15 @@ evaluatedPage =
           var fileName = editor.config.path + fl.name;
           uploadProgress[fileName] = 0;
         });
-        var callbackUpload = function (fileName, percent) {
+        var callbackUpload = function (fileName, file, percent) {
           uploadProgress[fileName] = typeof percent == "number" ? percent : 100;
-          let total = uploadProgress.reduce((tot, curr) => tot + curr, 0) / uploadProgress.length;
-          progbar.value = total;
+          let total = 0;
+          let count = 0;
+          for(var i in uploadProgress) {
+            total += uploadProgress[i]
+            count++;
+          }
+          progbar.value = total / count;
           if(total == 100) {
             progbar.visible = false;
             if (didUp) {
@@ -913,7 +930,7 @@ evaluatedPage =
                     editor.config.path = newURL;
                     goodReload();
                   } else {
-                    editor.doReloadPage(link);
+                    editor._internals.doReloadPage(link);
                   }
                 }})])]);
         }
@@ -1075,16 +1092,20 @@ initialScript = serverOwned "initial script" <| [
      // Requests to engine compatible with the Node.JS server. If Apache server, ProxiedServerRequest.
      editor.config.XHRequest = typeof ProxiedServerRequest != "undefined" ? ProxiedServerRequest : XMLHttpRequest;
    </script>,
+   -- TODO: Externalize this script.
+   -- TODO: Put as much as possible of the interface in a new script.
    <script id="thaditor-luca" class="editor-interface">
     // Overwrite the entire document (head and body)
     // I'm not sure there is a better way.
   (function(editor) {
+    var _internals = {};
+    editor._internals = _internals;
     function writeDocument(NC) {
       document.open();
       document.write(NC);
       document.close();
     }
-    editor.writeDocument = writeDocument;
+    _internals.writeDocument = writeDocument;
 
     // Asynchronous if onOk is defined and readServer is defined. and asynchronous and returns result otherwise.
     function doReadServer(action, name, onOk, onErr) {
@@ -1105,7 +1126,7 @@ initialScript = serverOwned "initial script" <| [
         }
       }
     }
-    editor.doReadServer = doReadServer;
+    _internals.doReadServer = doReadServer;
 
     // Returns a promise after performing a direct GET action on the server.
     function getServer(action, name) {
@@ -1135,7 +1156,7 @@ initialScript = serverOwned "initial script" <| [
         }
       }
     }
-    editor.doWriteServer = doWriteServer;
+    _internals.doWriteServer = doWriteServer;
 
     // Returns a promise after performing a direct POST action on the server.
     function postServer(action, name, content) {
@@ -1167,26 +1188,19 @@ initialScript = serverOwned "initial script" <| [
       console.log("setting url to ", url);
       xmlhttp.send("{\"a\":1}");
     }
-    editor.doReloadPage = doReloadPage;
+    editor._internals.doReloadPage = doReloadPage;
 
-    // Returns a progress bar and an array for each file.
-    function initializeProgress(numFiles) {
-      var progressBar = document.getElementById("progress-bar");
-      if (!progressBar) {
-        progressBar = el("progress", {id:"progress-bar", max:"100", value:"0", visible:false}, [], {isghost: true});
-      }
-      progressBar.value = 0;
-      progressBar.visible = true;
-      return progressBar;
-    }
-
-    // Editor's API should be stored in the variable editor.
-
-    editor.uploadFile = function(targetPathName, file, onOk, onError, updateProgFunction) {
+    // Uploads a file
+    // targetPathName: The path where to upload the file
+    // file: The file to upload (typically from a drop event or a input[type=file] change)
+    // onOk: Callback when upload is complete, with targetPathName and file
+    // onErr: callback if upload fails, with targetPathName and file
+    // onProgress: callback every progress made, with targetPathName, file and percentage
+    function uploadFile(targetPathName, file, onOk, onError, onProgress) {
       var xhr = new XMLHttpRequest();
       xhr.onprogress = (e) => {
-        if(updateProgFunction) {
-          updateProgFunction(targetPathName, e && (e.loaded * 100.0 / e.total) || 100)
+        if(onProgress) {
+          onProgress(targetPathName, file, e && (e.loaded * 100.0 / e.total) || 100)
         }
       }
       xhr.onreadystatechange = ((xhr, file) => () => {
@@ -1207,7 +1221,64 @@ initialScript = serverOwned "initial script" <| [
       }
       xhr.send(file);
     }
-    // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
+    editor.uploadFile = uploadFile;
+    
+    function pasteHtmlAtCaret(html) {
+      var sel, range;
+      if (window.getSelection) {
+          // IE9 and non-IE
+          sel = window.getSelection();
+          // do not paste html into modify menu
+          if (sel.anchorNode.offsetParent && sel.anchorNode.offsetParent.id === "modify-menu") {
+            return;
+          }
+          if (sel.getRangeAt && sel.rangeCount) {
+              range = sel.getRangeAt(0);
+              range.deleteContents();
+              // Range.createContextualFragment() would be useful here but is
+              // only relatively recently standardized and is not supported in
+              // some browsers (IE9, for one)
+              var div = document.createElement("div");
+              div.innerHTML = html;
+              var frag = document.createDocumentFragment(), node, lastNode;
+              while ( (node = div.firstChild) ) {
+                  lastNode = frag.appendChild(node);
+              }
+              range.insertNode(frag);
+              // Preserve the selection
+              if (lastNode) {
+                  range = range.cloneRange();
+                  range.setStartAfter(lastNode);
+                  range.collapse(true);
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+              }
+          }
+      } else if (document.selection && document.selection.type != "Control") {
+          // IE < 9
+          document.selection.createRange().pasteHTML(html);
+      }
+    }
+    editor.pasteHtmlAtCaret = pasteHtmlAtCaret;
+    
+    // Given some files, uploads them and place them at cursor. Images are inserted as <img>, whereas other files just have the <a href=>)
+    function uploadFilesAtCursor(files) { 
+      // files is a FileList of File objects. List some properties.
+      for (var i = 0, file; file = files[i]; i++) {
+        var targetPathName =  editor.getStorageFolder(file) + file.name;
+        // if(file.size < 30000000)
+        editor.uploadFile(targetPathName, file, (targetPathName, file) => {
+          if(file.type.indexOf("image") == 0) {
+            editor.pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${file.name}">`);
+          } else {
+            editor.pasteHtmlAtCaret(`<a href="${targetPathName}">${targetPathName}</a>`); 
+          }
+        });
+      }
+    }
+    editor.uploadFilesAtCursor = uploadFilesAtCursor;
+    
+    // Returns the storage folder that will prefix a file name on upload (initial slash excluded, final slash included)
     editor.getStorageFolder = function(file) {
       var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
       for(let s of storageOptions) {
@@ -1661,11 +1732,41 @@ initialScript = serverOwned "initial script" <| [
   window.onpopstate = function(e){
       console.log("onpopstate", e);
       if(e.state && e.state.localURL) {
-        editor.doReloadPage(location, true);
+        editor._internals.doReloadPage(location, true);
       } else {
-        editor.doReloadPage(location.pathname + location.search, true);
+        editor._internals.doReloadPage(location.pathname + location.search, true);
       }
   };
+  
+  // Events handler for copying and pasting, so that we have the least surprise.
+  // TODO: When the document is loaded, inject the interface?
+  document.addEventListener("DOMContentLoaded", function(event) { 
+    document.body.addEventListener("copy", function(event) {
+      const selection = document.getSelection();
+      if(selection.rangeCount) {
+        let range = selection.getRangeAt(0); // Let's put the correct stuff in the clipboardData.
+        let contents = range.cloneContents();
+        let newHtmlData = "";
+        for(let i = 0; i < contents.childNodes.length; i++) {
+          let n = contents.childNodes[i];
+          newHtmlData += n.nodeType == 1 ? n.outerHTML : el("div", {}, n).innerHTML;
+        }
+        event.clipboardData.setData('text/html', newHtmlData);
+        event.preventDefault();
+      }
+    });
+    document.body.addEventListener("paste", function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("paste", e);
+      if(e.clipboardData.types.indexOf("text/html") >= 0) {
+        let content = e.clipboardData.getData("text/html").replace(/^\s*<html>\s*<body>\s*(<!--[^\-]*-->\s*)?|(\s*<!--[^\-]*-->)?\s*<\/body>\s*<\/html>\s*$/g, "");
+        console.log("pasted content", content);
+        pasteHtmlAtCaret(content);
+        return true;
+      }
+    }, {capture: true});
+  })
   
   el = editor.el;
 
@@ -1731,7 +1832,7 @@ var buttonWidth  = () => onMobile() ? 48 : 40;
 function switchEditBox(toEdit) {
   let prev = toEdit ? "=false" : "(=true|=?$|=?(?=&))",
       next = toEdit ? ""  : "=false",
-      icon = toEdit ? svgFromPath("M 30.85,10.65 19.56,21.95 19.56,21.95 16.96,19.34 28.25,8.05 30.85,10.65 30.85,10.65 Z M 31.56,9.94 33.29,8.21 C 33.68,7.82 33.67,7.19 33.28,6.8 L 32.1,5.62 C 31.71,5.23 31.08,5.22 30.68,5.62 L 28.96,7.34 31.56,9.94 31.56,9.94 Z M 16.31,20.11 15.67,23.22 18.81,22.61 16.31,20.11 16.31,20.11 16.31,20.11 Z M 26.41,16.5 26.41,26.5 C 26.41,27.61 25.51,28.5 24.41,28.5 L 9.4,28.5 C 8.3,28.5 7.41,27.6 7.41,26.49 L 7.41,3.51 C 7.41,2.4 8.31,1.5 9.41,1.5 L 19.41,1.5 19.41,7.5 C 19.41,8.61 20.3,9.5 21.41,9.5 L 25.41,9.5 29.99,4.92 C 30.78,4.13 32.04,4.13 32.82,4.91 L 34,6.09 C 34.77,6.87 34.77,8.14 33.99,8.92 L 26.41,16.5 26.41,16.5 Z M 20.41,1.5 20.41,7.5 C 20.41,8.05 20.86,8.5 21.4,8.5 L 26.41,8.5 20.41,1.5 20.41,1.5 Z", true, 40, 40)  : "x",
+      icon = toEdit ? editor.svgFromPath("M 30.85,10.65 19.56,21.95 19.56,21.95 16.96,19.34 28.25,8.05 30.85,10.65 30.85,10.65 Z M 31.56,9.94 33.29,8.21 C 33.68,7.82 33.67,7.19 33.28,6.8 L 32.1,5.62 C 31.71,5.23 31.08,5.22 30.68,5.62 L 28.96,7.34 31.56,9.94 31.56,9.94 Z M 16.31,20.11 15.67,23.22 18.81,22.61 16.31,20.11 16.31,20.11 16.31,20.11 Z M 26.41,16.5 26.41,26.5 C 26.41,27.61 25.51,28.5 24.41,28.5 L 9.4,28.5 C 8.3,28.5 7.41,27.6 7.41,26.49 L 7.41,3.51 C 7.41,2.4 8.31,1.5 9.41,1.5 L 19.41,1.5 19.41,7.5 C 19.41,8.61 20.3,9.5 21.41,9.5 L 25.41,9.5 29.99,4.92 C 30.78,4.13 32.04,4.13 32.82,4.91 L 34,6.09 C 34.77,6.87 34.77,8.14 33.99,8.92 L 26.41,16.5 26.41,16.5 Z M 20.41,1.5 20.41,7.5 C 20.41,8.05 20.86,8.5 21.4,8.5 L 26.41,8.5 20.41,1.5 20.41,1.5 Z", true, 40, 40)  : "x",
      title = toEdit ? "Reload the page in edit mode" : "Reload the page without edit mode";
   return el("div#editbox.editor-interface", {title: title}, [
     el("style.editor-interface", {}, `
@@ -1928,7 +2029,7 @@ lastEditScript = """
       if(editor_model.clickedElem) {
         editor_model.clickedElem = editor.toTreasureMap(editor_model.clickedElem);
       }
-      editor.writeDocument(NC);
+      editor._internals.writeDocument(NC);
     }
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
@@ -2554,38 +2655,37 @@ lastEditScript = """
       if(saveButton) saveButton.classList.toggle("disabled", !editor_canSave() && !editor_model.disambiguationMenu);
     }
     
-    // When selecting some text, mouse up on document, the focus node is outside of the anchor node. We want to prevent this from happening
+    function getSel() {
+      var sel = window.getSelection();
+      if(!sel || !sel.rangeCount) return;
+      sel = sel.getRangeAt(0);
+      return sel;
+    }
+    
+    // When selecting some text, mouse up on document, the focus node can be outside of the anchor node. We want to prevent this from happening
+    // This is because triple click in Chrome selects the whitespace after the last word as well.
     function fixSelection() {
       var sel = window.getSelection();
       if(!sel || !sel.rangeCount) return;
       sel = sel.getRangeAt(0);
       if(sel.startContainer.nodeType !== 3) return;
       if(sel.endContainer.nodeType !== 1) return;
-      // We'll ensure that the end of selection is inside a text node.
-      if(sel.startContainer.parentElement === sel.endContainer.childNodes[sel.endOffset].previousElementSibling ||
-         sel.startContainer.parentElement.nextElementSibling === sel.endContainer && sel.endOffset === 0 ||
-         sel.startContainer.parentElement.nextElementSibling === sel.endContainer.parentElement && sel.endOffset === 0
-      ) {
-        // Triple click chrome bug.
-        var finalTextNode = sel.startContainer.parentElement;
-        while(finalTextNode && finalTextNode.nodeType !== 3) {
-          var candidateChild = finalTextNode.childNodes[finalTextNode.childNodes.length - 1];
-          while(candidateChild && candidateChild.textContent === "") {
-            candidateChild = candidateChild.previousSibling;
-          } // We select the last child that contains some text, until we reach the text node.
-          finalTextNode = candidateChild;
-        }
-        if(finalTextNode) { // finalTextNode.nodeType === 3
-          var range = document.createRange();
-          range.setStart(sel.startContainer, sel.startOffset);
-          range.setEnd(finalTextNode, finalTextNode.textContent.length);
-          clearTextSelection();
-          window.getSelection().addRange(range)        
-        }
+      // We'll ensure that the end of selection is inside a text node and that it does not goes ouside a boundary.
+      let tmp = sel.startContainer;
+      let finalTextNode = tmp.parentNode.childNodes[tmp.parentNode.childNodes.length - 1];
+      while(finalTextNode.nodeType != 3) {
+        finalTextNode = finalTextNode.previousSibling;
+      }
+      if(finalTextNode) { // finalTextNode.nodeType === 3
+        var range = document.createRange();
+        range.setStart(sel.startContainer, sel.startOffset);
+        range.setEnd(finalTextNode, finalTextNode.textContent.length);
+        clearTextSelection();
+        window.getSelection().addRange(range);
       }
     }
     
-    document.addEventListener("selectionchange", fixSelection);
+    //document.addEventListener("selectionchange", fixSelection);
     
     function clearTextSelection() {
       var sel = window.getSelection();
@@ -2603,64 +2703,13 @@ lastEditScript = """
       return selection;
     }
     
-    function pasteHtmlAtCaret(html) {
-      var sel, range;
-      if (window.getSelection) {
-          // IE9 and non-IE
-          sel = window.getSelection();
-          // do not paste html into modify menu
-          if (sel.anchorNode.offsetParent && sel.anchorNode.offsetParent.id === "modify-menu") {
-            return;
-          }
-          if (sel.getRangeAt && sel.rangeCount) {
-              range = sel.getRangeAt(0);
-              range.deleteContents();
-              // Range.createContextualFragment() would be useful here but is
-              // only relatively recently standardized and is not supported in
-              // some browsers (IE9, for one)
-              var div = document.createElement("div");
-              div.innerHTML = html;
-              var frag = document.createDocumentFragment(), node, lastNode;
-              while ( (node = div.firstChild) ) {
-                  lastNode = frag.appendChild(node);
-              }
-              range.insertNode(frag);
-              // Preserve the selection
-              if (lastNode) {
-                  range = range.cloneRange();
-                  range.setStartAfter(lastNode);
-                  range.collapse(true);
-                  sel.removeAllRanges();
-                  sel.addRange(range);
-              }
-          }
-      } else if (document.selection && document.selection.type != "Control") {
-          // IE < 9
-          document.selection.createRange().pasteHTML(html);
-      }
-    }
-    
     function handleFileSelect(evt) {
       evt.stopPropagation();
       evt.preventDefault();
       var files = evt.dataTransfer.files; // FileList object
-      uploadFilesAtCursor(files);
+      editor.uploadFilesAtCursor(files);
     }
     
-    function uploadFilesAtCursor(files) { 
-      // files is a FileList of File objects. List some properties.
-      for (var i = 0, file; file = files[i]; i++) {
-        var targetPathName =  editor.getStorageFolder(file) + file.name;
-        // if(file.size < 30000000)
-        editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-          if(file.type.indexOf("image") == 0) {
-            pasteHtmlAtCaret(`<img src="${targetPathName}" alt="${file.name}">`);
-          } else {
-            pasteHtmlAtCaret(`<a href="${targetPathName}">${targetPathName}</a>`); 
-          }
-        });
-      }
-    }
     function handleDragOver(evt) {
       evt.stopPropagation();
       evt.preventDefault();
@@ -2693,10 +2742,12 @@ lastEditScript = """
           }
           // Open link.
         }
+        // CTRL+Z: Undo
         if(e.which == 90 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
           if(!undo()) editor.sendNotification("Nothing to undo!");
         }
+        // CTRL+Y: Redo
         if(e.which == 89 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
           if(!redo()) editor.sendNotification("Nothing to redo!");
@@ -2704,8 +2755,13 @@ lastEditScript = """
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
         if(editor_model.linkSelectMode) {
-          if(e.which == 27) {
+          if(e.which == 27) { // Escape
             escapeLinkMode();
+          }
+        } else {
+          if(e.which == 27) { // Escape
+            editor_model.clickedElem = undefined;
+            updateInteractionDiv();
           }
         }
       };
@@ -2717,6 +2773,7 @@ lastEditScript = """
             // If we are directly inside a div, we add a <br> separator.
             // We delete everything between anchorNode and focusNode
             // TODO: Handle ul and li
+            // TODO: Handle tab to indent and dedent.
             var caretSelection = document.getSelection();
             var x = caretSelection.anchorNode;
             if(x && x.nodeType == 3 && caretSelection.rangeCount) { // text node
@@ -3912,7 +3969,7 @@ lastEditScript = """
             if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("rel") === "stylesheet" && clickedElem.getAttribute("href")) {
               let oldHref = clickedElem.getAttribute("href"); // Even if it's a temporary href
               let CSSFilePath = relativeToAbsolute(oldHref);
-              let CSSvalue = editor.doReadServer("read", CSSFilePath).slice(1);
+              let CSSvalue = editor._internals.doReadServer("read", CSSFilePath).slice(1);
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
               CSSarea.append(
                 el("div", {"class": "CSS-modify-unit"}, [
@@ -4638,7 +4695,7 @@ lastEditScript = """
           }
           if(clickedElem.tagName !== "HEAD") {
             ret.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
-              onchange: function(evt) { uploadFilesAtCursor(evt.target.files); }})
+              onchange: function(evt) { editor.uploadFilesAtCursor(evt.target.files); }})
             );
             ret.append(
               el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
@@ -4906,7 +4963,7 @@ lastEditScript = """
             retDiv.append(
               el("button.action-button#update-thaditor-btn", {type: ""}, "Update Thaditor", {onclick() {
                 if(confirm("Are you ready to upgrade Thaditor?")) {
-                  editor.doWriteServer("updateversion", "latest", "", response => {
+                  editor._internals.doWriteServer("updateversion", "latest", "", response => {
                     console.log("Result from Updating Thaditor to latest:");
                     console.log(response);
                     location.reload(true);
@@ -5115,8 +5172,8 @@ lastEditScript = """
     
 
     function copy_website(source, dest) {
-      let website_files = JSON.parse(editor.doReadServer("fullListDir", source));
-      let is_dest_valid = editor.doReadServer("isdir", dest)
+      let website_files = JSON.parse(editor._internals.doReadServer("fullListDir", source));
+      let is_dest_valid = editor._internals.doReadServer("isdir", dest)
       if (!website_files) throw "copy_website(): invalid source";
       if (!is_dest_valid) throw "copy_website(): invalid dest";
       
@@ -5129,12 +5186,12 @@ lastEditScript = """
         const s = (source + nm);
         const d = (dest + nm);
         if (isdir) {
-          editor.doWriteServer("fullCopy", s, d);
+          editor._internals.doWriteServer("fullCopy", s, d);
         } else {
-          editor.doWriteServer("copy", d, s);
+          editor._internals.doWriteServer("copy", d, s);
         }
       });
-      let dh = editor.doReadServer("read", source + "/.thaditor_meta");
+      let dh = editor._internals.doReadServer("read", source + "/.thaditor_meta");
       dh = dh.slice(1, dh.length);
       let draft_history = (dh == "" ? undefined : JSON.parse(dh));
       const get_date_meta = () => (new Date).toString();
@@ -5143,21 +5200,21 @@ lastEditScript = """
       } else {
         draft_history.push(editor_model.version + ":" + get_date_meta());
       }
-      editor.doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
+      editor._internals.doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
       return 1;
     }
     
     function deleteDraftDef(nm) { //definitely delete the draft, without a prompt
       //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
       const pth_to_delete = "Thaditor/versions/" + nm + "/";
-      //here we want to hand editor.doWriteServer to the worker in editor.js
+      //here we want to hand editor._internals.doWriteServer to the worker in editor.js
 
       const data = {action:"drafts",
                     subaction:"deletermrf",
                     pth_to_delete:pth_to_delete,
                     nm:nm, thaditor_files:thaditor_files, version:editor_model.version};
       if (editor_model.version == nm) {
-        editor.doWriteServer("deletermrf", pth_to_delete);
+        editor._internals.doWriteServer("deletermrf", pth_to_delete);
         navigateLocal("/?edit");
       } else {
         editor_model.serverWorker.postMessage(data);
@@ -5190,9 +5247,9 @@ lastEditScript = """
       
       let fail = false;
       if (!verzExist) {
-        editor.doWriteServer("mkdir", "Thaditor/versions");
+        editor._internals.doWriteServer("mkdir", "Thaditor/versions");
       } else {
-        let versionsList = JSON.parse(editor.doReadServer("fullListDir", "Thaditor/versions/"));
+        let versionsList = JSON.parse(editor._internals.doReadServer("fullListDir", "Thaditor/versions/"));
         versionsList.forEach(val => {
           let [nm, isdir] = val;
           if (isdir) {
