@@ -278,298 +278,6 @@ sourcecontentAny = Maybe.withDefaultReplace (
 
 sourcecontent = String.newlines.toUnix sourcecontentAny
 
-{---------------------------------------------------------------------------
-Utility functions to be inherited by the main body of any
-view of editor (edit / file listing / word processor / etc)
-LUCA stands for "Last Universal Common Ancestor"
-----------------------------------------------------------------------------}
-
-luca = 
-  [<script id="thaditor-vars" class="editor-interface">
-     editor = typeof editor == "undefined" ? {} : editor;
-     editor.config = {};
-     editor.config.EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
-     editor.config.path = @(jsCode.stringOf path);
-     editor.config.varedit = @(if varedit then "true" else "false");
-     editor.config.varls = @(if varls then "true" else "false");
-     editor.config.askQuestions = @(case listDict.get "question" vars of
-                       Just questionattr -> "true"
-                       _ -> if boolVar "question" True then "true" else 'false');
-     editor.config.autosave = @(case listDict.get "autosave" vars of
-                      Just autosaveattr -> "true"
-                      _ -> if boolVar "autosave" True then "true" else "false");
-     editor.config.canEditPage = @(if canEditPage then "true" else "false");
-     editor.config.editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
-     // Are we one Apache server...
-     editor.config.is_apache_server = typeof thaditor_worker !== "undefined";
-     // User name, if defined. Used to create personalized temporary CSS files.
-     editor.config.userName = typeof userName === "string" ? userName : "anonymous";
-     // Requests to engine compatible with the Node.JS server. If Apache server, ProxiedServerRequest.
-     editor.config.XHRequest = typeof ProxiedServerRequest != "undefined" ? ProxiedServerRequest : XMLHttpRequest;
-   </script>,
-   <script id="thaditor-luca" class="editor-interface">
-    // Overwrite the entire document (head and body)
-    // I'm not sure there is a better way.
-  (function(editor) {
-    function writeDocument(NC) {
-      document.open();
-      document.write(NC);
-      document.close();
-    }
-    editor.writeDocument = writeDocument;
-
-    // Asynchronous if onOk is defined and readServer is defined. and asynchronous and returns result otherwise.
-    function doReadServer(action, name, onOk, onErr) {
-      if (typeof readServer != "undefined") { // apache_server, everything goes through thaditor
-        return readServer(action, name, onOk, onErr);
-      } else {
-        var request = new XMLHttpRequest();
-        var url = "/";
-        request.open('GET', url, false);  // `false` makes the request synchronous
-        request.setRequestHeader("action", action);
-        request.setRequestHeader("name", name);
-        request.send(null);
-        if(request.status == 200) {
-          return request.responseText || "";
-        } else {
-          console.log("error while reading " + url, request);
-          return "";
-        }
-      }
-    }
-    editor.doReadServer = doReadServer;
-
-    // Returns a promise after performing a direct GET action on the server.
-    function getServer(action, name) {
-      return new Promise(function(resolve, reject) {
-        doReadServer(action, name, resolve, reject);
-      });
-    }
-    editor.getServer = getServer;
-
-    // Asynchronous if onOk is defined and writeServer is defined. and asynchronous and returns result otherwise.
-    function doWriteServer(action, name, content, onOk, onErr) {
-      if (typeof writeServer != "undefined") {
-        return writeServer(action, name, content, onOk, onErr);
-      } else {
-        var request = new XMLHttpRequest();
-        request.open('POST', url, false);  // `false` makes the request synchronous
-        request.setRequestHeader("action", action);
-        request.setRequestHeader("name", name);
-        request.send(content);
-        if(request.status == 200) {
-          return request.responseText;
-        } else if(request.status == 500) {
-          return request.responseText;
-        } else {
-          console.log("error while writing " + url, request);
-          return "";
-        }
-      }
-    }
-    editor.doWriteServer = doWriteServer;
-
-    // Returns a promise after performing a direct POST action on the server.
-    function postServer(action, name, content) {
-      return new Promise(function(resolve, reject) {
-        doWriteServer(action, name, content, resolve, reject);
-      });
-    }
-    editor.postServer = postServer;
-
-    // Page reloading without trying to recover the editor's state.
-    function doReloadPage(url, replaceState) {
-      var xmlhttp = new editor.config.XHRequest();
-      xmlhttp.onreadystatechange = ((xmlhttp, replaceState) => () => {
-        if (xmlhttp.readyState == XMLHttpRequest.DONE) {
-          //source of the editing menu disappearing after reloading
-          writeDocument(xmlhttp.responseText);
-          var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
-          if(newLocalURL) {
-            window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
-          }
-        }
-      })(xmlhttp, replaceState);
-      xmlhttp.open("POST", location.pathname + location.search);
-      xmlhttp.setRequestHeader("reload", "true");
-      xmlhttp.setRequestHeader("url", url);
-      if(googleAuthIdToken) {
-        xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
-      }
-      console.log("setting url to ", url);
-      xmlhttp.send("{\"a\":1}");
-    }
-    editor.doReloadPage = doReloadPage;
-
-    // Returns a progress bar and an array for each file.
-    function initializeProgress(numFiles) {
-      var progressBar = document.getElementById("progress-bar");
-      if (!progressBar) {
-        progressBar = el("progress", {id:"progress-bar", max:"100", value:"0", visible:false}, [], {isghost: true});
-      }
-      progressBar.value = 0;
-      progressBar.visible = true;
-      return progressBar;
-    }
-
-    // Editor's API should be stored in the variable editor.
-
-    editor.uploadFile = function(targetPathName, file, onOk, onError, updateProgFunction) {
-      var xhr = new XMLHttpRequest();
-      xhr.onprogress = (e) => {
-        if(updateProgFunction) {
-          updateProgFunction(targetPathName, e && (e.loaded * 100.0 / e.total) || 100)
-        }
-      }
-      xhr.onreadystatechange = ((xhr, file) => () => {
-        if (xhr.readyState == XMLHttpRequest.DONE) {
-          if (xhr.status == 200 || xhr.status == 201) {
-            onOk ? onOk(targetPathName, file) : 0;
-          } else {
-            console.log("Error while uploading picture or file", xhr);
-            onError ? onError(targetPathName, file) : 0;
-          }
-        }
-      })(xhr, file);
-      if(editor.config.is_apache_server) {
-        xhr.open("POST", "/Thaditor/editor.php?action=write&" + "name=" + encodeURIComponent(targetPathName), false);
-      } else {
-        xhr.open("POST", targetPathName, false);
-        xhr.setRequestHeader("write-file", file.type);
-      }
-      xhr.send(file);
-    }
-    // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
-    editor.getStorageFolder = function(file) {
-      var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
-      for(let s of storageOptions) {
-        if(file.type.startsWith(s.getAttribute("file-type") || "")) {
-          let sf = storageOptions.getAttribute("editor-storagefolder") || "";
-          if(!sf.endsWith("/")) sf = sf + "/";
-          return sf;
-        }
-      }
-      let extension = "";
-      if(file && file.type.startsWith("image")) {
-        var otherImages = document.querySelectorAll("img[src]");
-        for(let i of otherImages) {
-           extension = (i.getAttribute("src") || "").replace(/[^\/]*$/, "");
-           break;
-        }
-        if(extension[0] == "/") { // Absolute URL
-          return extension;
-        }
-      }
-      if(extension != "" && extension[extension.length-1] != "/") {
-        extension = extension + "/";
-      }
-      // extension ends with a / or is empty
-      var tmp = location.pathname.split("/");
-      tmp = tmp.slice(0, tmp.length - 1);
-      storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "/");
-      return storageFolder;
-    }
-    editor.fs = { 
-      listdir: 
-        async function(dirname) {
-          return JSON.parse(await getServer("listdir", dirname) || "[]");
-        }
-    };
-    // Given a node, computes a way to retrieve this node if the page was reloaded.
-    // That's a treasure map.
-    editor.toTreasureMap = function(oldNode) {
-      if(!oldNode) return undefined;
-      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
-        return {id: oldNode.getAttribute("id")};
-      }
-      let tentativeSelector = [];
-      let t = oldNode;
-      let isText = false, textIndex = 0;
-      while(t && t.parentNode) {
-        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
-        if(t.nodeType === 1) {
-          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
-        } else {
-          isText = true;
-          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
-        }
-        t = t.parentNode;
-      }
-      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
-    }
-    // Returns the new node that matches the old node the closest.
-    // For text nodes, try to recover the text node, if not, returns the parent node;
-    editor.fromTreasureMap = function(data) {
-      if(!data) return undefined;
-      if(typeof data === "object" && data.id) {
-        return document.getElementById(data.id);
-      }
-      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
-        let tentativeSelector = data.tentativeSelector;
-        while(tentativeSelector.length >= 1) {
-          let newNode = document.querySelector(tentativeSelector.join(" "));
-          if(newNode) {
-            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
-          }
-          tentativeSelector.shift();
-        }
-        return undefined;
-      }
-    }
-
-    // Helper to create an element with attributes, children and properties
-    function el(tag, attributes, children, properties) {
-      let tagClassIds = tag.split(/(?=#|\.)/g);
-      let x;
-      for(let attr of tagClassIds) {
-        if(x && attr.startsWith(".")) {
-          x.classList.toggle(attr.substring(1), true);
-        } else if(x && attr.startsWith("#")) {
-          x.setAttribute("id", attr.substring(1));
-        } else if(!x) {
-          x = document.createElement(attr);
-        }
-      }
-      if(typeof attributes == "object") {
-        for(let k in attributes) {
-          let v = attributes[k];
-          if(typeof v != "undefined") {
-            x.setAttribute(k, v);
-          }
-        }
-      }
-      if(Array.isArray(children)) {
-        for(let child of children) {
-          if(typeof child === "string") {
-            x.append(child)
-          } else if(typeof child !== "undefined")
-            x.appendChild(child);
-        }
-      } else if(typeof children !== "undefined") {
-        x.append(children);
-      }
-      if(typeof properties == "object") {
-        for(let k in properties) {
-          x[k] = properties[k];
-        }
-      }
-      return x;
-    }
-    editor.el = el;
-  })(editor);
-
-  window.onpopstate = function(e){
-      console.log("onpopstate", e);
-      if(e.state && e.state.localURL) {
-        editor.doReloadPage(location, true);
-      } else {
-        editor.doReloadPage(location.pathname + location.search, true);
-      }
-  };
-  
-   </script>]
-
-
 -- Conversion of php script to elm script
 phpToElmFinal path string =
   let includingFolder = Regex.replace """(/)[^/]*$""" (\{submatches=[slash]} -> slash) path in
@@ -1343,341 +1051,677 @@ editionmenu thesource = [
 <div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
 <div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>]
 
-initialScript = serverOwned "initial script" <| luca ++ [
-<script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js" list-ghost-attributes="gapi_processed"></script>,
-<script class="editor-interface">
-el = editor.el;
-// TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
-// https://developers.google.com/identity/sign-in/web/server-side-flow
-// https://stackoverflow.com/questions/32902734/how-to-make-google-sign-in-token-valid-for-longer-than-1-hour
-// https://www.w3schools.com/js/js_cookies.asp
-if(typeof googleAuthIdToken == "undefined") {
-  var googleAuthIdToken = undefined;
-}
-
-function isGhostNode(elem) {
-  return elem && elem.isghost || (elem.nodeType == 1 &&
-    (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true"));
-}
-
-function areChildrenGhosts(n) {
-  return n && n.getAttribute && (
-    n.getAttribute("children-are-ghosts") == "true" ||
-    n.getAttribute("children-are-ghost") == "true"
-  ) ||
-  editor.ghostChildNodes.find(f => f(n));
-}
-function hasGhostAncestor(htmlElem) {
-  if(htmlElem == null) return false;
-  if(isGhostNode(htmlElem)) return true;
-  return areChildrenGhosts(htmlElem.parentNode) || (htmlElem.parentNode == null && htmlElem.nodeType !== 9 /*document*/) || hasGhostAncestor(htmlElem.parentNode);
-}
-// Return true if this htmlElem is inside an element that ignores its children.
-function hasIgnoringAncestor(htmlElem) {
-  if(htmlElem == null) return false;
-  return isIgnoringChildNodes(htmlElem.parentNode) || hasIgnoringAncestor(htmlElem.parentNode);
-}
-function isGhostAttributeKey(name) {
-  return name.startsWith("ghost-");
-}
-
-// Editor's API is stored in the variable editor.
-
-editor = typeof editor === "object" ? editor : {};
-
-editor.matches = function(elem, selector) {
-  if(typeof selector == "undefined") { // Then selector is in the elem variable
-    return (selector => function(elem) {
-      return editor.matches(elem, selector);
-    })(elem);
-  }
-  if(elem && elem.matches) {
-    try {
-      return elem.matches(selector);
-    } catch(e) {
-      console.log("error while matching selector " + selector, e);
-      return false;
+initialScript = serverOwned "initial script" <| [
+  <script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js" list-ghost-attributes="gapi_processed"></script>,
+  <script id="thaditor-vars" class="editor-interface">
+     editor = typeof editor == "undefined" ? {} : editor;
+     editor.config = {};
+     editor.config.EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
+     editor.config.path = @(jsCode.stringOf path);
+     editor.config.varedit = @(if varedit then "true" else "false");
+     editor.config.varls = @(if varls then "true" else "false");
+     editor.config.askQuestions = @(case listDict.get "question" vars of
+                       Just questionattr -> "true"
+                       _ -> if boolVar "question" True then "true" else 'false');
+     editor.config.autosave = @(case listDict.get "autosave" vars of
+                      Just autosaveattr -> "true"
+                      _ -> if boolVar "autosave" True then "true" else "false");
+     editor.config.canEditPage = @(if canEditPage then "true" else "false");
+     editor.config.editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
+     // Are we one Apache server...
+     editor.config.is_apache_server = typeof thaditor_worker !== "undefined";
+     // User name, if defined. Used to create personalized temporary CSS files.
+     editor.config.userName = typeof userName === "string" ? userName : "anonymous";
+     // Requests to engine compatible with the Node.JS server. If Apache server, ProxiedServerRequest.
+     editor.config.XHRequest = typeof ProxiedServerRequest != "undefined" ? ProxiedServerRequest : XMLHttpRequest;
+   </script>,
+   <script id="thaditor-luca" class="editor-interface">
+    // Overwrite the entire document (head and body)
+    // I'm not sure there is a better way.
+  (function(editor) {
+    function writeDocument(NC) {
+      document.open();
+      document.write(NC);
+      document.close();
     }
-  }
-  return false;
-}
-    
-// An array of (node => {innerHTML, attributes, properties}) that can be defined by plug-ins.
-editor.customContextMenuButtons = [];
+    editor.writeDocument = writeDocument;
 
-// Creates an SVG icon from the given path. If fill is true, will have the path filled.
-function svgFromPath(path, fill, width, height, viewBox) {
-  return `<svg class="context-menu-icon${fill ? " fill": ""}" 
-        width="${width ? width : 40}" height="${height ? height : 30}" 
-        ${viewBox ? "viewBox=\"" + viewBox[0] + " "+ viewBox[1] + " "+ viewBox[2] + " "+ viewBox[3] +"\"" : "viewBox=\"0 0 40 30\""}>
-        <path d="${path}"></path></svg>`
-}
-editor.svgFromPath = svgFromPath;
-
-// Array of functions on nodes returning an array of attributes that should be ghosts (i.e. removed on back-propagation)
-editor.ghostAttrs = [];
-editor.ghostAttrs.push(n =>
-  ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ").concat(
-    ((n && n.getAttribute && n.getAttribute("save-ghost-attributes")) || "").split(" ")).filter(a => a != "")
-);
-editor.ghostAttrs.push(n =>
-  n && n.tagName == "HTML" ? ["class"] : []
-);
-editor.ghostAttrs.push(n =>
-  n && n.tagName == "BODY" ? ["data-gr-c-s-loaded"] : []
-);
-// attribute of some chrome extensions
-editor.ghostAttrs.push(n => ["bis_skin_checked"]);
-// Array of functions on nodes returning an array of predicates such that if one is true, the children of this element will be ignored (i.e. their old value is always returned on back-propagation)
-editor.ignoredChildNodes = [];
-
-function isIgnoringChildNodes(n) {
-  return editor.ignoredChildNodes.find(f => f(n));
-}
-function cacheChildNodes(n) {
-  let res = [];
-  for(let k = 0; k < n.childNodes.length; k++) {
-    res.push(domNodeToNativeValue(n.childNodes[k]));
-  }
-  // Let's store the tree of this element.
-  n.__editor__ = n.__editor__ || {};
-  n.__editor__.ignoredChildNodes = res;
-}
-
-// Array of functions on nodes returning an array of attributes that should be ignored (i.e. old value returned on back-propagation)
-editor.ignoredAttrs = [];
-editor.ignoredAttrs.push(n =>
-  ((n && n.getAttribute && n.getAttribute("list-ignored-attributes")) || "").split(" ").concat(
-    ((n && n.getAttribute && n.getAttribute("save-ignored-attributes")) || "").split(" ")).filter(a => a != "")
-);
-editor.ignoredAttrs.push(n => editor.matches(n, "body") ? ["contenteditable"] : []);
-
-// Returns a method that, for each key name, return true if it is a ghost attribute for the node
-function isSpecificGhostAttributeKeyFromNode(n) {
-  var additionalGhostAttributes = [];
-  for(var k in editor.ghostAttrs) {
-    additionalGhostAttributes = additionalGhostAttributes.concat(editor.ghostAttrs[k](n))
-  }
-  return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
-}
-
-// Returns a method that, for each key name, return true if it is an ignored attribute for the node
-function isIgnoredAttributeKeyFromNode(n) {
-  var additionalIgnoredAttributes = [];
-  for(var k in editor.ignoredAttrs) {
-    additionalIgnoredAttributes = additionalIgnoredAttributes.concat(editor.ignoredAttrs[k](n))
-  }
-  return ((a, n) => (name, oldValue) => {
-    let result = a.indexOf(name) != -1;
-    if(result) { // let's store the previous attribute's value, even if it did not exist.
-      n.__editor__ = n.__editor__ || {};
-      n.__editor__.ignoredAttrMap = n.__editor__.ignoredAttrMap || {};
-      if(!(name in n.__editor__.ignoredAttrMap)) {
-        n.__editor__.ignoredAttrMap[name] = oldValue;
+    // Asynchronous if onOk is defined and readServer is defined. and asynchronous and returns result otherwise.
+    function doReadServer(action, name, onOk, onErr) {
+      if (typeof readServer != "undefined") { // apache_server, everything goes through thaditor
+        return readServer(action, name, onOk, onErr);
+      } else {
+        var request = new XMLHttpRequest();
+        var url = "/";
+        request.open('GET', url, false);  // `false` makes the request synchronous
+        request.setRequestHeader("action", action);
+        request.setRequestHeader("name", name);
+        request.send(null);
+        if(request.status == 200) {
+          return request.responseText || "";
+        } else {
+          console.log("error while reading " + url, request);
+          return "";
+        }
       }
     }
-    return result;
-  })(additionalIgnoredAttributes, n);
-}
-function ignoredAttributeValue(n, name) {
-  let result = n.__editor__.ignoredAttrMap[name];
-  if(name in n.__editor__.ignoredAttrMap) {
-    return result;
-  }
-  return n.getAttribute(name);
-}
+    editor.doReadServer = doReadServer;
 
-// Array of predicates that, if they return true on a node, Editor will mark this node as ghost.
-editor.ghostNodes = [];
-// Array of predicates that, if they return true on a node, Editor will mark all the children of this node as ghosts
-editor.ghostChildNodes = [];
+    // Returns a promise after performing a direct GET action on the server.
+    function getServer(action, name) {
+      return new Promise(function(resolve, reject) {
+        doReadServer(action, name, resolve, reject);
+      });
+    }
+    editor.getServer = getServer;
 
-// Analytics scripts
-editor.ghostNodes.push(insertedNode =>
-  editor.matches(insertedNode, "script[src]") &&
-     (insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1 ||
-      insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1 ||
-      insertedNode.getAttribute("src").indexOf("googletagmanager.com/gtm.js") != -1)
-);
+    // Asynchronous if onOk is defined and writeServer is defined. and asynchronous and returns result otherwise.
+    function doWriteServer(action, name, content, onOk, onErr) {
+      if (typeof writeServer != "undefined") {
+        return writeServer(action, name, content, onOk, onErr);
+      } else {
+        var request = new XMLHttpRequest();
+        request.open('POST', url, false);  // `false` makes the request synchronous
+        request.setRequestHeader("action", action);
+        request.setRequestHeader("name", name);
+        request.send(content);
+        if(request.status == 200) {
+          return request.responseText;
+        } else if(request.status == 500) {
+          return request.responseText;
+        } else {
+          console.log("error while writing " + url, request);
+          return "";
+        }
+      }
+    }
+    editor.doWriteServer = doWriteServer;
 
-// For for ace styles in header
-editor.ghostNodes.push(insertedNode => {
-    if(insertedNode.tagName == "STYLE" && typeof insertedNode.getAttribute("id") == "string" &&
-     (insertedNode.getAttribute("id").startsWith("ace-") ||
-      insertedNode.getAttribute("id").startsWith("ace_"))) {
-      insertedNode.setAttribute("save-ghost", "true"); 
-      return true;
-    } else {
+    // Returns a promise after performing a direct POST action on the server.
+    function postServer(action, name, content) {
+      return new Promise(function(resolve, reject) {
+        doWriteServer(action, name, content, resolve, reject);
+      });
+    }
+    editor.postServer = postServer;
+
+    // Page reloading without trying to recover the editor's state.
+    function doReloadPage(url, replaceState) {
+      var xmlhttp = new editor.config.XHRequest();
+      xmlhttp.onreadystatechange = ((xmlhttp, replaceState) => () => {
+        if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+          //source of the editing menu disappearing after reloading
+          writeDocument(xmlhttp.responseText);
+          var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
+          if(newLocalURL) {
+            window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+          }
+        }
+      })(xmlhttp, replaceState);
+      xmlhttp.open("POST", location.pathname + location.search);
+      xmlhttp.setRequestHeader("reload", "true");
+      xmlhttp.setRequestHeader("url", url);
+      if(googleAuthIdToken) {
+        xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
+      }
+      console.log("setting url to ", url);
+      xmlhttp.send("{\"a\":1}");
+    }
+    editor.doReloadPage = doReloadPage;
+
+    // Returns a progress bar and an array for each file.
+    function initializeProgress(numFiles) {
+      var progressBar = document.getElementById("progress-bar");
+      if (!progressBar) {
+        progressBar = el("progress", {id:"progress-bar", max:"100", value:"0", visible:false}, [], {isghost: true});
+      }
+      progressBar.value = 0;
+      progressBar.visible = true;
+      return progressBar;
+    }
+
+    // Editor's API should be stored in the variable editor.
+
+    editor.uploadFile = function(targetPathName, file, onOk, onError, updateProgFunction) {
+      var xhr = new XMLHttpRequest();
+      xhr.onprogress = (e) => {
+        if(updateProgFunction) {
+          updateProgFunction(targetPathName, e && (e.loaded * 100.0 / e.total) || 100)
+        }
+      }
+      xhr.onreadystatechange = ((xhr, file) => () => {
+        if (xhr.readyState == XMLHttpRequest.DONE) {
+          if (xhr.status == 200 || xhr.status == 201) {
+            onOk ? onOk(targetPathName, file) : 0;
+          } else {
+            console.log("Error while uploading picture or file", xhr);
+            onError ? onError(targetPathName, file) : 0;
+          }
+        }
+      })(xhr, file);
+      if(editor.config.is_apache_server) {
+        xhr.open("POST", "/Thaditor/editor.php?action=write&" + "name=" + encodeURIComponent(targetPathName), false);
+      } else {
+        xhr.open("POST", targetPathName, false);
+        xhr.setRequestHeader("write-file", file.type);
+      }
+      xhr.send(file);
+    }
+    // Returns the storage folder that will prefix a file name on upload (final and initial slash excluded)
+    editor.getStorageFolder = function(file) {
+      var storageOptions = document.querySelectorAll("meta[editor-storagefolder]");
+      for(let s of storageOptions) {
+        if(file.type.startsWith(s.getAttribute("file-type") || "")) {
+          let sf = storageOptions.getAttribute("editor-storagefolder") || "";
+          if(!sf.endsWith("/")) sf = sf + "/";
+          return sf;
+        }
+      }
+      let extension = "";
+      if(file && file.type.startsWith("image")) {
+        var otherImages = document.querySelectorAll("img[src]");
+        for(let i of otherImages) {
+           extension = (i.getAttribute("src") || "").replace(/[^\/]*$/, "");
+           break;
+        }
+        if(extension[0] == "/") { // Absolute URL
+          return extension;
+        }
+      }
+      if(extension != "" && extension[extension.length-1] != "/") {
+        extension = extension + "/";
+      }
+      // extension ends with a / or is empty
+      var tmp = location.pathname.split("/");
+      tmp = tmp.slice(0, tmp.length - 1);
+      storageFolder = tmp.join("/") + (extension != "" ?  "/" + extension : "/");
+      return storageFolder;
+    }
+    editor.fs = { 
+      listdir: 
+        async function(dirname) {
+          return JSON.parse(await getServer("listdir", dirname) || "[]");
+        }
+    };
+    // Given a node, computes a way to retrieve this node if the page was reloaded.
+    // That's a treasure map.
+    editor.toTreasureMap = function(oldNode) {
+      if(!oldNode) return undefined;
+      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
+        return {id: oldNode.getAttribute("id")};
+      }
+      let tentativeSelector = [];
+      let t = oldNode;
+      let isText = false, textIndex = 0;
+      while(t && t.parentNode) {
+        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
+        if(t.nodeType === 1) {
+          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
+        } else {
+          isText = true;
+          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
+        }
+        t = t.parentNode;
+      }
+      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
+    }
+    // Returns the new node that matches the old node the closest.
+    // For text nodes, try to recover the text node, if not, returns the parent node;
+    editor.fromTreasureMap = function(data) {
+      if(!data) return undefined;
+      if(typeof data === "object" && data.id) {
+        return document.getElementById(data.id);
+      }
+      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
+        let tentativeSelector = data.tentativeSelector;
+        while(tentativeSelector.length >= 1) {
+          let newNode = document.querySelector(tentativeSelector.join(" "));
+          if(newNode) {
+            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+          }
+          tentativeSelector.shift();
+        }
+        return undefined;
+      }
+    }
+
+    // Helper to create an element with attributes, children and properties
+    function el(tag, attributes, children, properties) {
+      let tagClassIds = tag.split(/(?=#|\.)/g);
+      let x;
+      for(let attr of tagClassIds) {
+        if(x && attr.startsWith(".")) {
+          x.classList.toggle(attr.substring(1), true);
+        } else if(x && attr.startsWith("#")) {
+          x.setAttribute("id", attr.substring(1));
+        } else if(!x) {
+          x = document.createElement(attr);
+        }
+      }
+      if(typeof attributes == "object") {
+        for(let k in attributes) {
+          let v = attributes[k];
+          if(typeof v != "undefined") {
+            x.setAttribute(k, v);
+          }
+        }
+      }
+      if(Array.isArray(children)) {
+        for(let child of children) {
+          if(typeof child === "string") {
+            x.append(child)
+          } else if(typeof child !== "undefined")
+            x.appendChild(child);
+        }
+      } else if(typeof children !== "undefined") {
+        x.append(children);
+      }
+      if(typeof properties == "object") {
+        for(let k in properties) {
+          x[k] = properties[k];
+        }
+      }
+      return x;
+    }
+    editor.el = el;
+    
+    // Returns true if the element matches the selector
+    // Equivalent curried call: editor.matches(selector)(elem)
+    editor.matches = function(elem, selector) {
+      if(typeof selector == "undefined") { // Then selector is in the elem variable
+        return (selector => function(elem) {
+          return editor.matches(elem, selector);
+        })(elem);
+      }
+      if(elem && elem.matches) {
+        try {
+          return elem.matches(selector);
+        } catch(e) {
+          console.log("error while matching selector " + selector, e);
+          return false;
+        }
+      }
       return false;
     }
-  }
-);
-// For Google sign-in buttons and i-frames
-editor.ghostNodes.push(
-  editor.matches("div.abcRioButton, iframe#ssIFrame_google")
-);
-// For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
- editor.ghostNodes.push(insertedNode => 
-   insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
-   insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined"&& insertedNode.textContent.match("error_widget\\.ace_warning")
-   && (insertedNode.setAttribute("save-ghost", "true") || true)
- );
-// For ace script for syntax highlight
-editor.ghostNodes.push(insertedNode =>
-  editor.matches(insertedNode, "script[src]") &&
-     insertedNode.getAttribute("src").startsWith("https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.6/mode-j")
-);
-// For ace script for syntax highlight
-editor.ghostNodes.push(insertedNode =>
-  insertedNode.tagName == "ACE_OUTER"
-);
-// For the grammarly extension
-editor.ghostNodes.push(
-  editor.matches(".gr-top-z-index, .gr-top-zero")
-);
 
-// Mark nodes as ghost on insertion, if they are so.
-function handleScriptInsertion(mutations) {
-  for(var i = 0; i < mutations.length; i++) {
-    // A mutation is a ghost if either
-    // -- The attribute starts with 'ghost-'
-    // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
-    // -- It is the modification of a node or an attribute inside a ghost node.
-    var mutation = mutations[i];
-    if(hasGhostAncestor(mutation.target) || hasIgnoringAncestor(mutation.target)) continue;
-    if(mutation.type == "childList") {
-      for(var j = 0; j < mutation.addedNodes.length; j++) {
-        var insertedNode = mutation.addedNodes[j];
-        if(hasGhostAncestor(insertedNode)) {
-          insertedNode.isghost = true;
+    // An array of (node => {innerHTML, attributes, properties}) that can be defined by plug-ins.
+    editor.customContextMenuButtons = [];
+    
+    // Creates an SVG icon from the given path. If fill is true, will have the path filled.
+    function svgFromPath(path, fill, width, height, viewBox) {
+      return `<svg class="context-menu-icon${fill ? " fill": ""}" 
+            width="${width ? width : 40}" height="${height ? height : 30}" 
+            ${viewBox ? "viewBox=\"" + viewBox[0] + " "+ viewBox[1] + " "+ viewBox[2] + " "+ viewBox[3] +"\"" : "viewBox=\"0 0 40 30\""}>
+            <path d="${path}"></path></svg>`
+    }
+    editor.svgFromPath = svgFromPath;
+    
+    /***************************
+     * Ghost & ignored API
+     ****************************/
+    
+    // Returns true if this element is marked as ghost
+    function isGhostNode(elem) {
+      return elem && elem.isghost || (elem.nodeType == 1 &&
+        (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true"));
+    }
+    editor.isGhostNode = isGhostNode;
+    
+    // Returns true if all children of this elements are marked as ghosts
+    function areChildrenGhosts(n) {
+      return n && n.getAttribute && (
+        n.getAttribute("children-are-ghosts") == "true" ||
+        n.getAttribute("children-are-ghost") == "true"
+      ) ||
+      editor.ghostChildNodes.find(f => f(n));
+    }
+    editor.areChildrenGhosts = areChildrenGhosts;
+    
+    // Returns true if this element has a node which implicitly marks it as a ghost
+    function hasGhostAncestor(htmlElem) {
+      if(htmlElem == null) return false;
+      if(isGhostNode(htmlElem)) return true;
+      return areChildrenGhosts(htmlElem.parentNode) || (htmlElem.parentNode == null && htmlElem.nodeType !== 9 /*document*/) || hasGhostAncestor(htmlElem.parentNode);
+    }
+    editor.hasGhostAncestor = hasGhostAncestor;
+    
+    function isGhostAttributeKey(name) {
+      return name.startsWith("ghost-");
+    }
+    editor.isGhostAttributeKey = isGhostAttributeKey;
+
+    // Array of functions on nodes returning an array of attributes that should be ghosts (i.e. removed on back-propagation)
+    editor.ghostAttrs = [];
+    editor.ghostAttrs.push(n =>
+      ((n && n.getAttribute && n.getAttribute("list-ghost-attributes")) || "").split(" ").concat(
+        ((n && n.getAttribute && n.getAttribute("save-ghost-attributes")) || "").split(" ")).filter(a => a != "")
+    );
+    // attribute of some chrome extensions
+    editor.ghostAttrs.push(n => ["bis_skin_checked"]);
+    
+    // Array of functions on nodes returning an array of predicates such that if one is true, the children of this element will be ignored (i.e. their old value is always returned on back-propagation)
+    editor.ignoredChildNodes = [];
+    
+    // Returns truesy if the element n is ignoring child nodes.
+    function isIgnoringChildNodes(n) {
+      return editor.ignoredChildNodes.find(f => f(n));
+    }
+    editor.isIgnoringChildNodes = isIgnoringChildNodes;
+    // Assuming that n is ignoring children, stores the encoding of the original children
+    function storeIgnoredChildNodes(n) {
+      let res = [];
+      for(let k = 0; k < n.childNodes.length; k++) {
+        res.push(domNodeToNativeValue(n.childNodes[k]));
+      }
+      // Let's store this element's array of children
+      n.__editor__ = n.__editor__ || {};
+      n.__editor__.ignoredChildNodes = res;
+    }
+    editor.storeIgnoredChildNodes = storeIgnoredChildNodes;
+
+    // Return true if this htmlElem is inside an element that ignores its children.
+    function hasIgnoringAncestor(htmlElem) {
+      if(htmlElem == null) return false;
+      return isIgnoringChildNodes(htmlElem.parentNode) || hasIgnoringAncestor(htmlElem.parentNode);
+    }
+    editor.hasIgnoringAncestor = hasIgnoringAncestor;
+    
+    // Array of functions on nodes returning an array of attributes that should be ignored (i.e. old value returned on back-propagation)
+    editor.ignoredAttrs = [];
+    editor.ignoredAttrs.push(n =>
+      ((n && n.getAttribute && n.getAttribute("list-ignored-attributes")) || "").split(" ").concat(
+        ((n && n.getAttribute && n.getAttribute("save-ignored-attributes")) || "").split(" ")).filter(a => a != "")
+    );
+    editor.ignoredAttrs.push(n => editor.matches(n, "body") ? ["contenteditable", "data-gr-c-s-loaded"] : []);
+    editor.ignoredAttrs.push(n => editor.matches(n, "html") ? ["class"] : []);
+    
+    
+    // Returns a method that, for each key name, return true if it is a ghost attribute for the node
+    function isSpecificGhostAttributeKeyFromNode(n) {
+      var additionalGhostAttributes = [];
+      for(var k in editor.ghostAttrs) {
+        additionalGhostAttributes = additionalGhostAttributes.concat(editor.ghostAttrs[k](n))
+      }
+      return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
+    }
+    editor.isSpecificGhostAttributeKeyFromNode = isSpecificGhostAttributeKeyFromNode;
+
+    // Returns a method that, for each key name, return true if it is an ignored attribute for the node
+    function isIgnoredAttributeKeyFromNode(n) {
+      var additionalIgnoredAttributes = [];
+      for(var k in editor.ignoredAttrs) {
+        additionalIgnoredAttributes = additionalIgnoredAttributes.concat(editor.ignoredAttrs[k](n))
+      }
+      return ((a, n) => (name, oldValue) => {
+        let result = a.indexOf(name) != -1;
+        if(result) { // let's store the previous attribute's value, even if it did not exist.
+          n.__editor__ = n.__editor__ || {};
+          n.__editor__.ignoredAttrMap = n.__editor__.ignoredAttrMap || {};
+          if(!(name in n.__editor__.ignoredAttrMap)) {
+            n.__editor__.ignoredAttrMap[name] = oldValue;
+          }
+        }
+        return result;
+      })(additionalIgnoredAttributes, n);
+    }
+    editor.isIgnoredAttributeKeyFromNode = isIgnoredAttributeKeyFromNode;
+    function ignoredAttributeValue(n, name) {
+      let result = n.__editor__.ignoredAttrMap[name];
+      if(name in n.__editor__.ignoredAttrMap) {
+        return result;
+      }
+      return n.getAttribute(name);
+    }
+    
+    // Array of predicates that, if they return true on a node, Editor will mark this node as ghost.
+    editor.ghostNodes = [];
+    // Array of predicates that, if they return true on a node, Editor will mark all the children of this node as ghosts
+    editor.ghostChildNodes = [];
+
+    // Analytics scripts
+    editor.ghostNodes.push(insertedNode =>
+      editor.matches(insertedNode, "script[src]") &&
+         (insertedNode.getAttribute("src").indexOf("google-analytics.com/analytics.js") != -1 ||
+          insertedNode.getAttribute("src").indexOf("google-analytics.com/gtm/js") != -1 ||
+          insertedNode.getAttribute("src").indexOf("googletagmanager.com/gtm.js") != -1)
+    );
+
+    // For for ace styles in header
+    editor.ghostNodes.push(insertedNode => {
+        if(insertedNode.tagName == "STYLE" && typeof insertedNode.getAttribute("id") == "string" &&
+         (insertedNode.getAttribute("id").startsWith("ace-") ||
+          insertedNode.getAttribute("id").startsWith("ace_"))) {
+          insertedNode.setAttribute("save-ghost", "true"); 
+          return true;
         } else {
-          if(typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.nodeType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
-           if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
-           insertedNode.isghost = true;
-          } else { // Record ignored attributes
-            if(insertedNode.nodeType == 1) {
-              var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(insertedNode);
-              for(var k = 0; k < insertedNode.attributes.length; k++) {
-                var attr = insertedNode.attributes[k];
-                isIgnoredAttributeKey(attr.name, attr.value);
+          return false;
+        }
+      }
+    );
+    // For Google sign-in buttons and i-frames
+    editor.ghostNodes.push(
+      editor.matches("div.abcRioButton, iframe#ssIFrame_google")
+    );
+    // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
+     editor.ghostNodes.push(insertedNode => 
+       insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
+       insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined"&& insertedNode.textContent.match("error_widget\\.ace_warning")
+       && (insertedNode.setAttribute("save-ghost", "true") || true)
+     );
+    // For ace script for syntax highlight
+    editor.ghostNodes.push(insertedNode =>
+      editor.matches(insertedNode, "script[src]") &&
+         insertedNode.getAttribute("src").startsWith("https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.6/mode-j")
+    );
+    // For ace script for syntax highlight
+    editor.ghostNodes.push(insertedNode =>
+      insertedNode.tagName == "ACE_OUTER"
+    );
+    // For the grammarly extension
+    editor.ghostNodes.push(
+      editor.matches(".gr-top-z-index, .gr-top-zero")
+    );
+
+    function domNodeToNativeValue(n) {
+      if(n.nodeType == 3) {
+        return ["TEXT", n.textContent];
+      } else if(n.nodeType == 8) {
+        return ["COMMENT", n.textContent];
+      } else {
+        var attributes = [];
+        var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(n);
+        var isIgnoredAttributeKey =  isIgnoredAttributeKeyFromNode(n); // TODO recover ignored value
+        for(var i = 0; i < n.attributes.length; i++) {
+          var key = n.attributes[i].name;
+          var ignored = isIgnoredAttributeKey(key);
+          if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key) || ignored) {
+            var value = ignored ? ignoredAttributeValue(n, key) : n.attributes[i].value;
+            if(typeof value == "undefined") continue;
+            if(key == "style") {
+              value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
+            }
+            attributes.push([key, value]);
+          }
+        }
+        var children = [];
+        if(n.__editor__ && n.__editor__.ignoredChildNodes) {
+          children = n.__editor__.ignoredChildNodes;
+        } else {
+          var childNodes = n.childNodes;
+          if(n.tagName.toLowerCase() === "noscript" && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
+            // We'll recover the associated HTML node
+            childNodes = el("div", {}, [], {innerHTML: n.childNodes[0].textContent, parentNode: n}).childNodes;
+          }
+          if(!areChildrenGhosts(n)) {
+            for(i = 0; i < childNodes.length; i++) {
+              if(!isGhostNode(childNodes[i])) {
+                children.push(domNodeToNativeValue(childNodes[i]));
+              }
+            }
+          }
+        }
+        return [n.tagName.toLowerCase(), attributes, children];
+      }
+    }
+    editor.domNodeToNativeValue = domNodeToNativeValue;
+    
+    // Returns the closest ancestor of the selection having the given tagName
+    function getElementArCaret(tagName) {
+      var node = document.getSelection().anchorNode;
+      var w = node != null && node.nodeType == 3 ? node.parentNode : node;
+      if(!tagName) return w;
+      while(w != null && w.tagName.toLowerCase() != tagName.toLowerCase()) {
+        w = w.parentNode;
+      }
+      return w;
+    }
+    editor.getElementArCaret = getElementArCaret;
+
+    // Removes all the text from a node (not the text nodes themselves)
+    function emptyTextContent(node) {
+      if(node != null) {
+        if(node.nodeType == 3) {
+          node.textContent = "";
+        } else {
+          for(let i = 0; i < node.childNodes.length; i++) {
+            emptyTextContent(node.childNodes[i]);
+          }
+        }
+      }
+      return node;
+    }
+    editor.emptyTextContent = emptyTextContent;
+
+    // Duplicates a node. Returns the cloned element that has been inserted.
+    // options: {
+    //   onBeforeInsert: callback to transform cloned element before it is inserted (identity by default)
+    //   target: Node before which to place the duplicated node (original node by default)
+    //   after: If true, place the cloned node after the target node. (false by default)
+    //   ignoreText: if true, will not attempt to duplicate text / indentation. (false by default)
+    // }
+    function duplicate(node, options) {
+      if(typeof options == "undefined") options = {}
+      if(typeof options.onBeforeInsert != "function") options.onBeforeInsert = e => e;
+      if(node != null && node.parentNode != null) {
+        var parentInsertion = options.target ? options.target.parentElement : node.parentElement;
+        var insertBeforeNode = options.after ? options.target ? options.target.nextSibling : node.nextSibling :
+                                               options.target ? options.target             : node;
+        if(node.nextSibling != null && !options.target && !options.ignoreText) {
+          var next = node.nextSibling;
+          if(next.nodeType == 3 && next.nextSibling != null &&
+             next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
+            var textElement = next.cloneNode(true);
+            node.parentNode.insertBefore(textElement, options.after ? node.nextSibling : node);
+            if(options.after) {
+              insertBeforeNode = textElement.nextSibling;
+            } else {
+              insertBeforeNode = textElement
+            }
+          }
+        }
+        var duplicated = node.cloneNode(true);
+        function removeEditorAttributes(node) {
+          if(node.nodeType != 1) return;
+          let attrs = [...node.attributes];
+          for(var i = 0; i < attrs.length; i++) {
+            if(attrs[i].name.match(/^ghost-clicked$|^translate-id.*$/)) {
+              node.removeAttribute(attrs[i].name);
+            }
+          }
+          for(var i = 0; i < node.childNodes; i++) {
+            removeEditorAttributes(node.childNodes[i]);
+          }
+        }
+        removeEditorAttributes(duplicated);
+        
+        var cloned = options.onBeforeInsert(duplicated);
+        parentInsertion.insertBefore(cloned, insertBeforeNode);
+        return cloned;
+      }
+    }
+    editor.duplicate = duplicate;
+
+    // Removes a node from the DOM
+    // Attempts to remove the associated text element in the case of table elements or list items unless options.ignoreText is true
+    function remove(node, options) {
+      if(typeof options == "undefined") options = {}
+      if(node.previousSibling != null && !options.ignoreText) { // Remove whitespace as well
+        var next = node.nextSibling;
+        if(next.nodeType == 3 && next.nextSibling != null &&
+           next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
+          next.remove();
+        }
+      }
+      node.remove();
+    }
+    editor.remove = remove;
+
+  })(editor);
+  
+  window.onpopstate = function(e){
+      console.log("onpopstate", e);
+      if(e.state && e.state.localURL) {
+        editor.doReloadPage(location, true);
+      } else {
+        editor.doReloadPage(location.pathname + location.search, true);
+      }
+  };
+  
+  el = editor.el;
+
+  if(typeof googleAuthIdToken == "undefined") {
+    var googleAuthIdToken = undefined;
+  }
+
+  // Mark nodes as ghost on insertion, if they are so.
+  function handleScriptInsertion(mutations) {
+    for(var i = 0; i < mutations.length; i++) {
+      // A mutation is a ghost if either
+      // -- The attribute starts with 'ghost-'
+      // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
+      // -- It is the modification of a node or an attribute inside a ghost node.
+      var mutation = mutations[i];
+      if(editor.hasGhostAncestor(mutation.target) || editor.hasIgnoringAncestor(mutation.target)) continue;
+      if(mutation.type == "childList") {
+        for(var j = 0; j < mutation.addedNodes.length; j++) {
+          var insertedNode = mutation.addedNodes[j];
+          if(editor.hasGhostAncestor(insertedNode)) {
+            insertedNode.isghost = true;
+          } else {
+            if(typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.nodeType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
+             if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
+             insertedNode.isghost = true;
+            } else { // Record ignored attributes
+              if(insertedNode.nodeType == 1) {
+                var isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(insertedNode);
+                for(var k = 0; k < insertedNode.attributes.length; k++) {
+                  var attr = insertedNode.attributes[k];
+                  isIgnoredAttributeKey(attr.name, attr.value);
+                }
               }
             }
           }
         }
       }
     }
-    
   }
-}
 
-if (typeof automaticGhostMarker !== "undefined") {
-  // console.log("automaticGhostMarker.disconnect()");
-  automaticGhostMarker.disconnect();
-}
-
-automaticGhostMarker = new MutationObserver(handleScriptInsertion);
-automaticGhostMarker.observe
- ( document.head.parentElement
- , { attributes: false
-   , childList: true
-   , characterData: false
-   , attributeOldValue: false
-   , characterDataOldValue: false
-   , subtree: true
-   }
- )
-
-// Self-editing capabilities
-function getSelectionStart() {
-   var node = document.getSelection().anchorNode;
-   return (node != null && node.nodeType == 3 ? node.parentNode : node);
-}
-// Returns the closest ancestor of the selection having the given tagName
-function getEnclosingCaret(tagName) {
-  var w = getSelectionStart();
-  while(w != null && w.tagName.toLowerCase() != tagName.toLowerCase()) {
-    w = w.parentNode;
+  if (typeof automaticGhostMarker !== "undefined") {
+    // console.log("automaticGhostMarker.disconnect()");
+    automaticGhostMarker.disconnect();
   }
-  return w;
-}
 
-// Removes all the text from a node (not the text nodes themselves)
-function emptyTextContent(node) {
-  if(node != null) {
-    if(node.nodeType == 3) {
-      node.textContent = "";
-    } else {
-      for(let i = 0; i < node.childNodes.length; i++) {
-        emptyTextContent(node.childNodes[i]);
-      }
-    }
-  }
-  return node;
-}
-editor.emptyTextContent = emptyTextContent;
-
-function insertBefore(parent, node, beforeNode) {
-  if(beforeNode == null) {
-    parent.append(node);
-  } else {
-    parent.insertBefore(node, beforeNode);
-  }
-}
-
-function duplicate(node, options) {
-  if(typeof options == "undefined") options = {}
-  if(typeof options.onBeforeInsert != "function") options.onBeforeInsert = e => e;
-  if(node != null && node.parentNode != null) {
-    var parentInsertion = options.target ? options.target.parentElement : node.parentElement;
-    var insertBeforeNode = options.after ? options.target ? options.target.nextSibling : node.nextSibling :
-                                           options.target ? options.target             : node;
-    if(node.nextSibling != null && !options.target && !options.ignoreText) {
-      var next = node.nextSibling;
-      if(next.nodeType == 3 && next.nextSibling != null &&
-         next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
-        var textElement = next.cloneNode(true);
-        insertBefore(node.parentNode, textElement, options.after ? node.nextSibling : node);
-        if(options.after) {
-          insertBeforeNode = textElement.nextSibling;
-        } else {
-          insertBeforeNode = textElement
-        }
-      }
-    }
-    var duplicated = node.cloneNode(true);
-    function removeEditorAttributes(node) {
-      if(node.nodeType != 1) return;
-      let attrs = [...node.attributes];
-      for(var i = 0; i < attrs.length; i++) {
-        if(attrs[i].name.match(/^ghost-clicked$|^translate-id.*$/)) {
-          node.removeAttribute(attrs[i].name);
-        }
-      }
-      for(var i = 0; i < node.childNodes; i++) {
-        removeEditorAttributes(node.childNodes[i]);
-      }
-    }
-    removeEditorAttributes(duplicated);
-    
-    var cloned = options.onBeforeInsert(duplicated);
-    insertBefore(parentInsertion, cloned, insertBeforeNode);
-    return cloned;
-  }
-}
-editor.duplicate = duplicate;
-
-function remove(node, options) {
-  if(typeof options == "undefined") options = {}
-  if(node.previousSibling != null && !options.ignoreText) { // Remove whitespace as well
-    var next = node.nextSibling;
-    if(next.nodeType == 3 && next.nextSibling != null &&
-       next.nextSibling.tagName == node.tagName && (node.tagName == "TR" || node.tagName == "TH" || node.tagName == "LI" || node.tagName == "TD")) {
-      next.remove();
-    }
-  }
-  node.remove();
-}
-editor.remove = remove;
+  automaticGhostMarker = new MutationObserver(handleScriptInsertion);
+  automaticGhostMarker.observe
+   ( document.head.parentElement
+   , { attributes: false
+     , childList: true
+     , characterData: false
+     , attributeOldValue: false
+     , characterDataOldValue: false
+     , subtree: true
+     }
+   )
 
 var onMobile = () => window.matchMedia("(max-width: 800px)").matches;
 var touchScreen = () => window.matchMedia("(pointer: coarse)").matches;
@@ -1852,48 +1896,6 @@ lastEditScript = """
             parent.appendChild(elem);
           }
         }
-      }
-    }
-    
-    function domNodeToNativeValue(n) {
-      if(n.nodeType == 3) {
-        return ["TEXT", n.textContent];
-      } else if(n.nodeType == 8) {
-        return ["COMMENT", n.textContent];
-      } else {
-        var attributes = [];
-        var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(n);
-        var isIgnoredAttributeKey =  isIgnoredAttributeKeyFromNode(n); // TODO recover ignored value
-        for(var i = 0; i < n.attributes.length; i++) {
-          var key = n.attributes[i].name;
-          var ignored = isIgnoredAttributeKey(key);
-          if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key) || ignored) {
-            var value = ignored ? ignoredAttributeValue(n, key) : n.attributes[i].value;
-            if(typeof value == "undefined") continue;
-            if(key == "style") {
-              value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
-            }
-            attributes.push([key, value]);
-          }
-        }
-        var children = [];
-        if(n.__editor__ && n.__editor__.ignoredChildNodes) {
-          children = n.__editor__.ignoredChildNodes;
-        } else {
-          var childNodes = n.childNodes;
-          if(n.tagName.toLowerCase() === "noscript" && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
-            // We'll recover the associated HTML node
-            childNodes = el("div", {}, [], {innerHTML: n.childNodes[0].textContent, parentNode: n}).childNodes;
-          }
-          if(!areChildrenGhosts(n)) {
-            for(i = 0; i < childNodes.length; i++) {
-              if(!isGhostNode(childNodes[i])) {
-                children.push(domNodeToNativeValue(childNodes[i]));
-              }
-            }
-          }
-        }
-        return [n.tagName.toLowerCase(), attributes, children];
       }
     }
 
@@ -2119,7 +2121,7 @@ lastEditScript = """
       updateInteractionDiv();
       setTimeout( () => {
         notifyServer({"question": editor_model.askQuestions ? "true" : "false"},
-          JSON.stringify(domNodeToNativeValue(document.body.parentElement)));
+          JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement)));
       }, 0);
     }
 
@@ -2140,7 +2142,7 @@ lastEditScript = """
       editor_model.actionsDuringSave = [];
       updateInteractionDiv();
       editor.sendNotification("Saving...");
-      const tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
+      const tosend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
       let data = {action:"sendRequest", 
                   toSend:tosend,
                   gaidt:googleAuthIdToken,
@@ -2219,13 +2221,13 @@ lastEditScript = """
          * Add mutations to undo list if they are not ghosts and if they are really doing something.
          */
         let mutation = mutations[i];
-        if(hasGhostAncestor(mutation.target)) {
+        if(editor.hasGhostAncestor(mutation.target)) {
           continue;
         }
         if(mutation.type == "attributes") {
-          var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(mutation.target);
-          var isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(mutation.target);
-          if(isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
+          var isSpecificGhostAttributeKey = editor.isSpecificGhostAttributeKeyFromNode(mutation.target);
+          var isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(mutation.target);
+          if(editor.isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
              mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue ||
              isIgnoredAttributeKey(mutation.attributeName)) {
           } else {
@@ -2242,9 +2244,9 @@ lastEditScript = """
             }
           }
         } else if(mutation.type == "childList") {
-          if(!areChildrenGhosts(mutation.target)) {
+          if(!editor.areChildrenGhosts(mutation.target)) {
             for(var j = 0; j < mutation.addedNodes.length; j++) {
-              if(!hasGhostAncestor(mutation.addedNodes[j]) && !hasIgnoringAncestor(mutation.addedNodes[j])) {
+              if(!editor.hasGhostAncestor(mutation.addedNodes[j]) && !editor.hasIgnoringAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
                 sendToUndo(mutation);
                 // Please do not comment out this line until we get proper clever save.
@@ -2260,7 +2262,7 @@ lastEditScript = """
               }
             }
             for(var j = 0; j < mutation.removedNodes.length; j++) {
-              if(!isGhostNode(mutation.removedNodes[j]) && !isIgnoringChildNodes(mutation.target) && !hasIgnoringAncestor(mutation.target)) {
+              if(!editor.isGhostNode(mutation.removedNodes[j]) && !editor.isIgnoringChildNodes(mutation.target) && !editor.hasIgnoringAncestor(mutation.target)) {
                 onlyGhosts = false;
                 sendToUndo(mutation);
                 // Please do not comment out this line until we get proper clever save.
@@ -2389,7 +2391,7 @@ lastEditScript = """
             if(kidNodes.length === 0) {            
               if(undoElem[k].nextSibling == null && undoElem[k].previousSibling == null) {
                 for(i = 0; i < uRemNodes.length; i++) { 
-                  /*if(hasGhostAncestor(uRemNodes.item(i))) {
+                  /*if(editor.hasGhostAncestor(uRemNodes.item(i))) {
                     continue;
                   }*/
                   target.appendChild(uRemNodes.item(i)); 
@@ -2406,7 +2408,7 @@ lastEditScript = """
               if ((knode == ns || knode_may == ns || ns == undefined) &&
                   (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))){
                 for(i = 0; i < uRemNodes.length; i++) { 
-                  /*if(hasGhostAncestor(uRemNodes.item(i))) {
+                  /*if(editor.hasGhostAncestor(uRemNodes.item(i))) {
                     continue;
                   }*/
                   let uremnode = uRemNodes.item(i);
@@ -2423,7 +2425,7 @@ lastEditScript = """
             }
           }
           for(i = 0; i < uAddNodes.length; i++) {
-            /*if(hasGhostAncestor(uAddNodes.item(i))) {
+            /*if(editor.hasGhostAncestor(uAddNodes.item(i))) {
               continue;
             }*/
             if(!target.contains(uAddNodes.item(i))) {
@@ -2504,8 +2506,8 @@ lastEditScript = """
               if ((knode == ns || knode_may == ns || ns == undefined) &&
                   (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))) {
                 for(i = 0; i < rAddNodes.length; i++) {
-                  /*console.log(hasGhostAncestor);
-                  if(hasGhostAncestor(rAddNodes.item(i))) {
+                  /*console.log(editor.hasGhostAncestor);
+                  if(editor.hasGhostAncestor(rAddNodes.item(i))) {
                     continue;
                   }*/
                   console.log(rAddNodes.item(i));
@@ -2522,7 +2524,7 @@ lastEditScript = """
             }
           }
           for(i = 0; i < rRemNodes.length; i++) {
-            /*if(hasGhostAncestor(rRemNodes.item(i))) {
+            /*if(editor.hasGhostAncestor(rRemNodes.item(i))) {
               continue;
             }*/if(!target.parentElement.contains(quicker(rRemNodes.item(i)))) { //bc the node in rRemNodes isn't necessarily connected, we need to rewrite this.
               console.log("The item you are trying to redo doesn't exist in the parent node.");
@@ -2840,37 +2842,37 @@ lastEditScript = """
       // Check if the event.target matches some selector, and do things...
     } //end of onClickGlobal
 
-    var parentUpSVG = svgFromPath("M 20,5 20,25 M 15,10 20,5 25,10");
-    var editorContainerArrowDown = svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true, 30, 20, [0, 0, 40, 30]);
-    var editorContainerArrowUp = svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true, 30, 20, [0, 0, 40, 30]);
-    var arrowDown = svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true);
-    var arrowRight = svgFromPath("M 21,25 18,22 22,18 8,18 8,12 22,12 18,8 21,5 31,15 Z", true);
-    var arrowUp = svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true);
-    var arrowLeft = svgFromPath("M 19,25 22,22 18,18 32,18 32,12 18,12 22,8 19,5 9,15 Z", true);
-    var cloneSVG = svgFromPath("M 19,8 31,8 31,26 19,26 Z M 11,4 23,4 23,8 19,8 19,22 11,22 Z");
-    var saveSVG = svgFromPath("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
-    var openLeftSVG = svgFromPath("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
-    var closeRightSVG = svgFromPath("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
-    var openTopSVG = svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
-    var displayArrowSVG = svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true, 30, 20, [0, 0, 40, 30]);
-    var closeBottomSVG = svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
-    var wasteBasketSVG = svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
-    var plusSVG = svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
-    var liveLinkSVG = link => `<a class="livelink" href="javascript:if(nothingToLose()) { navigateLocal(relativeToAbsolute('${link}')) }">${svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
-    var gearSVG = svgFromPath("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
-    var folderSVG = svgFromPath("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
-    var reloadSVG = svgFromPath("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
-    var logSVG = svgFromPath("M 17.24,16 A 1.24,2 0 0 1 16,18 1.24,2 0 0 1 14.76,16 1.24,2 0 0 1 16,14 1.24,2 0 0 1 17.24,16 Z M 20,16 21.24,16 21.24,16 A 1.24,2 0 0 1 20,18 1.24,2 0 0 1 18.76,16 1.24,2 0 0 1 20,14 1.33,2.16 0 0 1 21,15 M 12,14 12,18 14,18 M 10,12 23,12 23,20 10,20 Z M 23,6 23,11 28,11 M 14,6 14,12 10,12 10,20 14,20 14,25 28,25 28,11 23,6 14,6 Z");
-    var sourceSVG = svgFromPath("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
+    var parentUpSVG = editor.svgFromPath("M 20,5 20,25 M 15,10 20,5 25,10");
+    var editorContainerArrowDown = editor.svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true, 30, 20, [0, 0, 40, 30]);
+    var editorContainerArrowUp = editor.svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true, 30, 20, [0, 0, 40, 30]);
+    var arrowDown = editor.svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true);
+    var arrowRight = editor.svgFromPath("M 21,25 18,22 22,18 8,18 8,12 22,12 18,8 21,5 31,15 Z", true);
+    var arrowUp = editor.svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true);
+    var arrowLeft = editor.svgFromPath("M 19,25 22,22 18,18 32,18 32,12 18,12 22,8 19,5 9,15 Z", true);
+    var cloneSVG = editor.svgFromPath("M 19,8 31,8 31,26 19,26 Z M 11,4 23,4 23,8 19,8 19,22 11,22 Z");
+    var saveSVG = editor.svgFromPath("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
+    var openLeftSVG = editor.svgFromPath("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
+    var closeRightSVG = editor.svgFromPath("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
+    var openTopSVG = editor.svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
+    var displayArrowSVG = editor.svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true, 30, 20, [0, 0, 40, 30]);
+    var closeBottomSVG = editor.svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
+    var wasteBasketSVG = editor.svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
+    var plusSVG = editor.svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
+    var liveLinkSVG = link => `<a class="livelink" href="javascript:if(nothingToLose()) { navigateLocal(relativeToAbsolute('${link}')) }">${editor.svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
+    var gearSVG = editor.svgFromPath("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
+    var folderSVG = editor.svgFromPath("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
+    var reloadSVG = editor.svgFromPath("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
+    var logSVG = editor.svgFromPath("M 17.24,16 A 1.24,2 0 0 1 16,18 1.24,2 0 0 1 14.76,16 1.24,2 0 0 1 16,14 1.24,2 0 0 1 17.24,16 Z M 20,16 21.24,16 21.24,16 A 1.24,2 0 0 1 20,18 1.24,2 0 0 1 18.76,16 1.24,2 0 0 1 20,14 1.33,2.16 0 0 1 21,15 M 12,14 12,18 14,18 M 10,12 23,12 23,20 10,20 Z M 23,6 23,11 28,11 M 14,6 14,12 10,12 10,20 14,20 14,25 28,25 28,11 23,6 14,6 Z");
+    var sourceSVG = editor.svgFromPath("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
     var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
     var linkToEdit = link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;
-    var undoSVG = svgFromPath("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
-    var redoSVG = svgFromPath("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
+    var undoSVG = editor.svgFromPath("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
+    var redoSVG = editor.svgFromPath("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
 
-    var isDraftSVG = svgFromPath("M 2,7 2,25 38,25 38,7 M 36,6 C 32,6 29.1,3.9 26.1,3.9 23.1,3.9 22,5 20,6 L 20,23 C 22,22 23.1,20.9 26.1,20.9 29.1,20.9 32,22.9 36,22.9 Z M 4,6 C 8,6 10.9,3.9 13.9,3.9 16.9,3.9 18,5 20,6 L 20,23 C 18,22 16.9,20.9 13.9,20.9 10.9,20.9 8,22.9 4,22.9 Z");
-    var escapeSVG = svgFromPath("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
-    var linkModeSVG = svgFromPath("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
-    var checkSVG = svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
+    var isDraftSVG = editor.svgFromPath("M 2,7 2,25 38,25 38,7 M 36,6 C 32,6 29.1,3.9 26.1,3.9 23.1,3.9 22,5 20,6 L 20,23 C 22,22 23.1,20.9 26.1,20.9 29.1,20.9 32,22.9 36,22.9 Z M 4,6 C 8,6 10.9,3.9 13.9,3.9 16.9,3.9 18,5 20,6 L 20,23 C 18,22 16.9,20.9 13.9,20.9 10.9,20.9 8,22.9 4,22.9 Z");
+    var escapeSVG = editor.svgFromPath("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
+    var linkModeSVG = editor.svgFromPath("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
+    var checkSVG = editor.svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor_model === "object";
     if (!ifAlreadyRunning) {
       var thaditor_files = [
@@ -3385,8 +3387,8 @@ lastEditScript = """
             childrenElemDiv.append(
               el("div", {
                   "class": "childrenSelector" + (elem.matches(".editor-interface") ? " editor-interface-dom-selector" : "") +
-                    (isGhostNode(elem) ? " editor-recorded-ghost-node" : ""),
-                  title: elem.matches(".editor-interface") ? "This is part of Editor" : (isGhostNode(elem) ? "(temporary) " : "") + textPreview(elem, 20)
+                    (editor.isGhostNode(elem) ? " editor-recorded-ghost-node" : ""),
+                  title: elem.matches(".editor-interface") ? "This is part of Editor" : (editor.isGhostNode(elem) ? "(temporary) " : "") + textPreview(elem, 20)
                   },
                 [
                   el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
@@ -3528,7 +3530,7 @@ lastEditScript = """
                   let childrenElem = clickedElem.children;
                   for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
                     // prevent displaying editor itself
-                    if (cnt === 0 && (childrenElem[i].matches(".editor-interface") || isGhostNode(childrenElem[i]))) {
+                    if (cnt === 0 && (childrenElem[i].matches(".editor-interface") || editor.isGhostNode(childrenElem[i]))) {
                       continue;
                     }
                     displayChildrenElem(childrenElem[i]);
@@ -3657,8 +3659,8 @@ lastEditScript = """
               )
             ])
           );
-          let isGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(clickedElem);
-          let isIgnoredAttributeKey = isIgnoredAttributeKeyFromNode(clickedElem);
+          let isSpecificGhostAttributeKey = editor.isSpecificGhostAttributeKeyFromNode(clickedElem);
+          let isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(clickedElem);
 
           for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
             let name = clickedElem.attributes[i].name;
@@ -3666,7 +3668,7 @@ lastEditScript = """
             let value = clickedElem.attributes[i].value;
             // Inline styles incoporated into CSS display editor
             if(name !== "style") {
-              let isGhost = isGhostAttributeKey(name);
+              let isGhost = editor.isGhostAttributeKey(name) || isSpecificGhostAttributeKey(name);
               let isIgnored = isIgnoredAttributeKey(name);
               let isHref = name === "href" && clickedElem.tagName === "A";
               keyvalues.append(
@@ -5467,7 +5469,7 @@ lastEditScript = """
                 (async () => {
                   for(let e = 0; e < allPageLinks.length; e++) {
                     let linkNode = allPageLinks[e];
-                    if(!isGhostNode(linkNode) && linkNode.getAttribute("ghost-href")) {
+                    if(!editor.isGhostNode(linkNode) && linkNode.getAttribute("ghost-href")) {
                       let linkNodeTmpHref = linkNode.getAttribute("href");
                       let linkNodeOriginalHref = linkNode.getAttribute("ghost-href");
                       let trueTempPath = removeTimestamp(linkNodeTmpHref); // This one is absolute normally
@@ -5860,12 +5862,14 @@ lastEditScript = """
     (function() {
       var elems = document.querySelectorAll("*");
       for(var i = 0; i < elems.length; i++) {
-        if(isIgnoringChildNodes(elems[i])) {
-          cacheChildNodes(elems[i]);
+        if(editor.isIgnoringChildNodes(elems[i])) {
+          editor.storeIgnoredChildNodes(elems[i]);
         }
       }
     })();
+    // TODO: Move the script above in initial script, to be activated when body is loaded.
     
+    // The thing that makes everything live editable.
     if(typeof editor.config.canEditPage == "boolean" && editor.config.canEditPage) {
       document.body.setAttribute("contenteditable", "true");
     }

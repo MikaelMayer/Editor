@@ -34,10 +34,10 @@ Hello <a href="links.html">world</a> outside a <a href="https://google.com">para
 <tr><td>Apple</td><td>1$</td></tr>
 </tbody>
 </table>
-<button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'))">Duplicate row on cursor</button>
-<button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'), {onBeforeInsert: emptyTextContent})" contenteditable="false">Insert empty row before</button>
-<button style="display:none" class="editor-menu" onclick="duplicate(getEnclosingCaret('tr'), {after: true, onBeforeInsert: emptyTextContent})" contenteditable="false">Insert empty row after</button>
-<button style="display:none" class="editor-menu" onclick="remove(getEnclosingCaret('tr'))" contenteditable="false">Remove row</button>
+<button style="display:none" class="editor-menu" onclick="editor.duplicate(editor.getElementArCaret('tr'))">Duplicate row on cursor</button>
+<button style="display:none" class="editor-menu" onclick="editor.duplicate(editor.getElementArCaret('tr'), {onBeforeInsert: editor.emptyTextContent})" contenteditable="false">Insert empty row before</button>
+<button style="display:none" class="editor-menu" onclick="editor.duplicate(editor.getElementArCaret('tr'), {after: true, onBeforeInsert: editor.emptyTextContent})" contenteditable="false">Insert empty row after</button>
+<button style="display:none" class="editor-menu" onclick="editor.remove(editor.getElementArCaret('tr'))" contenteditable="false">Remove row</button>
 <a href="https://www.google.com">A link at the end</a> to make sure edition is working anywhere.
 </body>
 </html>
