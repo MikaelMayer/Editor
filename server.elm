@@ -310,11 +310,13 @@ luca =
    <script id="thaditor-luca" class="editor-interface">
     // Overwrite the entire document (head and body)
     // I'm not sure there is a better way.
+  (function(editor) {
     function writeDocument(NC) {
       document.open();
       document.write(NC);
       document.close();
     }
+    editor.writeDocument = writeDocument;
 
     // Asynchronous if onOk is defined and readServer is defined. and asynchronous and returns result otherwise.
     function doReadServer(action, name, onOk, onErr) {
@@ -335,6 +337,7 @@ luca =
         }
       }
     }
+    editor.doReadServer = doReadServer;
 
     // Returns a promise after performing a direct GET action on the server.
     function getServer(action, name) {
@@ -342,6 +345,7 @@ luca =
         doReadServer(action, name, resolve, reject);
       });
     }
+    editor.getServer = getServer;
 
     // Asynchronous if onOk is defined and writeServer is defined. and asynchronous and returns result otherwise.
     function doWriteServer(action, name, content, onOk, onErr) {
@@ -363,6 +367,7 @@ luca =
         }
       }
     }
+    editor.doWriteServer = doWriteServer;
 
     // Returns a promise after performing a direct POST action on the server.
     function postServer(action, name, content) {
@@ -370,6 +375,7 @@ luca =
         doWriteServer(action, name, content, resolve, reject);
       });
     }
+    editor.postServer = postServer;
 
     // Page reloading without trying to recover the editor's state.
     function doReloadPage(url, replaceState) {
@@ -393,82 +399,27 @@ luca =
       console.log("setting url to ", url);
       xmlhttp.send("{\"a\":1}");
     }
-    window.onpopstate = function(e){
-        console.log("onpopstate", e);
-        if(e.state && e.state.localURL) {
-          doReloadPage(location, true);
-        } else {
-          doReloadPage(location.pathname + location.search, true);
-        }
-    };
-    //document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
+    editor.doReloadPage = doReloadPage;
 
-    function sendNotification(msg, timeout) {
-      /*
-        Pushes the notification msg to the log & displays it for 3 seconds directly left of the moidfymenu.
-        css for notification box is textarea .notif
-      */
-
-      let modifyMenuDiv = document.querySelector("#modify-menu");
-      if (!modifyMenuDiv) {
-        console.log("Notifications havent been set up for use outside of editor, like in the filesystem");
-        console.log (msg);
-        return;
-      }
-      let notifBox = document.getElementById("notif-box");
-      if (!notifBox) {
-        notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
-        modifyMenuDiv.append(notifBox);
-      }
-      notifBox.value = msg;
-      notifBox.style.display = "block";
-      notifBox.classList.toggle("visible", true);
-      notifBox.style.zIndex = 100;
-      notifBox.style.visibility = true;
-      editor_model.editor_log.push(msg);
-      var logWindow = getEditorInterfaceByTitle("Log");
-      if(logWindow) logWindow.refresh();
-      setTimeout(hideNotification, timeout ? timeout : 3000);
-    }
-
-    function hideNotification() {
-      let notifBox = document.getElementById("notif-box");
-      if (notifBox) {
-        notifBox.classList.toggle("visible", false);
-      }
-    }
-
-    var uploadProgress = [];
-
+    // Returns a progress bar and an array for each file.
     function initializeProgress(numFiles) {
       var progressBar = document.getElementById("progress-bar");
       if (!progressBar) {
-        console.err ("Warning! Add the progress bar yourself before calling this. We'll add it for you this time.");
-        document.body.appendChild(el("progress", {id:"progress-bar", max:100, value:0, visible:false}, [], {}));
+        progressBar = el("progress", {id:"progress-bar", max:"100", value:"0", visible:false}, [], {isghost: true});
       }
       progressBar.value = 0;
       progressBar.visible = true;
-      uploadProgress = [];
-
-      for(let i = numFiles; i > 0; i--) {
-        uploadProgress.push(0);
-      }
-    }
-
-    function updateProgress(fileNumber, percent) {
-      uploadProgress[fileNumber] = percent;
-      let total = uploadProgress.reduce((tot, curr) => tot + curr, 0) / uploadProgress.length;
-      console.log ("prog updated");
-      documentgetElementById("progress-bar").value = total;
+      return progressBar;
     }
 
     // Editor's API should be stored in the variable editor.
 
-    editor = typeof editor === "object" ? editor : {};
     editor.uploadFile = function(targetPathName, file, onOk, onError, updateProgFunction) {
       var xhr = new XMLHttpRequest();
       xhr.onprogress = (e) => {
-        updateProgFunction(i, (e.loaded * 100.0 / e.total) || 100)
+        if(updateProgFunction) {
+          updateProgFunction(targetPathName, e && (e.loaded * 100.0 / e.total) || 100)
+        }
       }
       xhr.onreadystatechange = ((xhr, file) => () => {
         if (xhr.readyState == XMLHttpRequest.DONE) {
@@ -479,7 +430,6 @@ luca =
             onError ? onError(targetPathName, file) : 0;
           }
         }
-        var progbar = document.getElementById("progress-bar");
       })(xhr, file);
       if(editor.config.is_apache_server) {
         xhr.open("POST", "/Thaditor/editor.php?action=write&" + "name=" + encodeURIComponent(targetPathName), false);
@@ -525,6 +475,8 @@ luca =
           return JSON.parse(await getServer("listdir", dirname) || "[]");
         }
     };
+    // Given a node, computes a way to retrieve this node if the page was reloaded.
+    // That's a treasure map.
     editor.toTreasureMap = function(oldNode) {
       if(!oldNode) return undefined;
       if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
@@ -564,7 +516,7 @@ luca =
         return undefined;
       }
     }
-        
+
     // Helper to create an element with attributes, children and properties
     function el(tag, attributes, children, properties) {
       let tagClassIds = tag.split(/(?=#|\.)/g);
@@ -602,7 +554,19 @@ luca =
         }
       }
       return x;
-    }    
+    }
+    editor.el = el;
+  })(editor);
+
+  window.onpopstate = function(e){
+      console.log("onpopstate", e);
+      if(e.state && e.state.localURL) {
+        editor.doReloadPage(location, true);
+      } else {
+        editor.doReloadPage(location.pathname + location.search, true);
+      }
+  };
+  
    </script>]
 
 
@@ -981,7 +945,8 @@ evaluatedPage =
       </head><body><h1><label value=path>@path</label></h1>
       <form id="fileListing"></form>
       <script>
-      var fullListDir = (path) => JSON.parse(doReadServer("fullListDir", path));
+      el = editor.el;
+      var fullListDir = (path) => JSON.parse(editor.doReadServer("fullListDir", path));
       var thisListDir = fullListDir(editor.config.path);
       var folders = thisListDir.filter((i) => i[1] == true);
       var getSelectedFiles = () => Array.from(document.querySelectorAll("input.filesBtn")).filter((btn) => btn.checked);
@@ -1031,7 +996,7 @@ evaluatedPage =
           const doit = window.confirm("Are you sure you want to overwrite an existing file with the name " + newname + "?");
           if (!doit) return;
         }
-        var x = doWriteServer("rename", editor.config.path + sel.id, editor.config.path + newname);
+        var x = editor.doWriteServer("rename", editor.config.path + sel.id, editor.config.path + newname);
         console.log ("renamed", sel.id, newname);
         goodReload();
       }
@@ -1055,10 +1020,10 @@ evaluatedPage =
             var isfolder = folders.filter((j) => j[0] == selected[i].id); //optomizable
             console.log (isfolder);
             if (isfolder.length != 0) {
-              doWriteServer("rmdir", editor.config.path + selected[i].id); //does this work on non-empty stuff? idts....
+              editor.doWriteServer("rmdir", editor.config.path + selected[i].id); //does this work on non-empty stuff? idts....
               continue;
             }
-            doWriteServer("unlink", editor.config.path + selected[i].id);
+            editor.doWriteServer("unlink", editor.config.path + selected[i].id);
           }
           goodReload();
           return;
@@ -1079,14 +1044,14 @@ evaluatedPage =
           nn = sel.id.substring(0, lastdot) + "_(Copy)" + sel.id.substring(lastdot);
         }
         var newname = window.prompt("Name for duplicate: ", nn);
-        var contents = doReadServer("read", editor.config.path + sel.id);
+        var contents = editor.doReadServer("read", editor.config.path + sel.id);
         if (contents[0] != "1") {
           window.alert ("Couldn't read the file for some reason. aborting.");
           console.error ("couldn't read the file for some reason. aborting.");
           return;
         }
         contents = contents.substring(1, contents.length);
-        var resp = doWriteServer("create", editor.config.path + newname, contents);
+        var resp = editor.doWriteServer("create", editor.config.path + newname, contents);
         goodReload();
       }
       function createFolder() {
@@ -1107,7 +1072,7 @@ evaluatedPage =
           const conf = window.confirm ("Are you sure you want to overwrite a folder with the name " + newname + " with an empty file? This would delete the folder.");
           if (!conf) return;
         }
-        doWriteServer("mkdir", newname, "");
+        editor.doWriteServer("mkdir", newname, "");
         goodReload();
       }
       function moveFs() {
@@ -1136,7 +1101,7 @@ evaluatedPage =
         var oldloc = (editor.config.path + btn.id);
         var newloc = newpath == "/" ? btn.id : (newpath + btn.id);
         console.log ("renamimg\n%s\n%s", (editor.config.path + btn.id), (newpath + btn.id));
-        doWriteServer("rename", oldloc, newloc); 
+        editor.doWriteServer("rename", oldloc, newloc); 
         console.log ("rename successful");
         goodReload();
       }
@@ -1152,26 +1117,37 @@ evaluatedPage =
       }
       var handleFiles = (files) => {
         var pgbr = document.getElementById("forprog");
-        var progbar = document.getElementById("progress-bar");
-        if (!progbar) {
-          pgbr.append(el("progress", {id:"progress-bar", max:100, value:0, visible:true}, [], {}));
-          progbar = document.getElementById("progress-bar");
-        } else {
-          progbar.visible = true;
-        }
-        initializeProgress(files.length);
+        var progbar = initializeProgress(files.length);
+        pgbr.append(progbar);
+        var uploadProgress = {};
         var didUp = false;
         ([...files]).forEach((fl) => {
-          editor.uploadFile(editor.config.path + fl.name, fl, (ok) => console.log ("was ok\n" + ok), (err) => console.err (err), updateProgress);
-          didUp = true;
-          
+          var fileName = editor.config.path + fl.name;
+          uploadProgress[fileName] = 0;
         });
-        progbar.value = 100;
-        progbar.visible = false;
-        if (didUp) {
-          goodReload();
-          pgbr.innerHTML = "";
+        var callbackUpload = function (fileName, percent) {
+          uploadProgress[fileName] = typeof percent == "number" ? percent : 100;
+          let total = uploadProgress.reduce((tot, curr) => tot + curr, 0) / uploadProgress.length;
+          progbar.value = total;
+          if(total == 100) {
+            progbar.visible = false;
+            if (didUp) {
+              goodReload();
+              pgbr.innerHTML = "";
+            }
+          }
         }
+        ([...files]).forEach((fl) => {
+          var fileName = editor.config.path + fl.name;
+          editor.uploadFile(fileName, fl,
+            callbackUpload,
+            (err) => {
+              pgbr.innerHTML = "";
+              console.err(err);
+            },
+            callbackUpload);
+          didUp = true;
+        });
       }
       function preventDefaults (e) {
         e.preventDefault()
@@ -1185,6 +1161,7 @@ evaluatedPage =
       }
       function loadFileList() {
         let form = document.getElementById("fileListing");
+        form.innerHTML = "";
         let files = thisListDir;
         function getRecordForCheckbox(file) {
           var rec = {type:"checkbox",
@@ -1205,7 +1182,6 @@ evaluatedPage =
         var extensionIcon = name => {
           let extension = name.replace(/^(?:(?!\.(?=[^\.]*$)).)*\.?/, "");
           if("." + extension == name || extension === "") extension = "-";
-          console.log ({extension});
           var d = el("div", {}, [], {innerHTML: 
           `<svg class="file-extension-icon" width="60" height="30">
             <text x="0" y="25">${extension}
@@ -1213,18 +1189,27 @@ evaluatedPage =
           return d.childNodes[0];
         }
 
-        var fileItemDisplay = function(link, name, isDir) {
+        var fileItemDisplay = function(name, isDir) {
+           let newURL = name == ".." ?
+                    editor.config.path.replace(/(\/|^)[^\/]+\/?$/, "")
+                  : editor.config.path + "/" + name
+           var link = typeof isDir == "boolean" ? (isDir ? newURL + "/?ls" : newURL + "?edit") : name;
            return el("div", {class:"file-item"}, [
               el("input", getRecordForCheckbox(name), ""),
               el("label", {for:name, value:name}, [ 
                 isDir ? dirIcon() : extensionIcon(name),
                 el("a", {href:link}, name, {onclick: function(event) {
                   event.preventDefault();
-                  let link = this.getAttribute("href");
-                  doReloadPage(link);
+                  if(isDir) {
+                    window.history.pushState({localURL: location.href}, name, link);
+                    editor.config.path = newURL;
+                    goodReload();
+                  } else {
+                    editor.doReloadPage(link);
+                  }
                 }})])]);
         }
-        var otherItemDisplay = function(link, name) {
+        /*var otherItemDisplay = function(link, name) {
            return el("div", {class:"file-item"}, [
               el("input", getRecordForCheckbox(name), ""),
               el("label", {for:name, value:name}, [ 
@@ -1232,11 +1217,11 @@ evaluatedPage =
                 el("a", {href:link}, name)
                 ])
               ]);
-        }
+        }*/
         //el(tag, attributes, children, properties)
         if (editor.config.path != "") {
           var link = "../" + "?ls";
-          form.append(otherItemDisplay(link, ".."));
+          form.append(fileItemDisplay("..", true));
         }
         // directories before files, sorted case-insensitive
         files.sort(([name1, isDir1], [name2, isDir2]) =>
@@ -1250,12 +1235,12 @@ evaluatedPage =
           const is_img = img_exts.includes(extension.toLowerCase());
           if (!is_img) {
             if (isDir) {
-              form.append(otherItemDisplay((name + "/?ls"), name))
+              form.append(fileItemDisplay(name, isDir))
             } else {
-              form.append(fileItemDisplay((name + "/?edit"), name, isDir));
+              form.append(fileItemDisplay(name, isDir));
             }
           } else {
-            form.append(otherItemDisplay(name, name));
+            form.append(fileItemDisplay(name));
           }
         }
 
@@ -1361,7 +1346,7 @@ editionmenu thesource = [
 initialScript = serverOwned "initial script" <| luca ++ [
 <script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js" list-ghost-attributes="gapi_processed"></script>,
 <script class="editor-interface">
-
+el = editor.el;
 // TODO: Find a way to store a cookie containing credentials, and have this server refresh tokens.
 // https://developers.google.com/identity/sign-in/web/server-side-flow
 // https://stackoverflow.com/questions/32902734/how-to-make-google-sign-in-token-valid-for-longer-than-1-hour
@@ -1764,7 +1749,40 @@ setTimeout(function insertEditBox() {
 
 -- Script added to the end of the page
 lastEditScript = """
+    el = editor.el;
     console.log("lastEditScript running");
+    function sendNotification(msg, timeout) {
+      /*
+        Pushes the notification msg to the log & displays it for 3 seconds directly left of the moidfymenu.
+        css for notification box is textarea .notif
+      */
+      let modifyMenuDiv = document.querySelector("#modify-menu");
+      if (!modifyMenuDiv) {
+        console.log("Notifications havent been set up for use outside of editor, like in the filesystem");
+        console.log (msg);
+        return;
+      }
+      let notifBox = document.getElementById("notif-box");
+      if (!notifBox) {
+        notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
+        modifyMenuDiv.append(notifBox);
+      }
+      notifBox.value = msg;
+      notifBox.style.display = "block";
+      notifBox.classList.toggle("visible", true);
+      notifBox.style.zIndex = 100;
+      notifBox.style.visibility = true;
+      editor_model.editor_log.push(msg);
+      var logWindow = getEditorInterfaceByTitle("Log");
+      if(logWindow) logWindow.refresh();
+      setTimeout(function hideNotification() {
+        let notifBox = document.getElementById("notif-box");
+        if (notifBox) {
+          notifBox.classList.toggle("visible", false);
+        }
+      }, timeout ? timeout : 3000);
+    }
+    editor.sendNotification = sendNotification;
     
 	  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
 	  // Same for some attributes
@@ -1908,7 +1926,7 @@ lastEditScript = """
       if(editor_model.clickedElem) {
         editor_model.clickedElem = editor.toTreasureMap(editor_model.clickedElem);
       }
-      writeDocument(NC);
+      editor.writeDocument(NC);
     }
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
@@ -1995,7 +2013,7 @@ lastEditScript = """
                 replace(/\+\+\+\)/g, "</span>").
                 replace(/\(\+\+\+/g, "<span class='add'>");
               editor_model.editor_log.push(opSummary);
-              // sendNotification(opSummary);
+              // editor.sendNotification(opSummary);
             }
           } // /noambiguity
           var strQuery = "";
@@ -2054,7 +2072,7 @@ lastEditScript = """
     }
     
     function reloadPage() {
-      sendNotification("Reloading...");
+      editor.sendNotification("Reloading...");
       notifyServer({reload: "true"}, undefined, "Reload");
     }
     function relativeToAbsolute(url) {
@@ -2068,7 +2086,7 @@ lastEditScript = """
       }
     }
     function navigateLocal(url, replaceState) {
-      sendNotification("Loading...");
+      editor.sendNotification("Loading...");
       notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
     }
     
@@ -2121,7 +2139,7 @@ lastEditScript = """
       }
       editor_model.actionsDuringSave = [];
       updateInteractionDiv();
-      sendNotification("Saving...");
+      editor.sendNotification("Saving...");
       const tosend = JSON.stringify(domNodeToNativeValue(document.body.parentElement));
       let data = {action:"sendRequest", 
                   toSend:tosend,
@@ -2675,11 +2693,11 @@ lastEditScript = """
         }
         if(e.which == 90 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          if(!undo()) sendNotification("Nothing to undo!");
+          if(!undo()) editor.sendNotification("Nothing to undo!");
         }
         if(e.which == 89 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          if(!redo()) sendNotification("Nothing to redo!");
+          if(!redo()) editor.sendNotification("Nothing to redo!");
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
@@ -3126,7 +3144,7 @@ lastEditScript = """
             }
             if(msg) {
               setTimeout(() => {
-                 sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
+                 editor.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
               }, 0);
             }
           }
@@ -3137,20 +3155,20 @@ lastEditScript = """
             editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
           }
         } else if(e.data.action == "message") {
-          sendNotification(e.data.message)
+          editor.sendNotification(e.data.message)
         } else if(e.data.action == "reconnect") {
           thaditor_reconnect();
         } else if (e.data.action == "delete_complete") {
           //todo
           updateInteractionDiv();
-          sendNotification("Permanently deleted draft named: " + e.data.nm);
+          editor.sendNotification("Permanently deleted draft named: " + e.data.nm);
         } else if (e.data.action == "publish_complete") {
           //just send a notif, no more naving to live
-          sendNotification("Successfully published " + e.data.nm + " to live.");
+          editor.sendNotification("Successfully published " + e.data.nm + " to live.");
         } else if (e.data.action == "clone_complete") {
           //just send a notif, no more naving to the clone
           updateInteractionDiv();
-          sendNotification("Successfully cloned " + e.data.nm + " to " + e.data.draft_name);
+          editor.sendNotification("Successfully cloned " + e.data.nm + " to " + e.data.draft_name);
         } else if (e.data.action == "rename_complete") {
           let marker = false;
           if (e.data.nm == e.data.version) {
@@ -3159,9 +3177,9 @@ lastEditScript = """
           }
           updateInteractionDiv();
           if (marker) {
-            setTimeout(sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name), 2000)
+            setTimeout(editor.sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name), 2000)
           } else {
-            sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name);
+            editor.sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name);
           }
         }
       }
@@ -3243,14 +3261,14 @@ lastEditScript = """
       let oldHref = hasGhostHref ? ghostHref : linkNode.getAttribute("href")
       let CSSFilePath = relativeToAbsolute(removeTimestamp(oldHref));
       let currentContent = typeof linkNode.cachedContent === "string" ? linkNode.cachedContent :
-                               (await getServer("read", CSSFilePath)).slice(1);
+                               (await editor.getServer("read", CSSFilePath)).slice(1);
       if(typeof linkNode.cachedContent !== "string") {
         linkNode.cachedContent = currentContent;
       }
       if(hasGhostHref) { // Proxied
         console.log("Was proxied");
         let tmpCachedContent = typeof linkNode.tmpCachedContent == "string" ? linkNode.tmpCachedContent :
-                               (await getServer("read", linkNode.getAttribute("href"))).slice(1);
+                               (await editor.getServer("read", linkNode.getAttribute("href"))).slice(1);
         if(typeof newValue === "function") {
           newValue = newValue(tmpCachedContent);
         }
@@ -3259,13 +3277,13 @@ lastEditScript = """
             editor_model.outputObserver.disconnect();
           }
           let CSSTmpFilePath = linkNode.getAttribute("href");
-          await postServer("unlink", removeTimestamp(CSSTmpFilePath));
+          await editor.postServer("unlink", removeTimestamp(CSSTmpFilePath));
           linkNode.setAttribute("href", oldHref);
           linkNode.removeAttribute("ghost-href");
           linkNode.tmpCachedContent = newValue;
         } else { // We keep the proxy, just update the href
           let CSSTmpFilePath = linkNode.getAttribute("href");
-          await postServer("write", removeTimestamp(CSSTmpFilePath), newValue);
+          await editor.postServer("write", removeTimestamp(CSSTmpFilePath), newValue);
           linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
           linkNode.tmpCachedContent = newValue;
         }
@@ -3280,7 +3298,7 @@ lastEditScript = """
           //add dummy counter, force reload
           linkNode.setAttribute("ghost-href", oldHref);
           let CSSTmpFilePath = getTempCSSName(CSSFilePath);
-          await postServer("write", CSSTmpFilePath, newValue);
+          await editor.postServer("write", CSSTmpFilePath, newValue);
           linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
           linkNode.tmpCachedContent = newValue;
         } // else nothing to change, leave unproxied.
@@ -3780,7 +3798,7 @@ lastEditScript = """
                 if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface") && (CSSFilePath.indexOf("http") < 0)) {
                   let CSSvalue = typeof linkOrStyleNode.tmpCachedContent === "string" ?
                         linkOrStyleNode.tmpCachedContent :
-                        (await getServer("read", CSSFilePath)).slice(1);
+                        (await editor.getServer("read", CSSFilePath)).slice(1);
                   rawCSS.push({text: CSSvalue, tag: linkOrStyleNode});
                 }
               }
@@ -3817,7 +3835,7 @@ lastEditScript = """
                 else if(parsedCSS[i].kind === '@@charset') {
                   if(!(parsedCSS[i].wsBefore === "" && parsedCSS[i].wsBeforeAndSemicolon === ";" && parsedCSS[i].wsBeforeValue === " "
                     && parsedCSS[i].value.startsWith("\"") && parsedCSS[i].value.endsWith("\""))) {
-                    sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
+                    editor.sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
                   }
                   if(editor_model.clickedElem.tagName != "STYLE" && editor_model.clickedElem.tagName != "LINK") {
                     fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
@@ -3892,7 +3910,7 @@ lastEditScript = """
             if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("rel") === "stylesheet" && clickedElem.getAttribute("href")) {
               let oldHref = clickedElem.getAttribute("href"); // Even if it's a temporary href
               let CSSFilePath = relativeToAbsolute(oldHref);
-              let CSSvalue = doReadServer("read", CSSFilePath).slice(1);
+              let CSSvalue = editor.doReadServer("read", CSSFilePath).slice(1);
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
               CSSarea.append(
                 el("div", {"class": "CSS-modify-unit"}, [
@@ -4057,7 +4075,7 @@ lastEditScript = """
                         //console.log(curCSSState);
                         //check to make sure CSS is still relevant to clicked element.
                         if(curCSSState && curCSSState.length && curCSSState[0].kind === 'cssBlock' && !editor.matches(clickedElem, curCSSState[0].selector)) {
-                          sendNotification("CSS selector does not match");
+                          editor.sendNotification("CSS selector does not match");
                           this.setAttribute("wrong-selector", true);
                           this.setAttribute("title", "The first CSS selector does not apply to the selected element!");
                         }
@@ -4699,7 +4717,7 @@ lastEditScript = """
             let draftListDiv = el("div", {"class":"draftList"}, [], {});
 
             (async () => {
-            const verzExist = JSON.parse(await getServer("isdir", "Thaditor/versions"));
+            const verzExist = JSON.parse(await editor.getServer("isdir", "Thaditor/versions"));
 
             const get_switch_btn_for = (nm) => {
               return el("button", {"class":"draft-switch", title: "Open version '" + nm + "'"}, [nm], 
@@ -4707,7 +4725,7 @@ lastEditScript = """
                 onclick: (event) => {
                   editor_model.version = nm;
                   navigateLocal("/Thaditor/versions/" + nm + "/?edit");
-                  setTimeout(() => sendNotification("Switched to " + nm), 2000);
+                  setTimeout(() => editor.sendNotification("Switched to " + nm), 2000);
                 }
               });
             };
@@ -4718,7 +4736,7 @@ lastEditScript = """
                 onclick: (event) => {
                   editor_model.version = "Live";
                   navigateLocal("/?edit");
-                  setTimeout(() => sendNotification("Switched to Live version"), 2000);
+                  setTimeout(() => editor.sendNotification("Switched to Live version"), 2000);
                 }
               })
             }
@@ -4838,7 +4856,7 @@ lastEditScript = """
               draftListDiv.append(get_row_for_live());
             }
             if (verzExist) {
-              const vers = JSON.parse(await getServer("listdir", "Thaditor/versions/"));
+              const vers = JSON.parse(await editor.getServer("listdir", "Thaditor/versions/"));
               vers.forEach(ver => {
                 if (!(ver == editor_model.version)){
                   draftListDiv.append(get_row_for_draft(ver));
@@ -4886,7 +4904,7 @@ lastEditScript = """
             retDiv.append(
               el("button.action-button#update-thaditor-btn", {type: ""}, "Update Thaditor", {onclick() {
                 if(confirm("Are you ready to upgrade Thaditor?")) {
-                  doWriteServer("updateversion", "latest", "", response => {
+                  editor.doWriteServer("updateversion", "latest", "", response => {
                     console.log("Result from Updating Thaditor to latest:");
                     console.log(response);
                     location.reload(true);
@@ -5087,7 +5105,7 @@ lastEditScript = """
       editor_model.linkSelectMsg = "Confirm " + msg;
       editor_model.linkSelectOtherMenus = callbackUI;
       updateInteractionDiv();
-      sendNotification(editor_model.linkSelectMsg);
+      editor.sendNotification(editor_model.linkSelectMsg);
       document.body.addEventListener('mouseover', linkModeHover1, false);
       document.body.addEventListener('mouseout', linkModeHover2, false);
     }
@@ -5095,8 +5113,8 @@ lastEditScript = """
     
 
     function copy_website(source, dest) {
-      let website_files = JSON.parse(doReadServer("fullListDir", source));
-      let is_dest_valid = doReadServer("isdir", dest)
+      let website_files = JSON.parse(editor.doReadServer("fullListDir", source));
+      let is_dest_valid = editor.doReadServer("isdir", dest)
       if (!website_files) throw "copy_website(): invalid source";
       if (!is_dest_valid) throw "copy_website(): invalid dest";
       
@@ -5109,12 +5127,12 @@ lastEditScript = """
         const s = (source + nm);
         const d = (dest + nm);
         if (isdir) {
-          doWriteServer("fullCopy", s, d);
+          editor.doWriteServer("fullCopy", s, d);
         } else {
-          doWriteServer("copy", d, s);
+          editor.doWriteServer("copy", d, s);
         }
       });
-      let dh = doReadServer("read", source + "/.thaditor_meta");
+      let dh = editor.doReadServer("read", source + "/.thaditor_meta");
       dh = dh.slice(1, dh.length);
       let draft_history = (dh == "" ? undefined : JSON.parse(dh));
       const get_date_meta = () => (new Date).toString();
@@ -5123,21 +5141,21 @@ lastEditScript = """
       } else {
         draft_history.push(editor_model.version + ":" + get_date_meta());
       }
-      doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
+      editor.doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
       return 1;
     }
     
     function deleteDraftDef(nm) { //definitely delete the draft, without a prompt
       //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
       const pth_to_delete = "Thaditor/versions/" + nm + "/";
-      //here we want to hand doWriteServer to the worker in editor.js
+      //here we want to hand editor.doWriteServer to the worker in editor.js
 
       const data = {action:"drafts",
                     subaction:"deletermrf",
                     pth_to_delete:pth_to_delete,
                     nm:nm, thaditor_files:thaditor_files, version:editor_model.version};
       if (editor_model.version == nm) {
-        doWriteServer("deletermrf", pth_to_delete);
+        editor.doWriteServer("deletermrf", pth_to_delete);
         navigateLocal("/?edit");
       } else {
         editor_model.serverWorker.postMessage(data);
@@ -5170,9 +5188,9 @@ lastEditScript = """
       
       let fail = false;
       if (!verzExist) {
-        doWriteServer("mkdir", "Thaditor/versions");
+        editor.doWriteServer("mkdir", "Thaditor/versions");
       } else {
-        let versionsList = JSON.parse(doReadServer("fullListDir", "Thaditor/versions/"));
+        let versionsList = JSON.parse(editor.doReadServer("fullListDir", "Thaditor/versions/"));
         versionsList.forEach(val => {
           let [nm, isdir] = val;
           if (isdir) {
@@ -5200,7 +5218,7 @@ lastEditScript = """
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
       editor_model.serverWorker.postMessage(data);
-      sendNotification("Creating draft " + draft_name + " from " + nm);
+      editor.sendNotification("Creating draft " + draft_name + " from " + nm);
     }
     
     function renameDraft(nm, verzExist) {
@@ -5216,7 +5234,7 @@ lastEditScript = """
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
       editor_model.serverWorker.postMessage(data);
-      sendNotification("Renaming draft " + nm + " to " + draft_name);
+      editor.sendNotification("Renaming draft " + nm + " to " + draft_name);
     }
 
     function publishDraft(nm) {
@@ -5418,7 +5436,7 @@ lastEditScript = """
               id: "undobutton"
             },
             {onclick: function(event) {
-              if(!undo()) sendNotification("Nothing to undo!");
+              if(!undo()) editor.sendNotification("Nothing to undo!");
               }
             }   
           );
@@ -5427,7 +5445,7 @@ lastEditScript = """
               id: "redobutton"
             },
             {onclick: function(event) {
-             if(!redo()) sendNotification("Nothing to redo!");
+             if(!redo()) editor.sendNotification("Nothing to redo!");
               }
             }
           );
@@ -5441,7 +5459,7 @@ lastEditScript = """
               editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
             : function(event) {
               if (editor_model.isSaving) {
-                sendNotification("Can't save while save is being undertaken");
+                editor.sendNotification("Can't save while save is being undertaken");
               }
               else {
                 //temp place to put CSS file loading stuff (may well be moved later)
@@ -5454,8 +5472,8 @@ lastEditScript = """
                       let linkNodeOriginalHref = linkNode.getAttribute("ghost-href");
                       let trueTempPath = removeTimestamp(linkNodeTmpHref); // This one is absolute normally
                       let originalAbsPath = relativeToAbsolute(removeTimestamp(linkNodeOriginalHref));
-                      let newValue = (await getServer("read", trueTempPath)).slice(1);
-                      await postServer("write", originalAbsPath, newValue);
+                      let newValue = (await editor.getServer("read", trueTempPath)).slice(1);
+                      await editor.postServer("write", originalAbsPath, newValue);
                       linkNode.cachedContent = newValue;
                       linkNode.tmpCachedContent = newValue;
                       // Since we delete the temporary file, we cannot revert to the temporary href.
@@ -5466,7 +5484,7 @@ lastEditScript = """
                       linkNode.setAttribute("href", setTimestamp(linkNodeOriginalHref));
                       linkNode.removeAttribute("ghost-href");
                       editor_resumeWatching();
-                      await postServer("unlink", trueTempPath);
+                      await editor.postServer("unlink", trueTempPath);
                     }                 
                   }
                   editor_model.undosBeforeSave = editor_model.undoStack.length;
