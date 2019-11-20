@@ -917,8 +917,9 @@ evaluatedPage =
         var fileItemDisplay = function(name, isDir) {
            let newURL = name == ".." ?
                     editor.config.path.replace(/(\/|^)[^\/]+\/?$/, "")
-                  : editor.config.path + "/" + name
+                  : editor.config.path + "/" + name;
            var link = typeof isDir == "boolean" ? (isDir ? newURL + "/?ls" : newURL + "?edit") : name;
+           if(link.length > 0 && link[0] != "/") link = "/" + link;
            return el("div", {class:"file-item"}, [
               el("input", getRecordForCheckbox(name), ""),
               el("label", {for:name, value:name}, [ 
@@ -1730,6 +1731,9 @@ initialScript = serverOwned "initial script" <| [
 
   })(editor);
   
+  /*
+    Pretend loading a page using Editor's commands.
+  */
   window.onpopstate = function(e){
       console.log("onpopstate", e);
       if(e.state && e.state.localURL) {
