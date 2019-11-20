@@ -24,8 +24,7 @@ updatecheckpoint name x = {
 debugcheckpoint name x = let _ = Debug.log name () in x
 --}
 
-preludeEnv = let _ = googlesigninbutton in -- Forces googlesigninbutton to be evaluated before preludeEnv
-  __CurrentEnv__
+preludeEnv =  __CurrentEnv__
 
 mbApplyPrefix = case listDict.get "path" defaultOptions of
   Just "" -> Nothing
@@ -1729,55 +1728,57 @@ initialScript = serverOwned "initial script" <| [
     }
     editor.remove = remove;
 
+    // Hook Editor to the web window, add event listeners.
+    editor._internals.register = function() {
+      /*
+        Pretend loading a page using Editor's commands.
+      */
+      window.onpopstate = function(e){
+          console.log("onpopstate", e);
+          if(e.state && e.state.localURL) {
+            editor._internals.doReloadPage(location, true);
+          } else {
+            editor._internals.doReloadPage(location.pathname + location.search, true);
+          }
+      };
+      
+      // Events handler for copying and pasting, so that we have the least surprise.
+      // TODO: When the document is loaded, inject the interface?
+      document.addEventListener("DOMContentLoaded", function(event) { 
+        document.body.addEventListener("copy", function(event) {
+          const selection = document.getSelection();
+          if(selection.rangeCount) {
+            let range = selection.getRangeAt(0); // Let's put the correct stuff in the clipboardData.
+            let contents = range.cloneContents();
+            let newHtmlData = "";
+            for(let i = 0; i < contents.childNodes.length; i++) {
+              let n = contents.childNodes[i];
+              newHtmlData += n.nodeType == 1 ? n.outerHTML : el("div", {}, n).innerHTML;
+            }
+            event.clipboardData.setData('text/html', newHtmlData);
+            event.preventDefault();
+          }
+        });
+        document.body.addEventListener("paste", function(e) {
+          if(e.clipboardData.types.indexOf("text/html") >= 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log("paste", e);
+            let content = e.clipboardData.getData("text/html").replace(/^\s*<html>\s*<body>\s*(<!--[^\-]*-->\s*)?|(\s*<!--[^\-]*-->)?\s*<\/body>\s*<\/html>\s*$/g, "");
+            console.log("pasted content", content);
+            pasteHtmlAtCaret(content);
+            return true;
+          }
+        }, {capture: true});
+      });
+      
+      
+    }
   })(editor);
-  
-  /*
-    Pretend loading a page using Editor's commands.
-  */
-  window.onpopstate = function(e){
-      console.log("onpopstate", e);
-      if(e.state && e.state.localURL) {
-        editor._internals.doReloadPage(location, true);
-      } else {
-        editor._internals.doReloadPage(location.pathname + location.search, true);
-      }
-  };
-  
-  // Events handler for copying and pasting, so that we have the least surprise.
-  // TODO: When the document is loaded, inject the interface?
-  document.addEventListener("DOMContentLoaded", function(event) { 
-    document.body.addEventListener("copy", function(event) {
-      const selection = document.getSelection();
-      if(selection.rangeCount) {
-        let range = selection.getRangeAt(0); // Let's put the correct stuff in the clipboardData.
-        let contents = range.cloneContents();
-        let newHtmlData = "";
-        for(let i = 0; i < contents.childNodes.length; i++) {
-          let n = contents.childNodes[i];
-          newHtmlData += n.nodeType == 1 ? n.outerHTML : el("div", {}, n).innerHTML;
-        }
-        event.clipboardData.setData('text/html', newHtmlData);
-        event.preventDefault();
-      }
-    });
-    document.body.addEventListener("paste", function(e) {
-      if(e.clipboardData.types.indexOf("text/html") >= 0) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log("paste", e);
-        let content = e.clipboardData.getData("text/html").replace(/^\s*<html>\s*<body>\s*(<!--[^\-]*-->\s*)?|(\s*<!--[^\-]*-->)?\s*<\/body>\s*<\/html>\s*$/g, "");
-        console.log("pasted content", content);
-        pasteHtmlAtCaret(content);
-        return true;
-      }
-    }, {capture: true});
-  })
+ 
+  editor._internals.register();
   
   el = editor.el;
-
-  if(typeof googleAuthIdToken == "undefined") {
-    var googleAuthIdToken = undefined;
-  }
 
   // Mark nodes as ghost on insertion, if they are so.
   function handleScriptInsertion(mutations) {
@@ -2154,7 +2155,6 @@ lastEditScript = """
       if(editor.config.is_apache_server) {
         let data = {action:"sendRequest",
                     toSend: toSend || "{\"a\":2}",
-                    gaidt:googleAuthIdToken,
                     aq:editor_model.askQuestions,
                     loc: location.pathname + location.search,
                     requestHeaders: requestHeaders,
@@ -2166,9 +2166,6 @@ lastEditScript = """
         xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search);
         xmlhttp.setRequestHeader("Content-Type", "application/json");
-        if(googleAuthIdToken) { // Obsolete
-          xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
-        }
         if(requestHeaders) {
           for(let k in requestHeaders) {
             xmlhttp.setRequestHeader(k, requestHeaders[k]);
@@ -2251,7 +2248,6 @@ lastEditScript = """
       const tosend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
       let data = {action:"sendRequest", 
                   toSend:tosend,
-                  gaidt:googleAuthIdToken,
                   aq:editor_model.askQuestions,
                   loc:location.pathname + location.search,
                   what: "Save",
@@ -5936,53 +5932,6 @@ lastEditScript = """
       document.body.setAttribute("contenteditable", "true");
     }
 """ -- end of lastEditionScript
-
-googlesigninbutton = serverOwned "the google sign-in button" [
-<style>
-a.closeGoogleSignIn {
-  margin-left: 2px;
-  padding-left: 4px;
-  padding-right: 5px;
-}
-a.closeGoogleSignIn:hover {
-  background: #AAA;
-  color: white;
-  border-radius: 10px;
-}
-</style>,
-<div class="g-signin2" data-onsuccess="onGoogleSignIn" list-ghost-attributes="data-gapiscan data-onload" children-are-ghosts="true"></div>,
-<script>
-function onGoogleSignIn(googleUser) {
-  var profile = googleUser.getBasicProfile();
-  
-  var wasSignedIn = googleAuthIdToken ? true : false;
-  // When set, will be used throughout 
-  googleAuthIdToken = googleUser.getAuthResponse().id_token;
-  var addSignout = (name) => {
-    var signin = document.querySelector(".abcRioButtonContents").children[1];
-    signin.setAttribute("title", "Signed in as " + name);
-    var signout = document.createElement("a");
-    signout.classList.add("closeGoogleSignIn");
-    signout.setAttribute("title", "Sign out");
-    signout.innerText = "x";
-    signout.onclick = () => {
-      var auth2 = gapi.auth2.getAuthInstance();
-      auth2.signOut().then(() => {
-        auth2.disconnect();
-        googleAuthIdToken = undefined;
-        console.log('User signed out.');
-      });
-    }
-    signin.append(signout);
-  }
-  addSignout(profile.getName());
-  if(!wasSignedIn) { // Necessary to ensure that we don't reload the page the second time it is loaded.
-    reloadPage();
-  }
-}
-</script>,
-<script id="googlesigninscript" src="https://apis.google.com/js/platform.js" async defer save-ghost-attributes="gapi_processed"></script>
-]
 
 defaultMarkdowncss = """img {
   max-width: 100%;
