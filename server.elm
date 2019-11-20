@@ -1108,7 +1108,9 @@ initialScript = serverOwned "initial script" <| [
     _internals.writeDocument = writeDocument;
 
     // Asynchronous if onOk is defined and readServer is defined. and asynchronous and returns result otherwise.
-    function doReadServer(action, name, onOk, onErr) {
+    
+    // Could be overriden so that Editor could work with a local file system, Git, or anything else.
+    _internals.doReadServer = function doReadServer(action, name, onOk, onErr) {
       if (typeof readServer != "undefined") { // apache_server, everything goes through thaditor
         return readServer(action, name, onOk, onErr);
       } else {
@@ -1125,13 +1127,12 @@ initialScript = serverOwned "initial script" <| [
           return "";
         }
       }
-    }
-    _internals.doReadServer = doReadServer;
+    };
 
     // Returns a promise after performing a direct GET action on the server.
     function getServer(action, name) {
       return new Promise(function(resolve, reject) {
-        doReadServer(action, name, resolve, reject);
+        _internals.doReadServer(action, name, resolve, reject);
       });
     }
     editor.getServer = getServer;
@@ -1161,7 +1162,7 @@ initialScript = serverOwned "initial script" <| [
     // Returns a promise after performing a direct POST action on the server.
     function postServer(action, name, content) {
       return new Promise(function(resolve, reject) {
-        doWriteServer(action, name, content, resolve, reject);
+        _internals.doWriteServer(action, name, content, resolve, reject);
       });
     }
     editor.postServer = postServer;
@@ -1756,10 +1757,10 @@ initialScript = serverOwned "initial script" <| [
       }
     });
     document.body.addEventListener("paste", function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log("paste", e);
       if(e.clipboardData.types.indexOf("text/html") >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("paste", e);
         let content = e.clipboardData.getData("text/html").replace(/^\s*<html>\s*<body>\s*(<!--[^\-]*-->\s*)?|(\s*<!--[^\-]*-->)?\s*<\/body>\s*<\/html>\s*$/g, "");
         console.log("pasted content", content);
         pasteHtmlAtCaret(content);
