@@ -1887,8 +1887,8 @@ initialScript = serverOwned "initial script" <| [
      } // editor._internals.register
     
     editor.config.onMobile = () => window.matchMedia("(max-width: 800px)").matches;
-    editor.config.buttonHeight = () => onMobile() ? 48 : 30;
-    editor.config.buttonWidth  = () => onMobile() ? 48 : 40;
+    editor.config.buttonHeight = () => editor.config.onMobile() ? 48 : 30;
+    editor.config.buttonWidth  = () => editor.config.onMobile() ? 48 : 40;
     
   })(editor);
  
@@ -5104,14 +5104,15 @@ lastEditScript = """
                 "Page description not set. Search engines do prefer a page description to show on their results." :
                 "Description of the page:"
               ),
-              el("textarea", {type:"text", class: "textChildNodeContent", value: description ? description.getAttribute("content") || "" : "", placeholder: "Description of the page"}, [], {
+              el("textarea", {type:"text", class: "textChildNodeContent", placeholder: "Description of the page"}, [], {
                 onchange: function() {
                   if(!description) {
                     description = el("meta", {name: "description"});
                     document.head.appendChild(description);
                   }
                   description.setAttribute("content") = this.value;
-                }
+                },
+                value: description ? description.getAttribute("content") || "" : ""
               })
             ]),
           ]);
