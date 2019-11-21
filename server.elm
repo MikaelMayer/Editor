@@ -68,6 +68,7 @@ varraw = boolVar "raw" False
 varedit = boolVar "edit" False || varraw
 varls = boolVar "ls" False
 varclearhydecache = boolVar "clearhydecache" False
+varhydeNotDisabled = boolVar "hyde" True
 defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
@@ -158,7 +159,7 @@ isTextFile path =
     (True, Just "", True)
   else if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
     (False, Just """<html><head><title>@path</title></head><body><img src="@path"></body></html>""", True)
-  else if hydefilecache == Nothing || withoutPipeline || varraw then
+  else if hydefilecache == Nothing || withoutPipeline || not varhydeNotDisabled then
     (False, fs.read path, True)
   else
     (False, Nothing, False)
@@ -1728,6 +1729,96 @@ initialScript = serverOwned "initial script" <| [
     }
     editor.remove = remove;
 
+    editor.mutationCallbacks = {};
+    
+    // TODO: In the future, only determine if the user was either using the interface, or modifying a selected element.
+    // And then mark the mutation as computer or user. No more ghosts.
+    editor.mutationCallbacks.handleScriptInsertion = 
+      // Mark nodes as ghost on insertion, if they are so.
+      function handleScriptInsertion(mutations) {
+        for(var i = 0; i < mutations.length; i++) {
+          // A mutation is a ghost if either
+          // -- The attribute starts with 'ghost-'
+          // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
+          // -- It is the modification of a node or an attribute inside a ghost node.
+          var mutation = mutations[i];
+          if(editor.hasGhostAncestor(mutation.target) || editor.hasIgnoringAncestor(mutation.target)) continue;
+          if(mutation.type == "childList") {
+            for(var j = 0; j < mutation.addedNodes.length; j++) {
+              var insertedNode = mutation.addedNodes[j];
+              if(editor.hasGhostAncestor(insertedNode)) {
+                insertedNode.isghost = true;
+              } else {
+                if(typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.nodeType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
+                 if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
+                 insertedNode.isghost = true;
+                } else { // Record ignored attributes
+                  if(insertedNode.nodeType == 1) {
+                    var isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(insertedNode);
+                    for(var k = 0; k < insertedNode.attributes.length; k++) {
+                      var attr = insertedNode.attributes[k];
+                      isIgnoredAttributeKey(attr.name, attr.value);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      
+    
+    editor.ui = {};
+    // Display an box to switch to edit mode.
+    // TODO: In the future, this should only activate contenteditable = true, import editor script to start recording to changes, and replay the changes once Editor is ready.
+    editor.ui.switchEditBox = 
+       function switchEditBox(toEdit) {
+        let prev = toEdit ? "=false" : "(=true|=?$|=?(?=&))",
+            next = toEdit ? ""  : "=false",
+            icon = toEdit ? editor.svgFromPath("M 30.85,10.65 19.56,21.95 19.56,21.95 16.96,19.34 28.25,8.05 30.85,10.65 30.85,10.65 Z M 31.56,9.94 33.29,8.21 C 33.68,7.82 33.67,7.19 33.28,6.8 L 32.1,5.62 C 31.71,5.23 31.08,5.22 30.68,5.62 L 28.96,7.34 31.56,9.94 31.56,9.94 Z M 16.31,20.11 15.67,23.22 18.81,22.61 16.31,20.11 16.31,20.11 16.31,20.11 Z M 26.41,16.5 26.41,26.5 C 26.41,27.61 25.51,28.5 24.41,28.5 L 9.4,28.5 C 8.3,28.5 7.41,27.6 7.41,26.49 L 7.41,3.51 C 7.41,2.4 8.31,1.5 9.41,1.5 L 19.41,1.5 19.41,7.5 C 19.41,8.61 20.3,9.5 21.41,9.5 L 25.41,9.5 29.99,4.92 C 30.78,4.13 32.04,4.13 32.82,4.91 L 34,6.09 C 34.77,6.87 34.77,8.14 33.99,8.92 L 26.41,16.5 26.41,16.5 Z M 20.41,1.5 20.41,7.5 C 20.41,8.05 20.86,8.5 21.4,8.5 L 26.41,8.5 20.41,1.5 20.41,1.5 Z", true, 40, 40)  : "x",
+           title = toEdit ? "Reload the page in edit mode" : "Reload the page without edit mode";
+        return el("div#editbox.editor-interface", {title: title}, [
+          el("style.editor-interface", {}, `
+          #editbox {
+            ${toEdit ?
+           `position: fixed;
+            ${editor.config.onMobile() ? "bottom" : "top"}: 0px;
+            right: 0px;
+            margin-${editor.config.onMobile() ? "bottom" : "top"}: 25px;
+            margin-right: 25px;
+            border-radius: 60px;
+            background: var(--context-button-color);
+            ` :
+           `display: none`
+           }z-index: 20000;
+            opacity: 1;
+            cursor: pointer;
+          }
+          #editbox svg.context-menu-icon.fill>path {
+            fill: #ffffff;
+            fill-rule: evenodd;
+            stroke: #FFFFFF;
+            stroke-width: 0px;
+            stroke-linecap: none;
+            -linejoin: miter;
+            stroke-opacity: 0;
+          }
+          #editbox:hover {
+            background: var(--context-button-color-hover)
+          }`),
+          el("div.editor-interface", {}, [], { innerHTML: icon })
+        ], {
+          isghost: true,
+          onclick(event) {
+            if(!location.search.match(new RegExp("edit" + prev))) {
+               location.search = location.search.startsWith("?") ? location.search + "&edit" + next : "?edit" + next
+            } else {
+               location.search = location.search.replace(new RegExp("edit" + prev, "g"), "edit" + next);
+            }
+          }
+          });
+      }
+
     // Hook Editor to the web window, add event listeners.
     editor._internals.register = function() {
       /*
@@ -1770,128 +1861,41 @@ initialScript = serverOwned "initial script" <| [
             return true;
           }
         }, {capture: true});
+        
+        if(typeof editor.config.canEditPage == "boolean" && !editor.config.canEditPage && !editor.config.varls) {
+          document.body.insertBefore(switchEditBox(true), document.body.childNodes[0]);
+        } 
       });
       
-      
-    }
+      // Immediately start listening to insertions to mark them as ghosts.
+      // TODO: In the future, we won't care anymore.
+      if (typeof editor._internals.automaticGhostMarker !== "undefined") {
+        // console.log("automaticGhostMarker.disconnect()");
+        editor._internals.automaticGhostMarker.disconnect();
+      }
+
+      editor._internals.automaticGhostMarker = new MutationObserver(editor.mutationCallbacks.handleScriptInsertion);
+      editor._internals.automaticGhostMarker.observe( document.head.parentElement
+       , { attributes: false
+         , childList: true
+         , characterData: false
+         , attributeOldValue: false
+         , characterDataOldValue: false
+         , subtree: true
+         }
+       );
+     } // editor._internals.register
+    
+    editor.config.onMobile = () => window.matchMedia("(max-width: 800px)").matches;
+    editor.config.buttonHeight = () => onMobile() ? 48 : 30;
+    editor.config.buttonWidth  = () => onMobile() ? 48 : 40;
+    
   })(editor);
  
   editor._internals.register();
   
   el = editor.el;
 
-  // Mark nodes as ghost on insertion, if they are so.
-  function handleScriptInsertion(mutations) {
-    for(var i = 0; i < mutations.length; i++) {
-      // A mutation is a ghost if either
-      // -- The attribute starts with 'ghost-'
-      // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
-      // -- It is the modification of a node or an attribute inside a ghost node.
-      var mutation = mutations[i];
-      if(editor.hasGhostAncestor(mutation.target) || editor.hasIgnoringAncestor(mutation.target)) continue;
-      if(mutation.type == "childList") {
-        for(var j = 0; j < mutation.addedNodes.length; j++) {
-          var insertedNode = mutation.addedNodes[j];
-          if(editor.hasGhostAncestor(insertedNode)) {
-            insertedNode.isghost = true;
-          } else {
-            if(typeof insertedNode.isghost === "undefined" && (insertedNode.nodeType == 1 && insertedNode.getAttribute("isghost") != "true" || insertedNode.nodeType == 3 && !insertedNode.isghost) && editor.ghostNodes.find(pred => pred(insertedNode, mutation))) {
-             if(insertedNode.nodeType == 1) insertedNode.setAttribute("isghost", "true");
-             insertedNode.isghost = true;
-            } else { // Record ignored attributes
-              if(insertedNode.nodeType == 1) {
-                var isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(insertedNode);
-                for(var k = 0; k < insertedNode.attributes.length; k++) {
-                  var attr = insertedNode.attributes[k];
-                  isIgnoredAttributeKey(attr.name, attr.value);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  if (typeof automaticGhostMarker !== "undefined") {
-    // console.log("automaticGhostMarker.disconnect()");
-    automaticGhostMarker.disconnect();
-  }
-
-  automaticGhostMarker = new MutationObserver(handleScriptInsertion);
-  automaticGhostMarker.observe
-   ( document.head.parentElement
-   , { attributes: false
-     , childList: true
-     , characterData: false
-     , attributeOldValue: false
-     , characterDataOldValue: false
-     , subtree: true
-     }
-   )
-
-var onMobile = () => window.matchMedia("(max-width: 800px)").matches;
-var touchScreen = () => window.matchMedia("(pointer: coarse)").matches;
-var buttonHeight = () => onMobile() ? 48 : 30;
-var buttonWidth  = () => onMobile() ? 48 : 40;
-
-function switchEditBox(toEdit) {
-  let prev = toEdit ? "=false" : "(=true|=?$|=?(?=&))",
-      next = toEdit ? ""  : "=false",
-      icon = toEdit ? editor.svgFromPath("M 30.85,10.65 19.56,21.95 19.56,21.95 16.96,19.34 28.25,8.05 30.85,10.65 30.85,10.65 Z M 31.56,9.94 33.29,8.21 C 33.68,7.82 33.67,7.19 33.28,6.8 L 32.1,5.62 C 31.71,5.23 31.08,5.22 30.68,5.62 L 28.96,7.34 31.56,9.94 31.56,9.94 Z M 16.31,20.11 15.67,23.22 18.81,22.61 16.31,20.11 16.31,20.11 16.31,20.11 Z M 26.41,16.5 26.41,26.5 C 26.41,27.61 25.51,28.5 24.41,28.5 L 9.4,28.5 C 8.3,28.5 7.41,27.6 7.41,26.49 L 7.41,3.51 C 7.41,2.4 8.31,1.5 9.41,1.5 L 19.41,1.5 19.41,7.5 C 19.41,8.61 20.3,9.5 21.41,9.5 L 25.41,9.5 29.99,4.92 C 30.78,4.13 32.04,4.13 32.82,4.91 L 34,6.09 C 34.77,6.87 34.77,8.14 33.99,8.92 L 26.41,16.5 26.41,16.5 Z M 20.41,1.5 20.41,7.5 C 20.41,8.05 20.86,8.5 21.4,8.5 L 26.41,8.5 20.41,1.5 20.41,1.5 Z", true, 40, 40)  : "x",
-     title = toEdit ? "Reload the page in edit mode" : "Reload the page without edit mode";
-  return el("div#editbox.editor-interface", {title: title}, [
-    el("style.editor-interface", {}, `
-    #editbox {
-      ${toEdit ?
-     `position: fixed;
-      ${onMobile() ? "bottom" : "top"}: 0px;
-      right: 0px;
-      margin-${onMobile() ? "bottom" : "top"}: 25px;
-      margin-right: 25px;
-      border-radius: 60px;
-      background: var(--context-button-color);
-      ` :
-     `display: none`
-     }z-index: 20000;
-      opacity: 1;
-      cursor: pointer;
-    }
-    #editbox svg.context-menu-icon.fill>path {
-      fill: #ffffff;
-      fill-rule: evenodd;
-      stroke: #FFFFFF;
-      stroke-width: 0px;
-      stroke-linecap: none;
-      -linejoin: miter;
-      stroke-opacity: 0;
-    }
-    #editbox:hover {
-      background: var(--context-button-color-hover)
-    }`),
-    el("div.editor-interface", {}, [], { innerHTML: icon })
-  ], {
-    isghost: true,
-    onclick(event) {
-      if(!location.search.match(new RegExp("edit" + prev))) {
-         location.search = location.search.startsWith("?") ? location.search + "&edit" + next : "?edit" + next
-      } else {
-         location.search = location.search.replace(new RegExp("edit" + prev, "g"), "edit" + next);
-      }
-    }
-    });
-}
-
-// After document loads so that the body exists.
-setTimeout(function insertEditBox() {
-  // not varedit && not iscloseable && not varproduction
-  if(!document.body) {
-    return setTimeout(insertEditBox, 100);
-  }
-  if(typeof editor.config.canEditPage == "boolean" && !editor.config.canEditPage && !editor.config.varls) {
-    document.body.insertBefore(switchEditBox(true), document.body.childNodes[0]);
-  } 
-}, 100);
 </script>,
 -- The following is replaced by an inline <style> for when Editor runs as a file opener.
 -- And the path is modified when Editor runs as Thaditor.
@@ -3497,7 +3501,7 @@ lastEditScript = """
                 editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = c;
                 editor_model.notextselection = true;
-                if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
+                if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
                 updateInteractionDiv();
               }
             } else {
@@ -3524,7 +3528,7 @@ lastEditScript = """
               editor_model.clickedElem.removeAttribute("ghost-hovered");
               editor_model.clickedElem = c;
               editor_model.notextselection = true;
-              if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
+              if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
               updateInteractionDiv();
             }
             if (selectMiddleChild) {
@@ -3546,7 +3550,7 @@ lastEditScript = """
                 editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = c;
                 editor_model.notextselection = true;
-                if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
+                if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
                 updateInteractionDiv();
               }
             } else {
@@ -3573,7 +3577,7 @@ lastEditScript = """
                 editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = clickedElem;
                 editor_model.notextselection = true;
-                if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
+                if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
                 updateInteractionDiv();
               }
               displayElemAttr(mainElemDiv, clickedElem);
@@ -3644,7 +3648,7 @@ lastEditScript = """
                   editor_model.clickedElem.removeAttribute("ghost-hovered");
                   editor_model.clickedElem = clickedElem.parentElement;
                   editor_model.notextselection = true;
-                  if(onMobile()) editor_model.savedTextSelection = clearTextSelection();
+                  if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
                   updateInteractionDiv();
                 }
                 displayElemAttr(mainElemDiv, clickedElem.parentElement);
@@ -5047,27 +5051,70 @@ lastEditScript = """
         }
       });
       editor_model.interfaces.push({
-        title: "Source",
+        title: "SEO",
         minimized: true,
         priority(editor_model) {
+          if(!document.querySelector("meta[name=viewport]")) {
+            return 1;
+          }
           return undefined;
         },
         enabled(editor_model) {
           return true;
         },
         render: function render(editor_model, innerBox) {
-          let source = document.querySelector("#modify-menu").getAttribute("sourcecontent");
-          let ret = 
-            el("div", {"class": "tagName nohover"},
-             [el("textarea",
-                  {style: "width:100%",
-                   id: "sourcecontentmodifier", placeholder: "Source of the page, before evaluation", "class": "templateengine"}, [], {
-                oninput: function() {
-                  if(document.querySelector("#modify-menu").getAttribute('sourcecontent') !== this.value)
-                    document.querySelector("#modify-menu").setAttribute('sourcecontent', this.value);
-                  },
-                value: source
-               })]);
+          function oneClickFix(msg, buttonName, callback, parameters) {
+            return el("div", {class:"seo-fix"}, [
+              el("p", {class:"seo-fix-description"}, msg),
+              parameters,
+              el("button.action-button", {type: ""}, buttonName, {
+                onclick: function() {
+                  callback();
+                  updateInteractionDiv();
+                }
+              })]);
+          }
+          let title = document.querySelector("head > title");
+          let description = document.querySelector("head > meta[name=description]")
+          let ret = el("div", {}, [
+            document.querySelector("head > meta[name=viewport]") ? undefined :
+            oneClickFix("Viewport not set on this page. This might make this page not display properly on mobile devices.",
+              "Add missing <meta name='viewport'...>", () =>
+                  document.head.appendChild(el("meta", {name: "viewport", content:"width=device-width, initial-scale=1.0"}))),
+            document.querySelector("head > meta[charset]") ? undefined :
+            oneClickFix("Character encoding not set on this page. The display of non-breaking spaces would be compromized on many browsers.", "Add missing <meta charset='UTF-8'>", () =>
+                  document.head.insertBefore(el("meta", {charset: "UTF-8" }), document.head.childNodes[0])),
+            el("div", {class:"seo-fix"}, [
+              el("p", {class:"seo-fix-description"}, !title ?
+                "Page title not set. Search engines do prefer a title." :
+                "Title of the page:"
+              ),
+              el("input", {type:"text", value: title ? title.textContent : "", placeholder: "Title of the page"}, [], {
+                onchange: function() {
+                  if(!title) {
+                    title = el("title");
+                    document.head.appendChild(title);
+                  }
+                  title.textContent = this.value;
+                }
+              })
+            ]),
+            el("div", {class:"seo-fix"}, [
+              el("p", {class:"seo-fix-description"}, !description ?
+                "Page description not set. Search engines do prefer a page description to show on their results." :
+                "Description of the page:"
+              ),
+              el("textarea", {type:"text", class: "textChildNodeContent", value: description ? description.getAttribute("content") || "" : "", placeholder: "Description of the page"}, [], {
+                onchange: function() {
+                  if(!description) {
+                    description = el("meta", {name: "description"});
+                    document.head.appendChild(description);
+                  }
+                  description.setAttribute("content") = this.value;
+                }
+              })
+            ]),
+          ]);
           return ret;
         }
       });
@@ -5464,14 +5511,14 @@ lastEditScript = """
       }
       var panelOpenCloseIcon = function() {
         return document.querySelector("#modify-menu").classList.contains("visible") ?
-            onMobile() ? closeBottomSVG : closeRightSVG + "<span class='modify-menu-icon-label'>Close</span>"
-          : onMobile() ? openTopSVG : openLeftSVG + "<span class='modify-menu-icon-label'>Open</span>";
+            editor.config.onMobile() ? closeBottomSVG : closeRightSVG + "<span class='modify-menu-icon-label'>Close</span>"
+          : editor.config.onMobile() ? openTopSVG : openLeftSVG + "<span class='modify-menu-icon-label'>Open</span>";
       }
       var alwaysVisibleButtonIndex = 0;
       function nextVisibleBarButtonPosStyle() {
         let result = "position: absolute;" +
-          (onMobile() ? "top:-"+buttonHeight()+"px;left:"+alwaysVisibleButtonIndex*buttonWidth()+"px" :
-                        "left:-"+buttonWidth()+"px;top:"+alwaysVisibleButtonIndex*buttonHeight()+"px")
+          (editor.config.onMobile() ? "top:-"+editor.config.buttonHeight()+"px;left:"+alwaysVisibleButtonIndex*editor.config.buttonWidth()+"px" :
+                        "left:-"+editor.config.buttonWidth()+"px;top:"+alwaysVisibleButtonIndex*editor.config.buttonHeight()+"px")
         alwaysVisibleButtonIndex++;
         return result;
       }
@@ -5484,7 +5531,7 @@ lastEditScript = """
               editor_model.visible = !editor_model.visible;
               setTimeout(maybeRepositionContextMenu, 500);
               this.innerHTML = panelOpenCloseIcon();
-              if(onMobile() && editor_model.savedTextSelection) {
+              if(editor.config.onMobile() && editor_model.savedTextSelection) {
                 window.getSelection().addRange(editor_model.savedTextSelection);
                 editor_model.savedTextSelection = undefined;
               }
@@ -5594,7 +5641,7 @@ lastEditScript = """
         var whereToAddContextButtons = contextMenu;
         var noContextMenu = false;
         // What to put in context menu?
-        if(onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
+        if(editor.config.onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
           modifyMenuPinnedIconsDiv.parentElement.insertBefore(modifyMenuIconsDiv, modifyMenuPinnedIconsDiv.nextSibling);
           whereToAddContextButtons = modifyMenuIconsDiv;
           noContextMenu = true;
@@ -5771,14 +5818,14 @@ lastEditScript = """
           let clickedElemTop = window.scrollY + clientRect.top;
           let clickedElemBottom = window.scrollY + clientRect.bottom;
           let clickedElemRight = window.scrollX + clientRect.right;
-          let desiredWidth = numButtons * buttonWidth();
+          let desiredWidth = numButtons * editor.config.buttonWidth();
           let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
           if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
-          let desiredTop = clickedElemTop - buttonHeight(); 
+          let desiredTop = clickedElemTop - editor.config.buttonHeight(); 
           if(desiredTop - window.scrollY < 9) {
             desiredTop = clickedElemBottom;
-            if(desiredTop + buttonHeight() > window.innerHeight) {
-              desiredTop = window.innerHeight - buttonHeight(); 
+            if(desiredTop + editor.config.buttonHeight() > window.innerHeight) {
+              desiredTop = window.innerHeight - editor.config.buttonHeight(); 
             }
           }
           if(desiredLeft < 0) desiredLeft = 0;
@@ -5806,7 +5853,7 @@ lastEditScript = """
        let pcr = pinnedIcons.getBoundingClientRect();
        let ccr = contextMenu.getBoundingClientRect();
        let mcr = modifyMenuDiv.getBoundingClientRect();
-       if(onMobile()) {
+       if(editor.config.onMobile()) {
          if(ccr.bottom > pcr.top) {
            contextMenu.style.top = (ccr.y - (ccr.bottom - pcr.top)) + "px"
          } else if(ccr.bottom > mcr.top) {
@@ -5874,7 +5921,7 @@ lastEditScript = """
     
     function editor_onbeforeunload(e) {
       e = e || window.event;
-      if(onMobile() && editor_model.visible) { // Hack to ask before saving.
+      if(editor.config.onMobile() && editor_model.visible) { // Hack to ask before saving.
         e.preventDefault();
         e.returnValue = '';
         return editor_close();

@@ -1,3 +1,11 @@
+div.seo-fix > input[type=text] {
+  padding: 4px;
+  width: 98%;
+  color: black;
+  font-size: 16px;
+}
+
+
 /* The switch - the box around the slider */
 
 .switch {
@@ -54,7 +62,7 @@
     -webkit-user-select: text;
     outline-color: transparent;
     box-shadow: none;
-    color: var(--context-button-color-inert);
+    color: black;
 }
 
 input:checked+.slider {
@@ -1003,7 +1011,7 @@ div#modify-menu div.keyvalues>div.keyvalue #applyNewTagName.visible + div#newtag
 }
 
 textarea.textChildNodeContent {
-  width: 100%;
+  width: 95%;
   height: 100px;
   border-radius: 0.4em;
   border: 0;
