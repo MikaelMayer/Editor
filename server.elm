@@ -1863,7 +1863,7 @@ initialScript = serverOwned "initial script" <| [
         }, {capture: true});
         
         if(typeof editor.config.canEditPage == "boolean" && !editor.config.canEditPage && !editor.config.varls) {
-          document.body.insertBefore(switchEditBox(true), document.body.childNodes[0]);
+          document.body.insertBefore(editor.ui.switchEditBox(true), document.body.childNodes[0]);
         } 
       });
       
@@ -4931,7 +4931,77 @@ lastEditScript = """
             return draftListDiv;
           }
         });
-       }
+      } // End of if apache_server
+      
+      editor_model.interfaces.push({
+        title: "SEO",
+        minimized: true,
+        priority(editor_model) {
+          if(!document.querySelector("meta[name=viewport]")) {
+            return 1;
+          }
+          return undefined;
+        },
+        enabled(editor_model) {
+          return true;
+        },
+        render: function render(editor_model, innerBox) {
+          function oneClickFix(msg, buttonName, callback, parameters) {
+            return el("div", {class:"seo-fix"}, [
+              el("p", {class:"seo-fix-description"}, msg),
+              parameters,
+              el("button.action-button", {type: ""}, buttonName, {
+                onclick: function() {
+                  callback();
+                  updateInteractionDiv();
+                }
+              })]);
+          }
+          let title = document.querySelector("head > title");
+          let description = document.querySelector("head > meta[name=description]")
+          let ret = el("div", {}, [
+            document.querySelector("head > meta[name=viewport]") ? undefined :
+            oneClickFix("Viewport not set on this page. This might make this page not display properly on mobile devices.",
+              "Add missing <meta name='viewport'...>", () =>
+                  document.head.appendChild(el("meta", {name: "viewport", content:"width=device-width, initial-scale=1.0"}))),
+            document.querySelector("head > meta[charset]") ? undefined :
+            oneClickFix("Character encoding not set on this page. The display of non-breaking spaces would be compromized on many browsers.", "Add missing <meta charset='UTF-8'>", () =>
+                  document.head.insertBefore(el("meta", {charset: "UTF-8" }), document.head.childNodes[0])),
+            el("div", {class:"seo-fix"}, [
+              el("p", {class:"seo-fix-description"}, !title ?
+                "Page title not set. Search engines do prefer a title." :
+                "Title of the page:"
+              ),
+              el("input", {type:"text", value: title ? title.textContent : "", placeholder: "Title of the page"}, [], {
+                onchange: function() {
+                  if(!title) {
+                    title = el("title");
+                    document.head.appendChild(title);
+                  }
+                  title.textContent = this.value;
+                }
+              })
+            ]),
+            el("div", {class:"seo-fix"}, [
+              el("p", {class:"seo-fix-description"}, !description ?
+                "Page description not set. Search engines do prefer a page description to show on their results." :
+                "Description of the page:"
+              ),
+              el("textarea", {type:"text", class: "textChildNodeContent", placeholder: "Description of the page"}, [], {
+                onchange: function() {
+                  if(!description) {
+                    description = el("meta", {name: "description"});
+                    document.head.appendChild(description);
+                  }
+                  description.setAttribute("content") = this.value;
+                },
+                value: description ? description.getAttribute("content") || "" : ""
+              })
+            ]),
+          ]);
+          return ret;
+        }
+      });
       editor_model.interfaces.push({ 
         title: "Advanced",
         minimized: true,
@@ -5048,75 +5118,6 @@ lastEditScript = """
           let newBox = this.render(editor_model);
           currentBox.parentNode.insertBefore(newBox, currentBox);
           currentBox.remove();
-        }
-      });
-      editor_model.interfaces.push({
-        title: "SEO",
-        minimized: true,
-        priority(editor_model) {
-          if(!document.querySelector("meta[name=viewport]")) {
-            return 1;
-          }
-          return undefined;
-        },
-        enabled(editor_model) {
-          return true;
-        },
-        render: function render(editor_model, innerBox) {
-          function oneClickFix(msg, buttonName, callback, parameters) {
-            return el("div", {class:"seo-fix"}, [
-              el("p", {class:"seo-fix-description"}, msg),
-              parameters,
-              el("button.action-button", {type: ""}, buttonName, {
-                onclick: function() {
-                  callback();
-                  updateInteractionDiv();
-                }
-              })]);
-          }
-          let title = document.querySelector("head > title");
-          let description = document.querySelector("head > meta[name=description]")
-          let ret = el("div", {}, [
-            document.querySelector("head > meta[name=viewport]") ? undefined :
-            oneClickFix("Viewport not set on this page. This might make this page not display properly on mobile devices.",
-              "Add missing <meta name='viewport'...>", () =>
-                  document.head.appendChild(el("meta", {name: "viewport", content:"width=device-width, initial-scale=1.0"}))),
-            document.querySelector("head > meta[charset]") ? undefined :
-            oneClickFix("Character encoding not set on this page. The display of non-breaking spaces would be compromized on many browsers.", "Add missing <meta charset='UTF-8'>", () =>
-                  document.head.insertBefore(el("meta", {charset: "UTF-8" }), document.head.childNodes[0])),
-            el("div", {class:"seo-fix"}, [
-              el("p", {class:"seo-fix-description"}, !title ?
-                "Page title not set. Search engines do prefer a title." :
-                "Title of the page:"
-              ),
-              el("input", {type:"text", value: title ? title.textContent : "", placeholder: "Title of the page"}, [], {
-                onchange: function() {
-                  if(!title) {
-                    title = el("title");
-                    document.head.appendChild(title);
-                  }
-                  title.textContent = this.value;
-                }
-              })
-            ]),
-            el("div", {class:"seo-fix"}, [
-              el("p", {class:"seo-fix-description"}, !description ?
-                "Page description not set. Search engines do prefer a page description to show on their results." :
-                "Description of the page:"
-              ),
-              el("textarea", {type:"text", class: "textChildNodeContent", placeholder: "Description of the page"}, [], {
-                onchange: function() {
-                  if(!description) {
-                    description = el("meta", {name: "description"});
-                    document.head.appendChild(description);
-                  }
-                  description.setAttribute("content") = this.value;
-                },
-                value: description ? description.getAttribute("content") || "" : ""
-              })
-            ]),
-          ]);
-          return ret;
         }
       });
       if(typeof thaditor !== "undefined" && thaditor.customInterfaces) {
