@@ -1037,8 +1037,6 @@ main =
           if not varedit || varls then
             bodyChildren
           else 
-             (if canEditPage then ((serverOwned "edition menu" editionmenu) sourcecontent) else
-              serverOwned "edit prelude when not in edit mode" []) ++
              bodyChildren ++
              (serverOwned "synchronization script and placeholder" [
                <script  id="thaditor-lastscript" class="editor-interface">@lastEditScript</script>] ++
@@ -1063,11 +1061,6 @@ insertThereInstead onInsert atBeginning list =
 ----------------------------------------------------------------------------}
 
 boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false")
-
--- Everything inside the modify menu is generated and is not visible to Editor
-editionmenu thesource = [
-<div id="modify-menu" list-ghost-attributes="style class" sourcecontent=@thesource contenteditable="false" children-are-ghosts="true"></div>,
-<div id="context-menu" children-are-ghosts="true" list-ghost-attributes="style class" contenteditable="false"></div>]
 
 initialScript = serverOwned "initial script" <| [
   <script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js" list-ghost-attributes="gapi_processed"></script>,
@@ -1811,7 +1804,7 @@ initialScript = serverOwned "initial script" <| [
           isghost: true,
           onclick(event) {
             if(!location.search.match(new RegExp("edit" + prev))) {
-               location.search = location.search.startsWith("?") ? location.search + "&edit" + next : "?edit" + next
+               location.search = location.search.startsWith("?") ? location.search + "&" + "edit" + next : "?edit" + next
             } else {
                location.search = location.search.replace(new RegExp("edit" + prev, "g"), "edit" + next);
             }
@@ -1892,10 +1885,8 @@ initialScript = serverOwned "initial script" <| [
     
   })(editor);
  
-  editor._internals.register();
-  
-  el = editor.el;
-
+  //
+  editor._internals.register(); // Hook into navigation, copy/paste, listen to insertions.
 </script>,
 -- The following is replaced by an inline <style> for when Editor runs as a file opener.
 -- And the path is modified when Editor runs as Thaditor.
@@ -1903,43 +1894,65 @@ initialScript = serverOwned "initial script" <| [
 ]
 
 -- Script added to the end of the page
+-- It injects the UI elements
 lastEditScript = """
     el = editor.el;
     console.log("lastEditScript running");
-    function sendNotification(msg, timeout) {
+    
+    editor.ui.loadInterface = function() {
+      // Insets the modification menu.
+      editor.ui.contextMenu = document.querySelector("div#context-menu");
+      if(!editor.ui.contextMenu) {
+        editor.ui.contextMenu = el("div#context-menu", {contenteditable: "false"}, [], {isghost: true});
+        document.body.insertBefore(editor.ui.contextMenu, document.body.childNodes[0]);
+      }
+      editor.ui.modifyMenu = document.querySelector("div#modify-menu");
+      if(!editor.ui.modifyMenu) {4
+        editor.ui.modifyMenu = el("div#modify-menu", {contenteditable: "false"}, [], {isghost:true})
+        document.body.insertBefore(editor.ui.modifyMenu, document.body.childNodes[0]);
+      }
+      
       /*
         Pushes the notification msg to the log & displays it for 3 seconds directly left of the moidfymenu.
         css for notification box is textarea .notif
       */
-      let modifyMenuDiv = document.querySelector("#modify-menu");
-      if (!modifyMenuDiv) {
-        console.log("Notifications havent been set up for use outside of editor, like in the filesystem");
-        console.log (msg);
-        return;
-      }
-      let notifBox = document.getElementById("notif-box");
-      if (!notifBox) {
-        notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
-        modifyMenuDiv.append(notifBox);
-      }
-      notifBox.value = msg;
-      notifBox.style.display = "block";
-      notifBox.classList.toggle("visible", true);
-      notifBox.style.zIndex = 100;
-      notifBox.style.visibility = true;
-      editor_model.editor_log.push(msg);
-      var logWindow = getEditorInterfaceByTitle("Log");
-      if(logWindow) logWindow.refresh();
-      setTimeout(function hideNotification() {
-        let notifBox = document.getElementById("notif-box");
-        if (notifBox) {
-          notifBox.classList.toggle("visible", false);
+      editor.ui.sendNotification = function sendNotification(msg, timeout) {
+        let modifyMenuDiv = editor.ui.modifyMenu;
+        if (!modifyMenuDiv) {
+          console.log("Notifications havent been set up for use outside of editor, like in the filesystem");
+          console.log (msg);
+          return;
         }
-      }, timeout ? timeout : 3000);
+        let notifBox = modifyMenuDiv.querySelector("#notif-box");
+        if (!notifBox) {
+          notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
+          editor.ui.modifyMenu.append(notifBox);
+        }
+        notifBox.value = msg;
+        notifBox.style.display = "block";
+        notifBox.classList.toggle("visible", true);
+        notifBox.style.zIndex = 100;
+        notifBox.style.visibility = true;
+        editor_model.editor_log.push(msg);
+        var logWindow = getEditorInterfaceByTitle("Log");
+        if(logWindow) logWindow.refresh();
+        setTimeout(function hideNotification() {
+          let notifBox = document.getElementById("notif-box");
+          if (notifBox) {
+            notifBox.classList.toggle("visible", false);
+          }
+        }, timeout ? timeout : 3000);
+      };
+      
+      // Sub-interfaces can register functions that will store some information that will be inserted at the same key in the record editor_model.restoredAfterReload.
+      editor.ui.saveBetweenReloads = {};
     }
-    editor.sendNotification = sendNotification;
     
-	  // Save/Load ghost attributes after a page is reloaded, only if elements have an id.
+    if(editor.config.canEditPage) { // TODO: If false, nothing else should execute.
+      editor.ui.loadInterface();
+    }
+        
+	  // Save/Load ghost/ignored attributes/nodes for when a page is reloaded, only if elements have an id.
 	  // Same for some attributes
 	  function saveGhostAttributes() {
 	    var ghostModified = document.querySelectorAll("[ghost-visible]");
@@ -1950,9 +1963,8 @@ lastEditScript = """
 	          "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
 	    }
 
-
 	    function saveAttributes(name) {
-	       var ghostAttributesModified = document.querySelectorAll("["+name+"]");
+	      var ghostAttributesModified = document.querySelectorAll("["+name+"]");
 	      for(var i = 0; i < ghostAttributesModified.length; i++) {
 	        var elem = ghostAttributesModified[i];
 	        var toSave = elem.getAttribute(name).split(" ");
@@ -2009,27 +2021,18 @@ lastEditScript = """
         }
       }
     }
-
-    //(outer lastEditScript)
-    function saveDisplayProperties() {
-      let ret = document.querySelector("#textChildNodeContentDiv");
-      if(ret) {
-        editor_model.textareaPropertiesSaved = [];
-        for(let i = 0; i < ret.childNodes.length; i++) {
-          if(ret.childNodes[i].tagName === "TEXTAREA") {
-            editor_model.textareaPropertiesSaved[i] = {
-              scrollTop: ret.childNodes[i].scrollTop,
-              selectionEnd: ret.childNodes[i].selectionStart,
-              selectionStart: ret.childNodes[i].selectionEnd,
-              focus: ret.childNodes[i] === document.activeElement
-            };
-          }
-        }
-      }
-    }
     
-    function replaceContent(NC) {
-      saveDisplayProperties();
+    function saveBeforeReloadingToolbar() {
+      editor_model.restoredAfterReload = {};
+      for(let k in editor.ui.saveBetweenReloads) {
+        editor_model.restoredAfterReload[k] = editor.ui.saveBetweenReloads[k]();
+      }
+      console.log("saved before reloading toolbar", editor_model.restoredAfterReload);
+    }
+
+    function replaceContent(newContent) {
+      let saved = saveGhostAttributes();
+      saveBeforeReloadingToolbar();
       if(editor_model.caretPosition) {
         editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
       }
@@ -2039,20 +2042,21 @@ lastEditScript = """
       if(editor_model.clickedElem) {
         editor_model.clickedElem = editor.toTreasureMap(editor_model.clickedElem);
       }
-      editor._internals.writeDocument(NC);
+      let scrollX = window.scrollX;
+      let scrollY = window.scrollY;
+      editor._internals.writeDocument(newContent);
+      applyGhostAttributes(saved);
+      setTimeout(() => window.scroll(scrollX, scrollY), 10);
     }
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           editor_model.isSaving = false;
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
-          var saved = saveGhostAttributes();
-          //return
           
           //source of the editing menu disappearing after reloading
           replaceContent(xmlhttp.responseText);
           
-          applyGhostAttributes(saved);
           var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
           var newQueryStr = xmlhttp.getResponseHeader("New-Query");
           var ambiguityKey = xmlhttp.getResponseHeader("Ambiguity-Key");
@@ -2126,7 +2130,7 @@ lastEditScript = """
                 replace(/\+\+\+\)/g, "</span>").
                 replace(/\(\+\+\+/g, "<span class='add'>");
               editor_model.editor_log.push(opSummary);
-              // editor.sendNotification(opSummary);
+              // editor.ui.sendNotification(opSummary);
             }
           } // /noambiguity
           var strQuery = "";
@@ -2181,7 +2185,7 @@ lastEditScript = """
     }
     
     function reloadPage() {
-      editor.sendNotification("Reloading...");
+      editor.ui.sendNotification("Reloading...");
       notifyServer({reload: "true"}, undefined, "Reload");
     }
     function relativeToAbsolute(url) {
@@ -2195,7 +2199,7 @@ lastEditScript = """
       }
     }
     function navigateLocal(url, replaceState) {
-      editor.sendNotification("Loading...");
+      editor.ui.sendNotification("Loading...");
       notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
     }
     
@@ -2248,7 +2252,7 @@ lastEditScript = """
       }
       editor_model.actionsDuringSave = [];
       updateInteractionDiv();
-      editor.sendNotification("Saving...");
+      editor.ui.sendNotification("Saving...");
       const tosend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
       let data = {action:"sendRequest", 
                   toSend:tosend,
@@ -2750,12 +2754,12 @@ lastEditScript = """
         // CTRL+Z: Undo
         if(e.which == 90 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          if(!undo()) editor.sendNotification("Nothing to undo!");
+          if(!undo()) editor.ui.sendNotification("Nothing to undo!");
         }
         // CTRL+Y: Redo
         if(e.which == 89 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          if(!redo()) editor.sendNotification("Nothing to redo!");
+          if(!redo()) editor.ui.sendNotification("Nothing to redo!");
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
@@ -3105,6 +3109,7 @@ lastEditScript = """
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
       notextselection: false, // When using the relative DOM selector, set to true to avoid considering the caret (e.g. for insertions and deletions)
       savedTextSelection: undefined, // Text range to restore when the edition bar closes, on mobile
+      restoredAfterReload: ifAlreadyRunning ? editor_model.restoredAfterReload : {},
       selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
       caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
       link: undefined,
@@ -3190,49 +3195,52 @@ lastEditScript = """
           xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {});
           xmlhttp.readyState = XMLHttpRequest.DONE;
           xmlhttp.onreadystatechange();
-          var replayActionsAfterSave = msg => function(msgOverride) {
-            console.log("replaying actions after save");
-            const newAds = editor_model.actionsDuringSave;
-            const newAdsLen = newAds.length;
-            for (let i = 0; i < adsLen; i++) {
-              if (newAds[i] == "undo") {
-                undo();
-              } else if (newAds[i] == "redo") {
-                redo();
-              } else {
-                throw new Error("unidentified action in actionsduringsave");
+          // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
+          setTimeout(function() {
+            var replayActionsAfterSave = msg => function(msgOverride) {
+              console.log("replaying actions after save");
+              const newAds = editor_model.actionsDuringSave;
+              const newAdsLen = newAds.length;
+              for (let i = 0; i < adsLen; i++) {
+                if (newAds[i] == "undo") {
+                  undo();
+                } else if (newAds[i] == "redo") {
+                  redo();
+                } else {
+                  throw new Error("unidentified action in actionsduringsave");
+                }
+              }
+              if(newAdsLen) {
+                updateInteractionDiv();
+              }
+              if(msg) {
+                setTimeout(() => {
+                   editor.ui.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
+                }, 0);
               }
             }
-            if(newAdsLen) {
-              updateInteractionDiv();
+            let what = e.data.what ? e.data.what + " completed." : undefined;
+            if(!e.data.isAmbiguous || !editor_model.disambiguationMenu) {
+              replayActionsAfterSave(what)();
+            } else {
+              editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
             }
-            if(msg) {
-              setTimeout(() => {
-                 editor.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
-              }, 0);
-            }
-          }
-          let what = e.data.what ? e.data.what + " completed." : undefined;
-          if(!e.data.isAmbiguous || !editor_model.disambiguationMenu) {
-            replayActionsAfterSave(what)();
-          } else {
-            editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
-          }
+          }, 10)
         } else if(e.data.action == "message") {
-          editor.sendNotification(e.data.message)
+          editor.ui.sendNotification(e.data.message)
         } else if(e.data.action == "reconnect") {
           thaditor_reconnect();
         } else if (e.data.action == "delete_complete") {
           //todo
           updateInteractionDiv();
-          editor.sendNotification("Permanently deleted draft named: " + e.data.nm);
+          editor.ui.sendNotification("Permanently deleted draft named: " + e.data.nm);
         } else if (e.data.action == "publish_complete") {
           //just send a notif, no more naving to live
-          editor.sendNotification("Successfully published " + e.data.nm + " to live.");
+          editor.ui.sendNotification("Successfully published " + e.data.nm + " to live.");
         } else if (e.data.action == "clone_complete") {
           //just send a notif, no more naving to the clone
           updateInteractionDiv();
-          editor.sendNotification("Successfully cloned " + e.data.nm + " to " + e.data.draft_name);
+          editor.ui.sendNotification("Successfully cloned " + e.data.nm + " to " + e.data.draft_name);
         } else if (e.data.action == "rename_complete") {
           let marker = false;
           if (e.data.nm == e.data.version) {
@@ -3241,9 +3249,9 @@ lastEditScript = """
           }
           updateInteractionDiv();
           if (marker) {
-            setTimeout(editor.sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name), 2000)
+            setTimeout(editor.ui.sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name), 2000)
           } else {
-            editor.sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name);
+            editor.ui.sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name);
           }
         }
       }
@@ -3480,7 +3488,6 @@ lastEditScript = """
             }
           }
           // display children and siblings in the second part of selector
-          console.log ("rendering DOM naver");
           let displayChildrenSiblings = function(middleChild, selectMiddleChild) {
             // display clicked element's previous sibling, clicked element, clicked element's next sibling
             let cnt = 0;
@@ -3899,7 +3906,7 @@ lastEditScript = """
                 else if(parsedCSS[i].kind === '@@charset') {
                   if(!(parsedCSS[i].wsBefore === "" && parsedCSS[i].wsBeforeAndSemicolon === ";" && parsedCSS[i].wsBeforeValue === " "
                     && parsedCSS[i].value.startsWith("\"") && parsedCSS[i].value.endsWith("\""))) {
-                    editor.sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
+                    editor.ui.sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
                   }
                   if(editor_model.clickedElem.tagName != "STYLE" && editor_model.clickedElem.tagName != "LINK") {
                     fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
@@ -4139,7 +4146,7 @@ lastEditScript = """
                         //console.log(curCSSState);
                         //check to make sure CSS is still relevant to clicked element.
                         if(curCSSState && curCSSState.length && curCSSState[0].kind === 'cssBlock' && !editor.matches(clickedElem, curCSSState[0].selector)) {
-                          editor.sendNotification("CSS selector does not match");
+                          editor.ui.sendNotification("CSS selector does not match");
                           this.setAttribute("wrong-selector", true);
                           this.setAttribute("title", "The first CSS selector does not apply to the selected element!");
                         }
@@ -4504,6 +4511,7 @@ lastEditScript = """
         },
         render: function render(editor_model, innerBox) {
           if(!this.enabled(editor_model)) {
+            delete editor.ui.saveBetweenReloads["TextEditing"];
             return "Click on an element that contains some text.";
           }
           const clickedElem = editor_model.clickedElem;
@@ -4511,14 +4519,14 @@ lastEditScript = """
           let ret = el("div", {id: "textChildNodeContentDiv"}, []);
           for(let i = 0; i < clickedElem.childNodes.length; i++) {
             let node = clickedElem.childNodes[i];
-            if(node.nodeType === 3 && node.textContent.trim() !== "") { // Non-empty text nodes.
-              ret.append(
-                el("textarea", {class:"textChildNodeContent"},
+            if(node.nodeType === 3 && (node.textContent.trim() !== "" || node.textContent.trim() === "" && clickedElem.childNodes.length == 0)) { // Non-empty text nodes.
+              let txtAreaNode = el("textarea", {class:"textChildNodeContent"},
                 [], {
                   value: node.textContent,
                   oninput: (node => function() { node.textContent = this.value; })(node)
-                })
-              )
+                });
+              ret.append(txtAreaNode)
+              console.log("appending text area node", txtAreaNode);
             } else if(node.nodeType === 1) { // Make this a shortcut for the node
               ret.append(
                 el("div.childrenSelector", {}, 
@@ -4533,18 +4541,53 @@ lastEditScript = """
               )
             }
           }
-          setTimeout((ret => () => {
-            for(let i = 0; i < editor_model.textareaPropertiesSaved.length && i < ret.childNodes.length; i++) {
-              if(ret.childNodes[i].tagName === "TEXTAREA") {
-                ret.childNodes[i].scrollTop = editor_model.textareaPropertiesSaved[i].scrollTop;
-                ret.childNodes[i].selectionEnd = editor_model.textareaPropertiesSaved[i].selectionEnd;
-                ret.childNodes[i].selectionStart = editor_model.textareaPropertiesSaved[i].selectionStart;
-                if(editor_model.textareaPropertiesSaved[i].focus) {
-                  ret.childNodes[i].focus();
+          
+          if("TextEditing" in editor_model.restoredAfterReload) {
+            let restored = editor_model.restoredAfterReload["TextEditing"];
+            //
+            console.log("restored", restored);
+            console.log("ret.childNodes", ret.childNodes);
+            setTimeout((ret => () => {
+              var tmp = ret;
+              while(tmp && tmp.tagName != "BODY") tmp = tmp.parentNode;
+              if(!tmp) return;
+              console.log("ret", ret);
+              for(let i = 0; i < restored.length && i < ret.childNodes.length; i++) {
+                var child = ret.childNodes[i];
+                if(child.tagName === "TEXTAREA") {
+                  console.log("restoring selection on ", child);
+                  console.log("data ", restored[i]);
+                  child.scrollTop = restored[i].scrollTop;
+                  var minimum = Math.min(restored[i].selectionStart, restored[i].selectionEnd);
+                  var maximum = Math.max(restored[i].selectionStart, restored[i].selectionEnd);
+                  var direction = restored[i].selectionStart < restored[i].selectionEnd ? "forward" : "backward";
+                  if(restored[i].focus) {
+                    child.focus();
+                  }
+                  child.setSelectionRange(minimum, maximum, direction);
                 }
               }
+              delete editor_model.restoredAfterReload["TextEditing"];
+            })(ret), 0);
+          } else {
+            console.log("No restoration data");
+          }
+          
+          editor.ui.saveBetweenReloads["TextEditing"] = (ret => () => {
+            let res = [];
+            for(let i = 0; i < ret.childNodes.length; i++) {
+              if(ret.childNodes[i].tagName === "TEXTAREA") {
+                res[i] = {
+                  scrollTop: ret.childNodes[i].scrollTop,
+                  selectionEnd: ret.childNodes[i].selectionStart,
+                  selectionStart: ret.childNodes[i].selectionEnd,
+                  focus: ret.childNodes[i] === document.activeElement
+                };
+              }
             }
-          })(ret), 0);
+            return res;
+          })(ret);
+          
           return ret;
         }
       });
@@ -4789,7 +4832,7 @@ lastEditScript = """
                 onclick: (event) => {
                   editor_model.version = nm;
                   navigateLocal("/Thaditor/versions/" + nm + "/?edit");
-                  setTimeout(() => editor.sendNotification("Switched to " + nm), 2000);
+                  setTimeout(() => editor.ui.sendNotification("Switched to " + nm), 2000);
                 }
               });
             };
@@ -4800,7 +4843,7 @@ lastEditScript = """
                 onclick: (event) => {
                   editor_model.version = "Live";
                   navigateLocal("/?edit");
-                  setTimeout(() => editor.sendNotification("Switched to Live version"), 2000);
+                  setTimeout(() => editor.ui.sendNotification("Switched to Live version"), 2000);
                 }
               })
             }
@@ -5214,7 +5257,7 @@ lastEditScript = """
       editor_model.linkSelectMsg = "Confirm " + msg;
       editor_model.linkSelectOtherMenus = callbackUI;
       updateInteractionDiv();
-      editor.sendNotification(editor_model.linkSelectMsg);
+      editor.ui.sendNotification(editor_model.linkSelectMsg);
       document.body.addEventListener('mouseover', linkModeHover1, false);
       document.body.addEventListener('mouseout', linkModeHover2, false);
     }
@@ -5327,7 +5370,7 @@ lastEditScript = """
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
       editor_model.serverWorker.postMessage(data);
-      editor.sendNotification("Creating draft " + draft_name + " from " + nm);
+      editor.ui.sendNotification("Creating draft " + draft_name + " from " + nm);
     }
     
     function renameDraft(nm, verzExist) {
@@ -5343,7 +5386,7 @@ lastEditScript = """
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
       editor_model.serverWorker.postMessage(data);
-      editor.sendNotification("Renaming draft " + nm + " to " + draft_name);
+      editor.ui.sendNotification("Renaming draft " + nm + " to " + draft_name);
     }
 
     function publishDraft(nm) {
@@ -5364,9 +5407,10 @@ lastEditScript = """
     
     editor.refresh = updateInteractionDiv;
 
-    updateInteractionDiv(); //outer lastEditScript
-
+    updateInteractionDiv();
+    
     function updateInteractionDiv() {
+      console.trace("updateInteractionDiv()");
       const menuholder = document.querySelector("#modify-menu-holder");
       const old_scroll = menuholder ? menuholder.scrollTop : 0;
       
@@ -5545,7 +5589,7 @@ lastEditScript = """
               id: "undobutton"
             },
             {onclick: function(event) {
-              if(!undo()) editor.sendNotification("Nothing to undo!");
+              if(!undo()) editor.ui.sendNotification("Nothing to undo!");
               }
             }   
           );
@@ -5554,7 +5598,7 @@ lastEditScript = """
               id: "redobutton"
             },
             {onclick: function(event) {
-             if(!redo()) editor.sendNotification("Nothing to redo!");
+             if(!redo()) editor.ui.sendNotification("Nothing to redo!");
               }
             }
           );
@@ -5568,7 +5612,7 @@ lastEditScript = """
               editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
             : function(event) {
               if (editor_model.isSaving) {
-                editor.sendNotification("Can't save while save is being undertaken");
+                editor.ui.sendNotification("Can't save while save is being undertaken");
               }
               else {
                 //temp place to put CSS file loading stuff (may well be moved later)
