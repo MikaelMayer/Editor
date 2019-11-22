@@ -24,6 +24,17 @@ updatecheckpoint name x = {
 debugcheckpoint name x = let _ = Debug.log name () in x
 --}
 
+serverOwned what obj = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
+
+If you really intended to modify this, add ?superadmin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
+
+For debugging purposes, below is the new value that was pushed:
+<pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
+Here is the old value that was computed
+<pre>@(Regex.replace "<" (always "&lt;") """@obj""")</pre>
+""") obj
+
+
 preludeEnv =  __CurrentEnv__
 
 mbApplyPrefix = case listDict.get "path" defaultOptions of
@@ -81,16 +92,6 @@ permissionToEditServer = boolVar "superadmin" False -- should be possibly get fr
 canEditPage = userpermissions.pageowner && varedit && not varls
 
 freezeWhen = Update.freezeWhen
-
-serverOwned what obj = freezeWhen (not permissionToEditServer) (\od -> """You tried to modify @what, which is part of the server. We prevented you from doing so.<br><br>
-
-If you really intended to modify this, add ?superadmin=true to the URL and redo this operation. This is likely going to create or modify the existing <code>server.elm</code> at the location where you launched Editor.<br><br>
-
-For debugging purposes, below is the new value that was pushed:
-<pre>@(Regex.replace "<" (always "&lt;") """@od""")</pre>
-Here is the old value that was computed
-<pre>@(Regex.replace "<" (always "&lt;") """@obj""")</pre>
-""") obj
 
 canEvaluate = listDict.get "evaluate" vars |> Maybe.withDefaultReplace (serverOwned "default value of evaluate" "true")
 
@@ -1177,9 +1178,6 @@ initialScript = serverOwned "initial script" <| [
       xmlhttp.open("POST", location.pathname + location.search);
       xmlhttp.setRequestHeader("reload", "true");
       xmlhttp.setRequestHeader("url", url);
-      if(googleAuthIdToken) {
-        xmlhttp.setRequestHeader("id-token", googleAuthIdToken)
-      }
       console.log("setting url to ", url);
       xmlhttp.send("{\"a\":1}");
     }
@@ -2052,7 +2050,7 @@ lastEditScript = """
       editor.ui.loadInterface();
     }
     
-    handleServerPOSTResponse = (xmlhttp) => function () {
+    editor.ui.handleServerResponse = xmlhttp => function () {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           editor_model.isSaving = false;
 
@@ -2070,7 +2068,7 @@ lastEditScript = """
              ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
              ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
             var n = JSON.parse(ambiguityNumber);
-            console.log ("handleServerPOSTResponse ambiguity");
+            console.log ("editor.ui.handleServerResponse ambiguity");
             var selected = JSON.parse(ambiguitySelected);
             var summaries = JSON.parse(ambiguitySummaries);
             
@@ -2150,7 +2148,7 @@ lastEditScript = """
           }
           updateInteractionDiv(); 
         } //xhr.onreadystatechange == done
-    } //handleServerPOSTResponse
+    } //editor.ui.handleServerResponse
     
     window.onpopstate = function(e){
         console.log("onpopstate", e);
@@ -2173,7 +2171,7 @@ lastEditScript = """
         editor_model.serverWorker.postMessage(data);
       } else {
         var xmlhttp = new editor.config.XHRequest();
-        xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+        xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search);
         xmlhttp.setRequestHeader("Content-Type", "application/json");
         if(requestHeaders) {
@@ -3194,7 +3192,7 @@ lastEditScript = """
           });
           
           editor_model.outputObserver.disconnect();
-          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+          xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
           xmlhttp.readyState = XMLHttpRequest.DONE;
           xmlhttp.onreadystatechange();
           // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
@@ -5987,7 +5985,7 @@ lastEditScript = """
         return confirmation;
       } else if(!editor.config.is_apache_server) { // Send a close message in case this was a file opened from Desktop
         var xmlhttp = new editor.config.XHRequest();
-        xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
+        xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search, false); // Async
         xmlhttp.setRequestHeader("close", "true");
         xmlhttp.send("{\"a\":3}");
