@@ -1946,107 +1946,110 @@ lastEditScript = """
       
       // Sub-interfaces can register functions that will store some information that will be inserted at the same key in the record editor_model.restoredAfterReload.
       editor.ui.saveBetweenReloads = {};
+      
+      // Same as editor._internals.writeDocument, but tries to preserve as much of the DOM and toolbar state as possible.
+      editor.ui.writeDocument = (function() {
+        // Save/Load ghost/ignored attributes/nodes for when a page is reloaded, only if elements have an id.
+        // Same for some attributes
+        function saveGhostAttributes() {
+          var ghostModified = document.querySelectorAll("[ghost-visible]");
+          var savedGhostAttributes = [];
+          for(var i = 0; i < ghostModified.length; i++) {
+            var elem = ghostModified[i];
+            savedGhostAttributes.push([editor.toTreasureMap(elem),
+                "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
+          }
+
+          function saveAttributes(name) {
+            var ghostAttributesModified = document.querySelectorAll("["+name+"]");
+            for(var i = 0; i < ghostAttributesModified.length; i++) {
+              var elem = ghostAttributesModified[i];
+              var toSave = elem.getAttribute(name).split(" ");
+              for(j in toSave) {
+                var key = toSave[j];
+                savedGhostAttributes.push([editor.toTreasureMap(elem), key, elem.getAttribute(key)]);
+              }
+            }
+          }
+          saveAttributes("save-ghost-attributes");
+          saveAttributes("save-ignored-attributes");  
+        
+          var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
+          var savedProperties = [];
+          for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
+            var elem = elemsWithAttributesToSave[i];
+            var toSave = elem.getAttribute("save-properties").split(" ");
+            for(j in toSave) {
+              var key = toSave[j];
+              savedProperties.push([editor.toTreasureMap(elem), key, elem[key]])
+            }
+          }
+          var parentsGhostNodes = [];
+          var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
+          for(var i = 0; i < ghostElemsToReinsert.length; i++) {
+            var elem = ghostElemsToReinsert[i];
+            parentsGhostNodes.push({parent: editor.toTreasureMap(elem.parentNode), node: elem});
+          }
+          return [savedGhostAttributes, savedProperties, parentsGhostNodes];
+        }
+        function applyGhostAttributes(attrs) {
+          var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
+          for(var i in savedGhostAttributes) {
+            var [data, key, attr] = savedGhostAttributes[i];
+            var elem = editor.fromTreasureMap(data);
+            if(elem != null) {
+              elem.setAttribute(key, attr);
+            }
+          }
+          for(var i in savedProperties) {
+            var [data, key, value] = savedProperties[i];
+            var elem = editor.fromTreasureMap(id);
+            if(elem != null) {
+              elem[key] = value;
+            }
+          }
+          for(var i in parentsGhostNodes) {
+            var {parent: data, node: elem} = parentsGhostNodes[i];
+            var parent = editor.fromTreasureMap(data);
+            if(parent != null) {
+              if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
+                parent.appendChild(elem);
+              }
+            }
+          }
+        }
+        
+        function saveBeforeReloadingToolbar() {
+          editor_model.restoredAfterReload = {};
+          for(let k in editor.ui.saveBetweenReloads) {
+            editor_model.restoredAfterReload[k] = editor.ui.saveBetweenReloads[k]();
+          }
+          console.log("saved before reloading toolbar", editor_model.restoredAfterReload);
+        }
+        
+        return function writeDocument(newContent) {
+          let saved = saveGhostAttributes();
+          saveBeforeReloadingToolbar();
+          if(editor_model.caretPosition) {
+            editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
+          }
+          if(editor_model.selectionRange) {
+            editor_model.selectionRange = dataToRecoverSelectionRange(editor_model.selectionRange);
+          }
+          if(editor_model.clickedElem) {
+            editor_model.clickedElem = editor.toTreasureMap(editor_model.clickedElem);
+          }
+          let scrollX = window.scrollX;
+          let scrollY = window.scrollY;
+          editor._internals.writeDocument(newContent);
+          applyGhostAttributes(saved);
+          setTimeout(() => window.scroll(scrollX, scrollY), 10);
+        };
+      })()
     }
     
     if(editor.config.canEditPage) { // TODO: If false, nothing else should execute.
       editor.ui.loadInterface();
-    }
-        
-	  // Save/Load ghost/ignored attributes/nodes for when a page is reloaded, only if elements have an id.
-	  // Same for some attributes
-	  function saveGhostAttributes() {
-	    var ghostModified = document.querySelectorAll("[ghost-visible]");
-	    var savedGhostAttributes = [];
-	    for(var i = 0; i < ghostModified.length; i++) {
-	      var elem = ghostModified[i];
-	      savedGhostAttributes.push([editor.toTreasureMap(elem),
-	          "ghost-visible", ghostModified[i].getAttribute("ghost-visible")]);
-	    }
-
-	    function saveAttributes(name) {
-	      var ghostAttributesModified = document.querySelectorAll("["+name+"]");
-	      for(var i = 0; i < ghostAttributesModified.length; i++) {
-	        var elem = ghostAttributesModified[i];
-	        var toSave = elem.getAttribute(name).split(" ");
-	        for(j in toSave) {
-	          var key = toSave[j];
-	          savedGhostAttributes.push([editor.toTreasureMap(elem), key, elem.getAttribute(key)]);
-	        }
-	      }
-	    }
-      saveAttributes("save-ghost-attributes");
-      saveAttributes("save-ignored-attributes");  
-    
-      var elemsWithAttributesToSave = document.querySelectorAll("[save-properties]");
-	    var savedProperties = [];
-	    for(var i = 0; i < elemsWithAttributesToSave.length; i++) {
-	      var elem = elemsWithAttributesToSave[i];
-	      var toSave = elem.getAttribute("save-properties").split(" ");
-	      for(j in toSave) {
-	        var key = toSave[j];
-	        savedProperties.push([editor.toTreasureMap(elem), key, elem[key]])
-        }
-      }
-      var parentsGhostNodes = [];
-      var ghostElemsToReinsert = document.querySelectorAll("[save-ghost]");
-      for(var i = 0; i < ghostElemsToReinsert.length; i++) {
-        var elem = ghostElemsToReinsert[i];
-        parentsGhostNodes.push({parent: editor.toTreasureMap(elem.parentNode), node: elem});
-      }
-      return [savedGhostAttributes, savedProperties, parentsGhostNodes];
-    }
-    function applyGhostAttributes(attrs) {
-      var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
-      for(var i in savedGhostAttributes) {
-        var [data, key, attr] = savedGhostAttributes[i];
-        var elem = editor.fromTreasureMap(data);
-        if(elem != null) {
-          elem.setAttribute(key, attr);
-        }
-      }
-      for(var i in savedProperties) {
-        var [data, key, value] = savedProperties[i];
-        var elem = editor.fromTreasureMap(id);
-        if(elem != null) {
-          elem[key] = value;
-        }
-      }
-      for(var i in parentsGhostNodes) {
-        var {parent: data, node: elem} = parentsGhostNodes[i];
-        var parent = editor.fromTreasureMap(data);
-        if(parent != null) {
-          if(!elem.getAttribute("id") || !document.getElementById(elem.getAttribute("id"))) {
-            parent.appendChild(elem);
-          }
-        }
-      }
-    }
-    
-    function saveBeforeReloadingToolbar() {
-      editor_model.restoredAfterReload = {};
-      for(let k in editor.ui.saveBetweenReloads) {
-        editor_model.restoredAfterReload[k] = editor.ui.saveBetweenReloads[k]();
-      }
-      console.log("saved before reloading toolbar", editor_model.restoredAfterReload);
-    }
-
-    function replaceContent(newContent) {
-      let saved = saveGhostAttributes();
-      saveBeforeReloadingToolbar();
-      if(editor_model.caretPosition) {
-        editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
-      }
-      if(editor_model.selectionRange) {
-        editor_model.selectionRange = dataToRecoverSelectionRange(editor_model.selectionRange);
-      }
-      if(editor_model.clickedElem) {
-        editor_model.clickedElem = editor.toTreasureMap(editor_model.clickedElem);
-      }
-      let scrollX = window.scrollX;
-      let scrollY = window.scrollY;
-      editor._internals.writeDocument(newContent);
-      applyGhostAttributes(saved);
-      setTimeout(() => window.scroll(scrollX, scrollY), 10);
     }
     
     handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
@@ -2055,7 +2058,7 @@ lastEditScript = """
           if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
           
           //source of the editing menu disappearing after reloading
-          replaceContent(xmlhttp.responseText);
+          editor.ui.writeDocument(xmlhttp.responseText);
           
           var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
           var newQueryStr = xmlhttp.getResponseHeader("New-Query");
