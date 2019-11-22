@@ -2052,11 +2052,10 @@ lastEditScript = """
       editor.ui.loadInterface();
     }
     
-    handleServerPOSTResponse = (xmlhttp, onBeforeUpdate) => function () {
+    handleServerPOSTResponse = (xmlhttp) => function () {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           editor_model.isSaving = false;
-          if(typeof onBeforeUpdate !== "undefined") onBeforeUpdate();
-          
+
           //source of the editing menu disappearing after reloading
           editor.ui.writeDocument(xmlhttp.responseText);
           
@@ -3195,7 +3194,7 @@ lastEditScript = """
           });
           
           editor_model.outputObserver.disconnect();
-          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp, () => {});
+          xmlhttp.onreadystatechange = handleServerPOSTResponse(xmlhttp);
           xmlhttp.readyState = XMLHttpRequest.DONE;
           xmlhttp.onreadystatechange();
           // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
