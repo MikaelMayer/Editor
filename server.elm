@@ -1177,17 +1177,16 @@ initialScript = serverOwned "initial script" <| [
         }
       }
       if(editor.config.thaditor) { // Ask the worker to recompute the page
-        thaditor.worker.onmessage = e => {
-          if (e.data.action == "confirmDone") {
-            finish(e.data.text, e.data.newLocalURL);
-          }
-        }
-        thaditor.worker.postMessage({action:"sendRequest",
+        thaditor.do({action:"sendRequest",
           toSend: "{\"a\":1}",
           server_content: SERVER_CONTENT,
           loc: location.pathname + location.search,
           requestHeaders: {reload: true, url: url},
-          what: undefined});
+          what: undefined}).then(data => {
+            if (data.action == "confirmDone") {
+              finish(data.text, data.newLocalURL);
+            }
+          });
       } else { // Ask Editor's web server to recompute the page.
         var xmlhttp = new XMLHttpRequest();
         xmlhttp.onreadystatechange = (xmlhttp => () => {
@@ -2204,17 +2203,84 @@ lastEditScript = """
         }
     };
     
+    
+    function handleSendRequestFinish(data) {
+      /*
+        We want to undo everything in the undo stack that has been done since the save began.
+        In the process of vanilla undoing this (using mark's function), the items will be
+        pushed onto the redoStack in the normal way, s.t. we can redo them in a moment.
+        Once we're at the state we were at when we began to save, we re-write the page
+        with the confirmed content that the worker gave us.
+        Once the confirmed content has been rewritten, we have undo/redo stacks that point,
+        as the undo/redo stacks are an array of array of MutationRecords, all of whose target
+        has just been erased and replaced with a new object. 
+        So we need to convert the old UR stacks to be pointing to the right objects.
+        We solve this in the undo()/redo() functions, by checking to see if the object
+        pointed to in the mutationrecord is still connected to the active DOM. if not,
+        we use the inactive node to record the path up the tree, and search for the
+        corresponding node in the newly active tree, replacing the MR.target with the active one.
+        Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
+        the state pre-update & post-save.
+      */
+      // TODO: In case of ambiguity, only replay undo/redo after ambiguity has been resolved.
+      const ads = editor_model.actionsDuringSave;
+      const adsLen = editor_model.actionsDuringSave.length;
+      ads.forEach((action) => {
+        if (action == "undo") {
+          undo();
+        } else if (action == "redo") {
+          redo();
+        } else {
+          throw new Error("Unidentified action in restoring post-save state post-save");
+        }
+      });
+      
+      editor_model.outputObserver.disconnect();
+      editor.ui.handleRewriteMessage({data: data});
+      // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
+      setTimeout(function() {
+        var replayActionsAfterSave = msg => function(msgOverride) {
+          console.log("replaying actions after save");
+          const newAds = editor_model.actionsDuringSave;
+          const newAdsLen = newAds.length;
+          for (let i = 0; i < adsLen; i++) {
+            if (newAds[i] == "undo") {
+              undo();
+            } else if (newAds[i] == "redo") {
+              redo();
+            } else {
+              throw new Error("unidentified action in actionsduringsave");
+            }
+          }
+          if(newAdsLen) {
+            updateInteractionDiv();
+          }
+          if(msg) {
+            setTimeout(() => {
+               editor.ui.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
+            }, 0);
+          }
+        }
+        let what = data.what ? data.what + " completed." : undefined;
+        if(!data.isAmbiguous || !editor_model.disambiguationMenu) {
+          replayActionsAfterSave(what)();
+        } else {
+          editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
+        }
+      }, 10);
+    }
+    
     // The "what" is so that we can show a notification when this is done.
     notifyServer = (requestHeaders, toSend, what) => {
       if(editor.config.thaditor) {
-        let data = {action:"sendRequest",
+        thaditor.do( {action:"sendRequest",
                     toSend: toSend || "{\"a\":2}",
                     aq:editor_model.askQuestions,
                     loc: location.pathname + location.search,
                     requestHeaders: requestHeaders,
                     what: what,
-                    server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
-        thaditor.worker.postMessage(data);
+                    server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)}
+        ).then(handleSendRequestFinish);
       } else {
         var xmlhttp = new XMLHttpRequest();
         xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
@@ -2282,13 +2348,13 @@ lastEditScript = """
       editor.ui.sendNotification("Saving...");
       const tosend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
       if(editor.config.thaditor) {
-        let data = {action:"sendRequest", 
+        thaditor.do({action:"sendRequest", 
                     toSend:tosend,
                     aq:editor_model.askQuestions,
                     loc:location.pathname + location.search,
                     what: "Save",
-                    server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
-        thaditor.worker.postMessage(data);
+                    server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)}
+        ).then(handleSendRequestFinish);
       } else {
         setTimeout( () => {
           notifyServer({"question": editor_model.askQuestions ? "true" : "false"}, tosend);
@@ -3169,102 +3235,19 @@ lastEditScript = """
       disambiguationMenu: ifAlreadyRunning ? editor_model.disambiguationMenu : undefined
     }
     
-    if (!ifAlreadyRunning && editor.config.thaditor) {
-      thaditor.worker.onmessage = function(e) {
-        //handle confirmDone
-        if (e.data.action == "confirmDone") {
-          console.log("confirmDone", e.data);
-          /*
-            We want to undo everything in the undo stack that has been done since the save began.
-            In the process of vanilla undoing this (using mark's function), the items will be
-            pushed onto the redoStack in the normal way, s.t. we can redo them in a moment.
-            Once we're at the state we were at when we began to save, we re-write the page
-            with the confirmed content that the worker gave us.
-            Once the confirmed content has been rewritten, we have undo/redo stacks that point,
-            as the undo/redo stacks are an array of array of MutationRecords, all of whose target
-            has just been erased and replaced with a new object. 
-            So we need to convert the old UR stacks to be pointing to the right objects.
-            We solve this in the undo()/redo() functions, by checking to see if the object
-            pointed to in the mutationrecord is still connected to the active DOM. if not,
-            we use the inactive node to record the path up the tree, and search for the
-            corresponding node in the newly active tree, replacing the MR.target with the active one.
-            Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
-            the state pre-update & post-save.
-          */
-          // TODO: In case of ambiguity, only replay undo/redo after ambiguity has been resolved.
-          const ads = editor_model.actionsDuringSave;
-          const adsLen = editor_model.actionsDuringSave.length;
-          ads.forEach((action) => {
-            if (action == "undo") {
-              undo();
-            } else if (action == "redo") {
-              redo();
-            } else {
-              throw new Error("Unidentified action in restoring post-save state post-save");
-            }
-          });
-          
-          editor_model.outputObserver.disconnect();
-          editor.ui.handleRewriteMessage(e);
-          // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
-          setTimeout(function() {
-            var replayActionsAfterSave = msg => function(msgOverride) {
-              console.log("replaying actions after save");
-              const newAds = editor_model.actionsDuringSave;
-              const newAdsLen = newAds.length;
-              for (let i = 0; i < adsLen; i++) {
-                if (newAds[i] == "undo") {
-                  undo();
-                } else if (newAds[i] == "redo") {
-                  redo();
-                } else {
-                  throw new Error("unidentified action in actionsduringsave");
-                }
-              }
-              if(newAdsLen) {
-                updateInteractionDiv();
-              }
-              if(msg) {
-                setTimeout(() => {
-                   editor.ui.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
-                }, 0);
-              }
-            }
-            let what = e.data.what ? e.data.what + " completed." : undefined;
-            if(!e.data.isAmbiguous || !editor_model.disambiguationMenu) {
-              replayActionsAfterSave(what)();
-            } else {
-              editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
-            }
-          }, 10)
-        } else if(e.data.action == "message") {
-          editor.ui.sendNotification(e.data.message)
-        } else if(e.data.action == "reconnect") {
-          thaditor.reconnect();
-        } else if (e.data.action == "delete_complete") {
-          //todo
-          updateInteractionDiv();
-          editor.ui.sendNotification("Permanently deleted draft named: " + e.data.nm);
-        } else if (e.data.action == "publish_complete") {
-          //just send a notif, no more naving to live
-          editor.ui.sendNotification("Successfully published " + e.data.nm + " to live.");
-        } else if (e.data.action == "clone_complete") {
-          //just send a notif, no more naving to the clone
-          updateInteractionDiv();
-          editor.ui.sendNotification("Successfully cloned " + e.data.nm + " to " + e.data.draft_name);
-        } else if (e.data.action == "rename_complete") {
-          let marker = false;
-          if (e.data.nm == e.data.version) {
-            navigateLocal("/Thaditor/versions/" + e.data.draft_name + "/?edit");
-            marker = true;
-          }
-          updateInteractionDiv();
-          if (marker) {
-            setTimeout(editor.ui.sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name), 2000)
-          } else {
-            editor.ui.sendNotification("Successfully renamed " + e.data.nm + " to " + e.data.draft_name);
-          }
-        }
+    function handleWorkerResponse(e) {
+      //handle confirmDone
+      if (e.data.action == "confirmDone") {
+        console.log("confirmDone", e.data);
+        
+      } else if(e.data.action == "message") {
+        editor.ui.sendNotification(e.data.message)
+      } else if(e.data.action == "reconnect") {
+        thaditor.reconnect();
+      } else if (e.data.action == "delete_complete") {
+        //todo
+        updateInteractionDiv();
+        editor.ui.sendNotification("Permanently deleted draft named: " + e.data.nm);
       }
     }
     
@@ -5320,10 +5303,10 @@ lastEditScript = """
       if (editor_model.version == nm) {
         editor._internals.doWriteServer("deletermrf", pth_to_delete);
         navigateLocal("/?edit");
+        updateInteractionDiv();
       } else {
-        thaditor.worker.postMessage(data);
+        thaditor.do(data).then(() => updateInteractionDiv());
       }
-      updateInteractionDiv();
     }
 
     function deleteDraft(nm) {
@@ -5380,8 +5363,12 @@ lastEditScript = """
                     draft_name:draft_name,
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
-      thaditor.worker.postMessage(data);
       editor.ui.sendNotification("Creating draft " + draft_name + " from " + nm);
+      thaditor.do(data).then(data => {
+        //just send a notif, no more naving to the clone
+        updateInteractionDiv();
+        editor.ui.sendNotification("Successfully cloned " + data.nm + " to " + data.draft_name);
+      });
     }
     
     function renameDraft(nm, verzExist) {
@@ -5396,8 +5383,20 @@ lastEditScript = """
                     draft_name:draft_name,
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
-      thaditor.worker.postMessage(data);
       editor.ui.sendNotification("Renaming draft " + nm + " to " + draft_name);
+      thaditor.do(data).then(data => {
+        let marker = false;
+        if (data.nm == data.version) {
+          navigateLocal("/Thaditor/versions/" + data.draft_name + "/?edit");
+          marker = true;
+        }
+        if(marker) {
+          setTimeout(editor.ui.sendNotification("Successfully renamed " + data.nm + " to " + data.draft_name), 2000)
+        } else {
+          updateInteractionDiv();
+          editor.ui.sendNotification("Successfully renamed " + data.nm + " to " + data.draft_name);
+        }
+      });
     }
 
     function publishDraft(nm) {
@@ -5413,7 +5412,9 @@ lastEditScript = """
                     t_src:t_src,
                     nm:nm,thaditor_files:thaditor_files,
                     version:editor_model.version};
-      thaditor.worker.postMessage(data);
+      thaditor.do(data).then(data => {
+        editor.ui.sendNotification("Successfully published " + data.nm + " to live.");
+      });
     }
     
     editor.refresh = updateInteractionDiv;
