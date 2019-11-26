@@ -2095,7 +2095,7 @@ lastEditScript = """
          ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
          ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
         var n = JSON.parse(ambiguityNumber);
-        console.log ("editor.ui.handleServerResponse ambiguity");
+        console.log ("editor.ui.handleRewriteMessage ambiguity");
         var selected = JSON.parse(ambiguitySelected);
         var summaries = JSON.parse(ambiguitySummaries);
         
@@ -2175,6 +2175,7 @@ lastEditScript = """
       updateInteractionDiv(); 
     }
     
+    // Used only by the Editor webserver
     editor.ui.handleServerResponse = xmlhttp => function () {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
           editor.ui.handleRewriteMessage({
@@ -2203,6 +2204,7 @@ lastEditScript = """
         }
     };
     
+    // The "what" is so that we can show a notification when this is done.
     notifyServer = (requestHeaders, toSend, what) => {
       if(editor.config.thaditor) {
         let data = {action:"sendRequest",
@@ -2258,28 +2260,7 @@ lastEditScript = """
     function cancelAmbiguity(key, num) {
       notifyServer({"ambiguity-key": key, "cancel-ambiguity": JSON.stringify(num)});
     }
-    function sendModificationsToServerNode() {
-      if(document.getElementById("notification-menu") != null) {
-        //document.getElementById("notification-menu").innerHTML = `cannot send the server more modifications until it resolves these ones. Refresh the page?`
-        // TODO: Listen and gather subsequent modifications when it is loading
-        return;
-      }
-      editor_model.isSaving = true;
-      var newMenu = el("menuitem#notification-menu.to-be-selected", {isghost: true});
-      if(document.getElementById('lastaction')) {
-        document.getElementById('lastaction').remove();
-      }
-      if(document.getElementById("modify-menu")) {
-        document.getElementById("modify-menu").append(newMenu);
-      }
-      saveDisplayProperties();
-      updateInteractionDiv();
-      setTimeout( () => {
-        notifyServer({"question": editor_model.askQuestions ? "true" : "false"},
-          JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement)));
-      }, 0);
-    }
-
+    
     function sendModificationsToServer() {
       if(document.getElementById("notification-menu") != null) {
         //document.getElementById("notification-menu").innerHTML = `Please wait until previous saving completes.`
@@ -2294,18 +2275,25 @@ lastEditScript = """
       if(document.getElementById("modify-menu")) {
         document.getElementById("modify-menu").append(newMenu);
       }
-      editor_model.actionsDuringSave = [];
+      if(editor.config.thaditor) {
+        editor_model.actionsDuringSave = [];
+      }
       updateInteractionDiv();
       editor.ui.sendNotification("Saving...");
       const tosend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
-      let data = {action:"sendRequest", 
-                  toSend:tosend,
-                  aq:editor_model.askQuestions,
-                  loc:location.pathname + location.search,
-                  what: "Save",
-                  server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
-      
-      editor_model.serverWorker.postMessage(data);
+      if(editor.config.thaditor) {
+        let data = {action:"sendRequest", 
+                    toSend:tosend,
+                    aq:editor_model.askQuestions,
+                    loc:location.pathname + location.search,
+                    what: "Save",
+                    server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
+        thaditor.worker.postMessage(data);
+      } else {
+        setTimeout( () => {
+          notifyServer({"question": editor_model.askQuestions ? "true" : "false"}, tosend);
+        }, 0);
+      }
     } //sendModificationsToServer
 
     function removeTimestamp(path) {
@@ -2454,11 +2442,7 @@ lastEditScript = """
       }
       t = setTimeout(function() {
         t = undefined;
-        if (editor.config.thaditor) {
-          sendModificationsToServer();
-        } else {
-          sendModificationsToServerNode();
-        }
+        sendModificationsToServer();
       }, typeof editdelay != "undefined" ? editodelay : 1000)
     } //handleMutations
   
@@ -3168,8 +3152,6 @@ lastEditScript = """
       //observer to listen for muts
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //worker for interface with the server
-      serverWorker: ifAlreadyRunning ? editor_model.serverWorker :
-                    !editor.config.thaditor ? undefined : thaditor.worker,
       send_notif:ifAlreadyRunning ? editor_model.send_notif : "",
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
@@ -3187,8 +3169,8 @@ lastEditScript = """
       disambiguationMenu: ifAlreadyRunning ? editor_model.disambiguationMenu : undefined
     }
     
-    if (!ifAlreadyRunning && editor_model.serverWorker) {
-      editor_model.serverWorker.onmessage = function(e) {
+    if (!ifAlreadyRunning && editor.config.thaditor) {
+      thaditor.worker.onmessage = function(e) {
         //handle confirmDone
         if (e.data.action == "confirmDone") {
           console.log("confirmDone", e.data);
@@ -5339,7 +5321,7 @@ lastEditScript = """
         editor._internals.doWriteServer("deletermrf", pth_to_delete);
         navigateLocal("/?edit");
       } else {
-        editor_model.serverWorker.postMessage(data);
+        thaditor.worker.postMessage(data);
       }
       updateInteractionDiv();
     }
@@ -5398,7 +5380,7 @@ lastEditScript = """
                     draft_name:draft_name,
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
-      editor_model.serverWorker.postMessage(data);
+      thaditor.worker.postMessage(data);
       editor.ui.sendNotification("Creating draft " + draft_name + " from " + nm);
     }
     
@@ -5414,7 +5396,7 @@ lastEditScript = """
                     draft_name:draft_name,
                     t_pth:t_pth, f_pth:f_pth,
                     nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
-      editor_model.serverWorker.postMessage(data);
+      thaditor.worker.postMessage(data);
       editor.ui.sendNotification("Renaming draft " + nm + " to " + draft_name);
     }
 
@@ -5431,7 +5413,7 @@ lastEditScript = """
                     t_src:t_src,
                     nm:nm,thaditor_files:thaditor_files,
                     version:editor_model.version};
-      editor_model.serverWorker.postMessage(data);
+      thaditor.worker.postMessage(data);
     }
     
     editor.refresh = updateInteractionDiv;
@@ -5671,11 +5653,7 @@ lastEditScript = """
                   }
                   editor_model.undosBeforeSave = editor_model.undoStack.length;
                   if(!this.classList.contains("disabled")) {
-                    if (editor.config.thaditor) {
-                      sendModificationsToServer();
-                    } else {
-                      sendModificationsToServerNode();
-                    }
+                    sendModificationsToServer();
                   }
                 })();
               }
