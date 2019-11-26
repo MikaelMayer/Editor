@@ -1211,29 +1211,29 @@ initialScript = serverOwned "initial script" <| [
     // onErr: callback if upload fails, with targetPathName and file
     // onProgress: callback every progress made, with targetPathName, file and percentage
     function uploadFile(targetPathName, file, onOk, onError, onProgress) {
-      var xhr = new XMLHttpRequest();
-      xhr.onprogress = (e) => {
-        if(onProgress) {
-          onProgress(targetPathName, file, e && (e.loaded * 100.0 / e.total) || 100)
-        }
-      }
-      xhr.onreadystatechange = ((xhr, file) => () => {
-        if (xhr.readyState == XMLHttpRequest.DONE) {
-          if (xhr.status == 200 || xhr.status == 201) {
-            onOk ? onOk(targetPathName, file) : 0;
-          } else {
-            console.log("Error while uploading picture or file", xhr);
-            onError ? onError(targetPathName, file) : 0;
-          }
-        }
-      })(xhr, file);
       if(editor.config.thaditor) {
-        thaditor.postServer("write", targetPathName, file).then(() => {
+        thaditor.postServer("write", targetPathName, file, onProgress).then(() => {
           if(onOk) onOk(targetPathName, file);
-        }).err(() => {
+        }).catch(() => {
            if(onError) onError(targetPathName, file);
         })
-      } else {
+      } else { // Editor webserver
+        var xhr = new XMLHttpRequest();
+        xhr.onprogress = (e) => {
+          if(onProgress) {
+            onProgress(targetPathName, file, e && (e.loaded * 100.0 / e.total) || 100)
+          }
+        }
+        xhr.onreadystatechange = ((xhr, file) => () => {
+          if (xhr.readyState == XMLHttpRequest.DONE) {
+            if (xhr.status == 200 || xhr.status == 201) {
+              onOk ? onOk(targetPathName, file) : 0;
+            } else {
+              console.log("Error while uploading picture or file", xhr);
+              onError ? onError(targetPathName, file) : 0;
+            }
+          }
+        })(xhr, file);
         xhr.open("POST", targetPathName, false);
         xhr.setRequestHeader("write-file", file.type);
         xhr.send(file);
