@@ -1088,8 +1088,8 @@ initialScript = serverOwned "initial script" <| [
                       _ -> if boolVar "autosave" True then "true" else "false");
      editor.config.canEditPage = @(if canEditPage then "true" else "false");
      editor.config.editIsFalseButDefaultIsTrue = @(if varedit == False && (listDict.get "edit" defaultOptions |> Maybe.withDefault False) == True then "true" else "false");
-     // Are we one Apache server...
-     editor.config.is_apache_server = typeof thaditor_worker !== "undefined";
+     // Are we using Thaditor?
+     editor.config.thaditor = typeof thaditor !== "undefined";
      // User name, if defined. Used to create personalized temporary CSS files.
      editor.config.userName = typeof userName === "string" ? userName : "anonymous";
    </script>,
@@ -1170,34 +1170,31 @@ initialScript = serverOwned "initial script" <| [
 
     // Page reloading without trying to recover the editor's state.
     function doReloadPage(url, replaceState) {
-      if(editor.config.is_apache_server) { // Ask the worker to recompute the page
-        thaditor_worker.onmessage  = (e) => {
+      function finish(text, newLocalURL) {
+        writeDocument(text);
+        if(newLocalURL) {
+          window.history[replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+        }
+      }
+      if(editor.config.thaditor) { // Ask the worker to recompute the page
+        thaditor.worker.onmessage = e => {
           if (e.data.action == "confirmDone") {
-            writeDocument(e.data.text);
-            var newLocalURL = e.data.newLocalURL;
-            if(newLocalURL) {
-              window.history[replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
-            }
+            finish(e.data.text, e.data.newLocalURL);
           }
         }
-        thaditor_worker.postMessage({action:"sendRequest",
+        thaditor.worker.postMessage({action:"sendRequest",
           toSend: "{\"a\":1}",
           server_content: SERVER_CONTENT,
           loc: location.pathname + location.search,
           requestHeaders: {reload: true, url: url},
           what: undefined});
-      } else {
+      } else { // Ask Editor's web server to recompute the page.
         var xmlhttp = new XMLHttpRequest();
-        xmlhttp.onreadystatechange = ((xmlhttp, replaceState) => () => {
+        xmlhttp.onreadystatechange = (xmlhttp => () => {
           if (xmlhttp.readyState == XMLHttpRequest.DONE) {
-            //source of the editing menu disappearing after reloading
-            writeDocument(xmlhttp.responseText);
-            var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
-            if(newLocalURL) {
-              window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
-            }
+            finish(xmlhttp.responseText, xmlhttp.getResponseHeader("New-Local-URL"));
           }
-        })(xmlhttp, replaceState);
+        })(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search);
         xmlhttp.setRequestHeader("reload", "true");
         xmlhttp.setRequestHeader("url", url);
@@ -1230,13 +1227,17 @@ initialScript = serverOwned "initial script" <| [
           }
         }
       })(xhr, file);
-      if(editor.config.is_apache_server) {
-        xhr.open("POST", "/Thaditor/editor.php?action=write&" + "name=" + encodeURIComponent(targetPathName), false);
+      if(editor.config.thaditor) {
+        thaditor.postServer("write", targetPathName, file).then(() => {
+          if(onOk) onOk(targetPathName, file);
+        }).err(() => {
+           if(onError) onError(targetPathName, file);
+        })
       } else {
         xhr.open("POST", targetPathName, false);
         xhr.setRequestHeader("write-file", file.type);
+        xhr.send(file);
       }
-      xhr.send(file);
     }
     editor.uploadFile = uploadFile;
     
@@ -2203,7 +2204,7 @@ lastEditScript = """
     };
     
     notifyServer = (requestHeaders, toSend, what) => {
-      if(editor.config.is_apache_server) {
+      if(editor.config.thaditor) {
         let data = {action:"sendRequest",
                     toSend: toSend || "{\"a\":2}",
                     aq:editor_model.askQuestions,
@@ -2211,7 +2212,7 @@ lastEditScript = """
                     requestHeaders: requestHeaders,
                     what: what,
                     server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
-        editor_model.serverWorker.postMessage(data);
+        thaditor.worker.postMessage(data);
       } else {
         var xmlhttp = new XMLHttpRequest();
         xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
@@ -2453,7 +2454,7 @@ lastEditScript = """
       }
       t = setTimeout(function() {
         t = undefined;
-        if (editor.config.is_apache_server) {
+        if (editor.config.thaditor) {
           sendModificationsToServer();
         } else {
           sendModificationsToServerNode();
@@ -3168,8 +3169,7 @@ lastEditScript = """
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //worker for interface with the server
       serverWorker: ifAlreadyRunning ? editor_model.serverWorker :
-                    !editor.config.is_apache_server ? undefined :
-                      typeof thaditor_worker != "undefined" ? thaditor_worker : new Worker("/Thaditor/thaditor-worker.js"),
+                    !editor.config.thaditor ? undefined : thaditor.worker,
       send_notif:ifAlreadyRunning ? editor_model.send_notif : "",
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
@@ -3258,7 +3258,7 @@ lastEditScript = """
         } else if(e.data.action == "message") {
           editor.ui.sendNotification(e.data.message)
         } else if(e.data.action == "reconnect") {
-          thaditor_reconnect();
+          thaditor.reconnect();
         } else if (e.data.action == "delete_complete") {
           //todo
           updateInteractionDiv();
@@ -4838,7 +4838,7 @@ lastEditScript = """
           return ret;
         }
       });
-      if (editor.config.is_apache_server) {
+      if (editor.config.thaditor) {
         editor_model.interfaces.push({
           title: "Drafts",
           minimized: true,
@@ -5106,7 +5106,7 @@ lastEditScript = """
               }
             }
           );
-          if(editor.config.is_apache_server) {
+          if(editor.config.thaditor) {
             retDiv.append(
               el("button.action-button#update-thaditor-btn", {type: ""}, "Update Thaditor", {onclick() {
                 if(confirm("Are you ready to upgrade Thaditor?")) {
@@ -5138,7 +5138,7 @@ lastEditScript = """
           retDiv.append(
             el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
           
-          if(editor.config.is_apache_server) {
+          if(editor.config.thaditor) {
             retDiv.append(
               el("a", {href:"javascript:0", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
                 onclick() {
@@ -5671,7 +5671,7 @@ lastEditScript = """
                   }
                   editor_model.undosBeforeSave = editor_model.undoStack.length;
                   if(!this.classList.contains("disabled")) {
-                    if (editor.config.is_apache_server) {
+                    if (editor.config.thaditor) {
                       sendModificationsToServer();
                     } else {
                       sendModificationsToServerNode();
@@ -6012,7 +6012,7 @@ lastEditScript = """
       if(askConfirmation) {
         // For Safari
         return confirmation;
-      } else if(!editor.config.is_apache_server) { // Send a close message in case this was a file opened from Desktop
+      } else if(!editor.config.thaditor) { // Send a close message in case this was a file opened from Desktop
         var xmlhttp = new XMLHttpRequest();
         xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search, false); // Async
