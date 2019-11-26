@@ -1010,6 +1010,14 @@ removeJS node = case node of
     [tag, attrs, List.map removeJS children]
   _ -> []
 
+{-
+-- On reverse, all ghost elems will have disappeared. We reinsert them.
+prependGhosts ghostElems = update.lens {
+  apply elems = ghostElems ++ elems
+  update _ = Ok (InputsWithDiffs [(elems, VListDiffs [(0, ListElemInsert)
+} finalElems
+-}
+
 {---------------------------------------------------------------------------
  Instruments the resulting HTML page
  - Removes whitespace that are siblings of <head> and <body>
@@ -1025,7 +1033,7 @@ main =
   --updatecheckpoint "main" <|
   case recoveredEvaluatedPage of
   ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
-    List.filter (case of [_, _] -> False; _ -> True) |>
+    List.filter (case of [_, _] -> False; _ -> True) |> -- We remove text nodes outside of body and head
     List.mapWithReverse identity (case of
       ["head", headattrs, headChildren] ->
         let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
@@ -1084,8 +1092,6 @@ initialScript = serverOwned "initial script" <| [
      editor.config.is_apache_server = typeof thaditor_worker !== "undefined";
      // User name, if defined. Used to create personalized temporary CSS files.
      editor.config.userName = typeof userName === "string" ? userName : "anonymous";
-     // Requests to engine compatible with the Node.JS server. If Apache server, ProxiedServerRequest.
-     editor.config.XHRequest = typeof ProxiedServerRequest != "undefined" ? ProxiedServerRequest : XMLHttpRequest;
    </script>,
    -- TODO: Externalize this script.
    -- TODO: Put as much as possible of the interface in a new script.
@@ -1164,22 +1170,40 @@ initialScript = serverOwned "initial script" <| [
 
     // Page reloading without trying to recover the editor's state.
     function doReloadPage(url, replaceState) {
-      var xmlhttp = new editor.config.XHRequest();
-      xmlhttp.onreadystatechange = ((xmlhttp, replaceState) => () => {
-        if (xmlhttp.readyState == XMLHttpRequest.DONE) {
-          //source of the editing menu disappearing after reloading
-          writeDocument(xmlhttp.responseText);
-          var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
-          if(newLocalURL) {
-            window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+      if(editor.config.is_apache_server) { // Ask the worker to recompute the page
+        thaditor_worker.onmessage  = (e) => {
+          if (e.data.action == "confirmDone") {
+            writeDocument(e.data.text);
+            var newLocalURL = e.data.newLocalURL;
+            if(newLocalURL) {
+              window.history[replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+            }
           }
         }
-      })(xmlhttp, replaceState);
-      xmlhttp.open("POST", location.pathname + location.search);
-      xmlhttp.setRequestHeader("reload", "true");
-      xmlhttp.setRequestHeader("url", url);
-      console.log("setting url to ", url);
-      xmlhttp.send("{\"a\":1}");
+        thaditor_worker.postMessage({action:"sendRequest",
+          toSend: "{\"a\":1}",
+          server_content: SERVER_CONTENT,
+          loc: location.pathname + location.search,
+          requestHeaders: {reload: true, url: url},
+          what: undefined});
+      } else {
+        var xmlhttp = new XMLHttpRequest();
+        xmlhttp.onreadystatechange = ((xmlhttp, replaceState) => () => {
+          if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+            //source of the editing menu disappearing after reloading
+            writeDocument(xmlhttp.responseText);
+            var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
+            if(newLocalURL) {
+              window.history[xmlhttp.replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+            }
+          }
+        })(xmlhttp, replaceState);
+        xmlhttp.open("POST", location.pathname + location.search);
+        xmlhttp.setRequestHeader("reload", "true");
+        xmlhttp.setRequestHeader("url", url);
+        console.log("setting url to ", url);
+        xmlhttp.send("{\"a\":1}");
+      }
     }
     editor._internals.doReloadPage = doReloadPage;
 
@@ -2050,103 +2074,122 @@ lastEditScript = """
       editor.ui.loadInterface();
     }
     
+    // Handle a rewrite message from the worker
+    editor.ui.handleRewriteMessage = function(e) {
+      editor_model.isSaving = false;
+
+      //Rewrite the document, restoring some of the UI afterwards.
+      editor.ui.writeDocument(e.data.text);
+      
+      var newLocalURL = e.data.newLocalURL;
+      var newQueryStr = e.data.newQueryStr;
+      var ambiguityKey = e.data.ambiguityKey;
+      var ambiguityNumber = e.data.ambiguityNumber;
+      var ambiguitySelected = e.data.ambiguitySelected;
+      var ambiguityEnd = e.data.ambiguityEnd;
+      var ambiguitySummaries = e.data.ambiguitySummaries;
+      var opSummaryEncoded = e.data.opSummaryEncoded;
+      var replaceState = e.data.customRequestHeaders && e.data.customRequestHeaders.replaceState == "true";
+      if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
+         ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
+         ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
+        var n = JSON.parse(ambiguityNumber);
+        console.log ("editor.ui.handleServerResponse ambiguity");
+        var selected = JSON.parse(ambiguitySelected);
+        var summaries = JSON.parse(ambiguitySummaries);
+        
+        var disambiguationMenuContent = [];
+        disambiguationMenuContent.push(el("span#ambiguity-id", {v: ambiguityKey}, "Choose the update you prefer, and click the save button:"));
+        // Find the common path of all files so that we don't need to repeat its name or path.
+        var fileOf = x => x.replace(/^(.*): *\n[\s\S]*$/, "$1")
+        var commonPrefix = fileOf(summaries[1]);
+        for(var i = 1; i <= n; i++) {
+          while(!fileOf(summaries[i - 1]).startsWith(commonPrefix)) {
+            let n = commonPrefix.replace(/^(.*)(?:\/|\\).*$/, "$1");
+            commonPrefix = n === commonPrefix ? "" : n;
+          }
+        }
+        if(commonPrefix) {
+          disambiguationMenuContent.push(el("span#ambiguity-prefix", {}, commonPrefix + ":"));
+        }
+        for(var i = 1; i <= n; i++) {
+          var summary = summaries[i-1].substring(commonPrefix.length).
+                replace(/"/g,'&quot;').
+                replace(/</g, "&lt;").
+                replace(/---\)|\+\+\+\)/g, "</span>").
+                replace(/\(---/g, "<span class='remove'>").
+                replace(/\(\+\+\+/g, "<span class='add'>").
+                replace(/(\nL\d+C\d+:)(.*)/, "$1<span class='codepreview'>$2</span>");
+          disambiguationMenuContent.push(el("span.solution" + (i == selected ? ".selected" : "") + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
+          title: i == selected ? "Currently displaying this solution" : "Select this solution" + (i == n && ambiguityEnd != 'true' ? " (compute further solutions after if any)" : ""), onclick: i == selected ? `` : `this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})`}, "", {innerHTML: "#" + i + " " + summary}));
+        }
+        disambiguationMenuContent.push(el("button#cancelAmbiguity.action-button", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
+        editor_model.disambiguationMenu = el("div.disambiguationMenu", {}, disambiguationMenuContent);
+        editor_model.disambiguationMenu.ambiguityKey = ambiguityKey;
+        editor_model.disambiguationMenu.selected = selected;
+        editor_model.clickedElem = undefined;
+        editor_model.displayClickedElemAsMainElem = true;
+        editor_model.notextselection = false;
+        editor_model.caretPosition = undefined;
+        editor_model.link = undefined;
+        var advancedBlock = getEditorInterfaceByTitle("Advanced");
+        if(advancedBlock) advancedBlock.minimized = false;
+        editor_model.visible = true;
+        //editor_model.displaySource: false, // Keep source opened or closed
+        // TODO: Disable click or change in DOM until ambiguity is resolved.
+      } else { //no ambiguity
+        if(editor_model.disambiguationMenu && editor_model.disambiguationMenu.replayActionsAfterSave) {
+          console.log("disambiguationMenu was there. replaying actions");
+          editor_model.disambiguationMenu.replayActionsAfterSave("Modifications applied");
+        } else {
+          console.log("disambiguationMenu is not there.");
+        }
+        editor_model.disambiguationMenu = undefined;
+        if(opSummaryEncoded) {
+          var opSummary = decodeURI(opSummaryEncoded);
+          opSummary =
+            opSummary.
+            replace(/</g, "&lt;").
+            replace(/---\)/g, "</span>").
+            replace(/\(---/g, "<span class='remove'>").
+            replace(/\+\+\+\)/g, "</span>").
+            replace(/\(\+\+\+/g, "<span class='add'>");
+          editor_model.editor_log.push(opSummary);
+          // editor.ui.sendNotification(opSummary);
+        }
+      } // /noambiguity
+      var strQuery = "";
+      if(newQueryStr != null) { //newQueryStr = undefined ==> (newQueryStr !== null) ==> false;
+        var newQuery = JSON.parse(newQueryStr);
+        for(var i = 0; i < newQuery.length; i++) {
+          var {_1: key, _2: value} = newQuery[i];
+          strQuery = strQuery + (i == 0 ? "?" : "&") + key + (value === "" && key == "edit" ? "" : "=" + value)
+        } 
+      }
+      if(newLocalURL) { // Overrides query parameters
+        window.history[replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+      } else if(strQuery) {
+        window.history.replaceState({}, "Current page", strQuery);
+      }
+      updateInteractionDiv(); 
+    }
+    
     editor.ui.handleServerResponse = xmlhttp => function () {
         if (xmlhttp.readyState == XMLHttpRequest.DONE) {
-          editor_model.isSaving = false;
-
-          //source of the editing menu disappearing after reloading
-          editor.ui.writeDocument(xmlhttp.responseText);
-          
-          var newLocalURL = xmlhttp.getResponseHeader("New-Local-URL");
-          var newQueryStr = xmlhttp.getResponseHeader("New-Query");
-          var ambiguityKey = xmlhttp.getResponseHeader("Ambiguity-Key");
-          var ambiguityNumber = xmlhttp.getResponseHeader("Ambiguity-Number");
-          var ambiguitySelected = xmlhttp.getResponseHeader("Ambiguity-Selected");
-          var ambiguityEnd = xmlhttp.getResponseHeader("Ambiguity-End");
-          var ambiguitySummaries = xmlhttp.getResponseHeader("Ambiguity-Summaries");
-          if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
-             ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
-             ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
-            var n = JSON.parse(ambiguityNumber);
-            console.log ("editor.ui.handleServerResponse ambiguity");
-            var selected = JSON.parse(ambiguitySelected);
-            var summaries = JSON.parse(ambiguitySummaries);
-            
-            var disambiguationMenuContent = [];
-            disambiguationMenuContent.push(el("span#ambiguity-id", {v: ambiguityKey}, "Choose the update you prefer, and click the save button:"));
-            // Find the common path of all files so that we don't need to repeat its name or path.
-            var fileOf = x => x.replace(/^(.*): *\n[\s\S]*$/, "$1")
-            var commonPrefix = fileOf(summaries[1]);
-            for(var i = 1; i <= n; i++) {
-              while(!fileOf(summaries[i - 1]).startsWith(commonPrefix)) {
-                let n = commonPrefix.replace(/^(.*)(?:\/|\\).*$/, "$1");
-                commonPrefix = n === commonPrefix ? "" : n;
-              }
+          editor.ui.handleRewriteMessage({
+            data: {
+              newLocalURL: xmlhttp.getResponseHeader("New-Local-URL"),
+              newQueryStr: xmlhttp.getResponseHeader("New-Query"),
+              ambiguityKey: xmlhttp.getResponseHeader("Ambiguity-Key"),
+              ambiguityNumber: xmlhttp.getResponseHeader("Ambiguity-Number"),
+              ambiguitySelected: xmlhttp.getResponseHeader("Ambiguity-Selected"),
+              ambiguityEnd: xmlhttp.getResponseHeader("Ambiguity-End"),
+              ambiguitySummaries: xmlhttp.getResponseHeader("Ambiguity-Summaries"),
+              opSummaryEncoded: xmlhttp.getResponseHeader("Operations-Summary"),
+              customRequestHeaders: xmlhttp.customRequestHeaders,
+              text: xmlhttp.responseText
             }
-            if(commonPrefix) {
-              disambiguationMenuContent.push(el("span#ambiguity-prefix", {}, commonPrefix + ":"));
-            }
-            for(var i = 1; i <= n; i++) {
-              var summary = summaries[i-1].substring(commonPrefix.length).
-                    replace(/"/g,'&quot;').
-                    replace(/</g, "&lt;").
-                    replace(/---\)|\+\+\+\)/g, "</span>").
-                    replace(/\(---/g, "<span class='remove'>").
-                    replace(/\(\+\+\+/g, "<span class='add'>").
-                    replace(/(\nL\d+C\d+:)(.*)/, "$1<span class='codepreview'>$2</span>");
-              disambiguationMenuContent.push(el("span.solution" + (i == selected ? ".selected" : "") + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
-              title: i == selected ? "Currently displaying this solution" : "Select this solution" + (i == n && ambiguityEnd != 'true' ? " (compute further solutions after if any)" : ""), onclick: i == selected ? `` : `this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})`}, "", {innerHTML: "#" + i + " " + summary}));
-            }
-            disambiguationMenuContent.push(el("button#cancelAmbiguity.action-button", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
-            editor_model.disambiguationMenu = el("div.disambiguationMenu", {}, disambiguationMenuContent);
-            editor_model.disambiguationMenu.ambiguityKey = ambiguityKey;
-            editor_model.disambiguationMenu.selected = selected;
-            editor_model.clickedElem = undefined;
-            editor_model.displayClickedElemAsMainElem = true;
-            editor_model.notextselection = false;
-            editor_model.caretPosition = undefined;
-            editor_model.link = undefined;
-            var advancedBlock = getEditorInterfaceByTitle("Advanced");
-            if(advancedBlock) advancedBlock.minimized = false;
-            editor_model.visible = true;
-            //editor_model.displaySource: false, // Keep source opened or closed
-            // TODO: Disable click or change in DOM until ambiguity is resolved.
-          } else { //no ambiguity
-            if(editor_model.disambiguationMenu && editor_model.disambiguationMenu.replayActionsAfterSave) {
-              console.log("disambiguationMenu was there. replaying actions");
-              editor_model.disambiguationMenu.replayActionsAfterSave("Modifications applied");
-            } else {
-              console.log("disambiguationMenu is not there.");
-            }
-            editor_model.disambiguationMenu = undefined;
-            let opSummaryEncoded = xmlhttp.getResponseHeader("Operations-Summary");
-            if(opSummaryEncoded) {
-              var opSummary = decodeURI(opSummaryEncoded);
-              opSummary =
-                opSummary.
-                replace(/</g, "&lt;").
-                replace(/---\)/g, "</span>").
-                replace(/\(---/g, "<span class='remove'>").
-                replace(/\+\+\+\)/g, "</span>").
-                replace(/\(\+\+\+/g, "<span class='add'>");
-              editor_model.editor_log.push(opSummary);
-              // editor.ui.sendNotification(opSummary);
-            }
-          } // /noambiguity
-          var strQuery = "";
-          if(newQueryStr != null) { //newQueryStr = undefined ==> (newQueryStr !== null) ==> false;
-            var newQuery = JSON.parse(newQueryStr);
-            for(var i = 0; i < newQuery.length; i++) {
-              var {_1: key, _2: value} = newQuery[i];
-              strQuery = strQuery + (i == 0 ? "?" : "&") + key + (value === "" && key == "edit" ? "" : "=" + value)
-            } 
-          }
-          if(newLocalURL) { // Overrides query parameters
-            window.history[xmlhttp.customRequestHeaders && xmlhttp.customRequestHeaders.replaceState == "true" ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
-          } else if(strQuery) {
-            window.history.replaceState({}, "Current page", strQuery);
-          }
-          updateInteractionDiv(); 
+          })
         } //xhr.onreadystatechange == done
     } //editor.ui.handleServerResponse
     
@@ -2170,7 +2213,7 @@ lastEditScript = """
                     server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)};
         editor_model.serverWorker.postMessage(data);
       } else {
-        var xmlhttp = new editor.config.XHRequest();
+        var xmlhttp = new XMLHttpRequest();
         xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search);
         xmlhttp.setRequestHeader("Content-Type", "application/json");
@@ -3125,9 +3168,8 @@ lastEditScript = """
       outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
       //worker for interface with the server
       serverWorker: ifAlreadyRunning ? editor_model.serverWorker :
-                    editor.config.is_apache_server ?
-                      typeof thaditor_worker != "undefined" ? thaditor_worker : new Worker("/Thaditor/editor.js") :
-                      undefined,
+                    !editor.config.is_apache_server ? undefined :
+                      typeof thaditor_worker != "undefined" ? thaditor_worker : new Worker("/Thaditor/thaditor-worker.js"),
       send_notif:ifAlreadyRunning ? editor_model.send_notif : "",
       //editor log
       editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
@@ -3150,17 +3192,6 @@ lastEditScript = """
         //handle confirmDone
         if (e.data.action == "confirmDone") {
           console.log("confirmDone", e.data);
-          let xmlhttp = new editor.config.XHRequest();
-          xmlhttp.response.setHeader("New-Local-URL", e.data.newLocalURL);
-          xmlhttp.response.setHeader("New-Query", e.data.newQueryStr);
-          xmlhttp.response.setHeader("Ambiguity-Key", e.data.ambiguityKey);
-          xmlhttp.response.setHeader("Ambiguity-Number", e.data.ambiguityNumber);
-          xmlhttp.response.setHeader("Ambiguity-Selected", e.data.ambiguitySelected);
-          xmlhttp.response.setHeader("Ambiguity-End", e.data.ambiguityEnd);
-          xmlhttp.response.setHeader("Ambiguity-Summaries", e.data.ambiguitySummaries);
-          xmlhttp.response.setHeader("Operations-Summary", e.data.opSummaryEncoded);
-          xmlhttp.customRequestHeaders = e.data.customRequestHeaders;
-          xmlhttp.response.text = e.data.text;
           /*
             We want to undo everything in the undo stack that has been done since the save began.
             In the process of vanilla undoing this (using mark's function), the items will be
@@ -3192,9 +3223,7 @@ lastEditScript = """
           });
           
           editor_model.outputObserver.disconnect();
-          xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
-          xmlhttp.readyState = XMLHttpRequest.DONE;
-          xmlhttp.onreadystatechange();
+          editor.ui.handleRewriteMessage(e);
           // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
           setTimeout(function() {
             var replayActionsAfterSave = msg => function(msgOverride) {
@@ -5984,7 +6013,7 @@ lastEditScript = """
         // For Safari
         return confirmation;
       } else if(!editor.config.is_apache_server) { // Send a close message in case this was a file opened from Desktop
-        var xmlhttp = new editor.config.XHRequest();
+        var xmlhttp = new XMLHttpRequest();
         xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search, false); // Async
         xmlhttp.setRequestHeader("close", "true");
