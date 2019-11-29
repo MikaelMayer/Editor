@@ -3235,22 +3235,6 @@ lastEditScript = """
       disambiguationMenu: ifAlreadyRunning ? editor_model.disambiguationMenu : undefined
     }
     
-    function handleWorkerResponse(e) {
-      //handle confirmDone
-      if (e.data.action == "confirmDone") {
-        console.log("confirmDone", e.data);
-        
-      } else if(e.data.action == "message") {
-        editor.ui.sendNotification(e.data.message)
-      } else if(e.data.action == "reconnect") {
-        thaditor.reconnect();
-      } else if (e.data.action == "delete_complete") {
-        //todo
-        updateInteractionDiv();
-        editor.ui.sendNotification("Permanently deleted draft named: " + e.data.nm);
-      }
-    }
-    
     // Helpers: Text preview and summary
     function textPreview(element, maxLength) {
       let x = element.textContent;
@@ -5305,7 +5289,9 @@ lastEditScript = """
         navigateLocal("/?edit");
         updateInteractionDiv();
       } else {
-        thaditor.do(data).then(() => updateInteractionDiv());
+        thaditor.do(data).then(data => {
+          editor.ui.sendNotification("Permanently deleted draft named: " + data.nm);
+          updateInteractionDiv()});
       }
     }
 
