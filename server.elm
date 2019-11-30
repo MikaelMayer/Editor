@@ -1072,7 +1072,6 @@ insertThereInstead onInsert atBeginning list =
 boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (case of [["checked", ""]] -> "true"; _ -> "false")
 
 initialScript = serverOwned "initial script" <| [
-  <script class="editor-interface" type="text/javascript" src="https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js" list-ghost-attributes="gapi_processed"></script>,
   <script id="thaditor-vars" class="editor-interface">
      editor = typeof editor == "undefined" ? {} : editor;
      editor.config = {};
@@ -1784,6 +1783,10 @@ initialScript = serverOwned "initial script" <| [
       
     
     editor.ui = {};
+    editor.ui.getLosslessCssParser = new Promise((resolve, reject) => {
+        editor.ui.setLosslessCssParser = x => { editor.ui.CSSparser = new x(); resolve(x) };
+    });
+    
     // Display an box to switch to edit mode.
     // TODO: In the future, this should only activate contenteditable = true, import editor script to start recording to changes, and replay the changes once Editor is ready.
     editor.ui.switchEditBox = 
@@ -3355,17 +3358,17 @@ lastEditScript = """
         return currentContent;
       }
     }
+    
+    function init_css_parser() {
+      let thaditorLossLessCss = document.querySelector("script#thaditor-losslesscss");
+      if(!thaditorLossLessCss) {
+        let script = el("script", {id: "thaditor-losslesscss", class:"editor-interface", type:"text/javascript", src:"https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js", async:"true", onload:"editor.ui.setLosslessCssParser(losslesscssjs);"});
+        document.head.appendChild(script);
+      }
+    }
          
     function init_interfaces() {
-      function findText(parsed, startIndex, endIndex) { //for css + img replacement
-        let textSegment = "";
-        for(let i = startIndex; i < endIndex; i++) {
-          textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[i]]) :
-            (parsed[0].directive ? CSSparser.unparseRules([parsed[i]]) : "") : "";
-          //console.log(textSegment);
-        }
-        return textSegment;
-      }
+      init_css_parser();
       let linkSelect = function() {
         activateNodeSelectionMode("to link to",
           (linkFrom => linkTo => {
@@ -3382,8 +3385,7 @@ lastEditScript = """
             linkFrom.setAttribute("href", "#" + targetID);
           })(editor_model.clickedElem)
         );
-      }
-      var CSSparser = new losslesscssjs();
+      } 
       let createButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
         button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
@@ -3855,6 +3857,17 @@ lastEditScript = """
                 rawCSS.push({text: linkOrStyleNode.textContent, tag: linkOrStyleNode});
               }
             }
+            let CSSparserBuilder = await editor.ui.getLosslessCssParser;
+            let CSSparser = new CSSparserBuilder();
+            function findText(parsed, startIndex, endIndex) { //for css + img replacement
+              let textSegment = "";
+              for(let i = startIndex; i < endIndex; i++) {
+                textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[i]]) :
+                  (parsed[0].directive ? CSSparser.unparseRules([parsed[i]]) : "") : "";
+                //console.log(textSegment);
+              }
+              return textSegment;
+            }
             for(let z in rawCSS) {  
               var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
               for(let i in parsedCSS) {
@@ -4120,6 +4133,8 @@ lastEditScript = """
                     (async () => {
                       if(this.storedCSS.orgTag.tagName != "LINK") { // style node
                         let throwError = false;
+                        let CSSparserBuilder = await editor.ui.getLosslessCssParser;
+                        let CSSparser = new CSSparserBuilder();
                         let curCSSState = CSSparser.parseCSS(this.value);
                         //console.log(curCSSState);
                         //check to make sure CSS is still relevant to clicked element.
@@ -4205,9 +4220,18 @@ lastEditScript = """
         //a link to an image is provided as part of the value for this rule;
         //TODO: expand the set of CSS being checked to any style tags as well.
         checkForBackgroundImg(clickedElem, findURLS) {
+          function findText(parsed, startIndex, endIndex) { //for css + img replacement
+            let textSegment = "";
+            for(let i = startIndex; i < endIndex; i++) {
+              textSegment += parsed ? parsed[0].selector ? editor.ui.CSSparser.unparseCSS([parsed[i]]) :
+                (parsed[0].directive ? editor.ui.CSSparser.unparseRules([parsed[i]]) : "") : "";
+              //console.log(textSegment);
+            }
+            return textSegment;
+          }
           //console.log("clicked element is:", clickedElem);
           //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
-          var clickedStyle = clickedElem ? CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
+          var clickedStyle = clickedElem ? editor.ui.CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
           //console.log(clickedStyle);
           //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
           //former first, if it contains a url. for now, I am looping through the CSS rules twice.
@@ -4241,6 +4265,7 @@ lastEditScript = """
           return undefined;
         },
         enabled(editor_model) {
+          if(!editor.ui.CSSparser) return false;
           let clickedElem = editor_model.clickedElem;
           let backgroundImgSrc = this.checkForBackgroundImg(clickedElem, this.findURLS);
           const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
@@ -5415,7 +5440,6 @@ lastEditScript = """
       // Set up
       let model = editor_model;
       var clickedElem = model.clickedElem;
-      var CSSparser = new losslesscssjs();
       var contextMenu = document.querySelector("#context-menu");
       var modifyMenuDiv = document.querySelector("#modify-menu");
       
