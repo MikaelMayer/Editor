@@ -61,8 +61,6 @@ fs = case mbApplyPrefix of
     isfile name = fs.isfile (applyPrefix name)
   }
 
-editdelay = 1000
-
 boolVar name resDefault =
   listDict.get name vars |>
   Maybe.map (\original ->
@@ -2258,9 +2256,9 @@ initialScript = serverOwned "initial script" <| [
         const adsLen = editor.ui.model.actionsDuringSave.length;
         ads.forEach((action) => {
           if (action == "undo") {
-            undo();
+            editor.ui.undo();
           } else if (action == "redo") {
-            redo();
+            editor.ui.redo();
           } else {
             throw new Error("Unidentified action in restoring post-save state post-save");
           }
@@ -2276,9 +2274,9 @@ initialScript = serverOwned "initial script" <| [
             const newAdsLen = newAds.length;
             for (let i = 0; i < adsLen; i++) {
               if (newAds[i] == "undo") {
-                undo();
+                editor.ui.undo();
               } else if (newAds[i] == "redo") {
-                redo();
+                editor.ui.redo();
               } else {
                 throw new Error("unidentified action in actionsduringsave");
               }
@@ -2396,13 +2394,419 @@ initialScript = serverOwned "initial script" <| [
         } // if editor.ui.model.isSaving
       };  // editor.ui.save
       
+      // Store the mutation in the undo buffer.
+      // Gather undos if they happen within 100ms;
+      editor.ui.makeMutationUndoable = function makeMutationUndoable(m) {
+        var editor_model = editor.ui.model;
+        var time = +new Date();
+        //for childLists, add mutable next/previous sibling properties
+        if(m.type === "childList") {
+            /*Object.defineProperty(m, 'rePrevSib', {value: m.previousSibling /*&& !(m.previousSibling.nodeType == 1)) ? 
+                                                  m.previousSibling.previousElementSibling : m.previousSibling, 
+                                                  writable: true});
+            Object.defineProperty(m, 'reNextSib', {value: m.nextSibling /*&& !(m.nextSibling.nodeType == 1)) ? 
+                                                  m.nextSibling.nextElementSibling : m.nextSibling,
+                                                  writable: true});*/
+        }
+          //for attributes/characterData, add alternative mutable oldValue
+        else {
+          Object.defineProperty(m, 'URValue', {value: m.oldValue, writable: true});
+        }
+        //Object.defineProperty(m, 'timestamp', {value: time})
+        m.timestamp = time;
+        //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
+        //and should be combined together when undoing/redoing
+        
+        let lastUndo = editor_model.undoStack[editor_model.undoStack.length-1];
+        //makes single actions that are recorded as multiple mutations a single action
+        //true here ==> mutation is separate action
+        if(!lastUndo || (lastUndo[0].timestamp < (time - 100))) {  
+          if (editor_model.isSaving) {
+            editor_model.actionsDuringSave.unshift("undo");
+          }
+          editor_model.undoStack.push([m]);
+          editor_model.redoStack = [];
+        }
+        //false here ==> mutation is same action as last mutation
+        //makes no sense for somethign that is first added then removed for those actions to be grouped together 
+        //i.e. if i add text then get rid of it, it makes no sense for undo to revert the removal and addition direclty in sequence
+        else {
+          lastUndo = editor_model.undoStack.pop();
+          lastUndo.push(m);
+          editor_model.undoStack.push(lastUndo);
+        }     
+      }; //editor.ui.makeMutationUndoable
       
+      editor.ui.handleMutations = function handleMutations(mutations, observer) {
+        var onlyGhosts = true;
+        for(var i = 0; i < mutations.length; i++) {
+          // A mutation is a ghost if either
+          // -- The attribute starts with 'ghost-'
+          // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
+          // -- It is the modification of a node or an attribute inside a ghost node.
+          /*  
+           * Add mutations to undo list if they are not ghosts and if they are really doing something.
+           */
+          let mutation = mutations[i];
+          if(editor.hasGhostAncestor(mutation.target)) {
+            continue;
+          }
+          if(mutation.type == "attributes") {
+            var isSpecificGhostAttributeKey = editor.isSpecificGhostAttributeKeyFromNode(mutation.target);
+            var isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(mutation.target);
+            if(editor.isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
+               mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue ||
+               isIgnoredAttributeKey(mutation.attributeName)) {
+            } else {
+              onlyGhosts = false;
+              editor.ui.makeMutationUndoable(mutation);
+              // Please do not comment out this line until we get proper clever save.
+              console.log("Attribute is not ghost", mutation);
+              console.log("TIP: Use this script if you want to mark it as ghost:");
+              let sel = getShortestUniqueSelector(mutation.target);
+              if(typeof mutation.oldValue === "undefined") {
+                console.log("editor.ghostAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
+              } else {
+                console.log("editor.ignoredAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
+              }
+            }
+          } else if(mutation.type == "childList") {
+            if(!editor.areChildrenGhosts(mutation.target)) {
+              for(var j = 0; j < mutation.addedNodes.length; j++) {
+                if(!editor.hasGhostAncestor(mutation.addedNodes[j]) && !editor.hasIgnoringAncestor(mutation.addedNodes[j])) {
+                  onlyGhosts = false;
+                  editor.ui.makeMutationUndoable(mutation);
+                  // Please do not comment out this line until we get proper clever save.
+                  console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
+                  console.log("TIP: Ignore node and siblings with this script:");
+                  let sel = getShortestUniqueSelector(mutation.target);
+                  console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
+                  if(mutation.addedNodes[j].nodeType === 1) {
+                    console.log("TIP: Mark this element as ghost:");
+                    sel = getShortestUniqueSelector(mutation.addedNodes[j]);
+                    console.log("editor.ghostNodes.push(editor.matches('"+sel+"'));");
+                  }
+                }
+              }
+              for(var j = 0; j < mutation.removedNodes.length; j++) {
+                if(!editor.isGhostNode(mutation.removedNodes[j]) && !editor.isIgnoringChildNodes(mutation.target) && !editor.hasIgnoringAncestor(mutation.target)) {
+                  onlyGhosts = false;
+                  editor.ui.makeMutationUndoable(mutation);
+                  // Please do not comment out this line until we get proper clever save.
+                  console.log(`Removed node ${j} was not a ghost`, mutation);
+                  console.log("TIP: Mark this element as ghost:");
+                  let sel = getShortestUniqueSelector(mutation.target);
+                  console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
+                }
+              }
+            }
+          } else {
+            onlyGhosts = false;
+            editor.ui.makeMutationUndoable(mutation);
+            // Please do not comment out this line until we get proper clever save.
+            console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
+          }
+        }
+        if(onlyGhosts) {
+          return;
+        } // Send in post the new HTML along with the URL
+        // Set undo/redo state
+        editor.ui.syncUndoRedoButtons();
+        
+        if(editor.ui.model.autosave && !editor.ui.model.disambiguationMenu) {
+          if(typeof editor._internals.autosavetimer !== "undefined") {
+            clearTimeout(editor._internals.autosavetimer);
+          }
+          editor._internals.autosavetimer = setTimeout(function() {
+            editor._internals.autosavetimer = undefined;
+            editor.ui.save();
+          }, typeof editor.config.editdelay == "number" ? editor.config.editdelay : 1000);
+        } else {
+          var saveButtons = document.querySelectorAll(".saveButton");
+          // TODO: Can we regenerate the whole interface for consistency?
+          for(let sb of saveButtons) {
+            sb.classList.toggle("disabled", false);
+          }
+          return;
+        }
+      } //editor.ui.handleMutations
+      
+      //debugging function for printing both teh undo and redo stacks.
+      editor.ui.printstacks = function printstacks() {
+        console.log("-----------------------------");
+        let i, j;
+        console.log("UNDO STACK:");
+        for(i = 0; i < editor.ui.model.undoStack.length; i++) {
+          console.log(i + ".");
+          for(j = 0; j < editor.ui.model.undoStack[i].length; j++) {
+            console.log(editor.ui.model.undoStack[i][j]);
+          }
+        }
+        console.log("REDO STACK:");
+        for(i = 0; i < editor.ui.model.redoStack.length; i++) {
+          console.log(i + "."); 
+          for(j = 0; j < editor.ui.model.redoStack[i].length; j++) {
+            console.log(editor.ui.model.redoStack[i][j]);
+          }
+        }
+        console.log("-----------------------------");
+      }; // editor.ui.printstacks
+      
+      // Returns true if Editor's undo feature should be enabled.
+      editor.ui.canUndo = function canUndo() {
+        return editor.ui.model.undoStack.length > 0;
+      }; // editor.ui.canUndo
+
+      //undo function: handles undo feature
+      editor.ui.undo = function undo() {
+        let undoElem = editor.ui.model.undoStack.pop();
+        //need to check if undoStack is empty s.t. we can set the "savability" of the document accurately
+        if(undoElem == undefined) {
+          return 0;
+        }
+        (async () => {
+        //TODO prevent pressing the undo button while save underway while letting Editor use the undo function. (just not the user);
+        //need to disconnect the MutationObserver such that our undo does not get recorded as a mutation
+        editor_stopWatching();
+        const quicker = node => recoverElementFromData(dataToRecoverElement(node));
+        let k;
+        for(k = undoElem.length - 1; k >= 0; k--) {
+          let mutType = undoElem[k].type; 
+          let qk = quicker(undoElem[k].target);
+          
+          let target = (undoElem[k].target.isConnected ? 
+                          undoElem[k].target :
+                          (qk == undefined ? undoElem[k].target : qk));
+          //in each case, we reverse the change, setting the URValue/oldValue as the current value
+          //at the target, and replacing the URValue/oldValue with the current value present in target
+          if(mutType === "attributes") {
+            let cur_attr = target.getAttribute(undoElem[k].attributeName);
+            if(undoElem[k].URValue === null) {
+              target.removeAttribute(undoElem[k].attributeName); 
+            }       
+            else { 
+              target.setAttribute(undoElem[k].attributeName, undoElem[k].URValue);
+            }
+            undoElem[k].URValue = cur_attr; 
+          }
+          else if(mutType === "characterData") {
+            const cur_data = target.textContent;
+            target.textContent = undoElem[k].URValue;
+            undoElem[k].URValue = cur_data;
+            //undoElem[k].isConnected ? undoElem[k].URValue : quicker(undoElem[k]).URValue = cur_data;
+          }
+          else if(mutType === "linkHrefCSS") { // There should be only one such even
+            var keepUndo = undoElem[k];
+            await assignTmpCss(target, keepUndo.oldValue, true);
+          }
+          else {
+            let uRemNodes = undoElem[k].removedNodes;
+            let uAddNodes = undoElem[k].addedNodes;
+            //readding the removed nodes
+            // -in this case, we loop through the childNodes and add them in the appropriate spot 
+            // or remove them 
+            // NOTE: we only change the nextSib property of the undoElem, and alternate between adding/removing from the 
+            //       addedNodes & removedNodes lists depending on whether we are undoing (in which case we will add)
+            // NOTE: Since there is only one nextSibling/prevSibling property, and based off the fact that MutationObserver
+            //       should take into account every mutation, we should only have elements in one of uRemNodes and uAddNodes
+            //       at once.
+            let kidNodes = target.childNodes;
+            let i, j;
+            if(uRemNodes.length) {
+              if(kidNodes.length === 0) {            
+                if(undoElem[k].nextSibling == null && undoElem[k].previousSibling == null) {
+                  for(i = 0; i < uRemNodes.length; i++) { 
+                    /*if(editor.hasGhostAncestor(uRemNodes.item(i))) {
+                      continue;
+                    }*/
+                    target.appendChild(uRemNodes.item(i)); 
+                  }
+                }
+              }
+              for(j = 0; j < kidNodes.length; j++) {  
+                let ns = undoElem[k].nextSibling && undoElem[k].nextSibling.isConnected ? undoElem[k].nextSibling : quicker(undoElem[k].nextSibling);
+                let ps = undoElem[k].previousSibling && undoElem[k].previousSibling.isConnected ? undoElem[k].previousSibling : quicker(undoElem[k].previousSibling);
+
+                let knode = kidNodes.item(j);
+                let knode_may = quicker(knode);
+                //if(kidNodes.item(j) === undoElem[k].nextSibling && kidNodes.item(j).previousSibling === undoElem[k].previousSibling) {
+                if ((knode == ns || knode_may == ns || ns == undefined) &&
+                    (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))){
+                  for(i = 0; i < uRemNodes.length; i++) { 
+                    /*if(editor.hasGhostAncestor(uRemNodes.item(i))) {
+                      continue;
+                    }*/
+                    let uremnode = uRemNodes.item(i);
+                    let urn = quicker(uremnode);
+                    //debugger;
+                    if (ns) {
+                      target.insertBefore(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may); 
+                    }
+                    else {
+                      target.appendChild(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may);
+                    }
+                  }
+                }
+              }
+            }
+            for(i = 0; i < uAddNodes.length; i++) {
+              /*if(editor.hasGhostAncestor(uAddNodes.item(i))) {
+                continue;
+              }*/
+              if(!target.contains(uAddNodes.item(i))) {
+                console.log("The item you are trying to undo doesn't exist in the parent node.");
+              }
+              else {
+                target.removeChild(uAddNodes.item(i));
+              }
+            }
+          }
+        } //mutation looper
+        editor.ui.model.redoStack.push(undoElem);
+        if (editor.ui.model.isSaving) {
+          editor.ui.model.actionsDuringSave.unshift("redo");
+        }
+        //TODO make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
+        //turn MutationObserver back on
+        editor_resumeWatching();
+        editor.ui.refresh();
+        //editor.ui.printstacks();
+        })();
+        return 1;
+      }; //editor.ui.undo
+
+      // Returns true if Editor's redo feature should be enabled.
+      editor.ui.canRedo = function canRedo() {
+        return editor.ui.model.redoStack.length > 0;
+      }; // editor.ui.canRedo
+      
+      // Redo an undone mutation array.
+      editor.ui.redo = function redo() {
+        let redoElem = editor.ui.model.redoStack.pop();
+        if(redoElem === undefined) {
+          return 0;
+        }
+        (async () => {
+        editor_stopWatching();
+        const quicker = node => recoverElementFromData(dataToRecoverElement(node));
+        let k;
+        for(k = 0; k < redoElem.length; k++) {
+          let mutType = redoElem[k].type;
+          let qk = quicker(redoElem[k].target);
+          let target = (redoElem[k].target.isConnected ? 
+                          redoElem[k].target : 
+                          (qk == undefined ? redoElem[k].target : qk));
+          if(mutType === "attributes") {
+            let cur_attr = target.getAttribute(redoElem[k].attributeName);
+            if (redoElem[k].URValue === null) {
+              target.removeAttribute(redoElem[k].attributeName); 
+            } else { 
+              target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
+            }
+            redoElem[k].URValue = cur_attr;
+          } 
+          else if(mutType === "characterData") {
+            let cur_data = target.textContent;
+            target.textContent = redoElem[k].URValue;  
+            redoElem[k].URValue = cur_data;
+            //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
+          }
+          else if(mutType === "linkHrefCSS") {
+            let keepRedo = redoElem[k];
+            await assignTmpCss(target, keepRedo.newValue, true);
+          }
+          else {
+            let rRemNodes = redoElem[k].removedNodes;
+            let rAddNodes = redoElem[k].addedNodes;
+            let i, j;
+            let kidNodes = target.childNodes;
+            if(rAddNodes.length) {
+              for(j = 0; j < kidNodes.length; j++) {
+                let knode = kidNodes.item(j);
+                let raddnode = rAddNodes.item(i);
+                let ran = quicker(raddnode);
+                let knode_may = quicker(knode);
+                //if(kidNodes.item(j) === redoElem[k].nextSibling && kidNodes.item(j).previousSibling === redoElem[k].previousSibling)
+                let ns = redoElem[k].nextSibling && redoElem[k].nextSibling.isConnected ? redoElem[k].nextSibling : quicker(redoElem[k].nextSibling);
+                let ps = redoElem[k].previousSibling && redoElem[k].previousSibling.isConnected ? redoElem[k].previousSibling : quicker(redoElem[k].previousSibling);
+                if ((knode == ns || knode_may == ns || ns == undefined) &&
+                    (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))) {
+                  for(i = 0; i < rAddNodes.length; i++) {
+                    /*console.log(editor.hasGhostAncestor);
+                    if(editor.hasGhostAncestor(rAddNodes.item(i))) {
+                      continue;
+                    }*/
+                    console.log(rAddNodes.item(i));
+
+                    if(ns) {
+                      target.insertBefore(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
+                    }
+                    else {
+                      target.appendChild(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
+
+                    }
+                  }
+                }
+              }
+            }
+            for(i = 0; i < rRemNodes.length; i++) {
+              /*if(editor.hasGhostAncestor(rRemNodes.item(i))) {
+                continue;
+              }*/if(!target.parentElement.contains(quicker(rRemNodes.item(i)))) { //bc the node in rRemNodes isn't necessarily connected, we need to rewrite this.
+                console.log("The item you are trying to redo doesn't exist in the parent node.");
+              } else {
+                target.removeChild(quicker(rRemNodes.item(i)));
+              }
+            }
+          }
+        } //mut looper
+        editor.ui.model.undoStack.push(redoElem);
+        if (editor.ui.model.isSaving) {
+          editor.ui.model.actionsDuringSave.unshift("undo");
+        }
+        editor_resumeWatching();
+        editor.ui.refresh();
+        //editor.ui.printstacks();
+        })();
+        return 1;
+      }; //editor.ui.redo
+
+      // Synchronizes the state of undo/redo buttons with the stacks.
+      editor.ui.syncUndoRedoButtons = function syncUndoRedoButtons() {
+        let undoButton = document.querySelector("#undobutton");
+        let redoButton = document.querySelector("#redoButton");
+        if(undoButton) undoButton.classList.toggle("disabled", !editor.ui.canUndo());
+        if(redoButton) redoButton.classList.toggle("disabled", !editor.ui.canRedo());
+        let saveButton = document.querySelector(".saveButton");
+        if(saveButton) saveButton.classList.toggle("disabled", !editor.ui.canSave() && !editor.ui.model.disambiguationMenu);
+      }; 
+      
+      // Returns true if the save button should be enabled.
+      editor.ui.canSave = function editor_canSave() {
+        return editor.ui.model.undoStack.length !== editor.ui.model.undosBeforeSave;
+      };
       
     }; // editor.ui.loadInterface
     
     document.addEventListener("DOMContentLoaded", function(event) { 
         if(editor.config.canEditPage) {
           editor.ui.loadInterface();
+          
+          if (typeof editor.ui.model === "object" && typeof editor.ui.model.outputObserver !== "undefined") {
+            editor.ui.model.outputObserver.disconnect();
+          }
+          editor.ui.model.outputObserver = new MutationObserver(editor.ui.handleMutations);
+          editor.ui.model.outputObserver.observe
+            ( document.body.parentElement
+            , { attributes: true
+              , childList: true
+              , characterData: true
+              , attributeOldValue: true
+              , characterDataOldValue: true
+              , subtree: true
+              }
+            );
+          
           editor.ui.refresh();
         }
     });
@@ -2439,48 +2843,6 @@ lastEditScript = """
     el = editor.el;
     console.log("lastEditScript running");
 
-    // Add the mutation to the undo array.
-    function sendToUndo(m) {
-      var editor_model = editor.ui.model;
-      var time = +new Date();
-      //for childLists, add mutable next/previous sibling properties
-      if(m.type === "childList") {
-          /*Object.defineProperty(m, 'rePrevSib', {value: m.previousSibling /*&& !(m.previousSibling.nodeType == 1)) ? 
-                                                m.previousSibling.previousElementSibling : m.previousSibling, 
-                                                writable: true});
-          Object.defineProperty(m, 'reNextSib', {value: m.nextSibling /*&& !(m.nextSibling.nodeType == 1)) ? 
-                                                m.nextSibling.nextElementSibling : m.nextSibling,
-                                                writable: true});*/
-      }
-        //for attributes/characterData, add alternative mutable oldValue
-      else {
-        Object.defineProperty(m, 'URValue', {value: m.oldValue, writable: true});
-      }
-      //Object.defineProperty(m, 'timestamp', {value: time})
-      m.timestamp = time;
-      //check if the last element on currently on the stack is operating on the same "information", i.e. oldValue or nodelists
-      //and should be combined together when undoing/redoing
-      
-      let lastUndo = editor_model.undoStack[editor_model.undoStack.length-1];
-      //makes single actions that are recorded as multiple mutations a single action
-      //true here ==> mutation is separate action
-      if(!lastUndo || (lastUndo[0].timestamp < (time - 10))) {  
-        if (editor_model.isSaving) {
-          editor_model.actionsDuringSave.unshift("undo");
-        }
-        editor_model.undoStack.push([m]);
-        editor_model.redoStack = [];
-      }
-      //false here ==> mutation is same action as last mutation
-      //makes no sense for somethign that is first added then removed for those actions to be grouped together 
-      //i.e. if i add text then get rid of it, it makes no sense for undo to revert the removal and addition direclty in sequence
-      else {
-        lastUndo = editor_model.undoStack.pop();
-        lastUndo.push(m);
-        editor_model.undoStack.push(lastUndo);
-      }     
-    } //sendToUndo
-
     window.onpopstate = function(e){
         console.log("onpopstate", e);
         if(e.state && e.state.localURL) {
@@ -2489,349 +2851,6 @@ lastEditScript = """
           editor.navigateTo(location.pathname + location.search, true);
         }
     };
-    
-    // Timeout for autosave
-    editor._internals.autosavetimer = undefined;
-    
-    function handleMutations(mutations, observer) {
-      var onlyGhosts = true;
-      for(var i = 0; i < mutations.length; i++) {
-        // A mutation is a ghost if either
-        // -- The attribute starts with 'ghost-'
-        // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
-        // -- It is the modification of a node or an attribute inside a ghost node.
-        /*  
-         * Add mutations to undo list if they are not ghosts and if they are really doing something.
-         */
-        let mutation = mutations[i];
-        if(editor.hasGhostAncestor(mutation.target)) {
-          continue;
-        }
-        if(mutation.type == "attributes") {
-          var isSpecificGhostAttributeKey = editor.isSpecificGhostAttributeKeyFromNode(mutation.target);
-          var isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(mutation.target);
-          if(editor.isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
-             mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue ||
-             isIgnoredAttributeKey(mutation.attributeName)) {
-          } else {
-            onlyGhosts = false;
-            sendToUndo(mutation);
-            // Please do not comment out this line until we get proper clever save.
-            console.log("Attribute is not ghost", mutation);
-            console.log("TIP: Use this script if you want to mark it as ghost:");
-            let sel = getShortestUniqueSelector(mutation.target);
-            if(typeof mutation.oldValue === "undefined") {
-              console.log("editor.ghostAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
-            } else {
-              console.log("editor.ignoredAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
-            }
-          }
-        } else if(mutation.type == "childList") {
-          if(!editor.areChildrenGhosts(mutation.target)) {
-            for(var j = 0; j < mutation.addedNodes.length; j++) {
-              if(!editor.hasGhostAncestor(mutation.addedNodes[j]) && !editor.hasIgnoringAncestor(mutation.addedNodes[j])) {
-                onlyGhosts = false;
-                sendToUndo(mutation);
-                // Please do not comment out this line until we get proper clever save.
-                console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
-                console.log("TIP: Ignore node and siblings with this script:");
-                let sel = getShortestUniqueSelector(mutation.target);
-                console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
-                if(mutation.addedNodes[j].nodeType === 1) {
-                  console.log("TIP: Mark this element as ghost:");
-                  sel = getShortestUniqueSelector(mutation.addedNodes[j]);
-                  console.log("editor.ghostNodes.push(editor.matches('"+sel+"'));");
-                }
-              }
-            }
-            for(var j = 0; j < mutation.removedNodes.length; j++) {
-              if(!editor.isGhostNode(mutation.removedNodes[j]) && !editor.isIgnoringChildNodes(mutation.target) && !editor.hasIgnoringAncestor(mutation.target)) {
-                onlyGhosts = false;
-                sendToUndo(mutation);
-                // Please do not comment out this line until we get proper clever save.
-                console.log(`Removed node ${j} was not a ghost`, mutation);
-                console.log("TIP: Mark this element as ghost:");
-                let sel = getShortestUniqueSelector(mutation.target);
-                console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
-              }
-            }
-          }
-        } else {
-          onlyGhosts = false;
-          sendToUndo(mutation);
-          // Please do not comment out this line until we get proper clever save.
-          console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
-        }
-      }
-      if(onlyGhosts) {
-        return;
-      } // Send in post the new HTML along with the URL
-      // Set undo/redo state
-      syncUndoRedoButtons();
-      
-      if(editor.ui.model.autosave && !editor.ui.model.disambiguationMenu) {
-        if(typeof editor._internals.autosavetimer !== "undefined") {
-          clearTimeout(editor._internals.autosavetimer);
-        }
-        editor._internals.autosavetimer = setTimeout(function() {
-          editor._internals.autosavetimer = undefined;
-          editor.saveDOM();
-        }, typeof editdelay != "undefined" ? editodelay : 1000)
-      } else {
-        var saveButtons = document.querySelectorAll(".saveButton");
-        // TODO: Can we regenerate the whole interface for consistency?
-        for(let sb of saveButtons) {
-          sb.classList.toggle("disabled", false);
-        }
-        return;
-      }
-    } //handleMutations
-  
-    //debugging function for printing both teh undo and redo stacks.
-    function printstacks() {
-      console.log("-----------------------------");
-      let i, j;
-      console.log("UNDO STACK:");
-      for(i = 0; i < editor.ui.model.undoStack.length; i++) {
-        console.log(i + ".");
-        for(j = 0; j < editor.ui.model.undoStack[i].length; j++) {
-          console.log(editor.ui.model.undoStack[i][j]);
-        }
-      }
-      console.log("REDO STACK:");
-      for(i = 0; i < editor.ui.model.redoStack.length; i++) {
-        console.log(i + "."); 
-        for(j = 0; j < editor.ui.model.redoStack[i].length; j++) {
-          console.log(editor.ui.model.redoStack[i][j]);
-        }
-      }
-      console.log("-----------------------------");
-    }
-    function canUndo() {
-      return editor.ui.model.undoStack.length > 0;
-    }
-
-    //undo function: handles undo feature
-    function undo() {
-      let undoElem = editor.ui.model.undoStack.pop();
-      //need to check if undoStack is empty s.t. we can set the "savability" of the document accurately
-      if(undoElem == undefined) {
-        return 0;
-      }
-      (async () => {
-      //TODO prevent pressing the undo button while save underway while letting Editor use the undo function. (just not the user);
-      //need to disconnect the MutationObserver such that our undo does not get recorded as a mutation
-      editor_stopWatching();
-      const quicker = node => recoverElementFromData(dataToRecoverElement(node));
-      let k;
-      for(k = undoElem.length - 1; k >= 0; k--) {
-        let mutType = undoElem[k].type; 
-        let qk = quicker(undoElem[k].target);
-        
-        let target = (undoElem[k].target.isConnected ? 
-                        undoElem[k].target :
-                        (qk == undefined ? undoElem[k].target : qk));
-        //in each case, we reverse the change, setting the URValue/oldValue as the current value
-        //at the target, and replacing the URValue/oldValue with the current value present in target
-        if(mutType === "attributes") {
-          let cur_attr = target.getAttribute(undoElem[k].attributeName);
-          if(undoElem[k].URValue === null) {
-            target.removeAttribute(undoElem[k].attributeName); 
-          }       
-          else { 
-            target.setAttribute(undoElem[k].attributeName, undoElem[k].URValue);
-          }
-          undoElem[k].URValue = cur_attr; 
-        }
-        else if(mutType === "characterData") {
-          const cur_data = target.textContent;
-          target.textContent = undoElem[k].URValue;
-          undoElem[k].URValue = cur_data;
-          //undoElem[k].isConnected ? undoElem[k].URValue : quicker(undoElem[k]).URValue = cur_data;
-        }
-        else if(mutType === "linkHrefCSS") { // There should be only one such even
-          var keepUndo = undoElem[k];
-          await assignTmpCss(target, keepUndo.oldValue, true);
-        }
-        else {
-          let uRemNodes = undoElem[k].removedNodes;
-          let uAddNodes = undoElem[k].addedNodes;
-          //readding the removed nodes
-          // -in this case, we loop through the childNodes and add them in the appropriate spot 
-          // or remove them 
-          // NOTE: we only change the nextSib property of the undoElem, and alternate between adding/removing from the 
-          //       addedNodes & removedNodes lists depending on whether we are undoing (in which case we will add)
-          // NOTE: Since there is only one nextSibling/prevSibling property, and based off the fact that MutationObserver
-          //       should take into account every mutation, we should only have elements in one of uRemNodes and uAddNodes
-          //       at once.
-          let kidNodes = target.childNodes;
-          let i, j;
-          if(uRemNodes.length) {
-            if(kidNodes.length === 0) {            
-              if(undoElem[k].nextSibling == null && undoElem[k].previousSibling == null) {
-                for(i = 0; i < uRemNodes.length; i++) { 
-                  /*if(editor.hasGhostAncestor(uRemNodes.item(i))) {
-                    continue;
-                  }*/
-                  target.appendChild(uRemNodes.item(i)); 
-                }
-              }
-            }
-            for(j = 0; j < kidNodes.length; j++) {  
-              let ns = undoElem[k].nextSibling && undoElem[k].nextSibling.isConnected ? undoElem[k].nextSibling : quicker(undoElem[k].nextSibling);
-              let ps = undoElem[k].previousSibling && undoElem[k].previousSibling.isConnected ? undoElem[k].previousSibling : quicker(undoElem[k].previousSibling);
-
-              let knode = kidNodes.item(j);
-              let knode_may = quicker(knode);
-              //if(kidNodes.item(j) === undoElem[k].nextSibling && kidNodes.item(j).previousSibling === undoElem[k].previousSibling) {
-              if ((knode == ns || knode_may == ns || ns == undefined) &&
-                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))){
-                for(i = 0; i < uRemNodes.length; i++) { 
-                  /*if(editor.hasGhostAncestor(uRemNodes.item(i))) {
-                    continue;
-                  }*/
-                  let uremnode = uRemNodes.item(i);
-                  let urn = quicker(uremnode);
-                  //debugger;
-                  if (ns) {
-                    target.insertBefore(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may); 
-                  }
-                  else {
-                    target.appendChild(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may);
-                  }
-                }
-              }
-            }
-          }
-          for(i = 0; i < uAddNodes.length; i++) {
-            /*if(editor.hasGhostAncestor(uAddNodes.item(i))) {
-              continue;
-            }*/
-            if(!target.contains(uAddNodes.item(i))) {
-              console.log("The item you are trying to undo doesn't exist in the parent node.");
-            }
-            else {
-              target.removeChild(uAddNodes.item(i));
-            }
-          }
-        }
-      } //mutation looper
-      editor.ui.model.redoStack.push(undoElem);
-      if (editor.ui.model.isSaving) {
-        editor.ui.model.actionsDuringSave.unshift("redo");
-      }
-      //TODO make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
-      //turn MutationObserver back on
-      editor_resumeWatching();
-      editor.ui.refresh();
-      //printstacks();
-      })();
-      return 1;
-    } //undo
-
-    
-    function canRedo() {
-      return editor.ui.model.redoStack.length > 0;
-    }
-    
-    function redo() {
-      let redoElem = editor.ui.model.redoStack.pop();
-      if(redoElem === undefined) {
-        return 0;
-      }
-      (async () => {
-      editor_stopWatching();
-      const quicker = node => recoverElementFromData(dataToRecoverElement(node));
-      let k;
-      for(k = 0; k < redoElem.length; k++) {
-        let mutType = redoElem[k].type;
-        let qk = quicker(redoElem[k].target);
-        let target = (redoElem[k].target.isConnected ? 
-                        redoElem[k].target : 
-                        (qk == undefined ? redoElem[k].target : qk));
-        if(mutType === "attributes") {
-          let cur_attr = target.getAttribute(redoElem[k].attributeName);
-          if (redoElem[k].URValue === null) {
-            target.removeAttribute(redoElem[k].attributeName); 
-          } else { 
-            target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
-          }
-          redoElem[k].URValue = cur_attr;
-        } 
-        else if(mutType === "characterData") {
-          let cur_data = target.textContent;
-          target.textContent = redoElem[k].URValue;  
-          redoElem[k].URValue = cur_data;
-          //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
-        }
-        else if(mutType === "linkHrefCSS") {
-          let keepRedo = redoElem[k];
-          await assignTmpCss(target, keepRedo.newValue, true);
-        }
-        else {
-          let rRemNodes = redoElem[k].removedNodes;
-          let rAddNodes = redoElem[k].addedNodes;
-          let i, j;
-          let kidNodes = target.childNodes;
-          if(rAddNodes.length) {
-            for(j = 0; j < kidNodes.length; j++) {
-              let knode = kidNodes.item(j);
-              let raddnode = rAddNodes.item(i);
-              let ran = quicker(raddnode);
-              let knode_may = quicker(knode);
-              //if(kidNodes.item(j) === redoElem[k].nextSibling && kidNodes.item(j).previousSibling === redoElem[k].previousSibling)
-              let ns = redoElem[k].nextSibling && redoElem[k].nextSibling.isConnected ? redoElem[k].nextSibling : quicker(redoElem[k].nextSibling);
-              let ps = redoElem[k].previousSibling && redoElem[k].previousSibling.isConnected ? redoElem[k].previousSibling : quicker(redoElem[k].previousSibling);
-              if ((knode == ns || knode_may == ns || ns == undefined) &&
-                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))) {
-                for(i = 0; i < rAddNodes.length; i++) {
-                  /*console.log(editor.hasGhostAncestor);
-                  if(editor.hasGhostAncestor(rAddNodes.item(i))) {
-                    continue;
-                  }*/
-                  console.log(rAddNodes.item(i));
-
-                  if(ns) {
-                    target.insertBefore(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
-                  }
-                  else {
-                    target.appendChild(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
-
-                  }
-                }
-              }
-            }
-          }
-          for(i = 0; i < rRemNodes.length; i++) {
-            /*if(editor.hasGhostAncestor(rRemNodes.item(i))) {
-              continue;
-            }*/if(!target.parentElement.contains(quicker(rRemNodes.item(i)))) { //bc the node in rRemNodes isn't necessarily connected, we need to rewrite this.
-              console.log("The item you are trying to redo doesn't exist in the parent node.");
-            } else {
-              target.removeChild(quicker(rRemNodes.item(i)));
-            }
-          }
-        }
-      } //mut looper
-      editor.ui.model.undoStack.push(redoElem);
-      if (editor.ui.model.isSaving) {
-        editor.ui.model.actionsDuringSave.unshift("undo");
-      }
-      editor_resumeWatching();
-      editor.ui.refresh();
-      //printstacks();
-      })();
-      return 1;
-    } //end of redo
-
-    function syncUndoRedoButtons() {
-      let undoButton = document.querySelector("#undobutton");
-      let redoButton = document.querySelector("#redoButton");
-      if(undoButton) undoButton.classList.toggle("disabled", !canUndo());
-      if(redoButton) redoButton.classList.toggle("disabled", !canRedo());
-      let saveButton = document.querySelector(".saveButton");
-      if(saveButton) saveButton.classList.toggle("disabled", !editor_canSave() && !editor.ui.model.disambiguationMenu);
-    }
     
     function getSel() {
       var sel = window.getSelection();
@@ -2923,12 +2942,12 @@ lastEditScript = """
         // CTRL+Z: Undo
         if(e.which == 90 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          if(!undo()) editor.ui.sendNotification("Nothing to undo!");
+          if(!editor.ui.undo()) editor.ui.sendNotification("Nothing to undo!");
         }
         // CTRL+Y: Redo
         if(e.which == 89 && (e.ctrlKey || e.metaKey)) {
           e.preventDefault();
-          if(!redo()) editor.ui.sendNotification("Nothing to redo!");
+          if(!editor.ui.redo()) editor.ui.sendNotification("Nothing to redo!");
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
@@ -3242,7 +3261,7 @@ lastEditScript = """
       return undefined;
     }
     function nothingToLose() {
-      if(editor_canSave()) {
+      if(editor.ui.canSave()) {
         var x = confirm("There are unsaved modifications. Do you want to discard them?");
         if(x) {
           editor.ui.model.undoStack = [];
@@ -3373,8 +3392,8 @@ lastEditScript = """
         editor_stopWatching();
         let oldValue = await assignTmpCss(linkNode, newValue, true);
         let m = {type: "linkHrefCSS", target: linkNode, oldValue: oldValue, newValue: newValue};
-        sendToUndo(m);
-        syncUndoRedoButtons();
+        editor.ui.makeMutationUndoable(m);
+        editor.ui.syncUndoRedoButtons();
         editor_resumeWatching();
         return;
       }
@@ -5661,26 +5680,26 @@ lastEditScript = """
         });
         if(editor.config.EDITOR_VERSION & 1) {
           addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
-            {"class": "inert" + (canUndo() ? "" : " disabled"), title: "Undo most recent change",
+            {"class": "inert" + (editor.ui.canUndo() ? "" : " disabled"), title: "Undo most recent change",
               id: "undobutton"
             },
             {onclick: function(event) {
-              if(!undo()) editor.ui.sendNotification("Nothing to undo!");
+              if(!editor.ui.undo()) editor.ui.sendNotification("Nothing to undo!");
               }
             }   
           );
           addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
-            {"class": "inert" + (canRedo() ? "" : " disabled"), title: "Redo most recent undo",
+            {"class": "inert" + (editor.ui.canRedo() ? "" : " disabled"), title: "Redo most recent undo",
               id: "redobutton"
             },
             {onclick: function(event) {
-             if(!redo()) editor.ui.sendNotification("Nothing to redo!");
+             if(!editor.ui.redo()) editor.ui.sendNotification("Nothing to redo!");
               }
             }
           );
         }
         addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
-        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_canSave() || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
+        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor.ui.canSave() || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           id: "savebutton"
         },
           {onclick: editor_model.disambiguationMenu ? 
@@ -6003,10 +6022,6 @@ lastEditScript = """
       editor.ui.model.editor_log.push(msg);
     });
     
-    function editor_canSave() {
-      return editor.ui.model.undoStack.length !== editor.ui.model.undosBeforeSave;
-    }
-    
     function editor_onbeforeunload(e) {
       e = e || window.event;
       if(editor.config.onMobile() && editor.ui.model.visible) { // Hack to ask before saving.
@@ -6014,7 +6029,7 @@ lastEditScript = """
         e.returnValue = '';
         return editor_close();
       }
-      var askConfirmation = editor_canSave() || editor.ui.model.isSaving || editor.ui.model.disambiguationMenu;
+      var askConfirmation = editor.ui.canSave() || editor.ui.model.isSaving || editor.ui.model.disambiguationMenu;
       const confirmation = 'You have unsaved modifications. Do you still want to exit?';
       // For IE and Firefox prior to version 4
       if (e) {
@@ -6035,21 +6050,6 @@ lastEditScript = """
     } // End of editor_onbeforeunload
      
     window.onbeforeunload = editor_onbeforeunload;
-    if (typeof editor.ui.model === "object" && typeof editor.ui.model.outputObserver !== "undefined") {
-      editor.ui.model.outputObserver.disconnect();
-    }
-
-    editor.ui.model.outputObserver = new MutationObserver(handleMutations);
-    editor.ui.model.outputObserver.observe
-      ( document.body.parentElement
-      , { attributes: true
-        , childList: true
-        , characterData: true
-        , attributeOldValue: true
-        , characterDataOldValue: true
-        , subtree: true
-        }
-      );
     
     // Store the current child list of nodes that ignore their children totally
     (function() {
