@@ -1095,8 +1095,24 @@ initialScript = serverOwned "initial script" <| [
    -- TODO: Externalize this script.
    -- TODO: Put as much as possible of the interface in a new script.
    <script id="thaditor-luca" class="editor-interface">
+   editor = typeof editor == "undefined" ? {} : editor;
    // TODO: Put the entire Editor interface inside, so that we can externalize the script.
-  (function(editor) {
+   (function(editor) {
+    // Default configuration.
+    editor.config = typeof editor.config == "undefined" ? {} : editor.config;
+    editor.config = {
+      EDITOR_VERSION: 0,
+      path: location.patname,
+      varedit: location.search.match(/(^\?|&)edit(?:=true)?(&|$)/),
+      varls: location.search.match(/(^\?|&)ls(?:=true)?(&|$)/),
+      askQuestions: location.search.match(/(^\?|&)question(?:=true)?(&|$)/),
+      autosave: location.search.match(/(^\?|&)autosave(?:=true)?(&|$)/),
+      canEditPage: false,
+      editIsFalseButDefaultIsTrue : false,
+      thaditor: false,
+      userName: typeof userName === "string" ? userName : "anonymous",
+      ...editor.config};
+    
     var _internals = {};
     editor._internals = _internals;
     // Overwrite the entire document (head and body)
@@ -1842,6 +1858,7 @@ initialScript = serverOwned "initial script" <| [
     editor._internals.register = function() {
       /*
         Pretend loading a page using Editor's commands.
+        Does not attempt to load Editor's interface.
       */
       window.onpopstate = function(e){
           console.log("onpopstate", e);
@@ -2272,7 +2289,7 @@ lastEditScript = """
           editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
         }
       }, 10);
-    }
+    } // handleSendRequestFinish
     
     // The "what" is so that we can show a notification when this is done.
     notifyServer = (requestHeaders, toSend, what) => {
@@ -2350,20 +2367,8 @@ lastEditScript = """
       }
       updateInteractionDiv();
       editor.ui.sendNotification("Saving...");
-      const tosend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
-      if(editor.config.thaditor) {
-        thaditor.do({action:"sendRequest", 
-                    toSend:tosend,
-                    aq:editor_model.askQuestions,
-                    loc:location.pathname + location.search,
-                    what: "Save",
-                    server_content:(typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)}
-        ).then(handleSendRequestFinish);
-      } else {
-        setTimeout( () => {
-          notifyServer({"question": editor_model.askQuestions ? "true" : "false"}, tosend);
-        }, 0);
-      }
+      const toSend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
+      notifyServer({"question": editor_model.askQuestions ? "true" : "false"}, toSend, "Save")
     } //sendModificationsToServer
 
     function removeTimestamp(path) {
