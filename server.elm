@@ -1946,7 +1946,7 @@ initialScript = serverOwned "initial script" <| [
         // TODO: Listen and gather subsequent modifications when it is loading
         return;
       }
-      editor_model.isSaving = true;
+      editor.ui.model.isSaving = true;
       var newMenu = el("menuitem#notification-menu.to-be-selected", {isghost: true});
       if(document.getElementById('lastaction')) {
         document.getElementById('lastaction').remove();
@@ -1955,12 +1955,12 @@ initialScript = serverOwned "initial script" <| [
         document.getElementById("modify-menu").append(newMenu);
       }
       if(editor.config.thaditor) {
-        editor_model.actionsDuringSave = [];
+        editor.ui.model.actionsDuringSave = [];
       }
       editor.ui.refresh();
       editor.ui.sendNotification("Saving...");
       const toSend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
-      editor._internals.notifyServer({"question": editor_model.askQuestions ? "true" : "false"}, toSend, "Save")
+      editor._internals.notifyServer({"question": editor.ui.model.askQuestions ? "true" : "false"}, toSend, "Save")
     } //editor.saveDOM
     
     /******************************
@@ -2000,7 +2000,7 @@ initialScript = serverOwned "initial script" <| [
         notifBox.classList.toggle("visible", true);
         notifBox.style.zIndex = 100;
         notifBox.style.visibility = true;
-        editor_model.editor_log.push(msg);
+        editor.ui.model.editor_log.push(msg);
         var logWindow = getEditorInterfaceByTitle("Log");
         if(logWindow) logWindow.refresh();
         setTimeout(function hideNotification() {
@@ -2011,7 +2011,7 @@ initialScript = serverOwned "initial script" <| [
         }, timeout ? timeout : 3000);
       };
       
-      // Sub-interfaces can register functions that will store some information that will be inserted at the same key in the record editor_model.restoredAfterReload.
+      // Sub-interfaces can register functions that will store some information that will be inserted at the same key in the record editor.ui.model.restoredAfterReload.
       editor.ui.saveBetweenReloads = {};
       
       // Same as editor._internals.writeDocument, but tries to preserve as much of the DOM and toolbar state as possible.
@@ -2087,24 +2087,24 @@ initialScript = serverOwned "initial script" <| [
         }
         
         function saveBeforeReloadingToolbar() {
-          editor_model.restoredAfterReload = {};
+          editor.ui.model.restoredAfterReload = {};
           for(let k in editor.ui.saveBetweenReloads) {
-            editor_model.restoredAfterReload[k] = editor.ui.saveBetweenReloads[k]();
+            editor.ui.model.restoredAfterReload[k] = editor.ui.saveBetweenReloads[k]();
           }
-          console.log("saved before reloading toolbar", editor_model.restoredAfterReload);
+          console.log("saved before reloading toolbar", editor.ui.model.restoredAfterReload);
         }
         
         return function writeDocument(newContent) {
           let saved = saveGhostAttributes();
           saveBeforeReloadingToolbar();
-          if(editor_model.caretPosition) {
-            editor_model.caretPosition = dataToRecoverCaretPosition(editor_model.caretPosition);
+          if(editor.ui.model.caretPosition) {
+            editor.ui.model.caretPosition = dataToRecoverCaretPosition(editor.ui.model.caretPosition);
           }
-          if(editor_model.selectionRange) {
-            editor_model.selectionRange = dataToRecoverSelectionRange(editor_model.selectionRange);
+          if(editor.ui.model.selectionRange) {
+            editor.ui.model.selectionRange = dataToRecoverSelectionRange(editor.ui.model.selectionRange);
           }
-          if(editor_model.clickedElem) {
-            editor_model.clickedElem = editor.toTreasureMap(editor_model.clickedElem);
+          if(editor.ui.model.clickedElem) {
+            editor.ui.model.clickedElem = editor.toTreasureMap(editor.ui.model.clickedElem);
           }
           let scrollX = window.scrollX;
           let scrollY = window.scrollY;
@@ -2116,6 +2116,7 @@ initialScript = serverOwned "initial script" <| [
       
         // Handle a rewrite message from the worker
       editor.ui.handleRewriteMessage = function(e) {
+        var editor_model = editor.ui.model;
         editor_model.isSaving = false;
 
         //Rewrite the document, restoring some of the UI afterwards.
@@ -2211,7 +2212,7 @@ initialScript = serverOwned "initial script" <| [
         } else if(strQuery) {
           window.history.replaceState({}, "Current page", strQuery);
         }
-        editor.ui.refresh(); 
+        // editor.ui.refresh(); // The interface will be automatically refreshed after loading.
       }; // editor.ui.handleRewriteMessage
       
       // Used only by the Editor webserver (editor.config.thaditor == false)
@@ -2253,8 +2254,8 @@ initialScript = serverOwned "initial script" <| [
           the state pre-update & post-save.
         */
         // TODO: In case of ambiguity, only replay undo/redo after ambiguity has been resolved.
-        const ads = editor_model.actionsDuringSave;
-        const adsLen = editor_model.actionsDuringSave.length;
+        const ads = editor.ui.model.actionsDuringSave;
+        const adsLen = editor.ui.model.actionsDuringSave.length;
         ads.forEach((action) => {
           if (action == "undo") {
             undo();
@@ -2265,13 +2266,13 @@ initialScript = serverOwned "initial script" <| [
           }
         });
         
-        editor_model.outputObserver.disconnect();
+        editor.ui.model.outputObserver.disconnect();
         editor.ui.handleRewriteMessage({data: data});
         // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
         setTimeout(function() {
           var replayActionsAfterSave = msg => function(msgOverride) {
             console.log("replaying actions after save");
-            const newAds = editor_model.actionsDuringSave;
+            const newAds = editor.ui.model.actionsDuringSave;
             const newAdsLen = newAds.length;
             for (let i = 0; i < adsLen; i++) {
               if (newAds[i] == "undo") {
@@ -2292,10 +2293,10 @@ initialScript = serverOwned "initial script" <| [
             }
           }
           let what = data.what ? data.what + " completed." : undefined;
-          if(!data.isAmbiguous || !editor_model.disambiguationMenu) {
+          if(!data.isAmbiguous || !editor.ui.model.disambiguationMenu) {
             replayActionsAfterSave(what)();
           } else {
-            editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
+            editor.ui.model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
           }
         }, 10);
       }; // editor._internals.handleSendRequestFinish
@@ -2305,7 +2306,7 @@ initialScript = serverOwned "initial script" <| [
         if(editor.config.thaditor) {
           thaditor.do( {action:"sendRequest",
                       toSend: toSend || "{\"a\":2}",
-                      aq:editor_model.askQuestions,
+                      aq:editor.ui.model.askQuestions,
                       loc: location.pathname + location.search,
                       requestHeaders: requestHeaders,
                       what: what,
@@ -2359,7 +2360,7 @@ initialScript = serverOwned "initial script" <| [
       
       // Saves the CSS and stores undo/redo before saving the DOM.
       editor.ui.save = function save() {
-        if (editor_model.isSaving) {
+        if (editor.ui.model.isSaving) {
           editor.ui.sendNotification("Can't save while save is being undertaken");
         } else {
           //temp place to put CSS file loading stuff (may well be moved later)
@@ -2387,12 +2388,12 @@ initialScript = serverOwned "initial script" <| [
                 await editor.postServer("unlink", trueTempPath);
               }                 
             }
-            editor_model.undosBeforeSave = editor_model.undoStack.length;
+            editor.ui.model.undosBeforeSave = editor.ui.model.undoStack.length;
             if(!this || typeof this != "object" || typeof this.classList == "undefined" || !this.classList.contains("disabled")) {
               editor.saveDOM();
             }
           })();
-        } // if editor_model.isSaving
+        } // if editor.ui.model.isSaving
       };  // editor.ui.save
       
       
@@ -2411,6 +2412,20 @@ initialScript = serverOwned "initial script" <| [
   
   relativeToAbsolute = editor.relativeToAbsolute; // TODO: Remove
 
+  function removeTimestamp(path) {
+    var dummyIndex = path.indexOf("?");
+    if(dummyIndex > -1) {
+      path = path.slice(0, dummyIndex);
+    }
+    return path;
+  }
+  function setTimestamp(path) {
+    path = removeTimestamp(path);
+    path += "?timestamp=" + (+new Date());
+    return path;
+  }
+  
+  
 </script>,
 -- The following is replaced by an inline <style> for when Editor runs as a file opener.
 -- And the path is modified when Editor runs as Thaditor.
@@ -2424,20 +2439,9 @@ lastEditScript = """
     el = editor.el;
     console.log("lastEditScript running");
 
-    function removeTimestamp(path) {
-      var dummyIndex = path.indexOf("?");
-      if(dummyIndex > -1) {
-        path = path.slice(0, dummyIndex);
-      }
-      return path;
-    }
-    function setTimestamp(path) {
-      path = removeTimestamp(path);
-      path += "?timestamp=" + (+new Date());
-      return path;
-    }
-
+    // Add the mutation to the undo array.
     function sendToUndo(m) {
+      var editor_model = editor.ui.model;
       var time = +new Date();
       //for childLists, add mutable next/previous sibling properties
       if(m.type === "childList") {
@@ -2565,7 +2569,7 @@ lastEditScript = """
       // Set undo/redo state
       syncUndoRedoButtons();
       
-      if(editor_model.autosave && !editor_model.disambiguationMenu) {
+      if(editor.ui.model.autosave && !editor.ui.model.disambiguationMenu) {
         if(typeof editor._internals.autosavetimer !== "undefined") {
           clearTimeout(editor._internals.autosavetimer);
         }
@@ -2588,28 +2592,28 @@ lastEditScript = """
       console.log("-----------------------------");
       let i, j;
       console.log("UNDO STACK:");
-      for(i = 0; i < editor_model.undoStack.length; i++) {
+      for(i = 0; i < editor.ui.model.undoStack.length; i++) {
         console.log(i + ".");
-        for(j = 0; j < editor_model.undoStack[i].length; j++) {
-          console.log(editor_model.undoStack[i][j]);
+        for(j = 0; j < editor.ui.model.undoStack[i].length; j++) {
+          console.log(editor.ui.model.undoStack[i][j]);
         }
       }
       console.log("REDO STACK:");
-      for(i = 0; i < editor_model.redoStack.length; i++) {
+      for(i = 0; i < editor.ui.model.redoStack.length; i++) {
         console.log(i + "."); 
-        for(j = 0; j < editor_model.redoStack[i].length; j++) {
-          console.log(editor_model.redoStack[i][j]);
+        for(j = 0; j < editor.ui.model.redoStack[i].length; j++) {
+          console.log(editor.ui.model.redoStack[i][j]);
         }
       }
       console.log("-----------------------------");
     }
     function canUndo() {
-      return editor_model.undoStack.length > 0;
+      return editor.ui.model.undoStack.length > 0;
     }
 
     //undo function: handles undo feature
     function undo() {
-      let undoElem = editor_model.undoStack.pop();
+      let undoElem = editor.ui.model.undoStack.pop();
       //need to check if undoStack is empty s.t. we can set the "savability" of the document accurately
       if(undoElem == undefined) {
         return 0;
@@ -2712,9 +2716,9 @@ lastEditScript = """
           }
         }
       } //mutation looper
-      editor_model.redoStack.push(undoElem);
-      if (editor_model.isSaving) {
-        editor_model.actionsDuringSave.unshift("redo");
+      editor.ui.model.redoStack.push(undoElem);
+      if (editor.ui.model.isSaving) {
+        editor.ui.model.actionsDuringSave.unshift("redo");
       }
       //TODO make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
       //turn MutationObserver back on
@@ -2727,11 +2731,11 @@ lastEditScript = """
 
     
     function canRedo() {
-      return editor_model.redoStack.length > 0;
+      return editor.ui.model.redoStack.length > 0;
     }
     
     function redo() {
-      let redoElem = editor_model.redoStack.pop();
+      let redoElem = editor.ui.model.redoStack.pop();
       if(redoElem === undefined) {
         return 0;
       }
@@ -2809,9 +2813,9 @@ lastEditScript = """
           }
         }
       } //mut looper
-      editor_model.undoStack.push(redoElem);
-      if (editor_model.isSaving) {
-        editor_model.actionsDuringSave.unshift("undo");
+      editor.ui.model.undoStack.push(redoElem);
+      if (editor.ui.model.isSaving) {
+        editor.ui.model.actionsDuringSave.unshift("undo");
       }
       editor_resumeWatching();
       editor.ui.refresh();
@@ -2826,7 +2830,7 @@ lastEditScript = """
       if(undoButton) undoButton.classList.toggle("disabled", !canUndo());
       if(redoButton) redoButton.classList.toggle("disabled", !canRedo());
       let saveButton = document.querySelector(".saveButton");
-      if(saveButton) saveButton.classList.toggle("disabled", !editor_canSave() && !editor_model.disambiguationMenu);
+      if(saveButton) saveButton.classList.toggle("disabled", !editor_canSave() && !editor.ui.model.disambiguationMenu);
     }
     
     function getSel() {
@@ -2928,13 +2932,13 @@ lastEditScript = """
         }
         //in link select mode, escape on the keyboard can be
         //used to exit the link select mode (same as escape button)
-        if(editor_model.linkSelectMode) {
+        if(editor.ui.model.linkSelectMode) {
           if(e.which == 27) { // Escape
             escapeLinkMode();
           }
         } else {
           if(e.which == 27) { // Escape
-            editor_model.clickedElem = undefined;
+            editor.ui.model.clickedElem = undefined;
             editor.ui.refresh();
           }
         }
@@ -3007,15 +3011,15 @@ lastEditScript = """
       var tmp = event.target;
       while(tmp) {
         if(tmp.getAttribute && tmp.getAttribute("id") == "modify-menu") {
-          editor_model.dismissNextClick = true;
+          editor.ui.model.dismissNextClick = true;
           return;
         }
         tmp = tmp.parentElement;
       }
     }    
     var onClickGlobal = function (event) {
-      if(editor_model.dismissNextClick) {
-	      editor_model.dismissNextClick = false;
+      if(editor.ui.model.dismissNextClick) {
+	      editor.ui.model.dismissNextClick = false;
 	      return;
       }
       
@@ -3064,11 +3068,11 @@ lastEditScript = """
       //console.log("not modify box", ancestors)
       document.querySelector("#context-menu").classList.remove("visible");
       
-      editor_model.clickedElem = clickedElem;
-      editor_model.link = link;
-      editor_model.link_href_source = aElement; // So that we can modify it
-      editor_model.insertElement = false;
-      editor_model.notextselection = false;
+      editor.ui.model.clickedElem = clickedElem;
+      editor.ui.model.link = link;
+      editor.ui.model.link_href_source = aElement; // So that we can modify it
+      editor.ui.model.insertElement = false;
+      editor.ui.model.notextselection = false;
       editor.ui.refresh();
       // Check if the event.target matches some selector, and do things...
     } //end of onClickGlobal
@@ -3104,14 +3108,13 @@ lastEditScript = """
     var escapeSVG = editor.svgFromPath("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
     var linkModeSVG = editor.svgFromPath("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
     var checkSVG = editor.svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
-    var ifAlreadyRunning = typeof editor_model === "object";
+    var ifAlreadyRunning = typeof editor == "object" && typeof editor.ui === "object" && typeof editor.ui.model === "object";
     if (!ifAlreadyRunning) {
       var thaditor_files = [
         "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
         "ThaditorInstaller.htaccess", "composer.json", "composer.lock", "credentials.json", "cacert.pem", "versions",
         "vendor", "ssg", "cache"
       ];
-      
     }
     if (isLive == undefined) {
       var isLive = () => !(editor.config.path.includes("Thaditor/versions/"));
@@ -3127,11 +3130,10 @@ lastEditScript = """
       document.body.removeEventListener('mouseout', linkModeHover2, false);
       //removing the hovered element (which is retained if the escape key is hit)
       document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
-      //editor_model.clickedElem = editor_model.linkFrom;
-      editor_model.visible = false;
-      editor_model.linkSelectMode = false;
-      editor_model.linkSelectCallback = undefined;
-      editor_model.linkSelectOtherMenus = undefined;
+      editor.ui.model.visible = false;
+      editor.ui.model.linkSelectMode = false;
+      editor.ui.model.linkSelectCallback = undefined;
+      editor.ui.model.linkSelectOtherMenus = undefined;
       editor.ui.refresh();
     }
     function noGhostHover (node) {
@@ -3243,67 +3245,67 @@ lastEditScript = """
       if(editor_canSave()) {
         var x = confirm("There are unsaved modifications. Do you want to discard them?");
         if(x) {
-          editor_model.undoStack = [];
-          editor_model.redoStack = [];
+          editor.ui.model.undoStack = [];
+          editor.ui.model.redoStack = [];
           return true;
         } else {
           return false;
         }
       }
-      editor_model.undoStack = [];
-      editor_model.redoStack = [];
+      editor.ui.model.undoStack = [];
+      editor.ui.model.redoStack = [];
       return true;
     }
     //(outer lastEditScript)
     /*
     State is currently (8/12) being kept track of in many variables. I'm setting out to condense that
     into one variable, "state", a string describing the current state of the system. 
-    For the sake of clarity, I will list the current variables within the editor_model that are used to keep track of state
+    For the sake of clarity, I will list the current variables within the editor.ui.model that are used to keep track of state
 
       visible :v
       advanced :a
       show_log :s
-      insertElement :i //(not defined in our inital editor_model object)
+      insertElement :i //(not defined in our inital editor.ui.model object)
       linkSelectMode :l
       isDraftSwitcherVisible :d
     */
-    var editor_model = { // Change this and call editor.ui.refresh() to get something consistent.
-      visible: ifAlreadyRunning ? editor_model.visible : false, //here
-      clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor_model.clickedElem) : undefined,
+    editor.ui.model = { // Change this and call editor.ui.refresh() to get something consistent.
+      visible: ifAlreadyRunning ? editor.ui.model.visible : false, //here
+      clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor.ui.model.clickedElem) : undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
       notextselection: false, // When using the relative DOM selector, set to true to avoid considering the caret (e.g. for insertions and deletions)
       savedTextSelection: undefined, // Text range to restore when the edition bar closes, on mobile
-      restoredAfterReload: ifAlreadyRunning ? editor_model.restoredAfterReload : {},
-      selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor_model.selectionRange) : undefined,
-      caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor_model.caretPosition) : undefined,
+      restoredAfterReload: ifAlreadyRunning ? editor.ui.model.restoredAfterReload : {},
+      selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor.ui.model.selectionRange) : undefined,
+      caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor.ui.model.caretPosition) : undefined,
       link: undefined,
       disambiguationMenu: undefined, //here
       isSaving: false,
-      undosBeforeSave: ifAlreadyRunning ? editor_model.undosBeforeSave : 0,
+      undosBeforeSave: ifAlreadyRunning ? editor.ui.model.undosBeforeSave : 0,
       //data structures to represent undo/redo "stack"
-      undoStack: ifAlreadyRunning ? editor_model.undoStack : [],
-      redoStack: ifAlreadyRunning ? editor_model.redoStack : [],
-      actionsDuringSave: ifAlreadyRunning ? editor_model.actionsDuringSave : [],
-      isDraftSwitcherVisible : ifAlreadyRunning ? editor_model.isDraftSwitcherVisible : false,
+      undoStack: ifAlreadyRunning ? editor.ui.model.undoStack : [],
+      redoStack: ifAlreadyRunning ? editor.ui.model.redoStack : [],
+      actionsDuringSave: ifAlreadyRunning ? editor.ui.model.actionsDuringSave : [],
+      isDraftSwitcherVisible : ifAlreadyRunning ? editor.ui.model.isDraftSwitcherVisible : false,
       //observer to listen for muts
-      outputObserver: ifAlreadyRunning ? editor_model.outputObserver : undefined,
+      outputObserver: ifAlreadyRunning ? editor.ui.model.outputObserver : undefined,
       //worker for interface with the server
-      send_notif:ifAlreadyRunning ? editor_model.send_notif : "",
+      send_notif:ifAlreadyRunning ? editor.ui.model.send_notif : "",
       //editor log
-      editor_log: ifAlreadyRunning ? editor_model.editor_log : [],
-      show_log: ifAlreadyRunning ? editor_model.show_log : false, //here
+      editor_log: ifAlreadyRunning ? editor.ui.model.editor_log : [],
+      show_log: ifAlreadyRunning ? editor.ui.model.show_log : false, //here
       linkSelectMode: false, //here
       linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
-      idNum: ifAlreadyRunning ? editor_model.idNum : 1,
+      idNum: ifAlreadyRunning ? editor.ui.model.idNum : 1,
       //new attribute to keep menu state after reload
-      textareaPropertiesSaved: ifAlreadyRunning ? editor_model.textareaPropertiesSaved : [],
-      askQuestions: ifAlreadyRunning ? editor_model.askQuestions : editor.config.askQuestions,
-      autosave: ifAlreadyRunning ? editor_model.autosave : editor.config.autosave,
+      textareaPropertiesSaved: ifAlreadyRunning ? editor.ui.model.textareaPropertiesSaved : [],
+      askQuestions: ifAlreadyRunning ? editor.ui.model.askQuestions : editor.config.askQuestions,
+      autosave: ifAlreadyRunning ? editor.ui.model.autosave : editor.config.autosave,
       path: editor.config.path,
       version : verz,
-      interfaces: ifAlreadyRunning ? editor_model.interfaces : [],
-      disambiguationMenu: ifAlreadyRunning ? editor_model.disambiguationMenu : undefined
+      interfaces: ifAlreadyRunning ? editor.ui.model.interfaces : [],
+      disambiguationMenu: ifAlreadyRunning ? editor.ui.model.disambiguationMenu : undefined
     }
     
     // Helpers: Text preview and summary
@@ -3349,11 +3351,11 @@ lastEditScript = """
     }
     
     function editor_stopWatching() {
-      editor_model.outputObserver.disconnect();
+      editor.ui.model.outputObserver.disconnect();
     }
     
     function editor_resumeWatching() {
-      editor_model.outputObserver.observe
+      editor.ui.model.outputObserver.observe
         ( document.body.parentElement
         , { attributes: true
           , childList: true
@@ -3395,7 +3397,7 @@ lastEditScript = """
         }
         if(currentContent === newValue) { // We can remove the proxy
           if(!notUndoable) {
-            editor_model.outputObserver.disconnect();
+            editor.ui.model.outputObserver.disconnect();
           }
           let CSSTmpFilePath = linkNode.getAttribute("href");
           await editor.postServer("unlink", removeTimestamp(CSSTmpFilePath));
@@ -3442,16 +3444,16 @@ lastEditScript = """
           (linkFrom => linkTo => {
             let targetID = linkTo.getAttribute("id");
             if(!targetID) {
-              targetID = "ID" + editor_model.idNum
+              targetID = "ID" + editor.ui.model.idNum
               linkTo.setAttribute("id", targetID);
-              editor_model.idNum += 1;
+              editor.ui.model.idNum += 1;
             }
             else if(targetID.length > 100) {
               targetID = targetID.trim();
               linkTo.setAttribute("id", targetID);
             }
             linkFrom.setAttribute("href", "#" + targetID);
-          })(editor_model.clickedElem)
+          })(editor.ui.model.clickedElem)
         );
       } 
       let createButton = function(innerHTML, attributes, properties) {
@@ -3466,14 +3468,14 @@ lastEditScript = """
       };
       if(!(editor.config.EDITOR_VERSION & 1)) {
         if(typeof simple_editor_interface !== "undefined") {
-          editor_model.interfaces.push(simple_editor_interface);
+          editor.ui.model.interfaces.push(simple_editor_interface);
         }
         return;
       }
       if(typeof simple_editor_interface !== "undefined" && editor.config.EDITOR_VERSION & 16) {
-        editor_model.interfaces.push(simple_editor_interface);
+        editor.ui.model.interfaces.push(simple_editor_interface);
       }
-      editor_model.interfaces.push({
+      editor.ui.model.interfaces.push({
         title: "Selected Element Tree",
         minimized: true,
         priority(editor_model) {
@@ -3718,7 +3720,7 @@ lastEditScript = """
           return domSelector;
         }
       });
-      editor_model.interfaces.push({
+      editor.ui.model.interfaces.push({
         title: "Attributes",
         minimized: true,
         priority(editor_model) {
@@ -3830,12 +3832,11 @@ lastEditScript = """
               ));
             }
             else {
-              for(let i in editor_model.interfaces) {
-                if(editor_model.interfaces[i].title === "Style") {
-                  editor_model.interfaces[i].minimized = false;
-                  editor_model.inline = clickedElem.getAttribute("style");                  
-                  editor_model.interfaces[i].priority(editor_model);               
-                }
+              let styleInterface = getEditorInterfaceByTitle("Style");
+              if(styleInterface) {
+                styleInterface.minimized = false;
+                editor.ui.model.inline = clickedElem.getAttribute("style");
+                styleInterface.priority(editor.ui.model);
               }
             }
           }
@@ -3882,7 +3883,7 @@ lastEditScript = """
         }
       });
       
-      editor_model.interfaces.push({
+      editor.ui.model.interfaces.push({
         title: "Style",
         minimized: true,
         priority(editor_model) {
@@ -4260,7 +4261,7 @@ lastEditScript = """
           return CSSarea;
         }
       });
-      editor_model.interfaces.push({
+      editor.ui.model.interfaces.push({
         title: "Image Tools",
         minimized: true,
         priority(editor_model) {
@@ -4564,7 +4565,7 @@ lastEditScript = """
           return ret;
         }
       });
-      editor_model.interfaces.push({
+      editor.ui.model.interfaces.push({
         title: "Text Editing",
         minimized: true,
         priority(editor_model) {
@@ -4662,7 +4663,7 @@ lastEditScript = """
           return ret;
         }
       });
-      editor_model.interfaces.push({
+      editor.ui.model.interfaces.push({
         title: "Create",
         minimized: true,
         priority(editor_model) {
@@ -4881,7 +4882,7 @@ lastEditScript = """
         }
       });
       if (editor.config.thaditor) {
-        editor_model.interfaces.push({
+        editor.ui.model.interfaces.push({
           title: "Drafts",
           minimized: true,
           priority(editor_model) {
@@ -5047,7 +5048,7 @@ lastEditScript = """
         });
       } // End of if apache_server
       
-      editor_model.interfaces.push({
+      editor.ui.model.interfaces.push({
         title: "SEO",
         minimized: true,
         priority(editor_model) {
@@ -5116,7 +5117,7 @@ lastEditScript = """
           return ret;
         }
       });
-      editor_model.interfaces.push({ 
+      editor.ui.model.interfaces.push({ 
         title: "Advanced",
         minimized: true,
         priority(editor_model) {
@@ -5205,7 +5206,7 @@ lastEditScript = """
         }
       });
       
-      editor_model.interfaces.push({
+      editor.ui.model.interfaces.push({
         title: "Log",
         minimized: true,
         priority(editor_model) {
@@ -5229,32 +5230,23 @@ lastEditScript = """
         },
         refresh() {
           let currentBox = this.currentBox;
-          let newBox = this.render(editor_model);
+          let newBox = this.render(editor.ui.model);
           currentBox.parentNode.insertBefore(newBox, currentBox);
           currentBox.remove();
         }
       });
       if(typeof thaditor !== "undefined" && thaditor.customInterfaces) {
-        editor_model.interfaces.push(...thaditor.customInterfaces);
+        editor.ui.model.interfaces.push(...thaditor.customInterfaces);
       }
     }
     
     function getEditorInterfaceByTitle(title) {
-      return editor_model.interfaces.find(x => x.title === title);
+      return editor.ui.model.interfaces.find(x => x.title == title);
     }
 
-
-    if (!ifAlreadyRunning) {
-      const get_interface = nm => editor_model.interfaces.find(ele => ele.title == nm);
-      let do_interfaces;
-    }
-    do_interfaces = true;
     // First time: We add the interface containers.
-    if(!ifAlreadyRunning && do_interfaces) {
-      
+    if(!ifAlreadyRunning) {
       init_interfaces();
-      //editor_model.visible = true;
-      //editor.ui.refresh();
     }
     
     //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
@@ -5501,8 +5493,8 @@ lastEditScript = """
       const old_scroll = menuholder ? menuholder.scrollTop : 0;
       
       // Set up
-      let model = editor_model;
-      var clickedElem = model.clickedElem;
+      let editor_model = editor.ui.model;
+      var clickedElem = editor_model.clickedElem;
       var contextMenu = document.querySelector("#context-menu");
       var modifyMenuDiv = document.querySelector("#modify-menu");
       
@@ -5520,7 +5512,7 @@ lastEditScript = """
       }
       
       // Recover selection if it exists
-      model.selectionRange = model.notextselection ? undefined : (() => {
+      editor_model.selectionRange = editor_model.notextselection ? undefined : (() => {
         let selection = window.getSelection();
         if(!selection || !selection.rangeCount) return;
         let f = selection.getRangeAt(0); 
@@ -5530,7 +5522,7 @@ lastEditScript = """
       })();
       
       // Recover caret position if it exists
-      model.caretPosition = model.notextselection || clickedElem && clickedElem.tagName === "HEAD" ? undefined : (() => {
+      editor_model.caretPosition = editor_model.notextselection || clickedElem && clickedElem.tagName === "HEAD" ? undefined : (() => {
         let selection = window.getSelection();
         if(!selection || !selection.rangeCount) return;
         let f = selection.getRangeAt(0);
@@ -5624,11 +5616,10 @@ lastEditScript = """
         {i: i});
         modifyMenuHolder.append(menu);
       }
-      if (do_interfaces) {
-        //console.log ({old_scroll, modifyMenuHolder});
-        modifyMenuDiv.append(modifyMenuHolder);
-        if(modifyMenuHolder) modifyMenuHolder.scrollTop = old_scroll;
-      }
+      
+      //console.log ({old_scroll, modifyMenuHolder});
+      modifyMenuDiv.append(modifyMenuHolder);
+      if(modifyMenuHolder) modifyMenuHolder.scrollTop = old_scroll;
 
       let createButton = function(innerHTML, attributes, properties) {
         let button = el("div", attributes, [], properties);
@@ -5746,11 +5737,11 @@ lastEditScript = """
           whereToAddContextButtons.append(button);
           numButtons++;
         }
-        if(model.link) {
-          addContextMenuButton(liveLinkSVG(linkToEdit(model.link)),
-            {title: "Go to " + model.link, "class": "inert"});
+        if(editor_model.link) {
+          addContextMenuButton(liveLinkSVG(linkToEdit(editor_model.link)),
+            {title: "Go to " + editor_model.link, "class": "inert"});
         }
-        if(!model.selectionRange && clickedElem && clickedElem.parentNode && editor.config.EDITOR_VERSION & 1) {
+        if(!editor_model.selectionRange && clickedElem && clickedElem.parentNode && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(parentUpSVG,
           {title: "Select parent", "class":"inert"},
             {onclick: (c => event => {
@@ -5762,7 +5753,7 @@ lastEditScript = """
         
         var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
         var isDisplayInline = computedStyle && (computedStyle.display.startsWith("inline") || computedStyle.display === "table-cell");
-        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && editor.config.EDITOR_VERSION & 1) {
+        if(!editor_model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
           {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
           {onclick: (c => event => {
@@ -5778,7 +5769,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && editor.config.EDITOR_VERSION & 1) {
+        if(!editor_model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(isDisplayInline ? arrowRight : arrowDown,
           {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
           {onclick: (c => (event) => {
@@ -5794,7 +5785,7 @@ lastEditScript = """
             })(clickedElem)
           });
         }
-        if(!model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && editor.config.EDITOR_VERSION & 1) {
+        if(!editor_model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(cloneSVG,
             {title: "Clone selected element"},
             {onclick: ((c, contextMenu) => event => {
@@ -5816,7 +5807,7 @@ lastEditScript = """
               })(clickedElem)
             });
         }
-        if(model.selectionRange && (model.selectionRange.startContainer === model.selectionRange.endContainer || model.selectionRange.startContainer.parentElement === model.selectionRange.commonAncestorContainer && model.selectionRange.endContainer.parentElement === model.selectionRange.commonAncestorContainer) && editor.config.EDITOR_VERSION & 1) {
+        if(editor_model.selectionRange && (editor_model.selectionRange.startContainer === editor_model.selectionRange.endContainer || editor_model.selectionRange.startContainer.parentElement === editor_model.selectionRange.commonAncestorContainer && editor_model.selectionRange.endContainer.parentElement === editor_model.selectionRange.commonAncestorContainer) && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(plusSVG,
               {title: "Wrap selection"},
               {onclick: (s => event => {
@@ -5865,10 +5856,10 @@ lastEditScript = """
                 editor_model.visible = true;
                 editor_model.clickedElem = insertedNode;
                 refresh();
-              })(model.selectionRange)}
+              })(editor_model.selectionRange)}
               )
         }
-        if(!model.selectionRange && editor.config.EDITOR_VERSION & 1) {
+        if(!editor_model.selectionRange && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(plusSVG,
               {title: "Insert element", contenteditable: false},
               {onclick: event => {
@@ -5881,16 +5872,16 @@ lastEditScript = """
                 restoreCaretPosition();
               }});
         }
-        if(model.clickedElem) {
+        if(editor_model.clickedElem) {
           // Thaditor-defined custom context menu buttons
           if(typeof thaditor === "object") {
-            for(let button of thaditor.customContextMenuButtons(model.clickedElem)) {
+            for(let button of thaditor.customContextMenuButtons(editor_model.clickedElem)) {
               addContextMenuButton(button.innerHTML, button.attributes, button.properties)
             }
           }
           // Page-defined custom context menu buttons
           for(let custom of editor.customContextMenuButtons) {
-            for(let button of custom(model.clickedElem)) {
+            for(let button of custom(editor_model.clickedElem)) {
               addContextMenuButton(button.innerHTML, button.attributes, button.properties)
             }
           }
@@ -5900,7 +5891,7 @@ lastEditScript = """
         while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
           baseElem = baseElem.nextElementSibling;
         }
-        baseElem = model.selectionRange || baseElem || clickedElem;
+        baseElem = editor_model.selectionRange || baseElem || clickedElem;
       
         if(baseElem && !noContextMenu) {
           let clientRect = baseElem.getBoundingClientRect();
@@ -5966,8 +5957,8 @@ lastEditScript = """
     }
     
     function editor_close() {
-      if(editor_model.visible) {
-        editor_model.visible = false;
+      if(editor.ui.model.visible) {
+        editor.ui.model.visible = false;
         editor.ui.refresh();
         //Hide the menu
         //This is also working fine
@@ -6009,21 +6000,21 @@ lastEditScript = """
       } else {
         msg = message + " from " + source + " L" + lineno + "C" + colno;
       }
-      editor_model.editor_log.push(msg);
+      editor.ui.model.editor_log.push(msg);
     });
     
     function editor_canSave() {
-      return editor_model.undoStack.length !== editor_model.undosBeforeSave;
+      return editor.ui.model.undoStack.length !== editor.ui.model.undosBeforeSave;
     }
     
     function editor_onbeforeunload(e) {
       e = e || window.event;
-      if(editor.config.onMobile() && editor_model.visible) { // Hack to ask before saving.
+      if(editor.config.onMobile() && editor.ui.model.visible) { // Hack to ask before saving.
         e.preventDefault();
         e.returnValue = '';
         return editor_close();
       }
-      var askConfirmation = editor_canSave() || editor_model.isSaving || editor_model.disambiguationMenu;
+      var askConfirmation = editor_canSave() || editor.ui.model.isSaving || editor.ui.model.disambiguationMenu;
       const confirmation = 'You have unsaved modifications. Do you still want to exit?';
       // For IE and Firefox prior to version 4
       if (e) {
@@ -6044,12 +6035,12 @@ lastEditScript = """
     } // End of editor_onbeforeunload
      
     window.onbeforeunload = editor_onbeforeunload;
-    if (typeof editor_model === "object" && typeof editor_model.outputObserver !== "undefined") {
-      editor_model.outputObserver.disconnect();
+    if (typeof editor.ui.model === "object" && typeof editor.ui.model.outputObserver !== "undefined") {
+      editor.ui.model.outputObserver.disconnect();
     }
 
-    editor_model.outputObserver = new MutationObserver(handleMutations);
-    editor_model.outputObserver.observe
+    editor.ui.model.outputObserver = new MutationObserver(handleMutations);
+    editor.ui.model.outputObserver.observe
       ( document.body.parentElement
       , { attributes: true
         , childList: true
