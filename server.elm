@@ -1074,7 +1074,7 @@ boolToCheck = Update.bijection (case of "true" -> [["checked", ""]]; _ -> []) (c
 initialScript = serverOwned "initial script" <| [
   <script id="thaditor-vars" class="editor-interface">
      editor = typeof editor == "undefined" ? {} : editor;
-     editor.config = {};
+     editor.config = typeof editor.config == "undefined" ? {} : editor.config;
      editor.config.EDITOR_VERSION = typeof EDITOR_VERSION === "number" ? EDITOR_VERSION : 0;
      editor.config.path = @(jsCode.stringOf path);
      editor.config.varedit = @(if varedit then "true" else "false");
@@ -1095,11 +1095,12 @@ initialScript = serverOwned "initial script" <| [
    -- TODO: Externalize this script.
    -- TODO: Put as much as possible of the interface in a new script.
    <script id="thaditor-luca" class="editor-interface">
-    // Overwrite the entire document (head and body)
-    // I'm not sure there is a better way.
+   // TODO: Put the entire Editor interface inside, so that we can externalize the script.
   (function(editor) {
     var _internals = {};
     editor._internals = _internals;
+    // Overwrite the entire document (head and body)
+    // I'm not sure there is a better way.
     function writeDocument(NC) {
       document.open();
       document.write(NC);
@@ -1743,11 +1744,11 @@ initialScript = serverOwned "initial script" <| [
     }
     editor.remove = remove;
 
-    editor.mutationCallbacks = {};
-    
+    editor._internals.mutationCallbacks = {};
+     
     // TODO: In the future, only determine if the user was either using the interface, or modifying a selected element.
     // And then mark the mutation as computer or user. No more ghosts.
-    editor.mutationCallbacks.handleScriptInsertion = 
+    editor._internals.mutationCallbacks.handleScriptInsertion = 
       // Mark nodes as ghost on insertion, if they are so.
       function handleScriptInsertion(mutations) {
         for(var i = 0; i < mutations.length; i++) {
@@ -1892,7 +1893,7 @@ initialScript = serverOwned "initial script" <| [
         editor._internals.automaticGhostMarker.disconnect();
       }
 
-      editor._internals.automaticGhostMarker = new MutationObserver(editor.mutationCallbacks.handleScriptInsertion);
+      editor._internals.automaticGhostMarker = new MutationObserver(editor._internals.mutationCallbacks.handleScriptInsertion);
       editor._internals.automaticGhostMarker.observe( document.head.parentElement
        , { attributes: false
          , childList: true
