@@ -1939,6 +1939,30 @@ initialScript = serverOwned "initial script" <| [
     }
     editor.relativeToAbsolute = relativeToAbsolute; // TODO: Remove
     
+    // Saves the Document Object Model, bare version.
+    editor.saveDOM = function saveDom() {
+      if(document.getElementById("notification-menu") != null) {
+        //document.getElementById("notification-menu").innerHTML = `Please wait until previous saving completes.`
+        // TODO: Listen and gather subsequent modifications when it is loading
+        return;
+      }
+      editor_model.isSaving = true;
+      var newMenu = el("menuitem#notification-menu.to-be-selected", {isghost: true});
+      if(document.getElementById('lastaction')) {
+        document.getElementById('lastaction').remove();
+      }
+      if(document.getElementById("modify-menu")) {
+        document.getElementById("modify-menu").append(newMenu);
+      }
+      if(editor.config.thaditor) {
+        editor_model.actionsDuringSave = [];
+      }
+      editor.ui.refresh();
+      editor.ui.sendNotification("Saving...");
+      const toSend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
+      editor._internals.notifyServer({"question": editor_model.askQuestions ? "true" : "false"}, toSend, "Save")
+    } //editor.saveDOM
+    
     /******************************
           Editor's interface.
     ******************************/
@@ -2333,6 +2357,45 @@ initialScript = serverOwned "initial script" <| [
         editor._internals.notifyServer({"ambiguity-key": key, "cancel-ambiguity": JSON.stringify(num)});
       }; // editor.ambiguity.cancel
       
+      // Saves the CSS and stores undo/redo before saving the DOM.
+      editor.ui.save = function save() {
+        if (editor_model.isSaving) {
+          editor.ui.sendNotification("Can't save while save is being undertaken");
+        } else {
+          //temp place to put CSS file loading stuff (may well be moved later)
+          let allPageLinks = document.querySelectorAll("link[rel=stylesheet]");
+          (async () => {
+            for(let e = 0; e < allPageLinks.length; e++) {
+              let linkNode = allPageLinks[e];
+              if(!editor.isGhostNode(linkNode) && linkNode.getAttribute("ghost-href")) {
+                let linkNodeTmpHref = linkNode.getAttribute("href");
+                let linkNodeOriginalHref = linkNode.getAttribute("ghost-href");
+                let trueTempPath = removeTimestamp(linkNodeTmpHref); // This one is absolute normally
+                let originalAbsPath = relativeToAbsolute(removeTimestamp(linkNodeOriginalHref));
+                let newValue = (await editor.getServer("read", trueTempPath)).slice(1);
+                await editor.postServer("write", originalAbsPath, newValue);
+                linkNode.cachedContent = newValue;
+                linkNode.tmpCachedContent = newValue;
+                // Since we delete the temporary file, we cannot revert to the temporary href.
+                // Problem: it's not possible to undo small changes.
+                // Worse: The deletion of the tmp css file will make it impossible to undo to states before of before this saving.
+                // Ghost attributes are not restored when doing undo.
+                editor_stopWatching();
+                linkNode.setAttribute("href", setTimestamp(linkNodeOriginalHref));
+                linkNode.removeAttribute("ghost-href");
+                editor_resumeWatching();
+                await editor.postServer("unlink", trueTempPath);
+              }                 
+            }
+            editor_model.undosBeforeSave = editor_model.undoStack.length;
+            if(!this || typeof this != "object" || typeof this.classList == "undefined" || !this.classList.contains("disabled")) {
+              editor.saveDOM();
+            }
+          })();
+        } // if editor_model.isSaving
+      };  // editor.ui.save
+      
+      
       
     }; // editor.ui.loadInterface
     
@@ -2360,29 +2423,6 @@ initialScript = serverOwned "initial script" <| [
 lastEditScript = """
     el = editor.el;
     console.log("lastEditScript running");
-    
-    function sendModificationsToServer() {
-      if(document.getElementById("notification-menu") != null) {
-        //document.getElementById("notification-menu").innerHTML = `Please wait until previous saving completes.`
-        // TODO: Listen and gather subsequent modifications when it is loading
-        return;
-      }
-      editor_model.isSaving = true;
-      var newMenu = el("menuitem#notification-menu.to-be-selected", {isghost: true});
-      if(document.getElementById('lastaction')) {
-        document.getElementById('lastaction').remove();
-      }
-      if(document.getElementById("modify-menu")) {
-        document.getElementById("modify-menu").append(newMenu);
-      }
-      if(editor.config.thaditor) {
-        editor_model.actionsDuringSave = [];
-      }
-      editor.ui.refresh();
-      editor.ui.sendNotification("Saving...");
-      const toSend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
-      editor._internals.notifyServer({"question": editor_model.askQuestions ? "true" : "false"}, toSend, "Save")
-    } //sendModificationsToServer
 
     function removeTimestamp(path) {
       var dummyIndex = path.indexOf("?");
@@ -2447,7 +2487,7 @@ lastEditScript = """
     };
     
     // Timeout for autosave
-    var t = undefined;
+    editor._internals.autosavetimer = undefined;
     
     function handleMutations(mutations, observer) {
       var onlyGhosts = true;
@@ -2525,22 +2565,22 @@ lastEditScript = """
       // Set undo/redo state
       syncUndoRedoButtons();
       
-      if(!editor_model.autosave) {
+      if(editor_model.autosave && !editor_model.disambiguationMenu) {
+        if(typeof editor._internals.autosavetimer !== "undefined") {
+          clearTimeout(editor._internals.autosavetimer);
+        }
+        editor._internals.autosavetimer = setTimeout(function() {
+          editor._internals.autosavetimer = undefined;
+          editor.saveDOM();
+        }, typeof editdelay != "undefined" ? editodelay : 1000)
+      } else {
         var saveButtons = document.querySelectorAll(".saveButton");
         // TODO: Can we regenerate the whole interface for consistency?
         for(let sb of saveButtons) {
           sb.classList.toggle("disabled", false);
         }
         return;
-      } 
-      //autosave is on
-      if(typeof t !== "undefined") {
-        clearTimeout(t);
       }
-      t = setTimeout(function() {
-        t = undefined;
-        sendModificationsToServer();
-      }, typeof editdelay != "undefined" ? editodelay : 1000)
     } //handleMutations
   
     //debugging function for printing both teh undo and redo stacks.
@@ -5650,48 +5690,12 @@ lastEditScript = """
         }
         addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
         {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor_canSave() || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
-          id: "savebutton"  
+          id: "savebutton"
         },
           {onclick: editor_model.disambiguationMenu ? 
             ((ambiguityKey, selected) => () => editor.ambiguity.accept(ambiguityKey, selected))(
               editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
-            : function(event) {
-              if (editor_model.isSaving) {
-                editor.ui.sendNotification("Can't save while save is being undertaken");
-              }
-              else {
-                //temp place to put CSS file loading stuff (may well be moved later)
-                let allPageLinks = document.querySelectorAll("link[rel=stylesheet]");
-                (async () => {
-                  for(let e = 0; e < allPageLinks.length; e++) {
-                    let linkNode = allPageLinks[e];
-                    if(!editor.isGhostNode(linkNode) && linkNode.getAttribute("ghost-href")) {
-                      let linkNodeTmpHref = linkNode.getAttribute("href");
-                      let linkNodeOriginalHref = linkNode.getAttribute("ghost-href");
-                      let trueTempPath = removeTimestamp(linkNodeTmpHref); // This one is absolute normally
-                      let originalAbsPath = relativeToAbsolute(removeTimestamp(linkNodeOriginalHref));
-                      let newValue = (await editor.getServer("read", trueTempPath)).slice(1);
-                      await editor.postServer("write", originalAbsPath, newValue);
-                      linkNode.cachedContent = newValue;
-                      linkNode.tmpCachedContent = newValue;
-                      // Since we delete the temporary file, we cannot revert to the temporary href.
-                      // Problem: it's not possible to undo small changes.
-                      // Worse: The deletion of the tmp css file will make it impossible to undo to states before of before this saving.
-                      // Ghost attributes are not restored when doing undo.
-                      editor_stopWatching();
-                      linkNode.setAttribute("href", setTimestamp(linkNodeOriginalHref));
-                      linkNode.removeAttribute("ghost-href");
-                      editor_resumeWatching();
-                      await editor.postServer("unlink", trueTempPath);
-                    }                 
-                  }
-                  editor_model.undosBeforeSave = editor_model.undoStack.length;
-                  if(!this.classList.contains("disabled")) {
-                    sendModificationsToServer();
-                  }
-                })();
-              }
-            }
+            : editor.ui.save
           }
         )
       }
