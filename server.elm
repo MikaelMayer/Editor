@@ -1797,14 +1797,14 @@ initialScript = serverOwned "initial script" <| [
       }
       
     
-    editor.ui = {};
-    editor.ui.getLosslessCssParser = new Promise((resolve, reject) => {
-        editor.ui.setLosslessCssParser = x => { editor.ui.CSSparser = new x(); resolve(x) };
+    editor.ui = { _internals: {} };
+    editor.ui._internals.getLosslessCssParser = new Promise((resolve, reject) => {
+        editor.ui._internals.setLosslessCssParser = x => { editor.ui.CSSparser = new x(); resolve(x) };
     });
     
     // Display an box to switch to edit mode.
-    // TODO: In the future, this should only activate contenteditable = true, import editor script to start recording to changes, and replay the changes once Editor is ready.
-    editor.ui.switchEditBox = 
+    // This is the only item available for UI even if edit=false
+    editor.ui._internals.switchEditBox = 
        function switchEditBox(toEdit) {
         let prev = toEdit ? "=false" : "(=true|=?$|=?(?=&))",
             next = toEdit ? ""  : "=false",
@@ -1850,7 +1850,7 @@ initialScript = serverOwned "initial script" <| [
             }
           }
           });
-      }
+      } // editor.ui._internals.switchEditBox
 
     // Hook Editor to the web window, add event listeners.
     editor._internals.register = function() {
@@ -1897,7 +1897,7 @@ initialScript = serverOwned "initial script" <| [
         }, {capture: true});
         
         if(typeof editor.config.canEditPage == "boolean" && !editor.config.canEditPage && !editor.config.varls) {
-          document.body.insertBefore(editor.ui.switchEditBox(true), document.body.childNodes[0]);
+          document.body.insertBefore(editor.ui._internals.switchEditBox(true), document.body.childNodes[0]);
         }
       });
       
@@ -1958,23 +1958,23 @@ initialScript = serverOwned "initial script" <| [
       editor.ui.refresh();
       editor.ui.sendNotification("Saving...");
       const toSend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
-      editor._internals.notifyServer({"question": editor.ui.model.askQuestions ? "true" : "false"}, toSend, "Save")
+      editor.ui._internals.notifyServer({"question": editor.ui.model.askQuestions ? "true" : "false"}, toSend, "Save")
     } //editor.saveDOM
     
     /******************************
           Editor's interface.
     ******************************/
-    editor.ui.loadInterface = function() {
+    editor.ui._internals.loadInterface = function() {
       // Insets the modification menu.
-      editor.ui.contextMenu = document.querySelector("div#context-menu");
-      if(!editor.ui.contextMenu) {
-        editor.ui.contextMenu = el("div#context-menu", {contenteditable: "false"}, [], {isghost: true});
-        document.body.insertBefore(editor.ui.contextMenu, document.body.childNodes[0]);
+      editor.ui._internals.contextMenu = document.querySelector("div#context-menu");
+      if(!editor.ui._internals.contextMenu) {
+        editor.ui._internals.contextMenu = el("div#context-menu", {contenteditable: "false"}, [], {isghost: true});
+        document.body.insertBefore(editor.ui._internals.contextMenu, document.body.childNodes[0]);
       }
-      editor.ui.modifyMenu = document.querySelector("div#modify-menu");
-      if(!editor.ui.modifyMenu) {4
-        editor.ui.modifyMenu = el("div#modify-menu", {contenteditable: "false"}, [], {isghost:true})
-        document.body.insertBefore(editor.ui.modifyMenu, document.body.childNodes[0]);
+      editor.ui._internals.modifyMenu = document.querySelector("div#modify-menu");
+      if(!editor.ui._internals.modifyMenu) {4
+        editor.ui._internals.modifyMenu = el("div#modify-menu", {contenteditable: "false"}, [], {isghost:true})
+        document.body.insertBefore(editor.ui._internals.modifyMenu, document.body.childNodes[0]);
       }
       
       /*
@@ -1982,7 +1982,7 @@ initialScript = serverOwned "initial script" <| [
         css for notification box is textarea .notif
       */
       editor.ui.sendNotification = function sendNotification(msg, timeout) {
-        let modifyMenuDiv = editor.ui.modifyMenu;
+        let modifyMenuDiv = editor.ui._internals.modifyMenu;
         if (!modifyMenuDiv) {
           console.log("Notifications havent been set up for use outside of editor, like in the filesystem");
           console.log (msg);
@@ -1991,7 +1991,7 @@ initialScript = serverOwned "initial script" <| [
         let notifBox = modifyMenuDiv.querySelector("#notif-box");
         if (!notifBox) {
           notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
-          editor.ui.modifyMenu.append(notifBox);
+          editor.ui._internals.modifyMenu.append(notifBox);
         }
         notifBox.value = msg;
         notifBox.style.display = "block";
@@ -2010,10 +2010,10 @@ initialScript = serverOwned "initial script" <| [
       };
       
       // Sub-interfaces can register functions that will store some information that will be inserted at the same key in the record editor.ui.model.restoredAfterReload.
-      editor.ui.saveBetweenReloads = {};
+      editor.ui._internals.saveBetweenReloads = {};
       
       // Same as editor._internals.writeDocument, but tries to preserve as much of the DOM and toolbar state as possible.
-      editor.ui.writeDocument = (function() {
+      editor.ui._internals.writeDocument = (function() {
         // Save/Load ghost/ignored attributes/nodes for when a page is reloaded, only if elements have an id.
         // Same for some attributes
         function saveGhostAttributes() {
@@ -2086,8 +2086,8 @@ initialScript = serverOwned "initial script" <| [
         
         function saveBeforeReloadingToolbar() {
           editor.ui.model.restoredAfterReload = {};
-          for(let k in editor.ui.saveBetweenReloads) {
-            editor.ui.model.restoredAfterReload[k] = editor.ui.saveBetweenReloads[k]();
+          for(let k in editor.ui._internals.saveBetweenReloads) {
+            editor.ui.model.restoredAfterReload[k] = editor.ui._internals.saveBetweenReloads[k]();
           }
           console.log("saved before reloading toolbar", editor.ui.model.restoredAfterReload);
         }
@@ -2110,15 +2110,15 @@ initialScript = serverOwned "initial script" <| [
           applyGhostAttributes(saved);
           setTimeout(() => window.scroll(scrollX, scrollY), 10);
         };
-      })(); // editor.ui.writeDocument 
+      })(); // editor.ui._internals.writeDocument 
       
         // Handle a rewrite message from the worker
-      editor.ui.handleRewriteMessage = function(e) {
+      editor.ui._internals.handleRewriteMessage = function(e) {
         var editor_model = editor.ui.model;
         editor_model.isSaving = false;
 
         //Rewrite the document, restoring some of the UI afterwards.
-        editor.ui.writeDocument(e.data.text);
+        editor.ui._internals.writeDocument(e.data.text);
         
         var newLocalURL = e.data.newLocalURL;
         var newQueryStr = e.data.newQueryStr;
@@ -2133,7 +2133,7 @@ initialScript = serverOwned "initial script" <| [
            ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
            ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
           var n = JSON.parse(ambiguityNumber);
-          console.log ("editor.ui.handleRewriteMessage ambiguity");
+          console.log ("editor.ui._internals.handleRewriteMessage ambiguity");
           var selected = JSON.parse(ambiguitySelected);
           var summaries = JSON.parse(ambiguitySummaries);
           
@@ -2211,12 +2211,12 @@ initialScript = serverOwned "initial script" <| [
           window.history.replaceState({}, "Current page", strQuery);
         }
         // editor.ui.refresh(); // The interface will be automatically refreshed after loading.
-      }; // editor.ui.handleRewriteMessage
+      }; // editor.ui._internals.handleRewriteMessage
       
       // Used only by the Editor webserver (editor.config.thaditor == false)
-      editor.ui.handleServerResponse = xmlhttp => function () {
+      editor.ui._internals.handleServerResponse = xmlhttp => function () {
           if (xmlhttp.readyState == XMLHttpRequest.DONE) {
-            editor.ui.handleRewriteMessage({
+            editor.ui._internals.handleRewriteMessage({
               data: {
                 newLocalURL: xmlhttp.getResponseHeader("New-Local-URL"),
                 newQueryStr: xmlhttp.getResponseHeader("New-Query"),
@@ -2231,9 +2231,9 @@ initialScript = serverOwned "initial script" <| [
               }
             })
           } //xhr.onreadystatechange == done
-      }; //editor.ui.handleServerResponse
+      }; //editor.ui._internals.handleServerResponse
       
-      editor._internals.handleSendRequestFinish = function(data) {
+      editor.ui._internals.handleSendRequestFinish = function(data) {
         /*
           We want to undo everything in the undo stack that has been done since the save began.
           In the process of vanilla undoing this (using mark's function), the items will be
@@ -2265,7 +2265,7 @@ initialScript = serverOwned "initial script" <| [
         });
         
         editor.ui.model.outputObserver.disconnect();
-        editor.ui.handleRewriteMessage({data: data});
+        editor.ui._internals.handleRewriteMessage({data: data});
         // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
         setTimeout(function() {
           var replayActionsAfterSave = msg => function(msgOverride) {
@@ -2297,10 +2297,10 @@ initialScript = serverOwned "initial script" <| [
             editor.ui.model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
           }
         }, 10);
-      }; // editor._internals.handleSendRequestFinish
+      }; // editor.ui._internals.handleSendRequestFinish
       
       // The "what" is so that we can show a notification when this is done
-      editor._internals.notifyServer = function(requestHeaders, toSend, what) {
+      editor.ui._internals.notifyServer = function(requestHeaders, toSend, what) {
         if(editor.config.thaditor) {
           thaditor.do( {action:"sendRequest",
                       toSend: toSend || "{\"a\":2}",
@@ -2309,10 +2309,10 @@ initialScript = serverOwned "initial script" <| [
                       requestHeaders: requestHeaders,
                       what: what,
                       server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)}
-          ).then(editor._internals.handleSendRequestFinish);
+          ).then(editor.ui._internals.handleSendRequestFinish);
         } else {
           var xmlhttp = new XMLHttpRequest();
-          xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
+          xmlhttp.onreadystatechange = editor.ui._internals.handleServerResponse(xmlhttp);
           xmlhttp.open("POST", location.pathname + location.search);
           xmlhttp.setRequestHeader("Content-Type", "application/json");
           if(requestHeaders) {
@@ -2323,37 +2323,43 @@ initialScript = serverOwned "initial script" <| [
           xmlhttp.customRequestHeaders = requestHeaders;
           xmlhttp.send(toSend || "{\"a\":2}");
         }
-      }; // editor._internals.notifyServer
+      }; // editor.ui._internals.notifyServer
       
       // Recomputes the page and display it entirely.
       editor.reload = function reloadPage() {
         editor.ui.sendNotification("Reloading...");
-        editor._internals.notifyServer({reload: "true"}, undefined, "Reload");
+        editor.ui._internals.notifyServer({reload: "true"}, undefined, "Reload");
       }; // editor.reload
+      
+      editor.ui.reload = editor.reload;
       
       // Computes the file at the given URL and display it with Editor.
       // If replaceState it true, the back button will not work.
       editor.navigateTo = function navigateTo(url, replaceState) {
         editor.ui.sendNotification("Loading...");
-        editor._internals.notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
+        editor.ui._internals.notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
       }; // editor.navigateTo
       
+      editor.ui.navigateTo = editor.navigateTo;
+      
+      // API to deal with ambiguity
       editor.ambiguity = {};
+      editor.ui.ambiguity = editor.ambiguity;
       
       // Select and display the num-th alternative of the ambiguity indexed by key.
       editor.ambiguity.select = function(key, num) {
-        editor._internals.notifyServer({"ambiguity-key": key, "select-ambiguity": JSON.stringify(num), "question": "true"});
+        editor.ui._internals.notifyServer({"ambiguity-key": key, "select-ambiguity": JSON.stringify(num), "question": "true"});
       }; // editor.ambiguity.select
       
       // Select the ambiguity result If the page displayed after an ambiguity is detected.
       // For Thaditor, this changes nothing because files are already written, it only clears the ambiguity data.
       editor.ambiguity.accept = function(key, num) {
-        editor._internals.notifyServer({"ambiguity-key": key, "accept-ambiguity": JSON.stringify(num)});
+        editor.ui._internals.notifyServer({"ambiguity-key": key, "accept-ambiguity": JSON.stringify(num)});
       }; // editor.ambiguity.accept
       
       // Cancels the entire change that presented an ambiguity, indexed by key.
       editor.ambiguity.cancel = function(key, num) {
-        editor._internals.notifyServer({"ambiguity-key": key, "cancel-ambiguity": JSON.stringify(num)});
+        editor.ui._internals.notifyServer({"ambiguity-key": key, "cancel-ambiguity": JSON.stringify(num)});
       }; // editor.ambiguity.cancel
       
       // Saves the CSS and stores undo/redo before saving the DOM.
@@ -2396,7 +2402,7 @@ initialScript = serverOwned "initial script" <| [
       
       // Store the mutation in the undo buffer.
       // Gather undos if they happen within 100ms;
-      editor.ui.makeMutationUndoable = function makeMutationUndoable(m) {
+      editor.ui._internals.makeMutationUndoable = function makeMutationUndoable(m) {
         var editor_model = editor.ui.model;
         var time = +new Date();
         //for childLists, add mutable next/previous sibling properties
@@ -2435,9 +2441,9 @@ initialScript = serverOwned "initial script" <| [
           lastUndo.push(m);
           editor_model.undoStack.push(lastUndo);
         }     
-      }; //editor.ui.makeMutationUndoable
+      }; //editor.ui._internals.makeMutationUndoable
       
-      editor.ui.handleMutations = function handleMutations(mutations, observer) {
+      editor.ui._internals.handleMutations = function handleMutations(mutations, observer) {
         var onlyGhosts = true;
         for(var i = 0; i < mutations.length; i++) {
           // A mutation is a ghost if either
@@ -2459,7 +2465,7 @@ initialScript = serverOwned "initial script" <| [
                isIgnoredAttributeKey(mutation.attributeName)) {
             } else {
               onlyGhosts = false;
-              editor.ui.makeMutationUndoable(mutation);
+              editor.ui._internals.makeMutationUndoable(mutation);
               // Please do not comment out this line until we get proper clever save.
               console.log("Attribute is not ghost", mutation);
               console.log("TIP: Use this script if you want to mark it as ghost:");
@@ -2475,7 +2481,7 @@ initialScript = serverOwned "initial script" <| [
               for(var j = 0; j < mutation.addedNodes.length; j++) {
                 if(!editor.hasGhostAncestor(mutation.addedNodes[j]) && !editor.hasIgnoringAncestor(mutation.addedNodes[j])) {
                   onlyGhosts = false;
-                  editor.ui.makeMutationUndoable(mutation);
+                  editor.ui._internals.makeMutationUndoable(mutation);
                   // Please do not comment out this line until we get proper clever save.
                   console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
                   console.log("TIP: Ignore node and siblings with this script:");
@@ -2491,7 +2497,7 @@ initialScript = serverOwned "initial script" <| [
               for(var j = 0; j < mutation.removedNodes.length; j++) {
                 if(!editor.isGhostNode(mutation.removedNodes[j]) && !editor.isIgnoringChildNodes(mutation.target) && !editor.hasIgnoringAncestor(mutation.target)) {
                   onlyGhosts = false;
-                  editor.ui.makeMutationUndoable(mutation);
+                  editor.ui._internals.makeMutationUndoable(mutation);
                   // Please do not comment out this line until we get proper clever save.
                   console.log(`Removed node ${j} was not a ghost`, mutation);
                   console.log("TIP: Mark this element as ghost:");
@@ -2502,7 +2508,7 @@ initialScript = serverOwned "initial script" <| [
             }
           } else {
             onlyGhosts = false;
-            editor.ui.makeMutationUndoable(mutation);
+            editor.ui._internals.makeMutationUndoable(mutation);
             // Please do not comment out this line until we get proper clever save.
             console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
           }
@@ -2529,10 +2535,10 @@ initialScript = serverOwned "initial script" <| [
           }
           return;
         }
-      } //editor.ui.handleMutations
+      } //editor.ui._internals.handleMutations
       
       //debugging function for printing both teh undo and redo stacks.
-      editor.ui.printstacks = function printstacks() {
+      editor.ui._internals.printstacks = function printstacks() {
         console.log("-----------------------------");
         let i, j;
         console.log("UNDO STACK:");
@@ -2550,7 +2556,7 @@ initialScript = serverOwned "initial script" <| [
           }
         }
         console.log("-----------------------------");
-      }; // editor.ui.printstacks
+      }; // editor.ui._internals.printstacks
       
       // Returns true if Editor's undo feature should be enabled.
       editor.ui.canUndo = function canUndo() {
@@ -2670,7 +2676,7 @@ initialScript = serverOwned "initial script" <| [
         //turn MutationObserver back on
         editor_resumeWatching();
         editor.ui.refresh();
-        //editor.ui.printstacks();
+        //editor.ui._internals.printstacks();
         })();
         return 1;
       }; //editor.ui.undo
@@ -2766,7 +2772,7 @@ initialScript = serverOwned "initial script" <| [
         }
         editor_resumeWatching();
         editor.ui.refresh();
-        //editor.ui.printstacks();
+        //editor.ui._internals.printstacks();
         })();
         return 1;
       }; //editor.ui.redo
@@ -2786,140 +2792,114 @@ initialScript = serverOwned "initial script" <| [
         return editor.ui.model.undoStack.length !== editor.ui.model.undosBeforeSave;
       };
       
-    }; // editor.ui.loadInterface
-    
-    document.addEventListener("DOMContentLoaded", function(event) { 
-        if(editor.config.canEditPage) {
-          editor.ui.loadInterface();
-          
-          if (typeof editor.ui.model === "object" && typeof editor.ui.model.outputObserver !== "undefined") {
-            editor.ui.model.outputObserver.disconnect();
-          }
-          editor.ui.model.outputObserver = new MutationObserver(editor.ui.handleMutations);
-          editor.ui.model.outputObserver.observe
-            ( document.body.parentElement
-            , { attributes: true
-              , childList: true
-              , characterData: true
-              , attributeOldValue: true
-              , characterDataOldValue: true
-              , subtree: true
-              }
-            );
-          
-          editor.ui.refresh();
+      // When selecting some text, mouse up on document, the focus node can be outside of the anchor node. We want to prevent this from happening
+      // This is because triple click in Chrome selects the whitespace after the last word as well.
+      editor.ui.fixSelection = function fixSelection() {
+        if(+new Date() < fixSelection.lastChanged + 1000) return;
+        var sel = window.getSelection();
+        if(!sel || !sel.rangeCount) return;
+        sel = sel.getRangeAt(0);
+        if(sel.startContainer.nodeType !== 3) return;
+        if(sel.endContainer.nodeType !== 1) return;
+        // We'll ensure that the end of selection is inside a text node and that it does not goes ouside a boundary.
+        let tmp = sel.startContainer;
+        let finalTextNode = tmp.parentNode.childNodes[tmp.parentNode.childNodes.length - 1];
+        while(finalTextNode.nodeType != 3) {
+          finalTextNode = finalTextNode.previousSibling;
         }
-    });
-  })(editor);
- 
-  editor._internals.register(); // Hook into navigation, copy/paste, listen to insertions.
-  
-  relativeToAbsolute = editor.relativeToAbsolute; // TODO: Remove
+        if(finalTextNode) { // finalTextNode.nodeType === 3
+          var range = document.createRange();
+          range.setStart(sel.startContainer, sel.startOffset);
+          range.setEnd(finalTextNode, finalTextNode.textContent.length);
+          editor.ui.clearTextSelection();
+          window.getSelection().addRange(range);
+          fixSelection.lastChanged = +new Date();
+        }
+      }; // editor.ui.fixSelection
+      
+      
+      // Returns a copy of the selection before clearing it.
+      editor.ui.clearTextSelection = function clearTextSelection() {
+        var sel = window.getSelection();
+        if(!sel || !sel.rangeCount) return;
+        var selection = sel.getRangeAt(0);
+        if (window.getSelection) {
+          if (window.getSelection().empty) {  // Chrome
+            window.getSelection().empty();
+          } else if (window.getSelection().removeAllRanges) {  // Firefox
+            window.getSelection().removeAllRanges();
+          }
+        } else if (document.selection) {  // IE?
+          document.selection.empty();
+        }
+        return selection;
+      }; // editor.ui.clearTextSelection
+      
+      // Handle a file event (e.g. uploaded files)
+      editor.ui.handleDroppedFiles =
+        function handleDroppedFiles(evt) {
+          evt.stopPropagation();
+          evt.preventDefault();
+          var files = evt.dataTransfer.files; // FileList object
+          editor.uploadFilesAtCursor(files);
+        }
+      
+      editor.ui.handleDragOver =
+        function handleDragOver(evt) {
+          evt.stopPropagation();
+          evt.preventDefault();
+          evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
+        }
+      
+      
+      
+    }; // editor.ui._internals.loadInterface
 
-  function removeTimestamp(path) {
-    var dummyIndex = path.indexOf("?");
-    if(dummyIndex > -1) {
-      path = path.slice(0, dummyIndex);
-    }
-    return path;
-  }
-  function setTimestamp(path) {
-    path = removeTimestamp(path);
-    path += "?timestamp=" + (+new Date());
-    return path;
-  }
-  
-  
-</script>,
--- The following is replaced by an inline <style> for when Editor runs as a file opener.
--- And the path is modified when Editor runs as Thaditor.
-<link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface">
-]
-
--- Script added to the end of the page
--- It injects the UI elements
--- TODO: Move all functions to the initial script. Only call Editor's API here.
-lastEditScript = """
-    el = editor.el;
-    console.log("lastEditScript running");
-
-    window.onpopstate = function(e){
+    // Initialize Editor's interface.
+    editor.ui.init = function() {
+      // Loads all the Editor interfaces.
+      editor.ui._internals.loadInterface();
+        
+      // Register the output observer
+      if (typeof editor.ui.model === "object" && typeof editor.ui.model.outputObserver !== "undefined") {
+        editor.ui.model.outputObserver.disconnect();
+      }
+      editor.ui.model.outputObserver = new MutationObserver(editor.ui._internals.handleMutations);
+      editor.ui.model.outputObserver.observe
+        ( document.body.parentElement
+        , { attributes: true
+          , childList: true
+          , characterData: true
+          , attributeOldValue: true
+          , characterDataOldValue: true
+          , subtree: true
+          }
+        );
+      
+      // Opens Editor's uI
+      editor.ui.refresh();
+      
+      // Register navigation to compute pages in background.
+      window.onpopstate = function(e){
         console.log("onpopstate", e);
         if(e.state && e.state.localURL) {
           editor.navigateTo(location, true);
         } else {
           editor.navigateTo(location.pathname + location.search, true);
         }
-    };
-    
-    function getSel() {
-      var sel = window.getSelection();
-      if(!sel || !sel.rangeCount) return;
-      sel = sel.getRangeAt(0);
-      return sel;
-    }
-    
-    // When selecting some text, mouse up on document, the focus node can be outside of the anchor node. We want to prevent this from happening
-    // This is because triple click in Chrome selects the whitespace after the last word as well.
-    function fixSelection() {
-      var sel = window.getSelection();
-      if(!sel || !sel.rangeCount) return;
-      sel = sel.getRangeAt(0);
-      if(sel.startContainer.nodeType !== 3) return;
-      if(sel.endContainer.nodeType !== 1) return;
-      // We'll ensure that the end of selection is inside a text node and that it does not goes ouside a boundary.
-      let tmp = sel.startContainer;
-      let finalTextNode = tmp.parentNode.childNodes[tmp.parentNode.childNodes.length - 1];
-      while(finalTextNode.nodeType != 3) {
-        finalTextNode = finalTextNode.previousSibling;
-      }
-      if(finalTextNode) { // finalTextNode.nodeType === 3
-        var range = document.createRange();
-        range.setStart(sel.startContainer, sel.startOffset);
-        range.setEnd(finalTextNode, finalTextNode.textContent.length);
-        clearTextSelection();
-        window.getSelection().addRange(range);
-      }
-    }
-    
-    //document.addEventListener("selectionchange", fixSelection);
-    
-    function clearTextSelection() {
-      var sel = window.getSelection();
-      if(!sel || !sel.rangeCount) return;
-      var selection = sel.getRangeAt(0);
-      if (window.getSelection) {
-        if (window.getSelection().empty) {  // Chrome
-          window.getSelection().empty();
-        } else if (window.getSelection().removeAllRanges) {  // Firefox
-          window.getSelection().removeAllRanges();
-        }
-      } else if (document.selection) {  // IE?
-        document.selection.empty();
-      }
-      return selection;
-    }
-    
-    function handleFileSelect(evt) {
-      evt.stopPropagation();
-      evt.preventDefault();
-      var files = evt.dataTransfer.files; // FileList object
-      editor.uploadFilesAtCursor(files);
-    }
-    
-    function handleDragOver(evt) {
-      evt.stopPropagation();
-      evt.preventDefault();
-      evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
-    }
-    if(typeof editor.config.varedit == "boolean" && editor.config.varedit || typeof editor.config.varedit != "boolean") {
+      };
+      
+      // Fix selection when it happens
+      document.addEventListener("selectionchange", editor.ui.fixSelection);
+      
+      // File dropping
       var dropZone = document.body;
-      dropZone.addEventListener('dragover', handleDragOver, false);
-      dropZone.addEventListener('drop', handleFileSelect, false);
+      dropZone.addEventListener('dragover', editor.ui.handleDragOver, false);
+      dropZone.addEventListener('drop', editor.ui.handleDroppedFiles, false);
     
-      var lastclick = 0;
-      // Shortcuts
-      document.onkeydown = function(e) {
+      // Key Shortcuts
+      var lastKeyPress = 0;
+      document.addEventListener("keydown", function(e) {
         var key = e.which || e.keyCode;
         if (e.which == 83 && (e.ctrlKey || e.metaKey)) { // CTRL+S or CMD+S: Save
           if(document.getElementById("savebutton") && document.getElementById("savebutton").onclick) {
@@ -2928,13 +2908,13 @@ lastEditScript = """
           e.preventDefault();
         }
         if(e.which == 75 && (e.ctrlKey || e.metaKey)) { // CTRL+K: Insert link
-          if(new Date().valueOf() - lastclick > 100) {
+          if(new Date().valueOf() - lastKeyPress > 100) {
             document.execCommand('createLink', false, 'http://');
             e.preventDefault();
             var s = getSelection();
             s = s ? s.anchorNode : s;
             s = s ? s.parentNode : s;
-            lastclick = new Date().valueOf();
+            lastKeyPress = new Date().valueOf();
             onClickGlobal({target: s, modify: true});
           }
           // Open link.
@@ -2961,9 +2941,9 @@ lastEditScript = """
             editor.ui.refresh();
           }
         }
-      };
+      });
       
-      var bodyeditable = document.querySelector("body[contenteditable]");
+      var bodyeditable = document.querySelector("body");
       var onKeypress = e => {
         if(e.keyCode==13 && !e.shiftKey){ // [Enter] key
             // If we are inside a paragraph, we split the paragraph.
@@ -3006,7 +2986,47 @@ lastEditScript = """
         bodyeditable.configured = true;
         bodyeditable.addEventListener("keypress", onKeypress, true);
       }
+    } // editor.ui.init
+
+    document.addEventListener("DOMContentLoaded", function(event) { 
+      if(editor.config.canEditPage) {
+        editor.ui.init();
+      }
+    });
+  })(editor);
+ 
+  editor._internals.register(); // Hook into navigation, copy/paste, listen to insertions.
+  
+  relativeToAbsolute = editor.relativeToAbsolute; // TODO: Remove
+
+  // TODO: Make it local somewhere.
+  function removeTimestamp(path) {
+    var dummyIndex = path.indexOf("?");
+    if(dummyIndex > -1) {
+      path = path.slice(0, dummyIndex);
     }
+    return path;
+  }
+  function setTimestamp(path) {
+    path = removeTimestamp(path);
+    path += "?timestamp=" + (+new Date());
+    return path;
+  }
+  
+  
+</script>,
+-- The following is replaced by an inline <style> for when Editor runs as a file opener.
+-- And the path is modified when Editor runs as Thaditor.
+<link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface">
+]
+
+-- Script added to the end of the page
+-- It injects the UI elements
+-- TODO: Move all functions to the initial script. Only call Editor's API here.
+lastEditScript = """
+    el = editor.el;
+    console.log("lastEditScript running");
+    
     
     var observeTargetA = null;
     
@@ -3392,7 +3412,7 @@ lastEditScript = """
         editor_stopWatching();
         let oldValue = await assignTmpCss(linkNode, newValue, true);
         let m = {type: "linkHrefCSS", target: linkNode, oldValue: oldValue, newValue: newValue};
-        editor.ui.makeMutationUndoable(m);
+        editor.ui._internals.makeMutationUndoable(m);
         editor.ui.syncUndoRedoButtons();
         editor_resumeWatching();
         return;
@@ -3451,8 +3471,10 @@ lastEditScript = """
     function init_css_parser() {
       let thaditorLossLessCss = document.querySelector("script#thaditor-losslesscss");
       if(!thaditorLossLessCss) {
-        let script = el("script", {id: "thaditor-losslesscss", class:"editor-interface", type:"text/javascript", src:"https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js", async:"true", onload:"editor.ui.setLosslessCssParser(losslesscssjs);"});
+        let script = el("script", {id: "thaditor-losslesscss", class:"editor-interface", type:"text/javascript", src:"https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js", async:"true", onload:"editor.ui._internals.setLosslessCssParser(losslesscssjs);", isghost: "true"});
         document.head.appendChild(script);
+      } else {
+        console.log("thaditorLossLessCss found", thaditorLossLessCss);
       }
     }
          
@@ -3577,7 +3599,7 @@ lastEditScript = """
                 editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = c;
                 editor_model.notextselection = true;
-                if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
+                if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
                 editor.ui.refresh();
               }
             } else {
@@ -3604,7 +3626,7 @@ lastEditScript = """
               editor_model.clickedElem.removeAttribute("ghost-hovered");
               editor_model.clickedElem = c;
               editor_model.notextselection = true;
-              if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
+              if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
               editor.ui.refresh();
             }
             if (selectMiddleChild) {
@@ -3626,7 +3648,7 @@ lastEditScript = """
                 editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = c;
                 editor_model.notextselection = true;
-                if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
+                if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
                 editor.ui.refresh();
               }
             } else {
@@ -3653,7 +3675,7 @@ lastEditScript = """
                 editor_model.clickedElem.removeAttribute("ghost-hovered");
                 editor_model.clickedElem = clickedElem;
                 editor_model.notextselection = true;
-                if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
+                if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
                 editor.ui.refresh();
               }
               displayElemAttr(mainElemDiv, clickedElem);
@@ -3724,7 +3746,7 @@ lastEditScript = """
                   editor_model.clickedElem.removeAttribute("ghost-hovered");
                   editor_model.clickedElem = clickedElem.parentElement;
                   editor_model.notextselection = true;
-                  if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
+                  if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
                   editor.ui.refresh();
                 }
                 displayElemAttr(mainElemDiv, clickedElem.parentElement);
@@ -3945,7 +3967,7 @@ lastEditScript = """
                 rawCSS.push({text: linkOrStyleNode.textContent, tag: linkOrStyleNode});
               }
             }
-            let CSSparserBuilder = await editor.ui.getLosslessCssParser;
+            let CSSparserBuilder = await editor.ui._internals.getLosslessCssParser;
             let CSSparser = new CSSparserBuilder();
             function findText(parsed, startIndex, endIndex) { //for css + img replacement
               let textSegment = "";
@@ -4221,7 +4243,7 @@ lastEditScript = """
                     (async () => {
                       if(this.storedCSS.orgTag.tagName != "LINK") { // style node
                         let throwError = false;
-                        let CSSparserBuilder = await editor.ui.getLosslessCssParser;
+                        let CSSparserBuilder = await editor.ui._internals.getLosslessCssParser;
                         let CSSparser = new CSSparserBuilder();
                         let curCSSState = CSSparser.parseCSS(this.value);
                         //console.log(curCSSState);
@@ -4602,7 +4624,7 @@ lastEditScript = """
         },
         render: function render(editor_model, innerBox) {
           if(!this.enabled(editor_model)) {
-            delete editor.ui.saveBetweenReloads["TextEditing"];
+            delete editor.ui._internals.saveBetweenReloads["TextEditing"];
             return "Click on an element that contains some text.";
           }
           const clickedElem = editor_model.clickedElem;
@@ -4664,7 +4686,7 @@ lastEditScript = """
             console.log("No restoration data");
           }
           
-          editor.ui.saveBetweenReloads["TextEditing"] = (ret => () => {
+          editor.ui._internals.saveBetweenReloads["TextEditing"] = (ret => () => {
             let res = [];
             for(let i = 0; i < ret.childNodes.length; i++) {
               if(ret.childNodes[i].tagName === "TEXTAREA") {
@@ -6042,7 +6064,7 @@ lastEditScript = """
         return confirmation;
       } else if(!editor.config.thaditor) { // Send a close message in case this was a file opened from Desktop
         var xmlhttp = new XMLHttpRequest();
-        xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
+        xmlhttp.onreadystatechange = editor.ui._internals.handleServerResponse(xmlhttp);
         xmlhttp.open("POST", location.pathname + location.search, false); // Async
         xmlhttp.setRequestHeader("close", "true");
         xmlhttp.send("{\"a\":3}");
