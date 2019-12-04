@@ -998,7 +998,7 @@ recoveredEvaluatedPage: Html
 recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
   case evaluatedPage of
   Err msg -> serverOwned "Error Report" <|
-    <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><button onclick="reloadPage();" title="Reload the current page">Reload</button><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
+    <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><button onclick="editor.reload();" title="Reload the current page">Reload</button><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
   Ok page -> page
 
 jsEnabled = boolVar "js" True
@@ -1900,7 +1900,7 @@ initialScript = serverOwned "initial script" <| [
         
         if(typeof editor.config.canEditPage == "boolean" && !editor.config.canEditPage && !editor.config.varls) {
           document.body.insertBefore(editor.ui.switchEditBox(true), document.body.childNodes[0]);
-        } 
+        }
       });
       
       // Immediately start listening to insertions to mark them as ghosts.
@@ -1926,22 +1926,22 @@ initialScript = serverOwned "initial script" <| [
     editor.config.buttonHeight = () => editor.config.onMobile() ? 48 : 30;
     editor.config.buttonWidth  = () => editor.config.onMobile() ? 48 : 40;
     
-  })(editor);
- 
-  //
-  editor._internals.register(); // Hook into navigation, copy/paste, listen to insertions.
-</script>,
--- The following is replaced by an inline <style> for when Editor runs as a file opener.
--- And the path is modified when Editor runs as Thaditor.
-<link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface">
-]
-
--- Script added to the end of the page
--- It injects the UI elements
-lastEditScript = """
-    el = editor.el;
-    console.log("lastEditScript running");
+    // Helper.
+    function relativeToAbsolute(url) {
+      if(isAbsolute(url) || url && url.length && url[0] == "/") return url;
+      let u =  new URL(location.href);
+      if(url[0] === "#") {
+        return u.pathname + url; 
+      }
+      else {
+        return u.pathname.replace(/[^\/]*$/, "") + url;
+      }
+    }
+    editor.relativeToAbsolute = relativeToAbsolute; // TODO: Remove
     
+    /******************************
+          Editor's interface.
+    ******************************/
     editor.ui.loadInterface = function() {
       // Insets the modification menu.
       editor.ui.contextMenu = document.querySelector("div#context-menu");
@@ -2088,265 +2088,278 @@ lastEditScript = """
           applyGhostAttributes(saved);
           setTimeout(() => window.scroll(scrollX, scrollY), 10);
         };
-      })()
-    }
-    
-    if(editor.config.canEditPage) { // TODO: If false, nothing else should execute.
-      editor.ui.loadInterface();
-    }
-    
-    // Handle a rewrite message from the worker
-    editor.ui.handleRewriteMessage = function(e) {
-      editor_model.isSaving = false;
+      })(); // editor.ui.writeDocument 
+      
+        // Handle a rewrite message from the worker
+      editor.ui.handleRewriteMessage = function(e) {
+        editor_model.isSaving = false;
 
-      //Rewrite the document, restoring some of the UI afterwards.
-      editor.ui.writeDocument(e.data.text);
-      
-      var newLocalURL = e.data.newLocalURL;
-      var newQueryStr = e.data.newQueryStr;
-      var ambiguityKey = e.data.ambiguityKey;
-      var ambiguityNumber = e.data.ambiguityNumber;
-      var ambiguitySelected = e.data.ambiguitySelected;
-      var ambiguityEnd = e.data.ambiguityEnd;
-      var ambiguitySummaries = e.data.ambiguitySummaries;
-      var opSummaryEncoded = e.data.opSummaryEncoded;
-      var replaceState = e.data.customRequestHeaders && e.data.customRequestHeaders.replaceState == "true";
-      if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
-         ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
-         ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
-        var n = JSON.parse(ambiguityNumber);
-        console.log ("editor.ui.handleRewriteMessage ambiguity");
-        var selected = JSON.parse(ambiguitySelected);
-        var summaries = JSON.parse(ambiguitySummaries);
+        //Rewrite the document, restoring some of the UI afterwards.
+        editor.ui.writeDocument(e.data.text);
         
-        var disambiguationMenuContent = [];
-        disambiguationMenuContent.push(el("span#ambiguity-id", {v: ambiguityKey}, "Choose the update you prefer, and click the save button:"));
-        // Find the common path of all files so that we don't need to repeat its name or path.
-        var fileOf = x => x.replace(/^(.*): *\n[\s\S]*$/, "$1")
-        var commonPrefix = fileOf(summaries[1]);
-        for(var i = 1; i <= n; i++) {
-          while(!fileOf(summaries[i - 1]).startsWith(commonPrefix)) {
-            let n = commonPrefix.replace(/^(.*)(?:\/|\\).*$/, "$1");
-            commonPrefix = n === commonPrefix ? "" : n;
-          }
-        }
-        if(commonPrefix) {
-          disambiguationMenuContent.push(el("span#ambiguity-prefix", {}, commonPrefix + ":"));
-        }
-        for(var i = 1; i <= n; i++) {
-          var summary = summaries[i-1].substring(commonPrefix.length).
-                replace(/"/g,'&quot;').
-                replace(/</g, "&lt;").
-                replace(/---\)|\+\+\+\)/g, "</span>").
-                replace(/\(---/g, "<span class='remove'>").
-                replace(/\(\+\+\+/g, "<span class='add'>").
-                replace(/(\nL\d+C\d+:)(.*)/, "$1<span class='codepreview'>$2</span>");
-          disambiguationMenuContent.push(el("span.solution" + (i == selected ? ".selected" : "") + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
-          title: i == selected ? "Currently displaying this solution" : "Select this solution" + (i == n && ambiguityEnd != 'true' ? " (compute further solutions after if any)" : ""), onclick: i == selected ? `` : `this.classList.add('to-be-selected'); selectAmbiguity('${ambiguityKey}', ${i})`}, "", {innerHTML: "#" + i + " " + summary}));
-        }
-        disambiguationMenuContent.push(el("button#cancelAmbiguity.action-button", {title: "Revert to the original version", onclick: `cancelAmbiguity("${ambiguityKey}", ${selected})`}, "Cancel"));
-        editor_model.disambiguationMenu = el("div.disambiguationMenu", {}, disambiguationMenuContent);
-        editor_model.disambiguationMenu.ambiguityKey = ambiguityKey;
-        editor_model.disambiguationMenu.selected = selected;
-        editor_model.clickedElem = undefined;
-        editor_model.displayClickedElemAsMainElem = true;
-        editor_model.notextselection = false;
-        editor_model.caretPosition = undefined;
-        editor_model.link = undefined;
-        var advancedBlock = getEditorInterfaceByTitle("Advanced");
-        if(advancedBlock) advancedBlock.minimized = false;
-        editor_model.visible = true;
-        //editor_model.displaySource: false, // Keep source opened or closed
-        // TODO: Disable click or change in DOM until ambiguity is resolved.
-      } else { //no ambiguity
-        if(editor_model.disambiguationMenu && editor_model.disambiguationMenu.replayActionsAfterSave) {
-          console.log("disambiguationMenu was there. replaying actions");
-          editor_model.disambiguationMenu.replayActionsAfterSave("Modifications applied");
-        } else {
-          console.log("disambiguationMenu is not there.");
-        }
-        editor_model.disambiguationMenu = undefined;
-        if(opSummaryEncoded) {
-          var opSummary = decodeURI(opSummaryEncoded);
-          opSummary =
-            opSummary.
-            replace(/</g, "&lt;").
-            replace(/---\)/g, "</span>").
-            replace(/\(---/g, "<span class='remove'>").
-            replace(/\+\+\+\)/g, "</span>").
-            replace(/\(\+\+\+/g, "<span class='add'>");
-          editor_model.editor_log.push(opSummary);
-          // editor.ui.sendNotification(opSummary);
-        }
-      } // /noambiguity
-      var strQuery = "";
-      if(newQueryStr != null) { //newQueryStr = undefined ==> (newQueryStr !== null) ==> false;
-        var newQuery = JSON.parse(newQueryStr);
-        for(var i = 0; i < newQuery.length; i++) {
-          var {_1: key, _2: value} = newQuery[i];
-          strQuery = strQuery + (i == 0 ? "?" : "&") + key + (value === "" && key == "edit" ? "" : "=" + value)
-        } 
-      }
-      if(newLocalURL) { // Overrides query parameters
-        window.history[replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
-      } else if(strQuery) {
-        window.history.replaceState({}, "Current page", strQuery);
-      }
-      updateInteractionDiv(); 
-    }
-    
-    // Used only by the Editor webserver
-    editor.ui.handleServerResponse = xmlhttp => function () {
-        if (xmlhttp.readyState == XMLHttpRequest.DONE) {
-          editor.ui.handleRewriteMessage({
-            data: {
-              newLocalURL: xmlhttp.getResponseHeader("New-Local-URL"),
-              newQueryStr: xmlhttp.getResponseHeader("New-Query"),
-              ambiguityKey: xmlhttp.getResponseHeader("Ambiguity-Key"),
-              ambiguityNumber: xmlhttp.getResponseHeader("Ambiguity-Number"),
-              ambiguitySelected: xmlhttp.getResponseHeader("Ambiguity-Selected"),
-              ambiguityEnd: xmlhttp.getResponseHeader("Ambiguity-End"),
-              ambiguitySummaries: xmlhttp.getResponseHeader("Ambiguity-Summaries"),
-              opSummaryEncoded: xmlhttp.getResponseHeader("Operations-Summary"),
-              customRequestHeaders: xmlhttp.customRequestHeaders,
-              text: xmlhttp.responseText
+        var newLocalURL = e.data.newLocalURL;
+        var newQueryStr = e.data.newQueryStr;
+        var ambiguityKey = e.data.ambiguityKey;
+        var ambiguityNumber = e.data.ambiguityNumber;
+        var ambiguitySelected = e.data.ambiguitySelected;
+        var ambiguityEnd = e.data.ambiguityEnd;
+        var ambiguitySummaries = e.data.ambiguitySummaries;
+        var opSummaryEncoded = e.data.opSummaryEncoded;
+        var replaceState = e.data.customRequestHeaders && e.data.customRequestHeaders.replaceState == "true";
+        if(ambiguityKey !== null && typeof ambiguityKey != "undefined" &&
+           ambiguityNumber !== null && typeof ambiguityNumber != "undefined" &&
+           ambiguitySelected !== null && typeof ambiguitySelected != "undefined") {
+          var n = JSON.parse(ambiguityNumber);
+          console.log ("editor.ui.handleRewriteMessage ambiguity");
+          var selected = JSON.parse(ambiguitySelected);
+          var summaries = JSON.parse(ambiguitySummaries);
+          
+          var disambiguationMenuContent = [];
+          disambiguationMenuContent.push(el("span#ambiguity-id", {v: ambiguityKey}, "Choose the update you prefer, and click the save button:"));
+          // Find the common path of all files so that we don't need to repeat its name or path.
+          var fileOf = x => x.replace(/^(.*): *\n[\s\S]*$/, "$1")
+          var commonPrefix = fileOf(summaries[1]);
+          for(var i = 1; i <= n; i++) {
+            while(!fileOf(summaries[i - 1]).startsWith(commonPrefix)) {
+              let n = commonPrefix.replace(/^(.*)(?:\/|\\).*$/, "$1");
+              commonPrefix = n === commonPrefix ? "" : n;
             }
-          })
-        } //xhr.onreadystatechange == done
-    } //editor.ui.handleServerResponse
-    
-    window.onpopstate = function(e){
-        console.log("onpopstate", e);
-        if(e.state && e.state.localURL) {
-          navigateLocal(location, true);
-        } else {
-          navigateLocal(location.pathname + location.search, true);
+          }
+          if(commonPrefix) {
+            disambiguationMenuContent.push(el("span#ambiguity-prefix", {}, commonPrefix + ":"));
+          }
+          for(var i = 1; i <= n; i++) {
+            var summary = summaries[i-1].substring(commonPrefix.length).
+                  replace(/"/g,'&quot;').
+                  replace(/</g, "&lt;").
+                  replace(/---\)|\+\+\+\)/g, "</span>").
+                  replace(/\(---/g, "<span class='remove'>").
+                  replace(/\(\+\+\+/g, "<span class='add'>").
+                  replace(/(\nL\d+C\d+:)(.*)/, "$1<span class='codepreview'>$2</span>");
+            disambiguationMenuContent.push(el("span.solution" + (i == selected ? ".selected" : "") + (i == n && ambiguityEnd != 'true' ? '.notfinal' : ''), {
+            title: i == selected ? "Currently displaying this solution" : "Select this solution" + (i == n && ambiguityEnd != 'true' ? " (compute further solutions after if any)" : ""), onclick: i == selected ? `` : `this.classList.add('to-be-selected'); editor.ambiguity.select('${ambiguityKey}', ${i})`}, "", {innerHTML: "#" + i + " " + summary}));
+          }
+          disambiguationMenuContent.push(el("button#ambiguityCancel.action-button", {title: "Revert to the original version", onclick: `editor.ambiguity.cancel("${ambiguityKey}", ${selected})`}, "Cancel"));
+          editor_model.disambiguationMenu = el("div.disambiguationMenu", {}, disambiguationMenuContent);
+          editor_model.disambiguationMenu.ambiguityKey = ambiguityKey;
+          editor_model.disambiguationMenu.selected = selected;
+          editor_model.clickedElem = undefined;
+          editor_model.displayClickedElemAsMainElem = true;
+          editor_model.notextselection = false;
+          editor_model.caretPosition = undefined;
+          editor_model.link = undefined;
+          var advancedBlock = getEditorInterfaceByTitle("Advanced");
+          if(advancedBlock) advancedBlock.minimized = false;
+          editor_model.visible = true;
+          //editor_model.displaySource: false, // Keep source opened or closed
+          // TODO: Disable click or change in DOM until ambiguity is resolved.
+        } else { //no ambiguity
+          if(editor_model.disambiguationMenu && editor_model.disambiguationMenu.replayActionsAfterSave) {
+            console.log("disambiguationMenu was there. replaying actions");
+            editor_model.disambiguationMenu.replayActionsAfterSave("Modifications applied");
+          } else {
+            console.log("disambiguationMenu is not there.");
+          }
+          editor_model.disambiguationMenu = undefined;
+          if(opSummaryEncoded) {
+            var opSummary = decodeURI(opSummaryEncoded);
+            opSummary =
+              opSummary.
+              replace(/</g, "&lt;").
+              replace(/---\)/g, "</span>").
+              replace(/\(---/g, "<span class='remove'>").
+              replace(/\+\+\+\)/g, "</span>").
+              replace(/\(\+\+\+/g, "<span class='add'>");
+            editor_model.editor_log.push(opSummary);
+            // editor.ui.sendNotification(opSummary);
+          }
+        } // /noambiguity
+        var strQuery = "";
+        if(newQueryStr != null) { //newQueryStr = undefined ==> (newQueryStr !== null) ==> false;
+          var newQuery = JSON.parse(newQueryStr);
+          for(var i = 0; i < newQuery.length; i++) {
+            var {_1: key, _2: value} = newQuery[i];
+            strQuery = strQuery + (i == 0 ? "?" : "&") + key + (value === "" && key == "edit" ? "" : "=" + value)
+          } 
         }
-    };
-    
-    
-    function handleSendRequestFinish(data) {
-      /*
-        We want to undo everything in the undo stack that has been done since the save began.
-        In the process of vanilla undoing this (using mark's function), the items will be
-        pushed onto the redoStack in the normal way, s.t. we can redo them in a moment.
-        Once we're at the state we were at when we began to save, we re-write the page
-        with the confirmed content that the worker gave us.
-        Once the confirmed content has been rewritten, we have undo/redo stacks that point,
-        as the undo/redo stacks are an array of array of MutationRecords, all of whose target
-        has just been erased and replaced with a new object. 
-        So we need to convert the old UR stacks to be pointing to the right objects.
-        We solve this in the undo()/redo() functions, by checking to see if the object
-        pointed to in the mutationrecord is still connected to the active DOM. if not,
-        we use the inactive node to record the path up the tree, and search for the
-        corresponding node in the newly active tree, replacing the MR.target with the active one.
-        Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
-        the state pre-update & post-save.
-      */
-      // TODO: In case of ambiguity, only replay undo/redo after ambiguity has been resolved.
-      const ads = editor_model.actionsDuringSave;
-      const adsLen = editor_model.actionsDuringSave.length;
-      ads.forEach((action) => {
-        if (action == "undo") {
-          undo();
-        } else if (action == "redo") {
-          redo();
-        } else {
-          throw new Error("Unidentified action in restoring post-save state post-save");
+        if(newLocalURL) { // Overrides query parameters
+          window.history[replaceState ? "replaceState" : "pushState"]({localURL: newLocalURL}, "Nav. to " + newLocalURL, newLocalURL);
+        } else if(strQuery) {
+          window.history.replaceState({}, "Current page", strQuery);
         }
-      });
+        editor.ui.refresh(); 
+      }; // editor.ui.handleRewriteMessage
       
-      editor_model.outputObserver.disconnect();
-      editor.ui.handleRewriteMessage({data: data});
-      // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
-      setTimeout(function() {
-        var replayActionsAfterSave = msg => function(msgOverride) {
-          console.log("replaying actions after save");
-          const newAds = editor_model.actionsDuringSave;
-          const newAdsLen = newAds.length;
-          for (let i = 0; i < adsLen; i++) {
-            if (newAds[i] == "undo") {
-              undo();
-            } else if (newAds[i] == "redo") {
-              redo();
-            } else {
-              throw new Error("unidentified action in actionsduringsave");
+      // Used only by the Editor webserver (editor.config.thaditor == false)
+      editor.ui.handleServerResponse = xmlhttp => function () {
+          if (xmlhttp.readyState == XMLHttpRequest.DONE) {
+            editor.ui.handleRewriteMessage({
+              data: {
+                newLocalURL: xmlhttp.getResponseHeader("New-Local-URL"),
+                newQueryStr: xmlhttp.getResponseHeader("New-Query"),
+                ambiguityKey: xmlhttp.getResponseHeader("Ambiguity-Key"),
+                ambiguityNumber: xmlhttp.getResponseHeader("Ambiguity-Number"),
+                ambiguitySelected: xmlhttp.getResponseHeader("Ambiguity-Selected"),
+                ambiguityEnd: xmlhttp.getResponseHeader("Ambiguity-End"),
+                ambiguitySummaries: xmlhttp.getResponseHeader("Ambiguity-Summaries"),
+                opSummaryEncoded: xmlhttp.getResponseHeader("Operations-Summary"),
+                customRequestHeaders: xmlhttp.customRequestHeaders,
+                text: xmlhttp.responseText
+              }
+            })
+          } //xhr.onreadystatechange == done
+      }; //editor.ui.handleServerResponse
+      
+      editor._internals.handleSendRequestFinish = function(data) {
+        /*
+          We want to undo everything in the undo stack that has been done since the save began.
+          In the process of vanilla undoing this (using mark's function), the items will be
+          pushed onto the redoStack in the normal way, s.t. we can redo them in a moment.
+          Once we're at the state we were at when we began to save, we re-write the page
+          with the confirmed content that the worker gave us.
+          Once the confirmed content has been rewritten, we have undo/redo stacks that point,
+          as the undo/redo stacks are an array of array of MutationRecords, all of whose target
+          has just been erased and replaced with a new object. 
+          So we need to convert the old UR stacks to be pointing to the right objects.
+          We solve this in the undo()/redo() functions, by checking to see if the object
+          pointed to in the mutationrecord is still connected to the active DOM. if not,
+          we use the inactive node to record the path up the tree, and search for the
+          corresponding node in the newly active tree, replacing the MR.target with the active one.
+          Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
+          the state pre-update & post-save.
+        */
+        // TODO: In case of ambiguity, only replay undo/redo after ambiguity has been resolved.
+        const ads = editor_model.actionsDuringSave;
+        const adsLen = editor_model.actionsDuringSave.length;
+        ads.forEach((action) => {
+          if (action == "undo") {
+            undo();
+          } else if (action == "redo") {
+            redo();
+          } else {
+            throw new Error("Unidentified action in restoring post-save state post-save");
+          }
+        });
+        
+        editor_model.outputObserver.disconnect();
+        editor.ui.handleRewriteMessage({data: data});
+        // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
+        setTimeout(function() {
+          var replayActionsAfterSave = msg => function(msgOverride) {
+            console.log("replaying actions after save");
+            const newAds = editor_model.actionsDuringSave;
+            const newAdsLen = newAds.length;
+            for (let i = 0; i < adsLen; i++) {
+              if (newAds[i] == "undo") {
+                undo();
+              } else if (newAds[i] == "redo") {
+                redo();
+              } else {
+                throw new Error("unidentified action in actionsduringsave");
+              }
+            }
+            if(newAdsLen) {
+              editor.ui.refresh();
+            }
+            if(msg) {
+              setTimeout(() => {
+                 editor.ui.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
+              }, 0);
             }
           }
-          if(newAdsLen) {
-            updateInteractionDiv();
+          let what = data.what ? data.what + " completed." : undefined;
+          if(!data.isAmbiguous || !editor_model.disambiguationMenu) {
+            replayActionsAfterSave(what)();
+          } else {
+            editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
           }
-          if(msg) {
-            setTimeout(() => {
-               editor.ui.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
-            }, 0);
-          }
-        }
-        let what = data.what ? data.what + " completed." : undefined;
-        if(!data.isAmbiguous || !editor_model.disambiguationMenu) {
-          replayActionsAfterSave(what)();
+        }, 10);
+      }; // editor._internals.handleSendRequestFinish
+      
+      // The "what" is so that we can show a notification when this is done
+      editor._internals.notifyServer = function(requestHeaders, toSend, what) {
+        if(editor.config.thaditor) {
+          thaditor.do( {action:"sendRequest",
+                      toSend: toSend || "{\"a\":2}",
+                      aq:editor_model.askQuestions,
+                      loc: location.pathname + location.search,
+                      requestHeaders: requestHeaders,
+                      what: what,
+                      server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)}
+          ).then(editor._internals.handleSendRequestFinish);
         } else {
-          editor_model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
-        }
-      }, 10);
-    } // handleSendRequestFinish
-    
-    // The "what" is so that we can show a notification when this is done.
-    notifyServer = (requestHeaders, toSend, what) => {
-      if(editor.config.thaditor) {
-        thaditor.do( {action:"sendRequest",
-                    toSend: toSend || "{\"a\":2}",
-                    aq:editor_model.askQuestions,
-                    loc: location.pathname + location.search,
-                    requestHeaders: requestHeaders,
-                    what: what,
-                    server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)}
-        ).then(handleSendRequestFinish);
-      } else {
-        var xmlhttp = new XMLHttpRequest();
-        xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
-        xmlhttp.open("POST", location.pathname + location.search);
-        xmlhttp.setRequestHeader("Content-Type", "application/json");
-        if(requestHeaders) {
-          for(let k in requestHeaders) {
-            xmlhttp.setRequestHeader(k, requestHeaders[k]);
+          var xmlhttp = new XMLHttpRequest();
+          xmlhttp.onreadystatechange = editor.ui.handleServerResponse(xmlhttp);
+          xmlhttp.open("POST", location.pathname + location.search);
+          xmlhttp.setRequestHeader("Content-Type", "application/json");
+          if(requestHeaders) {
+            for(let k in requestHeaders) {
+              xmlhttp.setRequestHeader(k, requestHeaders[k]);
+            }
           }
+          xmlhttp.customRequestHeaders = requestHeaders;
+          xmlhttp.send(toSend || "{\"a\":2}");
         }
-        xmlhttp.customRequestHeaders = requestHeaders;
-        xmlhttp.send(toSend || "{\"a\":2}");
-      }
-    }
+      }; // editor._internals.notifyServer
+      
+      // Recomputes the page and display it entirely.
+      editor.reload = function reloadPage() {
+        editor.ui.sendNotification("Reloading...");
+        editor._internals.notifyServer({reload: "true"}, undefined, "Reload");
+      }; // editor.reload
+      
+      // Computes the file at the given URL and display it with Editor.
+      // If replaceState it true, the back button will not work.
+      editor.navigateTo = function navigateTo(url, replaceState) {
+        editor.ui.sendNotification("Loading...");
+        editor._internals.notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
+      }; // editor.navigateTo
+      
+      editor.ambiguity = {};
+      
+      // Select and display the num-th alternative of the ambiguity indexed by key.
+      editor.ambiguity.select = function(key, num) {
+        editor._internals.notifyServer({"ambiguity-key": key, "select-ambiguity": JSON.stringify(num), "question": "true"});
+      }; // editor.ambiguity.select
+      
+      // Select the ambiguity result If the page displayed after an ambiguity is detected.
+      // For Thaditor, this changes nothing because files are already written, it only clears the ambiguity data.
+      editor.ambiguity.accept = function(key, num) {
+        editor._internals.notifyServer({"ambiguity-key": key, "accept-ambiguity": JSON.stringify(num)});
+      }; // editor.ambiguity.accept
+      
+      // Cancels the entire change that presented an ambiguity, indexed by key.
+      editor.ambiguity.cancel = function(key, num) {
+        editor._internals.notifyServer({"ambiguity-key": key, "cancel-ambiguity": JSON.stringify(num)});
+      }; // editor.ambiguity.cancel
+      
+      
+    }; // editor.ui.loadInterface
     
-    function reloadPage() {
-      editor.ui.sendNotification("Reloading...");
-      notifyServer({reload: "true"}, undefined, "Reload");
-    }
-    function relativeToAbsolute(url) {
-      if(isAbsolute(url) || url && url.length && url[0] == "/") return url;
-      let u =  new URL(location.href);
-      if(url[0] === "#") {
-        return u.pathname + url; 
-      }
-      else {
-        return u.pathname.replace(/[^\/]*$/, "") + url;
-      }
-    }
-    function navigateLocal(url, replaceState) {
-      editor.ui.sendNotification("Loading...");
-      notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
-    }
-    
-    function selectAmbiguity(key, num) {
-      notifyServer({"ambiguity-key": key, "select-ambiguity": JSON.stringify(num), "question": "true"});
-    }
-    
-    function acceptAmbiguity(key, num) {
-      notifyServer({"ambiguity-key": key, "accept-ambiguity": JSON.stringify(num)});
-    }
-    
-    function cancelAmbiguity(key, num) {
-      notifyServer({"ambiguity-key": key, "cancel-ambiguity": JSON.stringify(num)});
-    }
+    document.addEventListener("DOMContentLoaded", function(event) { 
+        if(editor.config.canEditPage) {
+          editor.ui.loadInterface();
+          editor.ui.refresh();
+        }
+    });
+  })(editor);
+ 
+  editor._internals.register(); // Hook into navigation, copy/paste, listen to insertions.
+  
+  relativeToAbsolute = editor.relativeToAbsolute; // TODO: Remove
+
+</script>,
+-- The following is replaced by an inline <style> for when Editor runs as a file opener.
+-- And the path is modified when Editor runs as Thaditor.
+<link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface">
+]
+
+-- Script added to the end of the page
+-- It injects the UI elements
+-- TODO: Move all functions to the initial script. Only call Editor's API here.
+lastEditScript = """
+    el = editor.el;
+    console.log("lastEditScript running");
     
     function sendModificationsToServer() {
       if(document.getElementById("notification-menu") != null) {
@@ -2365,10 +2378,10 @@ lastEditScript = """
       if(editor.config.thaditor) {
         editor_model.actionsDuringSave = [];
       }
-      updateInteractionDiv();
+      editor.ui.refresh();
       editor.ui.sendNotification("Saving...");
       const toSend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
-      notifyServer({"question": editor_model.askQuestions ? "true" : "false"}, toSend, "Save")
+      editor._internals.notifyServer({"question": editor_model.askQuestions ? "true" : "false"}, toSend, "Save")
     } //sendModificationsToServer
 
     function removeTimestamp(path) {
@@ -2424,6 +2437,15 @@ lastEditScript = """
       }     
     } //sendToUndo
 
+    window.onpopstate = function(e){
+        console.log("onpopstate", e);
+        if(e.state && e.state.localURL) {
+          editor.navigateTo(location, true);
+        } else {
+          editor.navigateTo(location.pathname + location.search, true);
+        }
+    };
+    
     // Timeout for autosave
     var t = undefined;
     
@@ -2657,7 +2679,7 @@ lastEditScript = """
       //TODO make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
       //turn MutationObserver back on
       editor_resumeWatching();
-      updateInteractionDiv();
+      editor.ui.refresh();
       //printstacks();
       })();
       return 1;
@@ -2752,7 +2774,7 @@ lastEditScript = """
         editor_model.actionsDuringSave.unshift("undo");
       }
       editor_resumeWatching();
-      updateInteractionDiv();
+      editor.ui.refresh();
       //printstacks();
       })();
       return 1;
@@ -2873,7 +2895,7 @@ lastEditScript = """
         } else {
           if(e.which == 27) { // Escape
             editor_model.clickedElem = undefined;
-            updateInteractionDiv();
+            editor.ui.refresh();
           }
         }
       };
@@ -3007,7 +3029,7 @@ lastEditScript = """
       editor_model.link_href_source = aElement; // So that we can modify it
       editor_model.insertElement = false;
       editor_model.notextselection = false;
-      updateInteractionDiv();
+      editor.ui.refresh();
       // Check if the event.target matches some selector, and do things...
     } //end of onClickGlobal
 
@@ -3027,7 +3049,7 @@ lastEditScript = """
     var closeBottomSVG = editor.svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
     var wasteBasketSVG = editor.svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
     var plusSVG = editor.svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
-    var liveLinkSVG = link => `<a class="livelink" href="javascript:if(nothingToLose()) { navigateLocal(relativeToAbsolute('${link}')) }">${editor.svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
+    var liveLinkSVG = link => `<a class="livelink" href="javascript:if(nothingToLose()) { editor.navigateTo(relativeToAbsolute('${link}')) }">${editor.svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
     var gearSVG = editor.svgFromPath("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
     var folderSVG = editor.svgFromPath("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
     var reloadSVG = editor.svgFromPath("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
@@ -3070,7 +3092,7 @@ lastEditScript = """
       editor_model.linkSelectMode = false;
       editor_model.linkSelectCallback = undefined;
       editor_model.linkSelectOtherMenus = undefined;
-      updateInteractionDiv();
+      editor.ui.refresh();
     }
     function noGhostHover (node) {
       curClass = node.getAttribute("class")
@@ -3090,14 +3112,14 @@ lastEditScript = """
       //console.log(event.target.getAttribute("class"));
       if(noGhostHover(event.target)) { 
         event.target.setAttribute("ghost-hovered", true);
-        updateInteractionDiv();
+        editor.ui.refresh();
         //console.log("hey!");
       }
     }
     function linkModeHover2(event) {
       if(noGhostHover(event.target)) {
         event.target.removeAttribute("ghost-hovered");
-        updateInteractionDiv();
+        editor.ui.refresh();
       }
     }
 
@@ -3205,7 +3227,7 @@ lastEditScript = """
       linkSelectMode :l
       isDraftSwitcherVisible :d
     */
-    var editor_model = { // Change this and call updateInteractionDiv() to get something consistent.
+    var editor_model = { // Change this and call editor.ui.refresh() to get something consistent.
       visible: ifAlreadyRunning ? editor_model.visible : false, //here
       clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor_model.clickedElem) : undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
@@ -3495,7 +3517,7 @@ lastEditScript = """
                 editor_model.clickedElem = c;
                 editor_model.notextselection = true;
                 if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
-                updateInteractionDiv();
+                editor.ui.refresh();
               }
             } else {
               childrenElemDiv.append(
@@ -3522,7 +3544,7 @@ lastEditScript = """
               editor_model.clickedElem = c;
               editor_model.notextselection = true;
               if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
-              updateInteractionDiv();
+              editor.ui.refresh();
             }
             if (selectMiddleChild) {
               childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector")[cnt].classList.add("selectedDom");
@@ -3544,7 +3566,7 @@ lastEditScript = """
                 editor_model.clickedElem = c;
                 editor_model.notextselection = true;
                 if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
-                updateInteractionDiv();
+                editor.ui.refresh();
               }
             } else {
               childrenElemDiv.append(
@@ -3571,7 +3593,7 @@ lastEditScript = """
                 editor_model.clickedElem = clickedElem;
                 editor_model.notextselection = true;
                 if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
-                updateInteractionDiv();
+                editor.ui.refresh();
               }
               displayElemAttr(mainElemDiv, clickedElem);
               // display children, if no previous selected child, display first 3 children elements in second part of selector
@@ -3605,7 +3627,7 @@ lastEditScript = """
                       editor_model.clickedElem.removeAttribute("ghost-hovered");
                       editor_model.clickedElem = c;
                       editor_model.notextselection = true;
-                      updateInteractionDiv();
+                      editor.ui.refresh();
                     }
                     cnt++;
                   }
@@ -3642,7 +3664,7 @@ lastEditScript = """
                   editor_model.clickedElem = clickedElem.parentElement;
                   editor_model.notextselection = true;
                   if(editor.config.onMobile()) editor_model.savedTextSelection = clearTextSelection();
-                  updateInteractionDiv();
+                  editor.ui.refresh();
                 }
                 displayElemAttr(mainElemDiv, clickedElem.parentElement);
               } else {
@@ -3705,7 +3727,7 @@ lastEditScript = """
                           clickedElem.remove();
                         }
                         editor_model.clickedElem = newel;
-                        updateInteractionDiv();
+                        editor.ui.refresh();
                       }
                     }
                   ),
@@ -3740,7 +3762,7 @@ lastEditScript = """
                               let livelinks = document.querySelectorAll(".livelink");
                               for(let livelink of livelinks) {
                                 let finalLink = livelink.matches("#context-menu *") ?
-                                  `javascript:if(nothingToLose()) { navigateLocal(relativeToAbsolute('${linkToEdit(this.value)}')) }` : this.value;
+                                  `javascript:if(nothingToLose()) { editor.navigateTo(relativeToAbsolute('${linkToEdit(this.value)}')) }` : this.value;
                                 livelink.setAttribute("href", finalLink);
                                 livelink.setAttribute("title", "Go to " + this.value);
                               }
@@ -3759,7 +3781,7 @@ lastEditScript = """
                       onclick: ((name) => function() {
                         clickedElem.removeAttribute(name);
                         editor_model.clickedElem = clickedElem;
-                        updateInteractionDiv();
+                        editor.ui.refresh();
                         })(name)
                       })
                     ]
@@ -3797,7 +3819,7 @@ lastEditScript = """
                           name,
                           document.querySelector("div.keyvalueadder input[name=value]").value
                         );
-                        updateInteractionDiv();
+                        editor.ui.refresh();
                         let d =  document.querySelector("div.keyvalue input#dom-attr-" + name);
                         if(d) d.focus();
                       }
@@ -3810,7 +3832,7 @@ lastEditScript = """
                         this.parentElement.querySelector("[name=name]").value,
                         this.parentElement.querySelector("[name=value]").value
                       );
-                      updateInteractionDiv();
+                      editor.ui.refresh();
                     },
                     oninput: highlightsubmit })])
               ])
@@ -4082,7 +4104,7 @@ lastEditScript = """
                 innerHTML: "Add inline style",
                 onclick() {
                   clickedElem.setAttribute("style", " ");
-                  updateInteractionDiv();
+                  editor.ui.refresh();
                 }}));
             }
             (async () => {
@@ -4105,7 +4127,7 @@ lastEditScript = """
                 innerHTML: headerStr,
                 onclick: () => {
                   editor_model.clickedElem = orgTag;
-                  updateInteractionDiv();
+                  editor.ui.refresh();
                 }
                 }));
               if(cssState.type === '@@media') {
@@ -4493,7 +4515,7 @@ lastEditScript = """
             ret.append(
               el("button", {}, "Add src attribute", {onclick: () => {
                 clickedElem.setAttribute("src", "");
-                updateInteractionDiv();
+                editor.ui.refresh();
               }}));
           } else {
             showListsImages(srcName, backgroundImgSrc, this.checkForBackgroundImg, this.findURLS);
@@ -4543,7 +4565,7 @@ lastEditScript = """
                   {
                     onclick: (node => () => {
                       editor_model.clickedElem = node;
-                      updateInteractionDiv();
+                      editor.ui.refresh();
                     })(node)
                   }
                 )
@@ -4732,7 +4754,7 @@ lastEditScript = """
             editor_model.visible = true;
             editor_model.clickedElem  = typeof newElement !== "string" && typeof newElement !== "undefined" ?
               newElement : clickedElem;
-            updateInteractionDiv();
+            editor.ui.refresh();
           }
           let addElem = function(name, createParams) {
             ret.append(
@@ -4840,7 +4862,7 @@ lastEditScript = """
               {
                 onclick: (event) => {
                   editor_model.version = nm;
-                  navigateLocal("/Thaditor/versions/" + nm + "/?edit");
+                  editor.navigateTo("/Thaditor/versions/" + nm + "/?edit");
                   setTimeout(() => editor.ui.sendNotification("Switched to " + nm), 2000);
                 }
               });
@@ -4851,7 +4873,7 @@ lastEditScript = """
               {
                 onclick: (event) => {
                   editor_model.version = "Live";
-                  navigateLocal("/?edit");
+                  editor.navigateTo("/?edit");
                   setTimeout(() => editor.ui.sendNotification("Switched to Live version"), 2000);
                 }
               })
@@ -5005,7 +5027,7 @@ lastEditScript = """
               el("button.action-button", {type: ""}, buttonName, {
                 onclick: function() {
                   callback();
-                  updateInteractionDiv();
+                  editor.ui.refresh();
                 }
               })]);
           }
@@ -5070,7 +5092,7 @@ lastEditScript = """
             {"class": "tagName", title: "Reload the current page"},
               {onclick: function(event) {
                 if(nothingToLose()) {
-                  reloadPage();
+                  editor.reload();
                 }
               } }
             );
@@ -5081,7 +5103,7 @@ lastEditScript = """
                 u.pathname = u.pathname.replace(/[^\/]*$/, "");
                 u.searchParams.set("ls", "true");
                 if(nothingToLose()) {
-                  navigateLocal(u.href);
+                  editor.navigateTo(u.href);
                 }
               }
             }
@@ -5192,7 +5214,7 @@ lastEditScript = """
       
       init_interfaces();
       //editor_model.visible = true;
-      //updateInteractionDiv();
+      //editor.ui.refresh();
     }
     
     //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
@@ -5265,7 +5287,7 @@ lastEditScript = """
       editor_model.linkSelectCallback = callback;
       editor_model.linkSelectMsg = "Confirm " + msg;
       editor_model.linkSelectOtherMenus = callbackUI;
-      updateInteractionDiv();
+      editor.ui.refresh();
       editor.ui.sendNotification(editor_model.linkSelectMsg);
       document.body.addEventListener('mouseover', linkModeHover1, false);
       document.body.addEventListener('mouseout', linkModeHover2, false);
@@ -5317,12 +5339,12 @@ lastEditScript = """
                     nm:nm, thaditor_files:thaditor_files, version:editor_model.version};
       if (editor_model.version == nm) {
         editor._internals.doWriteServer("deletermrf", pth_to_delete);
-        navigateLocal("/?edit");
-        updateInteractionDiv();
+        editor.navigateTo("/?edit");
+        editor.ui.refresh();
       } else {
         thaditor.do(data).then(data => {
           editor.ui.sendNotification("Permanently deleted draft named: " + data.nm);
-          updateInteractionDiv()});
+          editor.ui.refresh()});
       }
     }
 
@@ -5383,7 +5405,7 @@ lastEditScript = """
       editor.ui.sendNotification("Creating draft " + draft_name + " from " + nm);
       thaditor.do(data).then(data => {
         //just send a notif, no more naving to the clone
-        updateInteractionDiv();
+        editor.ui.refresh();
         editor.ui.sendNotification("Successfully cloned " + data.nm + " to " + data.draft_name);
       });
     }
@@ -5404,13 +5426,13 @@ lastEditScript = """
       thaditor.do(data).then(data => {
         let marker = false;
         if (data.nm == data.version) {
-          navigateLocal("/Thaditor/versions/" + data.draft_name + "/?edit");
+          editor.navigateTo("/Thaditor/versions/" + data.draft_name + "/?edit");
           marker = true;
         }
         if(marker) {
           setTimeout(editor.ui.sendNotification("Successfully renamed " + data.nm + " to " + data.draft_name), 2000)
         } else {
-          updateInteractionDiv();
+          editor.ui.refresh();
           editor.ui.sendNotification("Successfully renamed " + data.nm + " to " + data.draft_name);
         }
       });
@@ -5434,12 +5456,7 @@ lastEditScript = """
       });
     }
     
-    editor.refresh = updateInteractionDiv;
-
-    updateInteractionDiv();
-    
-    function updateInteractionDiv() {
-      console.trace("updateInteractionDiv()");
+    editor.ui.refresh = function refresh() {
       const menuholder = document.querySelector("#modify-menu-holder");
       const old_scroll = menuholder ? menuholder.scrollTop : 0;
       
@@ -5636,7 +5653,7 @@ lastEditScript = """
           id: "savebutton"  
         },
           {onclick: editor_model.disambiguationMenu ? 
-            ((ambiguityKey, selected) => () => acceptAmbiguity(ambiguityKey, selected))(
+            ((ambiguityKey, selected) => () => editor.ambiguity.accept(ambiguityKey, selected))(
               editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
             : function(event) {
               if (editor_model.isSaving) {
@@ -5734,7 +5751,7 @@ lastEditScript = """
           {title: "Select parent", "class":"inert"},
             {onclick: (c => event => {
               editor_model.clickedElem = c;
-              updateInteractionDiv();
+              refresh();
             })(clickedElem.parentNode)}
           );
         }
@@ -5753,7 +5770,7 @@ lastEditScript = """
                 c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
               }
               editor_model.clickedElem = c;
-              updateInteractionDiv();
+              refresh();
             })(clickedElem)
           });
         }
@@ -5769,7 +5786,7 @@ lastEditScript = """
                 nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
               }
               editor_model.clickedElem = c;
-              updateInteractionDiv();
+              refresh();
             })(clickedElem)
           });
         }
@@ -5781,7 +5798,7 @@ lastEditScript = """
                 let cloned = duplicate(c);
                 if(cloned) {
                   editor_model.clickedElem = cloned;
-                  updateInteractionDiv();
+                  refresh();
                 } else contextMenu.classList.remove("visible");
               })(clickedElem, contextMenu)
             });
@@ -5791,7 +5808,7 @@ lastEditScript = """
                 if(editor_model.clickedElem.nextElementSibling) editor_model.clickedElem = editor_model.clickedElem.nextElementSibling;
                 else editor_model.clickedElem = editor_model.clickedElem.previousElementSibling;
                 c.remove();
-                updateInteractionDiv();
+                refresh();
               })(clickedElem)
             });
         }
@@ -5843,7 +5860,7 @@ lastEditScript = """
                 document.querySelector("#modify-menu").classList.toggle("visible", true);
                 editor_model.visible = true;
                 editor_model.clickedElem = insertedNode;
-                updateInteractionDiv();
+                refresh();
               })(model.selectionRange)}
               )
         }
@@ -5856,7 +5873,7 @@ lastEditScript = """
                 editor_model.insertElement = true;
                 editor_model.visible = true;
                 getEditorInterfaceByTitle("Create").minimized = false;
-                updateInteractionDiv();
+                refresh();
                 restoreCaretPosition();
               }});
         }
@@ -5913,7 +5930,13 @@ lastEditScript = """
       
       return true;
 
-    } //end of updateInteractionDiv
+    } // editor.ui.refresh
+
+    editor.refresh = function() {
+      console.log("DEPRECATED WARNING: Please use editor.ui.refresh() instead of editor.refresh()");
+      editor.ui.refresh()
+    };
+    editor.ui.refresh();
 
     function maybeRepositionContextMenu() {
       //move the context menu if overlaps with modify-menu
@@ -5941,7 +5964,7 @@ lastEditScript = """
     function editor_close() {
       if(editor_model.visible) {
         editor_model.visible = false;
-        updateInteractionDiv();
+        editor.ui.refresh();
         //Hide the menu
         //This is also working fine
         return false;
