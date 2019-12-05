@@ -2922,6 +2922,37 @@ initialScript = serverOwned "initial script" <| [
         // Check if the event.target matches some selector, and do things...
       } //end of editor.ui._internals.onClick
 
+      // Icons:
+      var icons = {};
+      editor.ui.icons = icons;
+      icons.parentUp = editor.svgFromPath("M 20,5 20,25 M 15,10 20,5 25,10");
+      icons.boxArrowDown = editor.svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true, 30, 20, [0, 0, 40, 30]);
+      icons.boxArrowUp = editor.svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true, 30, 20, [0, 0, 40, 30]);
+      icons.boxArrowExpand = editor.svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true, 30, 20, [0, 0, 40, 30]);
+      icons.arrowDown = editor.svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true);
+      icons.arrowRight = editor.svgFromPath("M 21,25 18,22 22,18 8,18 8,12 22,12 18,8 21,5 31,15 Z", true);
+      icons.arrowUp = editor.svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true);
+      icons.arrowLeft = editor.svgFromPath("M 19,25 22,22 18,18 32,18 32,12 18,12 22,8 19,5 9,15 Z", true);
+      icons.clone = editor.svgFromPath("M 19,8 31,8 31,26 19,26 Z M 11,4 23,4 23,8 19,8 19,22 11,22 Z");
+      icons.save = editor.svgFromPath("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
+      icons.openLeft = editor.svgFromPath("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
+      icons.closeRight = editor.svgFromPath("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
+      icons.openTop = editor.svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
+      icons.closeBottom = editor.svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
+      icons.wasteBasket = editor.svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
+      icons.plus = editor.svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
+      icons.liveLink = link => `<a class="livelink" href="javascript:if(nothingToLose()) { editor.navigateTo(relativeToAbsolute('${link}')) }">${editor.svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
+      icons.gear = editor.svgFromPath("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
+      icons.folder = editor.svgFromPath("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
+      icons.reload = editor.svgFromPath("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
+      icons.log = editor.svgFromPath("M 17.24,16 A 1.24,2 0 0 1 16,18 1.24,2 0 0 1 14.76,16 1.24,2 0 0 1 16,14 1.24,2 0 0 1 17.24,16 Z M 20,16 21.24,16 21.24,16 A 1.24,2 0 0 1 20,18 1.24,2 0 0 1 18.76,16 1.24,2 0 0 1 20,14 1.33,2.16 0 0 1 21,15 M 12,14 12,18 14,18 M 10,12 23,12 23,20 10,20 Z M 23,6 23,11 28,11 M 14,6 14,12 10,12 10,20 14,20 14,25 28,25 28,11 23,6 14,6 Z");
+      icons.source = editor.svgFromPath("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
+      icons.undo = editor.svgFromPath("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
+      icons.redo = editor.svgFromPath("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
+      icons.isDraft = editor.svgFromPath("M 2,7 2,25 38,25 38,7 M 36,6 C 32,6 29.1,3.9 26.1,3.9 23.1,3.9 22,5 20,6 L 20,23 C 22,22 23.1,20.9 26.1,20.9 29.1,20.9 32,22.9 36,22.9 Z M 4,6 C 8,6 10.9,3.9 13.9,3.9 16.9,3.9 18,5 20,6 L 20,23 C 18,22 16.9,20.9 13.9,20.9 10.9,20.9 8,22.9 4,22.9 Z");
+      icons.escape = editor.svgFromPath("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
+      icons.linkMode = editor.svgFromPath("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
+      icons.check = editor.svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
       
     }; // editor.ui._internals.loadInterface
 
@@ -3101,37 +3132,9 @@ lastEditScript = """
     el = editor.el;
     console.log("lastEditScript running");
     
-    var parentUpSVG = editor.svgFromPath("M 20,5 20,25 M 15,10 20,5 25,10");
-    var editorContainerArrowDown = editor.svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true, 30, 20, [0, 0, 40, 30]);
-    var editorContainerArrowUp = editor.svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true, 30, 20, [0, 0, 40, 30]);
-    var arrowDown = editor.svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true);
-    var arrowRight = editor.svgFromPath("M 21,25 18,22 22,18 8,18 8,12 22,12 18,8 21,5 31,15 Z", true);
-    var arrowUp = editor.svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true);
-    var arrowLeft = editor.svgFromPath("M 19,25 22,22 18,18 32,18 32,12 18,12 22,8 19,5 9,15 Z", true);
-    var cloneSVG = editor.svgFromPath("M 19,8 31,8 31,26 19,26 Z M 11,4 23,4 23,8 19,8 19,22 11,22 Z");
-    var saveSVG = editor.svgFromPath("M 10,5 10,25 30,25 30,9 26,5 13,5 Z M 13,6 25,6 25,12 13,12 Z M 22,7 22,11 24,11 24,7 Z M 13,15 27,15 27,24 13,24 Z M 11,23 12,23 12,24 11,24 Z M 28,23 29,23 29,24 28,24 Z", true);
-    var openLeftSVG = editor.svgFromPath("M 27.5,4 22.5,4 12.5,15 22.5,25 27.5,25 17.5,15 Z", true);
-    var closeRightSVG = editor.svgFromPath("M 12.5,4 17.5,4 27.5,15 17.5,25 12.5,25 22.5,15 Z", true);
-    var openTopSVG = editor.svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true);
-    var displayArrowSVG = editor.svgFromPath("M 9.5,22 9.5,17 20.5,7 30.5,17 30.5,22 20.5,12 Z", true, 30, 20, [0, 0, 40, 30]);
-    var closeBottomSVG = editor.svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
-    var wasteBasketSVG = editor.svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
-    var plusSVG = editor.svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
-    var liveLinkSVG = link => `<a class="livelink" href="javascript:if(nothingToLose()) { editor.navigateTo(relativeToAbsolute('${link}')) }">${editor.svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
-    var gearSVG = editor.svgFromPath("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
-    var folderSVG = editor.svgFromPath("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
-    var reloadSVG = editor.svgFromPath("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
-    var logSVG = editor.svgFromPath("M 17.24,16 A 1.24,2 0 0 1 16,18 1.24,2 0 0 1 14.76,16 1.24,2 0 0 1 16,14 1.24,2 0 0 1 17.24,16 Z M 20,16 21.24,16 21.24,16 A 1.24,2 0 0 1 20,18 1.24,2 0 0 1 18.76,16 1.24,2 0 0 1 20,14 1.33,2.16 0 0 1 21,15 M 12,14 12,18 14,18 M 10,12 23,12 23,20 10,20 Z M 23,6 23,11 28,11 M 14,6 14,12 10,12 10,20 14,20 14,25 28,25 28,11 23,6 14,6 Z");
-    var sourceSVG = editor.svgFromPath("M 22.215125,2 25,3 18.01572,27 15,26 Z M 12,19 12,25 2,14 12,4 12,9 7,14 Z M 28,9 28,4 38,15 28,25 28,20 33,15 Z", true);
     var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
     var linkToEdit = link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;
-    var undoSVG = editor.svgFromPath("M 9.5,12.625 11.75,19.25 17.25,15.125 M 31.5,16 C 30.25,11.875 26.375,9 22,9 16.5,9 12,13.5 12,19");
-    var redoSVG = editor.svgFromPath("M 31.5,12.625 29.25,19.25 23.75,15.125 M 9.5,16 C 10.75,11.875 14.625,9 19,9 24.5,9 29,13.5 29,19");
-
-    var isDraftSVG = editor.svgFromPath("M 2,7 2,25 38,25 38,7 M 36,6 C 32,6 29.1,3.9 26.1,3.9 23.1,3.9 22,5 20,6 L 20,23 C 22,22 23.1,20.9 26.1,20.9 29.1,20.9 32,22.9 36,22.9 Z M 4,6 C 8,6 10.9,3.9 13.9,3.9 16.9,3.9 18,5 20,6 L 20,23 C 18,22 16.9,20.9 13.9,20.9 10.9,20.9 8,22.9 4,22.9 Z");
-    var escapeSVG = editor.svgFromPath("M 7.5 4 L 17.5 15 L 7.5 25 L 12.5 25 L 20 17.5 L 27.5 25 L 32.5 25 L 22.5 15 L 32.5 4 L 27.5 4 L 20 12.25 L 12.5 4 L 7.5 4 z", true);
-    var linkModeSVG = editor.svgFromPath("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
-    var checkSVG = editor.svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
+    
     var ifAlreadyRunning = typeof editor == "object" && typeof editor.ui === "object" && typeof editor.ui.model === "object";
     var thaditor_files = [
       "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
@@ -3837,14 +3840,14 @@ lastEditScript = """
                         })(name, isHref)
                       }),
                     isHref ? el("div", {title: "Go to " + value, "class": "modify-menu-icon inert"}, [], {
-                      innerHTML: liveLinkSVG(value)
+                      innerHTML: editor.ui.icons.liveLink(value)
                     }) : undefined,
                     isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
-                      innerHTML: linkModeSVG,
+                      innerHTML: editor.ui.icons.linkMode,
                       onclick: linkSelect
                     }) : undefined,
                     el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
-                      innerHTML: wasteBasketSVG,
+                      innerHTML: editor.ui.icons.wasteBasket,
                       onclick: ((name) => function() {
                         clickedElem.removeAttribute(name);
                         editor_model.clickedElem = clickedElem;
@@ -3891,7 +3894,7 @@ lastEditScript = """
                       }
                     },
                     oninput: highlightsubmit})),
-                  el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: plusSVG,
+                  el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: editor.ui.icons.plus,
                     disabled: true,
                     onclick() {
                       clickedElem.setAttribute(
@@ -4100,7 +4103,7 @@ lastEditScript = """
                 }),
                 el("div", {"class": "CSS-buttons"}, [
                   el("div", {"class": "CSS-action-button"}, [], {
-                    innerHTML: cloneSVG,
+                    innerHTML: editor.ui.icons.clone,
                     onclick() {
                       let stylesLinks = document.querySelectorAll("style, link[rel=stylesheet]");
                       let i = stylesLinks.length - 1;
@@ -4152,7 +4155,7 @@ lastEditScript = """
                     }
                   }),
                   el("div", {"class": "CSS-action-button"}, [], {
-                    innerHTML: wasteBasketSVG,
+                    innerHTML: editor.ui.icons.wasteBasket,
                     onclick() {
                       let inline_CSS = document.querySelectorAll(".inline-CSS");
                       inline_CSS.value = "";
@@ -4255,7 +4258,7 @@ lastEditScript = """
                 }),
                 orgTag.tagName === "LINK" ?
                   el("div", {"class": "CSS-action-button", "title": "Delete this snippet of CSS"}, [], {
-                    innerHTML: wasteBasketSVG,
+                    innerHTML: editor.ui.icons.wasteBasket,
                     onclick() {
                       (async () => {
                         let linked_CSS = this.parentElement.childNodes[0];
@@ -4267,7 +4270,7 @@ lastEditScript = """
                     }
                   }) : // inline style case
                   el("div", {"class": "CSS-action-button", "title": "Delete this CSS snippet"}, [], {
-                    innerHTML: wasteBasketSVG,
+                    innerHTML: editor.ui.icons.wasteBasket,
                     onclick() {
                       let linked_CSS = this.parentElement.childNodes[0];
                       //console.log(this.parentElements.childNodes);
@@ -4844,7 +4847,7 @@ lastEditScript = """
             );
             ret.append(
               el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
-                  innerHTML: linkModeSVG + "<span>Move node</span>",
+                  innerHTML: editor.ui.icons.linkMode + "<span>Move node</span>",
                   onclick: function(event) {
                     editor_model.insertElement = false;
                     let insertionStyle = getInsertionPlace();
@@ -4852,7 +4855,7 @@ lastEditScript = """
                       "to move",
                       node => insertTag.call(this, event, node, insertionStyle),
                       addPinnedModifyMenuIcon => {
-                        addPinnedModifyMenuIcon(cloneSVG + "<span class='modify-menu-icon-label-link'>Clone</span>", 
+                        addPinnedModifyMenuIcon(editor.ui.icons.clone + "<span class='modify-menu-icon-label-link'>Clone</span>", 
                           {"class": "link-select-button", title: "Confirm to clone",
                             id: "selectbutton"
                           },
@@ -4893,7 +4896,7 @@ lastEditScript = """
             el("div", {"class": "tagName", id: "customHTML"}, [
               el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", oninput: "this.innerHTMLCreate = this.value"}),
               el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
-                  innerHTML: plusSVG, 
+                  innerHTML: editor.ui.icons.plus, 
                   onclick: function(event) {
                       let insertionStyle = getInsertionPlace();
                       insertTag.call(this, event, undefined, insertionStyle);
@@ -5154,7 +5157,7 @@ lastEditScript = """
         render: function render(editor_model, innerBox) {
           let retDiv = el("div", {"class":"modify-menu-icons"});
           //We need 3 btns: refresh, filesystem + help.
-          add_btn_to_div(retDiv, reloadSVG,
+          add_btn_to_div(retDiv, editor.ui.icons.reload,
             {"class": "tagName", title: "Reload the current page"},
               {onclick: function(event) {
                 if(nothingToLose()) {
@@ -5162,7 +5165,7 @@ lastEditScript = """
                 }
               } }
             );
-          add_btn_to_div(retDiv, folderSVG,
+          add_btn_to_div(retDiv, editor.ui.icons.folder,
             {"class": "tagName", title: "List files in current directory"},
               {onclick: function(event) {
                 let u =  new URL(location.href);
@@ -5595,8 +5598,8 @@ lastEditScript = """
                  title: typeof renderedContent === "string" ? renderedContent : undefined
                },
                [ el("div", {title: "Expand menu", class: "expand-menu"}, x.title),
-                 el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: displayArrowSVG}),
-                 el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: editorContainerArrowDown,
+                 el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: editor.ui.icons.boxArrowExpand}),
+                 el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: editor.ui.icons.boxArrowDown,
                    onclick: function(event) {
                      let d = this.parentElement.parentElement;
                      var tmp = editor_model.interfaces[d.i];
@@ -5609,7 +5612,7 @@ lastEditScript = """
                      event.stop = true;
                      return false;
                    }}),
-                 el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: editorContainerArrowUp,
+                 el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: editor.ui.icons.boxArrowUp,
                    i: i,
                    onclick: function(event) {
                      let d = this.parentElement.parentElement;
@@ -5658,8 +5661,8 @@ lastEditScript = """
       }
       var panelOpenCloseIcon = function() {
         return document.querySelector("#modify-menu").classList.contains("visible") ?
-            editor.config.onMobile() ? closeBottomSVG : closeRightSVG + "<span class='modify-menu-icon-label'>Close</span>"
-          : editor.config.onMobile() ? openTopSVG : openLeftSVG + "<span class='modify-menu-icon-label'>Open</span>";
+            editor.config.onMobile() ? editor.ui.icons.closeBottom : editor.ui.icons.closeRight + "<span class='modify-menu-icon-label'>Close</span>"
+          : editor.config.onMobile() ? editor.ui.icons.openTop : editor.ui.icons.openLeft + "<span class='modify-menu-icon-label'>Open</span>";
       }
       var alwaysVisibleButtonIndex = 0;
       function nextVisibleBarButtonPosStyle() {
@@ -5685,7 +5688,7 @@ lastEditScript = """
             }
         });
         if(editor.config.EDITOR_VERSION & 1) {
-          addPinnedModifyMenuIcon(undoSVG + "<span class='modify-menu-icon-label'>Undo</span>", 
+          addPinnedModifyMenuIcon(editor.ui.icons.undo + "<span class='modify-menu-icon-label'>Undo</span>", 
             {"class": "inert" + (editor.ui.canUndo() ? "" : " disabled"), title: "Undo most recent change",
               id: "undobutton"
             },
@@ -5694,7 +5697,7 @@ lastEditScript = """
               }
             }   
           );
-          addPinnedModifyMenuIcon(redoSVG + "<span class='modify-menu-icon-label'>Redo</span>",
+          addPinnedModifyMenuIcon(editor.ui.icons.redo + "<span class='modify-menu-icon-label'>Redo</span>",
             {"class": "inert" + (editor.ui.canRedo() ? "" : " disabled"), title: "Redo most recent undo",
               id: "redobutton"
             },
@@ -5704,7 +5707,7 @@ lastEditScript = """
             }
           );
         }
-        addPinnedModifyMenuIcon(saveSVG + "<span class='modify-menu-icon-label'>Save</span>",
+        addPinnedModifyMenuIcon(editor.ui.icons.save + "<span class='modify-menu-icon-label'>Save</span>",
         {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor.ui.canSave() || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
           id: "savebutton"
         },
@@ -5716,7 +5719,7 @@ lastEditScript = """
         )
       }
       else {
-        addPinnedModifyMenuIcon(escapeSVG + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
+        addPinnedModifyMenuIcon(editor.ui.icons.escape + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
           {"class": "link-select-button", title: "Go back to original screen",
             id: "escapebutton"
           },
@@ -5725,7 +5728,7 @@ lastEditScript = """
             }
           }
         );
-        addPinnedModifyMenuIcon(checkSVG + "<span class='modify-menu-icon-label-link'>Select</span>", 
+        addPinnedModifyMenuIcon(editor.ui.icons.check + "<span class='modify-menu-icon-label-link'>Select</span>", 
           {"class": "link-select-button", title: editor_model.linkSelectMsg || "Select target",
             id: "selectbutton"
           },
@@ -5763,11 +5766,11 @@ lastEditScript = """
           numButtons++;
         }
         if(editor_model.link) {
-          addContextMenuButton(liveLinkSVG(linkToEdit(editor_model.link)),
+          addContextMenuButton(editor.ui.icons.liveLink(linkToEdit(editor_model.link)),
             {title: "Go to " + editor_model.link, "class": "inert"});
         }
         if(!editor_model.selectionRange && clickedElem && clickedElem.parentNode && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(parentUpSVG,
+          addContextMenuButton(editor.ui.icons.parentUp,
           {title: "Select parent", "class":"inert"},
             {onclick: (c => event => {
               editor_model.clickedElem = c;
@@ -5779,7 +5782,7 @@ lastEditScript = """
         var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
         var isDisplayInline = computedStyle && (computedStyle.display.startsWith("inline") || computedStyle.display === "table-cell");
         if(!editor_model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(isDisplayInline ? arrowLeft : arrowUp,
+          addContextMenuButton(isDisplayInline ? editor.ui.icons.arrowLeft : editor.ui.icons.arrowUp,
           {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
           {onclick: (c => event => {
               let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
@@ -5795,7 +5798,7 @@ lastEditScript = """
           });
         }
         if(!editor_model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(isDisplayInline ? arrowRight : arrowDown,
+          addContextMenuButton(isDisplayInline ? editor.ui.icons.arrowRight : editor.ui.icons.arrowDown,
           {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
           {onclick: (c => (event) => {
               let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 && 
@@ -5811,7 +5814,7 @@ lastEditScript = """
           });
         }
         if(!editor_model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(cloneSVG,
+          addContextMenuButton(editor.ui.icons.clone,
             {title: "Clone selected element"},
             {onclick: ((c, contextMenu) => event => {
                 c.removeAttribute("ghost-clicked");
@@ -5822,7 +5825,7 @@ lastEditScript = """
                 } else contextMenu.classList.remove("visible");
               })(clickedElem, contextMenu)
             });
-          addContextMenuButton(wasteBasketSVG,
+          addContextMenuButton(editor.ui.icons.wasteBasket,
             {title: "Delete selected element"},
             {onclick: (c => event => {
                 if(editor_model.clickedElem.nextElementSibling) editor_model.clickedElem = editor_model.clickedElem.nextElementSibling;
@@ -5833,7 +5836,7 @@ lastEditScript = """
             });
         }
         if(editor_model.selectionRange && (editor_model.selectionRange.startContainer === editor_model.selectionRange.endContainer || editor_model.selectionRange.startContainer.parentElement === editor_model.selectionRange.commonAncestorContainer && editor_model.selectionRange.endContainer.parentElement === editor_model.selectionRange.commonAncestorContainer) && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(plusSVG,
+          addContextMenuButton(editor.ui.icons.plus,
               {title: "Wrap selection"},
               {onclick: (s => event => {
                 let elements = [];
@@ -5885,7 +5888,7 @@ lastEditScript = """
               )
         }
         if(!editor_model.selectionRange && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(plusSVG,
+          addContextMenuButton(editor.ui.icons.plus,
               {title: "Insert element", contenteditable: false},
               {onclick: event => {
                 editor_model.clickedElem = clickedElem;
