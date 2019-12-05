@@ -2851,7 +2851,77 @@ initialScript = serverOwned "initial script" <| [
           evt.dataTransfer.dropEffect = 'copy'; // Explicitly show this is a copy.
         }
       
-      
+      // Prevent mouse down on modify-menu that end outside modify-menu to trigger onclick
+      editor.ui._internals.onMouseDown = function(event) {
+        var tmp = event.target;
+        while(tmp) {
+          if(tmp.getAttribute && tmp.getAttribute("id") == "modify-menu") {
+            editor.ui.model.dismissNextClick = true;
+            return;
+          }
+          tmp = tmp.parentElement;
+        }
+      }   
+      editor.ui._internals.onClick = function(event) {
+        if(editor.ui.model.dismissNextClick) {
+          editor.ui.model.dismissNextClick = false;
+          return;
+        }
+        
+        var clickedElem = event.target;
+        console.log("click event", event.target);
+        var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
+        var matchOptions = function(clickedElem) {
+          var result = true;
+          for(let i = 0; i < editorSelectOptions.length; i++) {
+            let negativeSelector = editorSelectOptions[i].getAttribute("editor-noselect"),
+                positiveSelector = editorSelectOptions[i].getAttribute("editor-doselect");
+            if(result && negativeSelector) {
+              result = !editor.matches(clickedElem, negativeSelector);
+            }
+            if(!result && positiveSelector) {
+              result = editor.matches(clickedElem, positiveSelector);
+            }
+          }
+          return result;
+        }
+        while(clickedElem && editorSelectOptions && !matchOptions(clickedElem)) {
+          clickedElem = clickedElem.parentElement;
+        }
+        var ancestors = [];
+        var tmp = clickedElem;
+        var aElement;
+        var ancestorIsModifyBox = false;
+        var ancestorIsContextMenu = false;
+        var link = undefined;
+        while(tmp) {
+          ancestors.push(tmp);
+          if(tmp.getAttribute && tmp.getAttribute("id") == "modify-menu") {
+            ancestorIsModifyBox = true;
+          }
+          if(tmp.getAttribute && tmp.getAttribute("id") == "context-menu") {
+            ancestorIsContextMenu = true;
+          }
+          if(!aElement && tmp.tagName === "A") { // First link.
+            aElement = tmp;
+            link = aElement.getAttribute("href");
+          }
+          tmp = tmp.parentElement;
+        }
+        document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
+        if(ancestorIsModifyBox || ancestorIsContextMenu || ancestors[ancestors.length - 1].tagName != "HTML") return;
+        //console.log("not modify box", ancestors)
+        document.querySelector("#context-menu").classList.remove("visible");
+        
+        editor.ui.model.clickedElem = clickedElem;
+        editor.ui.model.link = link;
+        editor.ui.model.link_href_source = aElement; // So that we can modify it
+        editor.ui.model.insertElement = false;
+        editor.ui.model.notextselection = false;
+        editor.ui.refresh();
+        // Check if the event.target matches some selector, and do things...
+      } //end of editor.ui._internals.onClick
+
       
     }; // editor.ui._internals.loadInterface
 
@@ -2915,7 +2985,7 @@ initialScript = serverOwned "initial script" <| [
             s = s ? s.anchorNode : s;
             s = s ? s.parentNode : s;
             lastKeyPress = new Date().valueOf();
-            onClickGlobal({target: s, modify: true});
+            editor.ui._internals.onClick({target: s, modify: true});
           }
           // Open link.
         }
@@ -2943,6 +3013,7 @@ initialScript = serverOwned "initial script" <| [
         }
       });
       
+      // Events after a key is pressed.
       var bodyeditable = document.querySelector("body");
       var onKeypress = e => {
         if(e.keyCode==13 && !e.shiftKey){ // [Enter] key
@@ -2986,6 +3057,9 @@ initialScript = serverOwned "initial script" <| [
         bodyeditable.configured = true;
         bodyeditable.addEventListener("keypress", onKeypress, true);
       }
+      
+      document.addEventListener('mousedown', editor.ui._internals.onMouseDown, false);
+      document.addEventListener('click', editor.ui._internals.onClick, false);
     } // editor.ui.init
 
     document.addEventListener("DOMContentLoaded", function(event) { 
@@ -3027,95 +3101,6 @@ lastEditScript = """
     el = editor.el;
     console.log("lastEditScript running");
     
-    
-    var observeTargetA = null;
-    
-    var addEditEqualToUrl = function(href, what) {
-      if(href.indexOf("://") == -1) { // Instrument the relative link so that it is edit=true
-        if(href.indexOf("?") >= 0) {
-          if(href.endsWith("?")) {
-            href = href + "edit=" + what
-          } else {
-            href = href + "&edit=" + what
-          }
-        } else {
-          href = href + "?edit=" + what
-        }
-      }
-      return href;
-    }
-    
-    // Prevent mouse down on modify-menu that end outside modify-menu to trigger onclick
-    var onMouseDownGlobal = function(event) {
-      var tmp = event.target;
-      while(tmp) {
-        if(tmp.getAttribute && tmp.getAttribute("id") == "modify-menu") {
-          editor.ui.model.dismissNextClick = true;
-          return;
-        }
-        tmp = tmp.parentElement;
-      }
-    }    
-    var onClickGlobal = function (event) {
-      if(editor.ui.model.dismissNextClick) {
-	      editor.ui.model.dismissNextClick = false;
-	      return;
-      }
-      
-      var clickedElem = event.target;
-      console.log("click event", event.target);
-      var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
-      var matchOptions = function(clickedElem) {
-        var result = true;
-        for(let i = 0; i < editorSelectOptions.length; i++) {
-          let negativeSelector = editorSelectOptions[i].getAttribute("editor-noselect"),
-              positiveSelector = editorSelectOptions[i].getAttribute("editor-doselect");
-          if(result && negativeSelector) {
-            result = !editor.matches(clickedElem, negativeSelector);
-          }
-          if(!result && positiveSelector) {
-            result = editor.matches(clickedElem, positiveSelector);
-          }
-        }
-        return result;
-      }
-      while(clickedElem && editorSelectOptions && !matchOptions(clickedElem)) {
-        clickedElem = clickedElem.parentElement;
-      }
-      var ancestors = [];
-      var tmp = clickedElem;
-      var aElement;
-      var ancestorIsModifyBox = false;
-      var ancestorIsContextMenu = false;
-      var link = undefined;
-      while(tmp) {
-        ancestors.push(tmp);
-        if(tmp.getAttribute && tmp.getAttribute("id") == "modify-menu") {
-          ancestorIsModifyBox = true;
-        }
-        if(tmp.getAttribute && tmp.getAttribute("id") == "context-menu") {
-          ancestorIsContextMenu = true;
-        }
-        if(!aElement && tmp.tagName === "A") { // First link.
-          aElement = tmp;
-          link = aElement.getAttribute("href");
-        }
-        tmp = tmp.parentElement;
-      }
-      document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
-      if(ancestorIsModifyBox || ancestorIsContextMenu || ancestors[ancestors.length - 1].tagName != "HTML") return;
-      //console.log("not modify box", ancestors)
-      document.querySelector("#context-menu").classList.remove("visible");
-      
-      editor.ui.model.clickedElem = clickedElem;
-      editor.ui.model.link = link;
-      editor.ui.model.link_href_source = aElement; // So that we can modify it
-      editor.ui.model.insertElement = false;
-      editor.ui.model.notextselection = false;
-      editor.ui.refresh();
-      // Check if the event.target matches some selector, and do things...
-    } //end of onClickGlobal
-
     var parentUpSVG = editor.svgFromPath("M 20,5 20,25 M 15,10 20,5 25,10");
     var editorContainerArrowDown = editor.svgFromPath("M 10,17 13,14 17,18 17,4 23,4 23,18 27,14 30,17 20,27 Z", true, 30, 20, [0, 0, 40, 30]);
     var editorContainerArrowUp = editor.svgFromPath("M 10,14 13,17 17,13 17,27 23,27 23,13 27,17 30,14 20,4 Z", true, 30, 20, [0, 0, 40, 30]);
@@ -3148,17 +3133,16 @@ lastEditScript = """
     var linkModeSVG = editor.svgFromPath("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
     var checkSVG = editor.svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
     var ifAlreadyRunning = typeof editor == "object" && typeof editor.ui === "object" && typeof editor.ui.model === "object";
-    if (!ifAlreadyRunning) {
-      var thaditor_files = [
-        "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
-        "ThaditorInstaller.htaccess", "composer.json", "composer.lock", "credentials.json", "cacert.pem", "versions",
-        "vendor", "ssg", "cache"
-      ];
-    }
+    var thaditor_files = [
+      "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
+      "ThaditorInstaller.htaccess", "composer.json", "composer.lock", "credentials.json", "cacert.pem", "versions",
+      "vendor", "ssg", "cache"
+    ];
     if (isLive == undefined) {
       var isLive = () => !(editor.config.path.includes("Thaditor/versions/"));
     }
 
+    //Version used
     var verz = "Live";
     if (!isLive()) {
       verz = editor.config.path.slice(editor.config.path.lastIndexOf("versions/")+9, editor.config.path.lastIndexOf("/"));
@@ -6008,14 +5992,30 @@ lastEditScript = """
       return true;
     }
     
-    // Mobile only
+    // Mobile only. Experiment not working. We want the back button to close the editor when it is opened.
     document.addEventListener("deviceready", function onDeviceReady(){
       document.addEventListener("backbutton", editor_close, false);
     }, false);
     
-    if(editor.config.editIsFalseButDefaultIsTrue) {
+    if(!editor.config.thaditor && editor.config.editIsFalseButDefaultIsTrue) {
       // Special case when ?edit=false but the default behavior is edit=true if nothing is set.
+      // Happens only in editor webserver.
+      // It continues to add edit=false to any clicked links.
       document.onclick = function (e) {
+          var addEditEqualToUrl = function(href, what) {
+            if(href.indexOf("://") == -1) { // Instrument the relative link so that it is edit=true
+              if(href.indexOf("?") >= 0) {
+                if(href.endsWith("?")) {
+                  href = href + "edit=" + what
+                } else {
+                  href = href + "&edit=" + what
+                }
+              } else {
+                href = href + "?edit=" + what
+              }
+            }
+            return href;
+          }
           e = e ||  window.event;
           var node = e.target || e.srcElement;
           while(node) {
@@ -6030,9 +6030,6 @@ lastEditScript = """
             }
           }
         }
-    } else if(editor.config.varedit) {
-      document.addEventListener('click', onClickGlobal, false);
-      document.addEventListener('mousedown', onMouseDownGlobal, false);
     }
     window.addEventListener("error", function (message, source, lineno, colno, error) {
       let msg;
@@ -6070,7 +6067,7 @@ lastEditScript = """
         xmlhttp.send("{\"a\":3}");
       }
     } // End of editor_onbeforeunload
-     
+   
     window.onbeforeunload = editor_onbeforeunload;
     
     // Store the current child list of nodes that ignore their children totally
