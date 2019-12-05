@@ -1836,7 +1836,11 @@ initialScript = serverOwned "initial script" <| [
           isghost: true,
           onclick(event) {
             if(!location.search.match(new RegExp("edit" + prev))) {
-               location.search = location.search.startsWith("?") ? location.search + "&" + "edit" + next : "?edit" + next
+               if(editor.ui.init) {
+                 editor.ui.init();
+               } else {
+                 location.search = location.search.startsWith("?") ? location.search + "&" + "edit" + next : "?edit" + next
+               }
             } else {
                location.search = location.search.replace(new RegExp("edit" + prev, "g"), "edit" + next);
             }
@@ -1845,7 +1849,7 @@ initialScript = serverOwned "initial script" <| [
       } // editor.ui._internals.switchEditBox
 
     // Hook Editor's core to the web window, add event listeners.
-    editor._internals.register = function() {
+    editor.init = function() {
       /*
         Pretend loading a page using Editor's commands.
         Does not attempt to load Editor's interface.
@@ -1945,11 +1949,89 @@ initialScript = serverOwned "initial script" <| [
          , subtree: true
          }
        );
-     } // editor._internals.register
+     } // editor.init
     
     editor.config.onMobile = () => window.matchMedia("(max-width: 800px)").matches;
     editor.config.buttonHeight = () => editor.config.onMobile() ? 48 : 30;
     editor.config.buttonWidth  = () => editor.config.onMobile() ? 48 : 40;
+
+    // Helpers: Text preview and summary
+    function textPreview(element, maxLength) {
+      let x = element.textContent;
+      let result = "'" + x + "'";;
+      if(x == "") {
+        if(element.tagName === "META") {
+          result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
+                  (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
+        } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
+          result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+        } else if(element.tagName === "LINK") {
+          result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+        }
+      }
+      if(typeof maxLength !== "undefined" && result.length > maxLength) {
+        return result.substring(0, maxLength) + "...'";
+      }
+      return result;
+    }
+    function summary(element, idAndClasses, maxLength) {
+      var summary = element.tagName.toLowerCase();
+      if(idAndClasses && element.getAttribute("id")) {
+        summary += "#" + element.getAttribute("id");
+      }
+      var elemClass = element.getAttribute("class");
+      if(idAndClasses && elemClass && elemClass.trim().length) {
+        summary += "." + elemClass.split(/\s+/g).join(".");
+      }
+      summary += " " + textPreview(element);
+      maxLength = maxLength || 80;
+      summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
+      return summary;
+    }
+    
+    function getTempCSSName(CSSFilePath) {
+      let newFilePath = CSSFilePath.split("/");
+      let newFileName = `tmp-${editor.config.userName}-${newFilePath[newFilePath.length - 1]}`;
+      newFilePath[newFilePath.length - 1] = newFileName;
+      newFilePath = newFilePath.join("/");
+      return newFilePath;
+    }
+    
+    function editor_stopWatching() {
+      editor.ui.model.outputObserver.disconnect();
+    }
+    
+    function editor_resumeWatching() {
+      editor.ui.model.outputObserver.observe
+        ( document.body.parentElement
+        , { attributes: true
+          , childList: true
+          , characterData: true
+          , attributeOldValue: true
+          , characterDataOldValue: true
+          , subtree: true
+          });
+    }
+    
+    function removeTimestamp(path) {
+      var dummyIndex = path.indexOf("?");
+      if(dummyIndex > -1) {
+        path = path.slice(0, dummyIndex);
+      }
+      return path;
+    }
+    function setTimestamp(path) {
+      path = removeTimestamp(path);
+      path += "?timestamp=" + (+new Date());
+      return path;
+    }
+    
+    function isAbsolute(url) {
+      return url.match(/^https?:\/\/|^www\.|^\/\//);
+    }
+    function linkToEdit(link) {
+      return link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;
+    }
     
     // Helper.
     function relativeToAbsolute(url) {
@@ -1962,8 +2044,7 @@ initialScript = serverOwned "initial script" <| [
         return u.pathname.replace(/[^\/]*$/, "") + url;
       }
     }
-    editor.relativeToAbsolute = relativeToAbsolute; // TODO: Remove
-    
+
     // Saves the Document Object Model, bare version.
     editor.saveDOM = function saveDom() {
       if(document.getElementById("notification-menu") != null) {
@@ -3172,64 +3253,6 @@ initialScript = serverOwned "initial script" <| [
         version : verz,
         interfaces: ifAlreadyRunning ? editor.ui.model.interfaces : [],
         disambiguationMenu: ifAlreadyRunning ? editor.ui.model.disambiguationMenu : undefined
-      }
-      
-      // Helpers: Text preview and summary
-      function textPreview(element, maxLength) {
-        let x = element.textContent;
-        let result = "'" + x + "'";;
-        if(x == "") {
-          if(element.tagName === "META") {
-            result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
-                    (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
-          } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
-            result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          } else if(element.tagName === "LINK") {
-            result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-          }
-        }
-        if(typeof maxLength !== "undefined" && result.length > maxLength) {
-          return result.substring(0, maxLength) + "...'";
-        }
-        return result;
-      }
-      function summary(element, idAndClasses, maxLength) {
-        var summary = element.tagName.toLowerCase();
-        if(idAndClasses && element.getAttribute("id")) {
-          summary += "#" + element.getAttribute("id");
-        }
-        var elemClass = element.getAttribute("class");
-        if(idAndClasses && elemClass && elemClass.trim().length) {
-          summary += "." + elemClass.split(/\s+/g).join(".");
-        }
-        summary += " " + textPreview(element);
-        maxLength = maxLength || 80;
-        summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
-        return summary;
-      }
-      
-      function getTempCSSName(CSSFilePath) {
-        let newFilePath = CSSFilePath.split("/");
-        let newFileName = `tmp-${editor.config.userName}-${newFilePath[newFilePath.length - 1]}`;
-        newFilePath[newFilePath.length - 1] = newFileName;
-        newFilePath = newFilePath.join("/");
-        return newFilePath;
-      }
-      
-      function editor_stopWatching() {
-        editor.ui.model.outputObserver.disconnect();
-      }
-      
-      function editor_resumeWatching() {
-        editor.ui.model.outputObserver.observe
-          ( document.body.parentElement
-          , { attributes: true
-            , childList: true
-            , characterData: true
-            , attributeOldValue: true
-            , characterDataOldValue: true
-            , subtree: true
-            });
       }
       
       // newValue can be a function, in which it should be applied on the current content.
@@ -6036,32 +6059,10 @@ initialScript = serverOwned "initial script" <| [
       }
     });
   })(editor);
- 
-  editor._internals.register(); // Hook into navigation, copy/paste, listen to insertions.
   
-  relativeToAbsolute = editor.relativeToAbsolute; // TODO: Remove
-
-  // TODO: Make it local somewhere.
-  function removeTimestamp(path) {
-    var dummyIndex = path.indexOf("?");
-    if(dummyIndex > -1) {
-      path = path.slice(0, dummyIndex);
-    }
-    return path;
-  }
-  function setTimestamp(path) {
-    path = removeTimestamp(path);
-    path += "?timestamp=" + (+new Date());
-    return path;
-  }
+  editor.init(); // Hook into navigation, copy/paste, listen to insertions.
   
-  function isAbsolute(url) {
-    return url.match(/^https?:\/\/|^www\.|^\/\//);
-  }
-  function linkToEdit(link) {
-    return link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;
-  }
-  
+  // editor.ui.init() can be called afterwards.
 </script>,
 -- The following is replaced by an inline <style> for when Editor runs as a file opener.
 -- And the path is modified when Editor runs as Thaditor.
