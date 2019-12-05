@@ -6,10 +6,16 @@ fs = nodejs.delayedFS nodejs.nodeFS nodejs.nodeFSWrite
 
 elmserver = fs.read "server.elm" |> Maybe.withDefaultLazy (\\_ -> error "server.elm not found")
 
-server_elm_style = fs.read "server-elm-style.css" |> Maybe.withDefaultLazy (\\_ -> error "server-elm-style.css not found")
+server_elm_style = fs.read "server-elm-style.css" |> Maybe.withDefaultLazy (\\_ -> error "server-elm-style.css not found") |> Regex.replace "@" (always "@@")
+
+server_elm_script = fs.read "server-elm-script.js" |> Maybe.withDefaultLazy (\\_ -> error "server-elm-script.js not found") |> Regex.replace "@" (always "@@")
 
 elmserver = Regex.replace """<link[^>]*href="/server-elm-style.css"[^>]*>""" (
   \\_ -> "<style>" + server_elm_style + "</style>"
+) elmserver
+
+elmserver = Regex.replace """(<script[^>]*)src="/server-elm-script.js"([^>]*>)\s*(</script>)""" (
+  \\{submatches=pre::post::close::_} -> pre + post + server_elm_script + close
 ) elmserver
 
 fs.read "bin/server.js"
