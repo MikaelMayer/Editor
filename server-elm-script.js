@@ -751,6 +751,7 @@ editor = typeof editor == "undefined" ? {} : editor;
           if(!location.search.match(new RegExp("edit" + prev))) {
              if(editor.ui.init) {
                editor.ui.init();
+               document.body.setAttribute("contenteditable", "true");
                document.querySelector("#editbox").remove();
              } else {
                location.search = location.search.startsWith("?") ? location.search + "&" + "edit" + next : "?edit" + next
