@@ -751,6 +751,7 @@ editor = typeof editor == "undefined" ? {} : editor;
           if(!location.search.match(new RegExp("edit" + prev))) {
              if(editor.ui.init) {
                editor.ui.init();
+               document.querySelector("#editbox").remove();
              } else {
                location.search = location.search.startsWith("?") ? location.search + "&" + "edit" + next : "?edit" + next
              }
@@ -4961,9 +4962,12 @@ editor = typeof editor == "undefined" ? {} : editor;
     })();
     
     // The thing that makes everything live editable.
-    if(typeof editor.config.canEditPage == "boolean" && editor.config.canEditPage) {
-      document.body.setAttribute("contenteditable", "true");
-    }
+    // Make sure we give the time to the page to register the change
+    setTimeout(() => {
+      if(typeof editor.config.canEditPage == "boolean" && editor.config.canEditPage) {
+        document.body.setAttribute("contenteditable", "true");
+      }
+    }, 1);
   } // editor.ui.init
 
   document.addEventListener("DOMContentLoaded", function(event) { 
