@@ -1040,15 +1040,7 @@ main =
            serverOwned "initial script and style " initialScript ++ headChildren]
       ["body", bodyattrs, bodyChildren] ->
         let bodyChildren = if jsEnabled then bodyChildren else List.map removeJS bodyChildren in
-        ["body", bodyattrs, insertThereInstead identity True bodyChildren ++
-          if not varedit || varls then
-            bodyChildren
-          else 
-             bodyChildren ++
-             (serverOwned "synchronization script and placeholder" [
-               <script  id="thaditor-lastscript" class="editor-interface">@lastEditScript</script>] ++
-              insertThereInstead identity False bodyChildren -- All new nodes there are added back to bodyChildren.
-             )]
+        ["body", bodyattrs, bodyChildren]
       x -> x -- anything else?
     )]
   x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
@@ -1605,7 +1597,7 @@ initialScript = serverOwned "initial script" <| [
       editor.matches("div.abcRioButton, iframe#ssIFrame_google")
     );
     // For anonymous styles inside HEAD (e.g. ace css themes and google sign-in)
-     editor.ghostNodes.push(insertedNode => 
+    editor.ghostNodes.push(insertedNode => 
        insertedNode.tagName == "STYLE" && insertedNode.getAttribute("id") == null && insertedNode.attributes.length == 0 &&
        insertedNode.parentElement.tagName == "HEAD" && typeof insertedNode.isghost === "undefined"&& insertedNode.textContent.match("error_widget\\.ace_warning")
        && (insertedNode.setAttribute("save-ghost", "true") || true)
@@ -1797,7 +1789,7 @@ initialScript = serverOwned "initial script" <| [
       }
       
     
-    editor.ui = { _internals: {} };
+    editor.ui = { _internals: {}, model: typeof editor.ui == "object" ? editor.ui.model : undefined };
     editor.ui._internals.getLosslessCssParser = new Promise((resolve, reject) => {
         editor.ui._internals.setLosslessCssParser = x => { editor.ui.CSSparser = new x(); resolve(x) };
     });
@@ -1852,7 +1844,7 @@ initialScript = serverOwned "initial script" <| [
           });
       } // editor.ui._internals.switchEditBox
 
-    // Hook Editor to the web window, add event listeners.
+    // Hook Editor's core to the web window, add event listeners.
     editor._internals.register = function() {
       /*
         Pretend loading a page using Editor's commands.
@@ -1899,7 +1891,42 @@ initialScript = serverOwned "initial script" <| [
         if(typeof editor.config.canEditPage == "boolean" && !editor.config.canEditPage && !editor.config.varls) {
           document.body.insertBefore(editor.ui._internals.switchEditBox(true), document.body.childNodes[0]);
         }
-      });
+        
+        if(!editor.config.thaditor && editor.config.editIsFalseButDefaultIsTrue) {
+          // Special case when ?edit=false but the default behavior is edit=true if nothing is set.
+          // Happens only in editor webserver.
+          // It continues to add edit=false to any clicked links.
+          document.onclick = function (e) {
+              var addEditEqualToUrl = function(href, what) {
+                if(href.indexOf("://") == -1) { // Instrument the relative link so that it is edit=true
+                  if(href.indexOf("?") >= 0) {
+                    if(href.endsWith("?")) {
+                      href = href + "edit=" + what
+                    } else {
+                      href = href + "&edit=" + what
+                    }
+                  } else {
+                    href = href + "?edit=" + what
+                  }
+                }
+                return href;
+              }
+              e = e ||  window.event;
+              var node = e.target || e.srcElement;
+              while(node) {
+                if(node.tagName == "A" && node.getAttribute("href") && !node.onclick && !node.getAttribute("onclick")) {
+                 var newLocation = addEditEqualToUrl(node.getAttribute("href"), "false");
+                 console.log(newLocation);
+                 window.location.href = newLocation;
+                 e.stopPropagation();
+                 return false;
+                } else {
+                  node = node.parentNode;
+                }
+              }
+            }
+        } // end if !editor.config.thaditor && editor.config.editIsFalseButDefaultIsTrue
+      }); // onDOMContentLoaded
       
       // Immediately start listening to insertions to mark them as ghosts.
       // TODO: In the future, we won't care anymore.
@@ -1990,7 +2017,7 @@ initialScript = serverOwned "initial script" <| [
         }
         let notifBox = modifyMenuDiv.querySelector("#notif-box");
         if (!notifBox) {
-          notifBox = el("textarea", {id:"notif-box", class:"textarea notifs", visibility:true, readonly:true, isghost:true}, [], {value:msg});
+          notifBox = el("textarea", {id:"notif-box", class:"textarea notifs editor-interface", visibility:true, readonly:true, isghost:true}, [], {value:msg});
           editor.ui._internals.modifyMenu.append(notifBox);
         }
         notifBox.value = msg;
@@ -2005,6 +2032,7 @@ initialScript = serverOwned "initial script" <| [
           let notifBox = document.getElementById("notif-box");
           if (notifBox) {
             notifBox.classList.toggle("visible", false);
+            setTimeout(() => notifBox.remove(), 500);
           }
         }, timeout ? timeout : 3000);
       };
@@ -2954,6 +2982,2883 @@ initialScript = serverOwned "initial script" <| [
       icons.linkMode = editor.svgFromPath("M 14,3 14,23 19,19 22,27 25,26 22,18 28,18 Z");
       icons.check = editor.svgFromPath("M 10,13 13,13 18,21 30,3 33,3 18,26 Z", true);
       
+      /***********************
+        Editor's main toolbar
+      ************************/
+
+      var thaditor_files = [
+        "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
+        "ThaditorInstaller.htaccess", "composer.json", "composer.lock", "credentials.json", "cacert.pem", "versions",
+        "vendor", "ssg", "cache"
+      ];
+      function isLive() {
+        return !(editor.config.path.includes("Thaditor/versions/"));
+      }
+
+      //Version used
+      var verz = "Live";
+      if (!isLive()) {
+        verz = editor.config.path.slice(editor.config.path.lastIndexOf("versions/")+9, editor.config.path.lastIndexOf("/"));
+      }
+      //hover mode functions for linkSelectMode
+      function escapeLinkMode() {
+        document.body.removeEventListener('mouseover', linkModeHover1, false);
+        document.body.removeEventListener('mouseout', linkModeHover2, false);
+        //removing the hovered element (which is retained if the escape key is hit)
+        document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
+        editor.ui.model.visible = false;
+        editor.ui.model.linkSelectMode = false;
+        editor.ui.model.linkSelectCallback = undefined;
+        editor.ui.model.linkSelectOtherMenus = undefined;
+        editor.ui.refresh();
+      }
+      function noGhostHover(node) {
+        curClass = node.getAttribute("class")
+        if(curClass === "modify-menu-icon-label-link" ||
+          curClass === "context-menu-icon" ||
+          curClass === "context-menu-icon fill") {
+            return false;
+          }
+        else if(node.tagName === "path" || node.tagName === "PATH") {
+          return false;
+        }
+        return true;
+      }
+      function linkModeHover1(event) {
+        //console.log(event.target);
+        //console.log(event.target.tagName);
+        //console.log(event.target.getAttribute("class"));
+        if(noGhostHover(event.target)) { 
+          event.target.setAttribute("ghost-hovered", true);
+          editor.ui.refresh();
+          //console.log("hey!");
+        }
+      }
+      function linkModeHover2(event) {
+        if(noGhostHover(event.target)) {
+          event.target.removeAttribute("ghost-hovered");
+          editor.ui.refresh();
+        }
+      }
+
+      function dataToRecoverElement(oldNode) {
+        if(!oldNode) return undefined;
+        if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
+          return {id: oldNode.getAttribute("id")};
+        }
+        let tentativeSelector = [];
+        let t = oldNode;
+        let isText = false, textIndex = 0;
+        while(t && t.parentNode) {
+          let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
+          if(t.nodeType === 1) {
+            tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
+          } else {
+            isText = true;
+            textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
+          }
+          t = t.parentNode;
+        }
+        return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
+      }
+      
+      // Returns the new node that matches the old node the closest.
+      // For text nodes, try to recover the text node, if not, returns the parent node;
+      function recoverElementFromData(data) {
+        if(!data) return undefined;
+        if(typeof data === "object" && data.id) {
+          return document.getElementById(data.id);
+        }
+        if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
+          let tentativeSelector = data.tentativeSelector;
+          while(tentativeSelector.length >= 1) {
+            let newNode = document.querySelector(tentativeSelector.join(" "));
+            if(newNode) {
+              return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+            }
+            tentativeSelector.shift();
+          }
+          return undefined;
+        }
+      }
+      function setCaretPositionIn(node, position) {
+        position = Math.min(position, node.textContent.length);
+        if (node.nodeType == 3) {
+          let sel  = window.getSelection()
+          setTimeout( () => sel.collapse(node, position), 0);
+        } else {
+          let p = position
+          let n = node.firstChild
+          while(n != null && p > n.textContent.length) {
+            p = p - n.textContent.length
+            n = n.nextSibling
+          }
+          if(n != null) {
+            setCaretPositionIn(n, p)
+          } else {
+            console.log("Could not find position. Reached node and position ", [n, p])
+          }
+        }
+      }
+      function dataToRecoverCaretPosition(caretPosition) {
+        if(!caretPosition) return undefined;
+        return {target: editor.toTreasureMap(caretPosition.startContainer), startOffset: caretPosition.startOffset};
+      }
+      function recoverCaretPositionFromData(data) {
+        if(!data) return;
+        let newTextNodeOrParent = editor.fromTreasureMap(data.target);
+        if(newTextNodeOrParent) setCaretPositionIn(newTextNodeOrParent, data.startOffset)
+      }
+      function dataToRecoverSelectionRange(selectionRange) { // TODO
+        if(!selectionRange) return undefined;
+        return undefined;
+      }
+      function recoverSelectionRangeFromData(data) { // TODO
+        if(!data) return;
+        return undefined;
+      }
+      function nothingToLose() {
+        if(editor.ui.canSave()) {
+          var x = confirm("There are unsaved modifications. Do you want to discard them?");
+          if(x) {
+            editor.ui.model.undoStack = [];
+            editor.ui.model.redoStack = [];
+            return true;
+          } else {
+            return false;
+          }
+        }
+        editor.ui.model.undoStack = [];
+        editor.ui.model.redoStack = [];
+        return true;
+      }
+      //(outer lastEditScript)
+
+      var ifAlreadyRunning = typeof editor == "object" && typeof editor.ui === "object" && typeof editor.ui.model === "object";    
+      editor.ui.model = { // Change this and call editor.ui.refresh() to get something consistent.
+        visible: ifAlreadyRunning ? editor.ui.model.visible : false, //here
+        clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor.ui.model.clickedElem) : undefined,
+        displayClickedElemAsMainElem: true, // Dom selector status switch signal
+        previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
+        notextselection: false, // When using the relative DOM selector, set to true to avoid considering the caret (e.g. for insertions and deletions)
+        savedTextSelection: undefined, // Text range to restore when the edition bar closes, on mobile
+        restoredAfterReload: ifAlreadyRunning ? editor.ui.model.restoredAfterReload : {},
+        selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor.ui.model.selectionRange) : undefined,
+        caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor.ui.model.caretPosition) : undefined,
+        link: undefined,
+        disambiguationMenu: undefined, //here
+        isSaving: false,
+        undosBeforeSave: ifAlreadyRunning ? editor.ui.model.undosBeforeSave : 0,
+        //data structures to represent undo/redo "stack"
+        undoStack: ifAlreadyRunning ? editor.ui.model.undoStack : [],
+        redoStack: ifAlreadyRunning ? editor.ui.model.redoStack : [],
+        actionsDuringSave: ifAlreadyRunning ? editor.ui.model.actionsDuringSave : [],
+        isDraftSwitcherVisible : ifAlreadyRunning ? editor.ui.model.isDraftSwitcherVisible : false,
+        //observer to listen for muts
+        outputObserver: ifAlreadyRunning ? editor.ui.model.outputObserver : undefined,
+        //worker for interface with the server
+        send_notif:ifAlreadyRunning ? editor.ui.model.send_notif : "",
+        //editor log
+        editor_log: ifAlreadyRunning ? editor.ui.model.editor_log : [],
+        show_log: ifAlreadyRunning ? editor.ui.model.show_log : false, //here
+        linkSelectMode: false, //here
+        linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
+        idNum: ifAlreadyRunning ? editor.ui.model.idNum : 1,
+        //new attribute to keep menu state after reload
+        textareaPropertiesSaved: ifAlreadyRunning ? editor.ui.model.textareaPropertiesSaved : [],
+        askQuestions: ifAlreadyRunning ? editor.ui.model.askQuestions : editor.config.askQuestions,
+        autosave: ifAlreadyRunning ? editor.ui.model.autosave : editor.config.autosave,
+        path: editor.config.path,
+        version : verz,
+        interfaces: ifAlreadyRunning ? editor.ui.model.interfaces : [],
+        disambiguationMenu: ifAlreadyRunning ? editor.ui.model.disambiguationMenu : undefined
+      }
+      
+      // Helpers: Text preview and summary
+      function textPreview(element, maxLength) {
+        let x = element.textContent;
+        let result = "'" + x + "'";;
+        if(x == "") {
+          if(element.tagName === "META") {
+            result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
+                    (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
+          } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
+            result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+          } else if(element.tagName === "LINK") {
+            result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
+          }
+        }
+        if(typeof maxLength !== "undefined" && result.length > maxLength) {
+          return result.substring(0, maxLength) + "...'";
+        }
+        return result;
+      }
+      function summary(element, idAndClasses, maxLength) {
+        var summary = element.tagName.toLowerCase();
+        if(idAndClasses && element.getAttribute("id")) {
+          summary += "#" + element.getAttribute("id");
+        }
+        var elemClass = element.getAttribute("class");
+        if(idAndClasses && elemClass && elemClass.trim().length) {
+          summary += "." + elemClass.split(/\s+/g).join(".");
+        }
+        summary += " " + textPreview(element);
+        maxLength = maxLength || 80;
+        summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
+        return summary;
+      }
+      
+      function getTempCSSName(CSSFilePath) {
+        let newFilePath = CSSFilePath.split("/");
+        let newFileName = `tmp-${editor.config.userName}-${newFilePath[newFilePath.length - 1]}`;
+        newFilePath[newFilePath.length - 1] = newFileName;
+        newFilePath = newFilePath.join("/");
+        return newFilePath;
+      }
+      
+      function editor_stopWatching() {
+        editor.ui.model.outputObserver.disconnect();
+      }
+      
+      function editor_resumeWatching() {
+        editor.ui.model.outputObserver.observe
+          ( document.body.parentElement
+          , { attributes: true
+            , childList: true
+            , characterData: true
+            , attributeOldValue: true
+            , characterDataOldValue: true
+            , subtree: true
+            });
+      }
+      
+      // newValue can be a function, in which it should be applied on the current content.
+      // Returns the old value.
+      async function assignTmpCss(linkNode, newValue, notUndoable) {
+        if(!notUndoable) { // We send this to undo.
+          editor_stopWatching();
+          let oldValue = await assignTmpCss(linkNode, newValue, true);
+          let m = {type: "linkHrefCSS", target: linkNode, oldValue: oldValue, newValue: newValue};
+          editor.ui._internals.makeMutationUndoable(m);
+          editor.ui.syncUndoRedoButtons();
+          editor_resumeWatching();
+          return;
+        }
+        // Here the change should not take care of doing the undo/redo part. 
+        let ghostHref = linkNode.getAttribute("ghost-href");
+        let hasGhostHref = typeof ghostHref === "string";
+        let oldHref = hasGhostHref ? ghostHref : linkNode.getAttribute("href")
+        let CSSFilePath = relativeToAbsolute(removeTimestamp(oldHref));
+        let currentContent = typeof linkNode.cachedContent === "string" ? linkNode.cachedContent :
+                                 (await editor.getServer("read", CSSFilePath)).slice(1);
+        if(typeof linkNode.cachedContent !== "string") {
+          linkNode.cachedContent = currentContent;
+        }
+        if(hasGhostHref) { // Proxied
+          console.log("Was proxied");
+          let tmpCachedContent = typeof linkNode.tmpCachedContent == "string" ? linkNode.tmpCachedContent :
+                                 (await editor.getServer("read", linkNode.getAttribute("href"))).slice(1);
+          if(typeof newValue === "function") {
+            newValue = newValue(tmpCachedContent);
+          }
+          if(currentContent === newValue) { // We can remove the proxy
+            if(!notUndoable) {
+              editor.ui.model.outputObserver.disconnect();
+            }
+            let CSSTmpFilePath = linkNode.getAttribute("href");
+            await editor.postServer("unlink", removeTimestamp(CSSTmpFilePath));
+            linkNode.setAttribute("href", oldHref);
+            linkNode.removeAttribute("ghost-href");
+            linkNode.tmpCachedContent = newValue;
+          } else { // We keep the proxy, just update the href
+            let CSSTmpFilePath = linkNode.getAttribute("href");
+            await editor.postServer("write", removeTimestamp(CSSTmpFilePath), newValue);
+            linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
+            linkNode.tmpCachedContent = newValue;
+          }
+          return tmpCachedContent;
+        } else {// Unproxied
+          console.log("Was not proxied")
+          if(typeof newValue === "function") {
+            newValue = newValue(currentContent);
+          }
+          if(currentContent !== newValue) { // Create the proxy file
+            console.log("Value updated")
+            //add dummy counter, force reload
+            linkNode.setAttribute("ghost-href", oldHref);
+            let CSSTmpFilePath = getTempCSSName(CSSFilePath);
+            await editor.postServer("write", CSSTmpFilePath, newValue);
+            linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
+            linkNode.tmpCachedContent = newValue;
+          } // else nothing to change, leave unproxied.
+          return currentContent;
+        }
+      }
+      
+      function init_css_parser() {
+        let thaditorLossLessCss = document.querySelector("script#thaditor-losslesscss");
+        if(!thaditorLossLessCss) {
+          let script = el("script", {id: "thaditor-losslesscss", class:"editor-interface", type:"text/javascript", src:"https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js", async:"true", onload:"editor.ui._internals.setLosslessCssParser(losslesscssjs);", isghost: "true"});
+          document.head.appendChild(script);
+        } else {
+          console.log("thaditorLossLessCss found", thaditorLossLessCss);
+        }
+      }
+           
+      function init_interfaces() {
+        init_css_parser();
+        let linkSelect = function() {
+          activateNodeSelectionMode("to link to",
+            (linkFrom => linkTo => {
+              let targetID = linkTo.getAttribute("id");
+              if(!targetID) {
+                targetID = "ID" + editor.ui.model.idNum
+                linkTo.setAttribute("id", targetID);
+                editor.ui.model.idNum += 1;
+              }
+              else if(targetID.length > 100) {
+                targetID = targetID.trim();
+                linkTo.setAttribute("id", targetID);
+              }
+              linkFrom.setAttribute("href", "#" + targetID);
+            })(editor.ui.model.clickedElem)
+          );
+        } 
+        let createButton = function(innerHTML, attributes, properties) {
+          let button = el("div", attributes, [], properties);
+          button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
+          button.classList.add("modify-menu-button");
+          button.innerHTML = innerHTML;
+          return button;
+        } //you can append a createbutton to the element returning in render
+        let add_btn_to_div = (div, innerHTML, attributes, properties) => {
+          div.append(createButton(innerHTML, attributes, properties));
+        };
+        if(!(editor.config.EDITOR_VERSION & 1)) {
+          if(typeof simple_editor_interface !== "undefined") {
+            editor.ui.model.interfaces.push(simple_editor_interface);
+          }
+          return;
+        }
+        if(typeof simple_editor_interface !== "undefined" && editor.config.EDITOR_VERSION & 16) {
+          editor.ui.model.interfaces.push(simple_editor_interface);
+        }
+        editor.ui.model.interfaces.push({
+          title: "Selected Element Tree",
+          minimized: true,
+          priority(editor_model) {
+            return undefined;
+          },
+          enabled(editor_model) {
+            return editor_model.clickedElem;
+          },
+          render: function render(editor_model, innerBox) {
+            let domSelector = el("div.dom-selector.noselect"); // create dom selector interface
+            const clickedElem = editor_model.clickedElem;
+            if (!clickedElem) return "Click on an element to view its location in DOM tree";
+            domSelector.classList.add("dom-selector-style");
+            let mainElemDiv = el("div.mainElem");
+            let childrenElemDiv = el("div.childrenElem");
+            domSelector.append(
+              mainElemDiv, childrenElemDiv
+            );
+            let displayMainElem = function(elem) {
+              mainElemDiv.append(
+                el("div", {"class":"mainElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">", {
+                  onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
+                  onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
+                }),
+                el("div", {"class": "mainElemInfo"}, textPreview(elem, 50))
+              );
+            }
+            let displayChildrenElem = function(elem) {
+              childrenElemDiv.append(
+                el("div", {
+                    "class": "childrenSelector" + (elem.matches(".editor-interface") ? " editor-interface-dom-selector" : "") +
+                      (editor.isGhostNode(elem) ? " editor-recorded-ghost-node" : ""),
+                    title: elem.matches(".editor-interface") ? "This is part of Editor" : (editor.isGhostNode(elem) ? "(temporary) " : "") + textPreview(elem, 20)
+                    },
+                  [
+                    el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
+                    // el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
+                  ], 
+                  {
+                    onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
+                    onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
+                  }
+                )
+              );
+            }
+            // show attributes of element on the dom selector
+            let displayElemAttr = function(targetDiv, elem) {
+              for (let i = 0; elem && elem.attributes && i < elem.attributes.length; i++) {
+                let name = elem.attributes[i].name;
+                let value = elem.attributes[i].value;
+                if (name === "ghost-clicked" || name === "ghost-hovered") continue;
+                targetDiv.append(
+                  el("div", { "class": "elementAttr" },
+                    [
+                      el("span", { title: "This element has attribute name '" + name + "'" }, name + ": "),
+                      el("span", { title: "This element has attribute value '" + value + "'" }, value)
+                    ]
+                  )
+                );
+              }
+            }
+            // display children and siblings in the second part of selector
+            let displayChildrenSiblings = function(middleChild, selectMiddleChild) {
+              // display clicked element's previous sibling, clicked element, clicked element's next sibling
+              let cnt = 0;
+              // display previous sibling
+              if (middleChild.previousElementSibling && 
+                  (middleChild.previousElementSibling.id !== "context-menu" || middleChild.previousElementSibling.id !== "modify-menu" || middleChild.previousElementSibling.id !== "editbox")) {
+                displayChildrenElem(middleChild.previousElementSibling);
+                let qs = childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector");
+                console.log ({qs});
+                qs[cnt].onclick = function () {
+                  let c = middleChild.previousElementSibling;
+                  if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                    return;
+                  }
+                  // still in status 2, but clicked element change to previous sibling
+                  editor_model.displayClickedElemAsMainElem = false;
+                  editor_model.previousVisitedElem = []; // clear the stack
+                  editor_model.clickedElem.removeAttribute("ghost-hovered");
+                  editor_model.clickedElem = c;
+                  editor_model.notextselection = true;
+                  if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
+                  editor.ui.refresh();
+                }
+              } else {
+                childrenElemDiv.append(
+                  el("div", {"class": "childrenSelector no-sibling"}, "no sibling")
+                );
+              }
+              cnt++;
+              // display certain child in the middle
+              displayChildrenElem(middleChild);
+              childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
+                let c = middleChild;
+                if (!c.tagName) {
+                  return;
+                }
+
+                if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
+                  // still in status 2
+                  editor_model.displayClickedElemAsMainElem = false;
+                } else {
+                  // switch to status 1
+                  editor_model.displayClickedElemAsMainElem = true;
+                }
+                editor_model.clickedElem.removeAttribute("ghost-hovered");
+                editor_model.clickedElem = c;
+                editor_model.notextselection = true;
+                if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
+                editor.ui.refresh();
+              }
+              if (selectMiddleChild) {
+                childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector")[cnt].classList.add("selectedDom");
+              }
+              cnt++;
+              // display next sibling
+              if (middleChild.nextElementSibling && 
+                (middleChild.nextElementSibling.id !== "context-menu" || middleChild.nextElementSibling.id !== "modify-menu" || middleChild.nextElementSibling.id !== "editbox")) {
+                displayChildrenElem(middleChild.nextElementSibling);
+                childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
+                  let c = middleChild.nextElementSibling;
+                  if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
+                    return;
+                  }
+                  // still in status 2, but clicked element change to next sibling
+                  editor_model.displayClickedElemAsMainElem = false;
+                  editor_model.previousVisitedElem = []; // clear the stack
+                  editor_model.clickedElem.removeAttribute("ghost-hovered");
+                  editor_model.clickedElem = c;
+                  editor_model.notextselection = true;
+                  if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
+                  editor.ui.refresh();
+                }
+              } else {
+                childrenElemDiv.append(
+                  el("div", {"class": "childrenSelector no-sibling"}, "no sibling")
+                );
+              }
+            }
+            // editor itself should be invisible
+            if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
+              if (!clickedElem.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
+                editor_model.displayClickedElemAsMainElem = false;
+              }
+              // status 1. display clicked element in main part
+              if (editor_model.displayClickedElemAsMainElem) {
+                displayMainElem(clickedElem);
+                domSelector.classList.add("selectedDom");
+                mainElemDiv.onclick = function () {
+                  if (!clickedElem.tagName) {
+                    return;
+                  }
+                  // When the main element in selector is clicked, selector switch to status 2 so that user can see its parent element
+                  editor_model.displayClickedElemAsMainElem = false;
+                  editor_model.clickedElem.removeAttribute("ghost-hovered");
+                  editor_model.clickedElem = clickedElem;
+                  editor_model.notextselection = true;
+                  if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
+                  editor.ui.refresh();
+                }
+                displayElemAttr(mainElemDiv, clickedElem);
+                // display children, if no previous selected child, display first 3 children elements in second part of selector
+                if (editor_model.previousVisitedElem.length < 2 ||
+                    (editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1] != clickedElem)) {
+                  if (editor_model.previousVisitedElem.length !== 0) {
+                    editor_model.previousVisitedElem = [];
+                  }
+                  if (clickedElem.children.length > 0) {
+                    // only display first 3 children elements
+                    let childrenElem = clickedElem.children;
+                    for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
+                      // prevent displaying editor itself
+                      if (cnt === 0 && (childrenElem[i].matches(".editor-interface") || editor.isGhostNode(childrenElem[i]))) {
+                        continue;
+                      }
+                      displayChildrenElem(childrenElem[i]);
+                      let qs = childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector");
+                      console.log ({qs});
+                      qs[cnt].onclick = function () {
+                        let c = childrenElem[i];
+                        if (!c.tagName) {
+                          return;
+                        }
+                        if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
+                          editor_model.displayClickedElemAsMainElem = false;
+                        } else {
+                          // still in status 1
+                          editor_model.displayClickedElemAsMainElem = true;
+                        }
+                        editor_model.clickedElem.removeAttribute("ghost-hovered");
+                        editor_model.clickedElem = c;
+                        editor_model.notextselection = true;
+                        editor.ui.refresh();
+                      }
+                      cnt++;
+                    }
+                  }
+                  // else: bottom of DOM tree
+                } else {
+                  editor_model.previousVisitedElem.pop();
+                  let middleChild = editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1];
+                  displayChildrenSiblings(middleChild, false);
+                }
+              } else {
+                // status 2. display clicked element's parent element in main part
+                // <html> has no parent element
+                if(clickedElem.parentElement) {
+                  displayMainElem(clickedElem.parentElement);
+                  mainElemDiv.onclick = function () {
+                    if (!clickedElem.parentElement.tagName) {
+                      return;
+                    }
+                    // still in status 2 while current clicked element's parent element becomes clicked element so that user can see grandparent element
+                    editor_model.displayClickedElemAsMainElem = false;
+                    // memoization. when user click parent element:
+                    if (editor_model.previousVisitedElem.length === 0) {
+                      editor_model.previousVisitedElem.push(clickedElem);
+                      editor_model.previousVisitedElem.push(clickedElem.parentElement);
+                    } else {
+                      if (editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1] == clickedElem) {
+                        editor_model.previousVisitedElem.push(clickedElem.parentElement);   // continuous storing path
+                      } else {
+                        editor_model.previousVisitedElem = []; // clear the stack
+                      }
+                    }
+                    editor_model.clickedElem.removeAttribute("ghost-hovered");
+                    editor_model.clickedElem = clickedElem.parentElement;
+                    editor_model.notextselection = true;
+                    if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
+                    editor.ui.refresh();
+                  }
+                  displayElemAttr(mainElemDiv, clickedElem.parentElement);
+                } else {
+                  // for <html>
+                  displayMainElem(clickedElem);
+                  displayElemAttr(mainElemDiv, clickedElem);
+                } 
+                displayChildrenSiblings(clickedElem, true);
+              }
+            }
+            return domSelector;
+          }
+        });
+        editor.ui.model.interfaces.push({
+          title: "Attributes",
+          minimized: true,
+          priority(editor_model) {
+            return undefined;
+          },
+          enabled(editor_model) {
+            return editor_model.clickedElem;
+          },
+          render: function render(editor_model, innerBox) {
+            let keyvalues = el("div", {"class":"keyvalues"});
+            const clickedElem = editor_model.clickedElem;
+            if (!clickedElem) return "Click on an element to see its attributes";
+            // modify tagname
+            keyvalues.append(
+              el("div", {"class": "keyvalue"}, [
+                el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "Tag: "),
+                el("span", {class:"attribute-key-value"}, [
+                  el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
+                    [], {
+                      oninput() {
+                        let applyNewTagNameButton = document.querySelector("#applyNewTagName");
+                        applyNewTagNameButton.classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w*$/));
+                        applyNewTagNameButton.value = this.value === "" ? "-" : "Set";
+                        applyNewTagNameButton.setAttribute("title", this.value === "" ? "Lift element's children and delete element" :  "Change tag name to '"+this.value+"'");
+                      }
+                    }),
+                    el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
+                          let newTagName = document.querySelector("#newTagName").value;
+                          let newel;
+                          if(newTagName === "") {
+                            while(clickedElem.childNodes.length) {
+                              newel = clickedElem.childNodes[0];
+                              clickedElem.parentElement.insertBefore(newel, clickedElem);
+                            }
+                            clickedElem.remove();
+                          } else {
+                            newel = el(document.querySelector("#newTagName").value);
+                            let elements = clickedElem.childNodes;
+                            while(elements.length) {
+                              newel.append(elements[0]);
+                            }
+                            for(let i = 0; i < clickedElem.attributes.length; i++) {
+                              newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+                            }
+                            clickedElem.parentElement.insertBefore(newel, clickedElem);
+                            clickedElem.remove();
+                          }
+                          editor_model.clickedElem = newel;
+                          editor.ui.refresh();
+                        }
+                      }
+                    ),
+                    el("div", {id:"newtagname-align-placeholder"}, " ")
+                  ]
+                )
+              ])
+            );
+            let isSpecificGhostAttributeKey = editor.isSpecificGhostAttributeKeyFromNode(clickedElem);
+            let isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(clickedElem);
+
+            for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
+              let name = clickedElem.attributes[i].name;
+              if(name === "ghost-clicked" || name === "ghost-hovered") continue;
+              let value = clickedElem.attributes[i].value;
+              // Inline styles incoporated into CSS display editor
+              if(name !== "style") {
+                let isGhost = editor.isGhostAttributeKey(name) || isSpecificGhostAttributeKey(name);
+                let isIgnored = isIgnoredAttributeKey(name);
+                let isHref = name === "href" && clickedElem.tagName === "A";
+                keyvalues.append(
+                  el("div", {"class": "keyvalue" + (isGhost ? " editor-recorded-ghost-attribute" : "")
+                                                + (isIgnored ? " editor-ignored-attribute" : ""),
+                            "title": isGhost ? "Key/value generated by a script" : isIgnored ? "key/value ignored after being modified by a script" : undefined
+                  }, [
+                    el("span", {title: "Element attribute name"}, name + ": "),
+                    el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
+                      el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
+                          oninput: ((name, isHref) => function () {
+                              clickedElem.setAttribute(name, this.value);
+                              if(isHref) {
+                                let livelinks = document.querySelectorAll(".livelink");
+                                for(let livelink of livelinks) {
+                                  let finalLink = livelink.matches("#context-menu *") ?
+                                    `javascript:if(nothingToLose()) { editor.navigateTo(relativeToAbsolute('${linkToEdit(this.value)}')) }` : this.value;
+                                  livelink.setAttribute("href", finalLink);
+                                  livelink.setAttribute("title", "Go to " + this.value);
+                                }
+                              }
+                          })(name, isHref)
+                        }),
+                      isHref ? el("div", {title: "Go to " + value, "class": "modify-menu-icon inert"}, [], {
+                        innerHTML: editor.ui.icons.liveLink(value)
+                      }) : undefined,
+                      isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
+                        innerHTML: editor.ui.icons.linkMode,
+                        onclick: linkSelect
+                      }) : undefined,
+                      el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
+                        innerHTML: editor.ui.icons.wasteBasket,
+                        onclick: ((name) => function() {
+                          clickedElem.removeAttribute(name);
+                          editor_model.clickedElem = clickedElem;
+                          editor.ui.refresh();
+                          })(name)
+                        })
+                      ]
+                    )
+                  ]
+                ));
+              }
+              else {
+                let styleInterface = getEditorInterfaceByTitle("Style");
+                if(styleInterface) {
+                  styleInterface.minimized = false;
+                  editor.ui.model.inline = clickedElem.getAttribute("style");
+                  styleInterface.priority(editor.ui.model);
+                }
+              }
+            }
+            let highlightsubmit = function() {
+              let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
+              this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
+                attrName === "" || attrName.trim() !== attrName
+            }
+
+            if(clickedElem.nodeType === 1) {
+              keyvalues.append(
+                el("div", {"class": "keyvalue keyvalueadder"}, [
+                  el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {oninput: highlightsubmit})),
+                  el("span", {class: "attribute-key-value"}, [
+                    el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
+                      onfocus: function() {
+                        let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
+                        if(keyInput && keyInput.value != "") {
+                          let name = document.querySelector("div.keyvalueadder input[name=name]").value;
+                          clickedElem.setAttribute(
+                            name,
+                            document.querySelector("div.keyvalueadder input[name=value]").value
+                          );
+                          editor.ui.refresh();
+                          let d =  document.querySelector("div.keyvalue input#dom-attr-" + name);
+                          if(d) d.focus();
+                        }
+                      },
+                      oninput: highlightsubmit})),
+                    el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: editor.ui.icons.plus,
+                      disabled: true,
+                      onclick() {
+                        clickedElem.setAttribute(
+                          this.parentElement.querySelector("[name=name]").value,
+                          this.parentElement.querySelector("[name=value]").value
+                        );
+                        editor.ui.refresh();
+                      },
+                      oninput: highlightsubmit })])
+                ])
+              );
+            }
+            return keyvalues;
+          }
+        });
+        
+        editor.ui.model.interfaces.push({
+          title: "Style",
+          minimized: true,
+          priority(editor_model) {
+            if(editor_model.inline) return 1;
+            return undefined;
+          },
+          enabled(editor_model) {
+            return editor_model.clickedElem;
+          },
+          render: function render(editor_model, innerBox) {
+            const clickedElem = editor_model.clickedElem;
+            if(!clickedElem) {
+              return "Click on an element to see its style";
+            }
+            const do_css = (clickedElem && clickedElem.id !== "context-menu" && clickedElem.id !== "modify-menu" && clickedElem.id !== "editbox" &&
+                            !editor_model.insertElement);
+            let CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
+            if (!do_css) return CSSarea;
+            //parse relevant CSS, recording prior and post CSS text as well 
+
+            async function fullParseCSS() {
+              var fullCSS = [], keyframes = [], rawCSS = [];
+              //console.log("All style tags:", document.querySelectorAll("style"));
+              let CSSstyles = document.querySelectorAll("link[rel=stylesheet], style");
+              for(let i in CSSstyles) {
+                let linkOrStyleNode = CSSstyles[i];
+                if(linkOrStyleNode.tagName === "LINK" && linkOrStyleNode.getAttribute("rel") === "stylesheet" &&
+                   linkOrStyleNode.getAttribute("href") && !linkOrStyleNode.getAttribute("isghost")) {
+                     let href = linkOrStyleNode.getAttribute("href");
+                     if(isAbsolute(href)) continue;
+                  let CSSFilePath = relativeToAbsolute(removeTimestamp(href));
+                  if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface") && (CSSFilePath.indexOf("http") < 0)) {
+                    let CSSvalue = typeof linkOrStyleNode.tmpCachedContent === "string" ?
+                          linkOrStyleNode.tmpCachedContent :
+                          (await editor.getServer("read", CSSFilePath)).slice(1);
+                    rawCSS.push({text: CSSvalue, tag: linkOrStyleNode});
+                  }
+                }
+                else if(linkOrStyleNode.tagName === "STYLE" && !linkOrStyleNode.getAttribute("isghost")) {
+                  rawCSS.push({text: linkOrStyleNode.textContent, tag: linkOrStyleNode});
+                }
+              }
+              let CSSparserBuilder = await editor.ui._internals.getLosslessCssParser;
+              let CSSparser = new CSSparserBuilder();
+              function findText(parsed, startIndex, endIndex) { //for css + img replacement
+                let textSegment = "";
+                for(let i = startIndex; i < endIndex; i++) {
+                  textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[i]]) :
+                    (parsed[0].directive ? CSSparser.unparseRules([parsed[i]]) : "") : "";
+                  //console.log(textSegment);
+                }
+                return textSegment;
+              }
+              for(let z in rawCSS) {  
+                var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
+                for(let i in parsedCSS) {
+                  if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector.replace(/:(?=(:?after|:?before|:?hover))[^,]*(?=,|$)/g, ""))) {
+                    let content = CSSparser.unparseCSS([parsedCSS[i]]);
+                    let wsBefore = content.replace(/^(\s*\n|)[\s\S]*$/g, (m, ws) => ws);
+                    let contentTrimmed = content.replace(/\s*\n/,"");
+                    //calculating before and after text
+                    fullCSS.push({type: 'cssBlock', content: contentTrimmed, 
+                      before: findText(parsedCSS, 0, Number(i)) + wsBefore, after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
+                  }
+                  else if(parsedCSS[i].kind === '@@media' && window.matchMedia(parsedCSS[i].atNameValue).matches) {
+                    let curMedia = parsedCSS[i];
+                    for(let j in curMedia.content) {
+                      if(curMedia.content[j].kind === 'cssBlock' && editor.matches(clickedElem, curMedia.content[j].selector.replace(/:(?=(:?after|:?before|:?hover))[^,]*(?=,|$)/g, ""))) {
+                        var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
+                          mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
+                          innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
+                          before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
+                        //console.log("Insert media:");
+                        //console.log(insertMedia);
+                        fullCSS.push(insertMedia);
+                        //console.log("got here first!");
+                      }
+                    }
+                  }
+                  else if(parsedCSS[i].kind === '@@charset') {
+                    if(!(parsedCSS[i].wsBefore === "" && parsedCSS[i].wsBeforeAndSemicolon === ";" && parsedCSS[i].wsBeforeValue === " "
+                      && parsedCSS[i].value.startsWith("\"") && parsedCSS[i].value.endsWith("\""))) {
+                      editor.ui.sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
+                    }
+                    if(editor_model.clickedElem.tagName != "STYLE" && editor_model.clickedElem.tagName != "LINK") {
+                      fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
+                        before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
+                    }
+                  }
+                  else if(parsedCSS[i].kind === '@@keyframes') {
+                    keyframes.push({type: '@@keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
+                      before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag,
+                      animationName: parsedCSS[i].atNameValue});
+                  }
+                  else if(parsedCSS[i].kind === 'whitespace') { 
+                    continue;
+                  }
+                  if(i === parsedCSS.length - 1 && !fullCSS.length) {
+                    console.log("Nothing relevant in style tag: ", rawCSS[z].tag);
+                  }
+                }
+                //console.log("The parsed text looks like:", curCSS);
+              }
+              for(i in keyframes) {
+                for(j in fullCSS) {
+                  let parsedSection = CSSparser.parseCSS(fullCSS[j].content);
+                  for(k in parsedSection.content) {
+                    for(l in parsedSection.content[k].rules) {
+                      if(Number(parsedSection.content[k].rules[l].search(keyframes[i].animationName)) >= 0) {
+                        fullCSS.push(keyframes[i]);
+                      }
+                    }
+                  }
+                  for(k in parsedSection.rules) {
+                    if(Number(parsedSection.rules[k].search(keyframes[i].animationName)) >= 0) {
+                      fullCSS.push(keyframes[i]);
+                    }
+                  }
+                }
+              }
+              //console.log(fullCSS);
+              return fullCSS;
+            } // fullParseCSS
+            
+            function fullUnparseCSS(curCSS) {
+              let curTag = curCSS.orgTag;
+              let CSSString = "";
+              if(curCSS.type === 'cssBlock' || curCSS.type === "@@charset") {
+                //console.log(curCSS.content);
+                CSSString = curCSS.before + curCSS.content + curCSS.after;
+                //console.log(CSSString);
+              }
+              else if(curCSS.type === '@@media') { 
+                console.log(curCSS);
+                CSSString = curCSS.before + curCSS.mediaSelector + curCSS.innerBefore + curCSS.content + curCSS.innerAfter + curCSS.bracketAfter + curCSS.after;   
+              }
+              if(curTag.tagName === "LINK") {
+                return CSSString;
+              }
+              // Style elements
+              //console.log("Text is:" + CSSString);
+              curTag.textContent = CSSString;
+              //debugger
+              //consolw.log("After");
+            } // fullUnparseCSS
+            var curCSSWindow = undefined;
+
+            function setCSSAreas() {
+              //console.log(CSSarea.firstChild);
+              while(CSSarea.firstChild) {
+                console.log("Removed child:", CSSarea.firstChild);
+                CSSarea.removeChild(CSSarea.firstChild);
+              }
+              //if there is linked CSS text
+              if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("rel") === "stylesheet" && clickedElem.getAttribute("href")) {
+                let oldHref = clickedElem.getAttribute("href"); // Even if it's a temporary href
+                let CSSFilePath = relativeToAbsolute(oldHref);
+                let CSSvalue = editor._internals.doReadServer("read", CSSFilePath).slice(1);
+                CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
+                CSSarea.append(
+                  el("div", {"class": "CSS-modify-unit"}, [
+                    el("textarea", {"class": "linked-CSS"}, [], {
+                      value: CSSvalue,
+                      onfocusout() {
+                        setCSSAreas();
+                      },
+                      oninput() {
+                        (async () => { // Maybe create a new temporary CSS file.
+                          await assignTmpCss(clickedElem, this.value);
+                        })();
+                      }
+                    })
+                  ])
+                );
+              }
+              //inline styles 
+              editor_model.inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
+              if(editor_model.inline) {
+                console.log("We have inline CSS!");
+                let inlineCSS = el("div", {"class": "CSS-modify-unit"}, [
+                  el("textarea", {"class": "inline-CSS"}, [], {
+                    value: editor_model.inline,
+                    onfocusout() {
+                      setCSSAreas();
+                    },
+                    oninput() {
+                      clickedElem.setAttribute("style", this.value);
+                    }
+                  }),
+                  el("div", {"class": "CSS-buttons"}, [
+                    el("div", {"class": "CSS-action-button"}, [], {
+                      innerHTML: editor.ui.icons.clone,
+                      onclick() {
+                        let stylesLinks = document.querySelectorAll("style, link[rel=stylesheet]");
+                        let i = stylesLinks.length - 1;
+                        let lastStyleLink = stylesLinks[i];
+                        while(i >= 0 && lastStyleLink.matches(".editor-interface, .editor-interface *")) {
+                          i--;
+                          lastStyleLink = stylesLinks[i];
+                        }
+                        if(lastStyleLink && (lastStyleLink.isghost || lastStyleLink.tagName === "LINK" && lastStyleLink.tagName.indexOf("http") >= 0)) {
+                          lastStyleLink = undefined;
+                        }
+                        console.log("Closest CSS source:", lastStyleLink);
+                        let inline_CSS = document.querySelectorAll(".inline-CSS");
+                        console.log("Finding inline CSS textarea:", inline_CSS);  
+                        let postIndentCSS = "";
+                        let preIndentCSS = inline_CSS[0].value.split("\n");
+                        for(let i = 0; i < preIndentCSS.length; i++) {
+                          if(i !== preIndentCSS.length-1) {
+                            postIndentCSS += "  " + preIndentCSS[i] + "\n";
+                          }
+                          else {
+                            postIndentCSS += "  " + preIndentCSS[i]; 
+                          }
+                        }
+                        let curSelector = getShortestUniqueSelector(clickedElem);
+                        postIndentCSS = "\n" + curSelector + " {\n" + postIndentCSS + "\n}";   
+                        console.log("lastStyleLink is:", lastStyleLink);     
+                        if(lastStyleLink) {
+                          if(lastStyleLink.tagName === "LINK") {
+                            (async () => {
+                              await assignTmpCss(lastStyleLink, oldValue => oldValue + postIndentCSS);
+                              clickedElem.removeAttribute("style");
+                              setCSSAreas();
+                            })();
+                          }
+                          else { // lastStyleLink is a <style>
+                            let curValue = lastStyleLink.textContent;
+                            lastStyleLink.textContent = curValue + postIndentCSS;
+                            clickedElem.removeAttribute("style");
+                            setCSSAreas();
+                          }
+                        }
+                        else {
+                          //just default to style node for now
+                          document.body.appendChild(el("style.inserted-CSS", {}, postIndentCSS));
+                          clickedElem.removeAttribute("style");
+                          setCSSAreas();
+                        }
+                      }
+                    }),
+                    el("div", {"class": "CSS-action-button"}, [], {
+                      innerHTML: editor.ui.icons.wasteBasket,
+                      onclick() {
+                        let inline_CSS = document.querySelectorAll(".inline-CSS");
+                        inline_CSS.value = "";
+                        clickedElem.setAttribute("style", inline_CSS.value);
+                        setCSSAreas();
+                      }
+                    })
+                  ])
+                ]);
+                CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "Inline styles:"}));
+                CSSarea.append(inlineCSS);
+              } // inline style present
+              else{
+                CSSarea.append(el("button.action-button#add-inline-style", {}, [], {
+                  innerHTML: "Add inline style",
+                  onclick() {
+                    clickedElem.setAttribute("style", " ");
+                    editor.ui.refresh();
+                  }}));
+              }
+              (async () => {
+              //rest of CSS
+              editor_model.CSSState = await fullParseCSS();
+              //console.log("CSS state is:", editor_model.CSSState);
+              const count = (str) => {
+                const re = /\n/g
+                return ((str || '').match(re) || []).length
+              }
+              for(let i in editor_model.CSSState) {
+                let cssState = editor_model.CSSState[i];
+                let orgTag = cssState.orgTag;
+                //console.log("cssState", cssState);
+                let headerStr = orgTag.tagName.toLowerCase() + (orgTag.tagName === "LINK" ? " (" + removeTimestamp(orgTag.getAttribute("ghost-href") || orgTag.getAttribute("href"))+":" + (count(cssState.before) + 1) + ")" : "");
+                for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
+                  headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
+                }
+                CSSarea.append(el("div", {"class": "CSS-chain"}, [], {
+                  innerHTML: headerStr,
+                  onclick: () => {
+                    editor_model.clickedElem = orgTag;
+                    editor.ui.refresh();
+                  }
+                  }));
+                if(cssState.type === '@@media') {
+                  CSSarea.append(el("div", {"class": "@media-selector", "contenteditable": true}, [], {
+                  oninput: (cssState => function() {
+                    (async () => {
+                      if(window.matchMedia(cssState.selector).matches ? editor.matches(clickedElem, cssState.content.selector) : false) {
+                        //implement throwError;
+                      }
+                      cssState.mediaSelector = this.textContent;
+                      if(cssState.orgTag.tagName != "LINK") {
+                        fullUnparseCSS(cssState);
+                      } else {
+                        await assignTmpCss(cssState.orgTag, fullUnparseCSS(cssState));
+                      }
+                    })();
+                  })(cssState),
+                  innerHTML: cssState.mediaSelector
+                  }))
+                }
+                let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
+                  el("textarea", {"class": "CSS-selectors" }, [], {
+                    defaultValue: cssState.content,
+                    onfocusout() {
+                      if(this.storedCSS.orgTag.tagName != "LINK") {
+                        setCSSAreas();
+                      }
+                    },
+                    oninput: function() {
+                      console.log("oninput called");
+                      (async () => {
+                        if(this.storedCSS.orgTag.tagName != "LINK") { // style node
+                          let throwError = false;
+                          let CSSparserBuilder = await editor.ui._internals.getLosslessCssParser;
+                          let CSSparser = new CSSparserBuilder();
+                          let curCSSState = CSSparser.parseCSS(this.value);
+                          //console.log(curCSSState);
+                          //check to make sure CSS is still relevant to clicked element.
+                          if(curCSSState && curCSSState.length && curCSSState[0].kind === 'cssBlock' && !editor.matches(clickedElem, curCSSState[0].selector)) {
+                            editor.ui.sendNotification("CSS selector does not match");
+                            this.setAttribute("wrong-selector", true);
+                            this.setAttribute("title", "The first CSS selector does not apply to the selected element!");
+                          }
+                          else {
+                            this.setAttribute("wrong-selector", false);
+                            this.removeAttribute("title");
+                          }
+                          this.storedCSS.content = this.value;
+                          fullUnparseCSS(this.storedCSS);
+                          //setCSSAreas();
+                        }
+                        else { // Link
+                          this.storedCSS.content = this.value;
+                          await assignTmpCss(this.storedCSS.orgTag, fullUnparseCSS(this.storedCSS));
+                        }
+                      })();
+                    },
+                    storedCSS: cssState
+                  }),
+                  orgTag.tagName === "LINK" ?
+                    el("div", {"class": "CSS-action-button", "title": "Delete this snippet of CSS"}, [], {
+                      innerHTML: editor.ui.icons.wasteBasket,
+                      onclick() {
+                        (async () => {
+                          let linked_CSS = this.parentElement.childNodes[0];
+                          linked_CSS.value = "";
+                          linked_CSS.storedCSS.content = linked_CSS.value;
+                          await assignTmpCss(linked_CSS.storedCSS.orgTag, fullUnparseCSS(linked_CSS.storedCSS));
+                          setCSSAreas();
+                        }) ();
+                      }
+                    }) : // inline style case
+                    el("div", {"class": "CSS-action-button", "title": "Delete this CSS snippet"}, [], {
+                      innerHTML: editor.ui.icons.wasteBasket,
+                      onclick() {
+                        let linked_CSS = this.parentElement.childNodes[0];
+                        //console.log(this.parentElements.childNodes);
+                        linked_CSS.value = "";
+                        linked_CSS.storedCSS.content = linked_CSS.value;
+                        fullUnparseCSS(linked_CSS.storedCSS);
+                        setCSSAreas();
+                      }
+                    })
+                ]);
+                CSSarea.append(eachCSS);
+              }
+              })(); // Async css set.
+            } // function setCSSAreas()
+            setCSSAreas();   
+            return CSSarea;
+          }
+        });
+        editor.ui.model.interfaces.push({
+          title: "Image Tools",
+          minimized: true,
+          priority(editor_model) {
+            return this.enabled(editor_model) ? 1 : undefined; // It's likely we want to modify this image above all.
+          },
+          findURLS(styleStr) {
+            var urls = [];
+            var diffPics = styleStr.split(",");
+            for(let k in diffPics) {
+              //extracts only url(...)
+              let regex = new RegExp("(url\\([\"']?)([^\\)'\"]+?)([\"']?\\))", "g");
+              let m;
+              let remainStr = diffPics[k];
+              while(m = regex.exec(remainStr)) {
+                let sIndex = m.index + m[1].length;
+                //extracting the rest of the string 
+                let afterStr = remainStr.slice(sIndex + m[2].length);
+                let beforeStr = remainStr.slice(0, sIndex);
+                urls.push({remainderBefore: beforeStr, url: m[2], remainderAfter: afterStr});  
+              }
+            }
+            return urls;
+          },
+          //checks the inline CSS of the clicked node/element to see if background or background-image is a rule, and if 
+          //a link to an image is provided as part of the value for this rule;
+          //TODO: expand the set of CSS being checked to any style tags as well.
+          checkForBackgroundImg(clickedElem, findURLS) {
+            function findText(parsed, startIndex, endIndex) { //for css + img replacement
+              let textSegment = "";
+              for(let i = startIndex; i < endIndex; i++) {
+                textSegment += parsed ? parsed[0].selector ? editor.ui.CSSparser.unparseCSS([parsed[i]]) :
+                  (parsed[0].directive ? editor.ui.CSSparser.unparseRules([parsed[i]]) : "") : "";
+                //console.log(textSegment);
+              }
+              return textSegment;
+            }
+            //console.log("clicked element is:", clickedElem);
+            //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
+            var clickedStyle = clickedElem ? editor.ui.CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
+            //console.log(clickedStyle);
+            //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
+            //former first, if it contains a url. for now, I am looping through the CSS rules twice.
+            //console.log("^parsed rules ");
+            for(let i in clickedStyle) {
+              for(let j in clickedStyle[i]) {
+                if(clickedStyle[i][j].directive === "background") {
+                  clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
+                  if(clickedStyle[i][j].value.length) {
+                    //console.log(clickedStyle[i][j]);
+                    return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
+                      imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
+                  }
+                }
+              }
+            }
+            for(let i in clickedStyle) {
+              for(let j in clickedStyle[i]) {
+                if(clickedStyle[i][j].directive === "background-image") {
+                  //console.log("hello?");
+                  //console.log(clickedStyle[i][j].value);
+                  clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
+                  if(clickedStyle[i][j].value.length) {
+                    return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
+                      imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
+                  }
+                }
+              }
+            } 
+            //console.log("unsuccessful");
+            return undefined;
+          },
+          enabled(editor_model) {
+            if(!editor.ui.CSSparser) return false;
+            let clickedElem = editor_model.clickedElem;
+            let backgroundImgSrc = this.checkForBackgroundImg(clickedElem, this.findURLS);
+            const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
+            this.backgroundImgSrc = backgroundImgSrc;
+            return do_img_rpl;
+          },
+          
+          // enabled has been called before, clickedElem is not empty and it contains a background image
+          render: function render(editor_model, innerBox) {
+            if(!this.enabled(editor_model)) {
+              return "Click an element with a background image.";
+            }
+            //extract url and extraneous text from specified CSS value (which is originally part of a rule)
+            const clickedElem = editor_model.clickedElem;
+            let ret = el("div", {"class": "information"});
+            if (!clickedElem) return ret;
+            let backgroundImgSrc = this.backgroundImgSrc;
+            //unparse the background/background-image object
+            function unparseBackgroundImg(backImgObj) {
+              var textSegment = "";
+              let valueText = "";
+              for(let i in backImgObj.relCSS.value) {
+                valueText += (Number(i) !== 0 ? ", " : "") + backImgObj.relCSS.value[i].remainderBefore + backImgObj.relCSS.value[i].url + backImgObj.relCSS.value[i].remainderAfter;
+                //console.log(valueText);
+              }
+              //console.log("Object about to be unparsed:");
+              //console.log(backImgObj);
+              return backImgObj.beforeCSS + findText([{...backImgObj.relCSS, value: valueText}], 0, 1) + backImgObj.afterCSS;
+            }
+            function uploadImagesAtCursor(files, srcName, backImgObj) {
+              for (var i = 0, file; file = files[i]; i++) {
+                var targetPathName =  editor.getStorageFolder(file) + file.name;
+                editor.uploadFile(targetPathName, file, (targetPathName, file) => {
+                  if(backImgObj) {
+                    backImgObj.imageSelection = backImgObj.relCSS.value.length == 1 ? 0 : (() => {
+                      let radios = document.querySelectorAll(".background-img-radio");
+                      let defaultValue = 0;
+                      for (let i in radios) {
+                        //hopefully there aren't more than 10 images!
+                        if (radios[i].checked) defaultValue = Number(radios[i].getAttribute("value").match(/[0-9]/g));
+                      }
+                      return defaultValue;
+                    })();
+                    backImgObj.relCSS.value[backImgObj.imageSelection].url = targetPathName;
+                    clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
+                  }
+                  else {
+                    let d = document.getElementById("dom-attr-src");
+                    if(d) { d.setAttribute("value", file.name); }
+                    clickedElem.setAttribute("src", targetPathName);
+                  }
+                  // adapt to HTML5 new attribute 'srcset'
+                  // IF website use 'srcset', we force to set this attribute to null then replace image using 'src'
+                  if (clickedElem.getAttribute("srcset") != undefined) {
+                    clickedElem.setAttribute("srcset", "");
+                  }
+                });
+              }
+              // refresh images list
+              showListsImages(targetPathName);  // targetPathName is the last file of files array, but it seems that user can only upload one file once
+              // automatically select upload image
+              let selectedImage = document.querySelectorAll(".imgFolder > img");
+              for (let i = 0; i < selectedImage.length; ++i) {
+                let imgName = selectedImage[i].getAttribute("src").split("/").pop();
+                if (imgName === files[files.length - 1].name) {
+                  selectedImage[i].parentElement.classList.add("highlight-select-image");
+                } else {
+                  selectedImage[i].parentElement.classList.remove("highlight-select-image");
+                }
+              }
+            }
+            async function showListsImages(srcName, backImgObj, checkBackImgObj, findURLS) {
+              if (isAbsolute(srcName)) {
+                return;
+              }
+              console.log("Source name is:", srcName);
+              srcName = relativeToAbsolute(srcName)
+              let dir = "";
+              for(let i = 0, arr = srcName.split(/\\|\//); i < arr.length - 1; ++i) {
+                dir += (arr[i] + "/");
+              }
+              files = await editor.fs.listdir(dir);
+              
+              let images = [];
+              let currentSelectedImage;
+              files.forEach(file => {
+                let ext = file.split('.').pop().toLowerCase();
+                if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif' || ext == 'svg' || ext == 'bmp') {
+                  if (file.split('/').pop() === srcName.split("/").pop().split("?")[0]) {   // note that srcName maybe "/1.jpg?raw=true"
+                    currentSelectedImage = file;
+                  } else {
+                    images.push(file);
+                  }
+                }
+              });
+              // sometimes website use 'srcset' as the url of image, we cannot find currentSelectedImage precisely
+              if (currentSelectedImage != null) {
+                images.unshift(currentSelectedImage);   // currentSelectedImage should be placed as the first one
+              }
+
+              // init: clear image list
+              let selectedImage = document.querySelectorAll(".imgFolder");
+              selectedImage.forEach(e => e.remove());
+
+              let imgDiv = el("div", { "id": "imgGallery" });
+              if (!document.getElementById("imgGallery")) {
+                ret.append(imgDiv);
+              } else {
+                imgDiv = document.getElementById("imgGallery");
+              }
+
+              for (let i = 0; i < images.length; ++i) {
+                imgDiv.append(
+                  el("div", { "class": "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
+                    onclick() {
+                      //console.log("At the beginning:");
+                      //console.log(JSON.stringify(backImgObj));
+                      // highlight the selected image
+                      let otherImages = document.querySelectorAll(".imgFolder");
+                      console.log ({otherImages, document});
+                      for (let i = 0; i < otherImages.length; ++i) {
+                        otherImages[i].classList.remove("highlight-select-image");
+                      }
+                      console.log ("thru");
+                      // replace image
+                      if(backImgObj) {
+                        backImgObj.imageSelection = (() => {
+                          let radios = document.querySelectorAll(".background-img-radio");
+                          let defaultValue = 0;
+                          for (let i in radios) {
+                            //hopefully there aren't more than 10 images!
+                            if (radios[i].checked) defaultValue = Number(radios[i].getAttribute("value").match(/[0-9]/g));
+                          }
+                          return defaultValue;
+                        })();
+                        //console.log("Here?");
+                        //console.log(JSON.stringify(backImgObj));
+                        if(!(typeof backImgObj.relCSS.value === 'string')){
+                          //console.log("Here?");
+                          //console.log(JSON.stringify(backImgObj));
+                          //console.log(backImgObj.relCSS.value.length);
+                          backImgObj.relCSS.value[backImgObj.imageSelection].url = this.children[0].getAttribute("src");
+                        }
+                        else {
+                          console.log("Second time around:");
+                          backImgObj = checkBackImgObj(clickedElem, findURLS);
+                          backImgObj.relCSS.value[backImgObj.imageSelection].url = this.children[0].getAttribute("src");
+                        }
+                        //console.log("current link", this.children[0].getAttribute("src"));
+                        //console.log("current section number is:", backImgObj.imageSelection);
+                        //console.log("current selection is:", backImgObj.relCSS.value[backImgObj.imageSelection].url); 
+                        clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
+                        //console.log("new style attribute is:", clickedElem.getAttribute("style"));
+
+                        console.log(JSON.stringify(backImgObj));
+
+                      }
+                      // adapt to HTML5 new attribute 'srcset'
+                      // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
+                      else if (clickedElem.getAttribute("srcset") != undefined) {
+                        clickedElem.setAttribute("srcset", "");
+                      }
+                      else {
+                        clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
+                        document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
+                      }
+                      // this.style.outline = "2px solid white";
+                      console.log ("pre1");
+                      this.classList.add("highlight-select-image");
+                      console.log ("post1");
+                    }
+                  })
+                );
+              }
+              if (currentSelectedImage != null) {
+                console.log ("pre2");
+                ret.querySelectorAll(".imgFolder")[0].classList.add("highlight-select-image");
+                console.log ("post2");
+              }
+            
+            }
+            let srcName = backgroundImgSrc ? backgroundImgSrc.relCSS.value[0].url : clickedElem.getAttribute("src");
+
+            //console.log(srcName);
+            //console.log(backgroundImgSrc.relCSS.value[0].url);
+            clickedElem.ondragover = function (e) {
+              e.preventDefault();
+            }
+            clickedElem.ondrop = function (e) {
+              // upload and replace the image 
+              e.stopPropagation();
+              e.preventDefault();
+              var files = e.dataTransfer.files; // FileList object
+              if (files && files[0]) {
+                uploadImagesAtCursor(files, srcName, backgroundImgSrc);
+              }
+            }
+            // radio buttons for cases when there are two background images
+            if(backgroundImgSrc && backgroundImgSrc.relCSS.value.length > 1) {
+              for(let i in backgroundImgSrc.relCSS.value) {
+                ret.append(el("span", {class: "insertOption"}, [
+                  el("input", {type: "radio", class: "background-img-radio", id: `radio${i}`, name: "", value: `Image {i}`}, [], {checked: Number(i) === 0}),
+                  el("label", {"for": "radio${i}"}, `Image {i}`)]),);
+              }         
+            }
+            // upload image button
+            ret.append(
+              el("a", 
+                { "id": "upload-image-btn-a" }, 
+                el(
+                  "input", {"id": "upload-image-btn-input", "type": "file", value: "Please upload images..."}, 
+                  [], 
+                  { onchange: function(evt) { uploadImagesAtCursor(evt.target.files, srcName, backgroundImgSrc); }}
+                ), 
+                {}
+              )
+            );
+            if(srcName == undefined) {
+              ret.append(
+                el("button", {}, "Add src attribute", {onclick: () => {
+                  clickedElem.setAttribute("src", "");
+                  editor.ui.refresh();
+                }}));
+            } else {
+              showListsImages(srcName, backgroundImgSrc, this.checkForBackgroundImg, this.findURLS);
+              // show lists of images in selected image's folder
+            }
+            return ret;
+          }
+        });
+        editor.ui.model.interfaces.push({
+          title: "Text Editing",
+          minimized: true,
+          priority(editor_model) {
+            return undefined;
+          },
+          enabled(editor_model) {
+            const clickedElem = editor_model.clickedElem;
+            if(!clickedElem) return false;
+            for(let i = 0; i < clickedElem.childNodes.length; i++) {
+              let node = clickedElem.childNodes[i];
+              if(node.nodeType === 3 && node.textContent.trim() !== "") {
+                return true;
+              }
+            }
+          },
+          render: function render(editor_model, innerBox) {
+            if(!this.enabled(editor_model)) {
+              delete editor.ui._internals.saveBetweenReloads["TextEditing"];
+              return "Click on an element that contains some text.";
+            }
+            const clickedElem = editor_model.clickedElem;
+            //textarea textChildNodeContent
+            let ret = el("div", {id: "textChildNodeContentDiv"}, []);
+            for(let i = 0; i < clickedElem.childNodes.length; i++) {
+              let node = clickedElem.childNodes[i];
+              if(node.nodeType === 3 && (node.textContent.trim() !== "" || node.textContent.trim() === "" && clickedElem.childNodes.length == 0)) { // Non-empty text nodes.
+                let txtAreaNode = el("textarea", {class:"textChildNodeContent"},
+                  [], {
+                    value: node.textContent,
+                    oninput: (node => function() { node.textContent = this.value; })(node)
+                  });
+                ret.append(txtAreaNode)
+                console.log("appending text area node", txtAreaNode);
+              } else if(node.nodeType === 1) { // Make this a shortcut for the node
+                ret.append(
+                  el("div.childrenSelector", {}, 
+                    el("div.childrenSelectorName", {}, "<" + node.tagName + ">"),
+                    {
+                      onclick: (node => () => {
+                        editor_model.clickedElem = node;
+                        editor.ui.refresh();
+                      })(node)
+                    }
+                  )
+                )
+              }
+            }
+            
+            if("TextEditing" in editor_model.restoredAfterReload) {
+              let restored = editor_model.restoredAfterReload["TextEditing"];
+              //
+              console.log("restored", restored);
+              console.log("ret.childNodes", ret.childNodes);
+              setTimeout((ret => () => {
+                var tmp = ret;
+                while(tmp && tmp.tagName != "BODY") tmp = tmp.parentNode;
+                if(!tmp) return;
+                console.log("ret", ret);
+                for(let i = 0; i < restored.length && i < ret.childNodes.length; i++) {
+                  var child = ret.childNodes[i];
+                  if(child.tagName === "TEXTAREA") {
+                    console.log("restoring selection on ", child);
+                    console.log("data ", restored[i]);
+                    child.scrollTop = restored[i].scrollTop;
+                    var minimum = Math.min(restored[i].selectionStart, restored[i].selectionEnd);
+                    var maximum = Math.max(restored[i].selectionStart, restored[i].selectionEnd);
+                    var direction = restored[i].selectionStart < restored[i].selectionEnd ? "forward" : "backward";
+                    if(restored[i].focus) {
+                      child.focus();
+                    }
+                    child.setSelectionRange(minimum, maximum, direction);
+                  }
+                }
+                delete editor_model.restoredAfterReload["TextEditing"];
+              })(ret), 0);
+            } else {
+              console.log("No restoration data");
+            }
+            
+            editor.ui._internals.saveBetweenReloads["TextEditing"] = (ret => () => {
+              let res = [];
+              for(let i = 0; i < ret.childNodes.length; i++) {
+                if(ret.childNodes[i].tagName === "TEXTAREA") {
+                  res[i] = {
+                    scrollTop: ret.childNodes[i].scrollTop,
+                    selectionEnd: ret.childNodes[i].selectionStart,
+                    selectionStart: ret.childNodes[i].selectionEnd,
+                    focus: ret.childNodes[i] === document.activeElement
+                  };
+                }
+              }
+              return res;
+            })(ret);
+            
+            return ret;
+          }
+        });
+        editor.ui.model.interfaces.push({
+          title: "Create",
+          minimized: true,
+          priority(editor_model) {
+            return editor_model.insertElement ? 1 : undefined;
+          },
+          enabled(editor_model) {
+            return editor_model.clickedElem;
+          },
+          render: function render(editor_model, innerBox) {
+            if(!this.enabled(editor_model)) {
+              return "Click on an element to view insert options.";
+            }
+            let ret = el("div", {"class": "information"});
+            const clickedElem = editor_model.clickedElem;
+            if (!clickedElem) return ret;
+            ret.classList.add("insert-information-style");
+            ret.classList.add("information-style");
+            let insertOption = function(value, msg, checked, title) {
+              return el("span", {class: "insertOption"}, [
+                el("input", {type: "radio", id: "radioInsert" + value, name: "insertionPlace", value: value}, [], {checked: checked || false}),
+                el("label", {"for": "radioInsert" + value, title: title}, msg)], {onclick: restoreCaretPosition});
+            }
+            let t = clickedElem.tagName;
+            let isHTML = t === "HTML";
+            let isTop = isHTML || t === "BODY" || t === "HEAD";
+            let caretBlinks = editor_model.caretPosition;
+            ret.append(el("div", {id: "insertionPlace"}, [
+              isTop ? undefined : insertOption("before", "Before node"),
+              isHTML ? undefined : insertOption("first-child", "As first child"),
+              isHTML || !caretBlinks ? undefined : insertOption("caret", "At caret", !isTop && caretBlinks),
+              isHTML ? undefined : insertOption("last-child", "As last child", isTop || !caretBlinks),
+              isTop ? undefined : insertOption("after", "After node"),
+              isTop ? undefined : insertOption("wrap", "Wrap node", false, "Put the selected node inside the newly inserted node"),
+              clickedElem.childNodes && clickedElem.childNodes.length ? insertOption("wrap-children", "Wrap children", false, "Insert all node's children as children of element, then add element as a child.") : undefined
+            ]));
+            let getInsertionPlace = () => {
+              let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
+              let value = "after";
+              for (let i = 0, length = radios.length; i < length; i++) {
+                if (radios[i].checked) return radios[i].getAttribute("value");
+                value = radios[i].getAttribute("value");
+              }
+              return value;
+            };
+            let insertTag = function(event, newElement, insertionStyle) {
+              newElement = newElement || (() => {
+                let parent = this;
+                while(parent && !parent.classList.contains("tagName")) parent = parent.parentElement;
+                let m = parent.querySelector(".templateengine");
+                if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
+                return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
+              })();
+              if(insertionStyle === "after") {
+                if(typeof newElement === "string") {
+                  clickedElem.insertAdjacentHTML("afterend", newElement);
+                  newElement = clickedElem.nextElementSibling;
+                } else {
+                  clickedElem.parentElement.insertBefore(newElement, clickedElem.nextSibling);
+                }
+              } else if(insertionStyle === "before") {
+                if(typeof newElement === "string") {
+                  clickedElem.insertAdjacentHTML("beforebegin", newElement);
+                  newElement = clickedElem.previousElementSibling;
+                } else {
+                  clickedElem.parentElement.insertBefore(newElement, clickedElem);
+                }
+              } else if(insertionStyle === "wrap") {
+                if(typeof newElement === "string") {
+                  clickedElem.insertAdjacentHTML("beforebegin", newElement);
+                  newElement = clickedElem.previousElementSibling;
+                } else {
+                  clickedElem.parentElement.insertBefore(newElement, clickedElem);
+                }
+                newElement.appendChild(clickedElem);
+                console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
+              } else if(insertionStyle === "wrap-children") {
+                if(typeof newElement === "string") {
+                  clickedElem.insertAdjacentHTML("afterbegin", newElement);
+                  newElement = clickedElem.children[0];
+                } else {
+                  clickedElem.insertBefore(newElement, clickedElem.childNodes[0]);
+                }
+                while(newElement.nextSibling) {
+                  newElement.append(newElement.nextSibling);
+                }
+              } else if(insertionStyle === "caret") {
+                let s = editor_model.caretPosition;
+                let txt = s.startContainer;
+                if(txt.textContent.length > s.startOffset && s.startOffset > 0) { // split
+                  // Need to split the text node.
+                  txt.parentElement.insertBefore(document.createTextNode(txt.textContent.substring(s.startOffset)), txt.nextSibling);
+                  txt.textContent = txt.textContent.substring(0, s.startOffset);
+                }
+                if(typeof newElement === "string") {
+                  let tmpSpan = el("span");
+                  clickedElem.insertBefore(tmpSpan, txt.nextSibling)
+                  tmpSpan.insertAdjacentHTML("afterend", newElement);
+                  newElement = tmpSpan.nextElementSibling;
+                  tmpSpan.remove();
+                } else {
+                  clickedElem.insertBefore(newElement, txt.nextSibling)
+                }
+              } else if(insertionStyle === "last-child") { // Insert at the end of the selected element, inside.
+                if(typeof newElement === "string") {
+                  let tmpSpan = el("span");
+                  clickedElem.insertBefore(tmpSpan, null);
+                  tmpSpan.insertAdjacentHTML("afterend", newElement); // afterend or beforeend same, tmpSpan to be removed.
+                  newElement = tmpSpan.nextElementSibling;
+                  tmpSpan.remove();
+                } else {
+                  console.log("insert at the end");
+                  // Insert at the end.
+                  clickedElem.insertBefore(newElement, null);
+                }
+              } else if(insertionStyle === "first-child") { // Insert at the end of the selected element, inside.
+                if(typeof newElement === "string") {
+                  let tmpSpan = el("span");
+                  clickedElem.insertBefore(tmpSpan, clickedElem.children[0]);
+                  tmpSpan.insertAdjacentHTML("afterend", newElement);// afterend or beforeend same, tmpSpan to be removed.
+                  newElement = tmpSpan.nextElementSibling;
+                  tmpSpan.remove();
+                } else {
+                  console.log("insert at the beginning");
+                  // Insert at the beginning.
+                  clickedElem.prepend(newElement);
+                }
+              }
+              editor_model.insertElement = false;
+              editor_model.visible = true;
+              editor_model.clickedElem  = typeof newElement !== "string" && typeof newElement !== "undefined" ?
+                newElement : clickedElem;
+              editor.ui.refresh();
+            }
+            let addElem = function(name, createParams) {
+              ret.append(
+                el("div", {"class": "tagName", title: createParams.title},
+                  el("span", { "class": "templateengine"}, name, {createParams: createParams}), {
+                      onclick: function(event) {
+                        let insertionStyle = getInsertionPlace();
+                        insertTag.call(this, event, undefined, insertionStyle);
+                    }}
+                )
+              );
+            }
+            if(clickedElem.tagName === "HEAD") {
+              addElem("Title", {tag:"title", children: "Page_title", title: "Insert <title>"});
+              addElem("Meta", {tag:"meta", attrs:{name:"", content: ""}, props: {}, title: "Insert <meta>"});
+              addElem("Link", {tag:"link", attrs:{rel:"", href: ""}, props: {}, title: "Insert <link>"});
+            }
+            if(clickedElem.tagName !== "HEAD") {
+              ret.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
+                onchange: function(evt) { editor.uploadFilesAtCursor(evt.target.files); }})
+              );
+              ret.append(
+                el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
+                    innerHTML: editor.ui.icons.linkMode + "<span>Move node</span>",
+                    onclick: function(event) {
+                      editor_model.insertElement = false;
+                      let insertionStyle = getInsertionPlace();
+                      activateNodeSelectionMode(
+                        "to move",
+                        node => insertTag.call(this, event, node, insertionStyle),
+                        addPinnedModifyMenuIcon => {
+                          addPinnedModifyMenuIcon(editor.ui.icons.clone + "<span class='modify-menu-icon-label-link'>Clone</span>", 
+                            {"class": "link-select-button", title: "Confirm to clone",
+                              id: "selectbutton"
+                            },
+                            {onclick: function(event) {
+                              let node = editor_model.clickedElem;
+                              let clonedNode = editor.duplicate(node, {ignoreText: true});
+                              insertTag.call(this, event, clonedNode, insertionStyle);
+                              escapeLinkMode();
+                              editor_model.clickedElem = clonedNode;
+                              }
+                            }
+                          );
+                        }
+                      )
+                    }
+                  })
+              )
+              // TODO: Filter and sort which one we can add, also depending on where to insert.
+              addElem("List item", {tag:"li", props: { innerHTML: "<br>" }, title: "Insert <li>"});
+              addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }, title: "Insert <ul>"});
+              addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n<li><br></li>\n</ol>" }, title: "Insert <ol>"});
+              addElem("Button", {tag: "button", props: {innerHTML: "Button name" }, title: "Insert <button>"});
+              addElem("Link", {tag: "a", props: { innerHTML: "Link name", href: "" }, title: "Insert <a href=''>"});
+              addElem("Paragraph", {tag: "p", props: { innerHTML: "Your text here" }, title: "Insert <p>"});
+              addElem("Division content", {tag: "div", title: "Insert <div>"});
+              addElem("Section", {tag: "section", title: "Insert <section>"});
+              addElem("Image", {tag: "img", title: "Insert <img>", attrs: {src: ""}});
+              addElem("Preformatted text", {tag: "pre", title: "Insert <pre>"});
+              for(let i = 1; i <= 6; i++) {
+                addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }, title: "Insert <h"+i+">"});
+              }
+              addElem("Newline", {tag: "br", title: "Insert <br>"});
+            }
+            addElem("Stylesheet", {tag:"style", children: "/*Your CSS there*/", title: "Insert <style>"});
+            addElem("JavaScript", {tag:"script", children: "/*Your CSS below*/", title: "Insert <script>"});
+
+            ret.append(
+              el("div", {"class": "tagName", id: "customHTML"}, [
+                el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", oninput: "this.innerHTMLCreate = this.value"}),
+                el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
+                    innerHTML: editor.ui.icons.plus, 
+                    onclick: function(event) {
+                        let insertionStyle = getInsertionPlace();
+                        insertTag.call(this, event, undefined, insertionStyle);
+                    }
+                  }
+                )
+              ])
+            );
+            //document.querySelector("#modify-menu").classList.toggle("visible", true);
+            return ret;
+          }
+        });
+        if (editor.config.thaditor) {
+          editor.ui.model.interfaces.push({
+            title: "Drafts",
+            minimized: true,
+            priority(editor_model) {
+              return undefined;
+            },
+            enabled(editor_model) {
+              return true;
+            },
+            render: (editor_model, innerBox) => {
+              
+              let draftListDiv = el("div", {"class":"draftList"}, [], {});
+
+              (async () => {
+              const verzExist = JSON.parse(await editor.getServer("isdir", "Thaditor/versions"));
+
+              const get_switch_btn_for = (nm) => {
+                return el("button", {"class":"draft-switch", title: "Open version '" + nm + "'"}, [nm], 
+                {
+                  onclick: (event) => {
+                    editor_model.version = nm;
+                    editor.navigateTo("/Thaditor/versions/" + nm + "/?edit");
+                    setTimeout(() => editor.ui.sendNotification("Switched to " + nm), 2000);
+                  }
+                });
+              };
+
+              const get_switch_btn_live = () => {
+                return el("button", {class:"draft-switch-live draft-switch"}, ["Open live website"],
+                {
+                  onclick: (event) => {
+                    editor_model.version = "Live";
+                    editor.navigateTo("/?edit");
+                    setTimeout(() => editor.ui.sendNotification("Switched to Live version"), 2000);
+                  }
+                })
+              }
+
+              const get_clone_btn_for = (nm) => {
+                return el("button", {"class":"draft-clone", title: "Clone " + nm + " to a new version"}, ["Clone"],
+                {
+                  onclick: (event) => {
+                    cloneSite(nm, verzExist); //confirms + sends notif inside method
+                  }
+                })  
+              }
+
+              const get_delete_btn_for = (nm) => {
+                return el("button", {"class":"draft-delete", title: "Delete version " + nm}, ["Delete"],
+                {
+                  onclick: (event) => {
+                    deleteDraft(nm); //confirms + sends notif inside the method
+                  }
+                })  
+              }
+
+              const get_rename_btn_for = (nm) => {
+                return el("button", {"class":"draft-publish", title: "Rename " + nm}, ["Rename"],
+                {
+                  onclick: (event) => { 
+                    renameDraft(nm, verzExist); //confirms + sends notif inside
+                  }
+                })
+              }
+
+              const get_publish_btn_for = (nm) => {
+                return el("button", {"class":"draft-publish", title: "Publish " + nm + " to live"}, ["Publish"],
+                {
+                  onclick: (event) => { 
+                    publishDraft(nm); //confirms + sends notif inside
+                  }
+                })
+              };
+
+              const get_current_label = () => {
+                return el("div", {"class":"draft-row", "id": "draft-title"},
+                        [
+                          el("label", {}, [editor_model.version], {}),
+                          (isLive() ? el("label", {}, [""]) : get_rename_btn_for(editor_model.version)),
+                          get_clone_btn_for(editor_model.version),
+                          (isLive() ? el("label", {}, ["Can't delete live"]):
+                                                            el("button", {}, ["Delete"],
+                                                            {
+                                                              onclick: (event) => {
+                                                                deleteDraft(editor_model.version);
+                                                              }
+                                                            })),
+
+                        ],
+                        {
+                          onclick: (event) => {
+                            //pass
+                          },
+                        })
+              };
+
+              const get_current_label_live = () => {
+                return el("div", {"class":"draft-row", "id": "draft-title"},
+                        [
+                          el("label", {style:"font-style:italic"}, ["Currently viewing live website"], {}),
+                          get_clone_btn_for("Live"),
+                          
+
+                        ],
+                        {
+                          onclick: (event) => {
+                            //pass
+                          },
+                        })
+              };
+
+              const get_current_label_for = (nm) => {
+                return el("div", {"class":"draft-row", "id": "draft-title"},
+                        [
+                          el("label", {title: "Currently viewing " + nm + " version"}, [nm], {}),
+                          get_rename_btn_for(editor_model.version),
+                          get_clone_btn_for(nm),
+                          get_delete_btn_for(nm),
+                          get_publish_btn_for(nm),
+                        ],
+                        {
+                          onclick: (event) => {
+                            //pass
+                          },
+                        })
+              };
+              
+
+              const get_row_for_draft = (nm) => {
+                return el("div", {"class": "draft-row"},
+                [
+                  get_switch_btn_for(nm),
+                  get_rename_btn_for(nm),
+                  get_clone_btn_for(nm),
+                  get_delete_btn_for(nm),
+                ]);
+              };
+
+              const get_row_for_live = () => {
+                return el("div", {"class": "draft-row", "id": "draft-row-live"},
+                [
+                  get_switch_btn_live(),
+                  get_clone_btn_for("Live")
+                ])
+              }
+
+              if (isLive()) {
+                draftListDiv.append(get_current_label_live());
+              } else {
+                draftListDiv.append(get_current_label_for(editor_model.version));
+                draftListDiv.append(get_row_for_live());
+              }
+              if (verzExist) {
+                const vers = JSON.parse(await editor.getServer("listdir", "Thaditor/versions/"));
+                vers.forEach(ver => {
+                  if (!(ver == editor_model.version)){
+                    draftListDiv.append(get_row_for_draft(ver));
+                  }
+                });
+              }
+              })();
+              return draftListDiv;
+            }
+          });
+        } // End of if apache_server
+        
+        editor.ui.model.interfaces.push({
+          title: "SEO",
+          minimized: true,
+          priority(editor_model) {
+            if(!document.querySelector("meta[name=viewport]")) {
+              return 1;
+            }
+            return undefined;
+          },
+          enabled(editor_model) {
+            return true;
+          },
+          render: function render(editor_model, innerBox) {
+            function oneClickFix(msg, buttonName, callback, parameters) {
+              return el("div", {class:"seo-fix"}, [
+                el("p", {class:"seo-fix-description"}, msg),
+                parameters,
+                el("button.action-button", {type: ""}, buttonName, {
+                  onclick: function() {
+                    callback();
+                    editor.ui.refresh();
+                  }
+                })]);
+            }
+            let title = document.querySelector("head > title");
+            let description = document.querySelector("head > meta[name=description]")
+            let ret = el("div", {}, [
+              document.querySelector("head > meta[name=viewport]") ? undefined :
+              oneClickFix("Viewport not set on this page. This might make this page not display properly on mobile devices.",
+                "Add missing <meta name='viewport'...>", () =>
+                    document.head.appendChild(el("meta", {name: "viewport", content:"width=device-width, initial-scale=1.0"}))),
+              document.querySelector("head > meta[charset]") ? undefined :
+              oneClickFix("Character encoding not set on this page. The display of non-breaking spaces would be compromized on many browsers.", "Add missing <meta charset='UTF-8'>", () =>
+                    document.head.insertBefore(el("meta", {charset: "UTF-8" }), document.head.childNodes[0])),
+              el("div", {class:"seo-fix"}, [
+                el("p", {class:"seo-fix-description"}, !title ?
+                  "Page title not set. Search engines do prefer a title." :
+                  "Title of the page:"
+                ),
+                el("input", {type:"text", value: title ? title.textContent : "", placeholder: "Title of the page"}, [], {
+                  onchange: function() {
+                    if(!title) {
+                      title = el("title");
+                      document.head.appendChild(title);
+                    }
+                    title.textContent = this.value;
+                  }
+                })
+              ]),
+              el("div", {class:"seo-fix"}, [
+                el("p", {class:"seo-fix-description"}, !description ?
+                  "Page description not set. Search engines do prefer a page description to show on their results." :
+                  "Description of the page:"
+                ),
+                el("textarea", {type:"text", class: "textChildNodeContent", placeholder: "Description of the page"}, [], {
+                  onchange: function() {
+                    if(!description) {
+                      description = el("meta", {name: "description"});
+                      document.head.appendChild(description);
+                    }
+                    description.setAttribute("content") = this.value;
+                  },
+                  value: description ? description.getAttribute("content") || "" : ""
+                })
+              ]),
+            ]);
+            return ret;
+          }
+        });
+        editor.ui.model.interfaces.push({ 
+          title: "Advanced",
+          minimized: true,
+          priority(editor_model) {
+            return editor_model.disambiguationMenu ? 0 : undefined;
+          },
+          enabled(editor_model) {
+            return true;
+          },
+          render: function render(editor_model, innerBox) {
+            let retDiv = el("div", {"class":"modify-menu-icons"});
+            //We need 3 btns: refresh, filesystem + help.
+            add_btn_to_div(retDiv, editor.ui.icons.reload,
+              {"class": "tagName", title: "Reload the current page"},
+                {onclick: function(event) {
+                  if(nothingToLose()) {
+                    editor.reload();
+                  }
+                } }
+              );
+            add_btn_to_div(retDiv, editor.ui.icons.folder,
+              {"class": "tagName", title: "List files in current directory"},
+                {onclick: function(event) {
+                  let u =  new URL(location.href);
+                  u.pathname = u.pathname.replace(/[^\/]*$/, "");
+                  u.searchParams.set("ls", "true");
+                  if(nothingToLose()) {
+                    editor.navigateTo(u.href);
+                  }
+                }
+              }
+            );
+            if(editor.config.thaditor) {
+              retDiv.append(
+                el("button.action-button#update-thaditor-btn", {type: ""}, "Update Thaditor", {onclick() {
+                  if(confirm("Are you ready to upgrade Thaditor?")) {
+                    editor._internals.doWriteServer("updateversion", "latest", "", response => {
+                      console.log("Result from Updating Thaditor to latest:");
+                      console.log(response);
+                      location.reload(true);
+                    });
+                  }
+                } })
+              );
+            }
+            retDiv.append(
+              el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
+                [el("input", {class: "global-setting", id: "input-question", type: "checkbox"}, [], {
+                  onchange: function() { editor_model.askQuestions = this.checked; },
+                  checked: editor_model.askQuestions}),
+                el("span", {class:"slider round"})]));
+            retDiv.append(
+              el("label", {"for": "input-question", class: "label-checkbox"}, "Ask questions"));
+            
+            retDiv.append(
+              el("label", {class:"switch", title: "If on, changes are automatically propagated 1 second after the last edit"}, [
+                el("input", {class: "global-setting", id: "input-autosave", type:"checkbox"}, [], {
+                  onchange: function() { editor_model.autosave = this.checked; },
+                checked: editor_model.autosave}),
+                el("span", {class:"slider round"})])
+            );
+            retDiv.append(
+              el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
+            
+            if(editor.config.thaditor) {
+              retDiv.append(
+                el("a", {href:"javascript:0", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
+                  onclick() {
+                    let onOk = () => thaditor_sign_out(() => {
+                      retDiv.append(
+                        el("a", {href:"javascript:0", id:"thaditor-google-log-in-button", style:"display:block"}, "Sign in with Google",
+                        {onclick: thaditor_sign_in()}));
+                      document.querySelector("#thaditor-sign-out-button").remove();
+                    });
+                    if(!gapi.auth2) {
+                      thaditor_gapi_onload(onOk);
+                    } else {
+                      onOk();
+                    }
+                  }})
+              );
+            }
+            if(editor_model.disambiguationMenu) {
+              retDiv.append(editor_model.disambiguationMenu);
+            }
+            return retDiv;
+          }
+        });
+        
+        editor.ui.model.interfaces.push({
+          title: "Log",
+          minimized: true,
+          priority(editor_model) {
+            return undefined;
+          },
+          enabled(editor_model) {
+            return true;
+          },
+          currentBox: undefined,
+          render: function render(editor_model, innerBox) {
+            let retDiv = el("div#fullLog", {"class":"modify-menu-icons"});
+            let logtxt = "";
+            const elog = editor_model.editor_log;
+            for (let i = 0; i < elog.length; i++) {
+              const l = elog[i];
+              logtxt = logtxt + (i > 0 ? "<br>" : "") + l;
+            }
+            retDiv.innerHTML = logtxt;
+            this.currentBox = retDiv;
+            return retDiv;
+          },
+          refresh() {
+            let currentBox = this.currentBox;
+            let newBox = this.render(editor.ui.model);
+            currentBox.parentNode.insertBefore(newBox, currentBox);
+            currentBox.remove();
+          }
+        });
+        if(typeof thaditor !== "undefined" && thaditor.customInterfaces) {
+          editor.ui.model.interfaces.push(...thaditor.customInterfaces);
+        }
+      }
+      
+      function getEditorInterfaceByTitle(title) {
+        return editor.ui.model.interfaces.find(x => x.title == title);
+      }
+
+      // First time: We add the interface containers.
+      if(!ifAlreadyRunning) {
+        init_interfaces();
+      }
+      
+      //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
+      //split between common (section, div, span, p, ul,  etc...) and rare/better semantically defined tags (pre)
+
+      //check if selector applies to any ancestors or descendants, then its ok
+      //else add class or use > selector until it is precise 
+      function getShortestUniqueSelector(clickedElem) {
+        console.log("clickedElem", clickedElem);
+        let curSelector = clickedElem.tagName.toLowerCase();
+        if(clickedElem.getAttribute("id")) {
+          curSelector += "#" + clickedElem.getAttribute("id");
+        }
+        if (clickedElem.getAttribute("class") && clickedElem.getAttribute("class") != "") {
+          curSelector += (" " + clickedElem.getAttribute("class").trim()).replace(/\s+/g, ".");
+        }
+        //checking ancestors
+        let consideredParent = clickedElem.parentNode;
+        do {
+          var selectorIsOrg = true;
+          for(let curAncestor = clickedElem.parentNode; curAncestor; curAncestor = curAncestor.parentNode) {
+            if(editor.matches(curAncestor, curSelector)) {
+              selectorIsOrg = false;
+            }
+          }
+          //checking descendants
+          if(clickedElem.querySelector(curSelector)) {
+            selectorIsOrg = false;
+          }
+          if(!selectorIsOrg) {
+            curSelector =  consideredParent.tagName.toLowerCase() + " > " + curSelector; 
+            consideredParent = consideredParent.parentNode;
+          }
+        } while(!selectorIsOrg && consideredParent);
+        return curSelector;
+      }
+      
+
+      function reorderCompatible(node1, node2){
+        let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1, SECTION: 1, IMG: 1, PRE: 1};
+        let metaOrderableTags = {META:1, TITLE:1, SCRIPT: 1, LINK: 1, STYLE: 1};
+        return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
+          topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName] ||
+          metaOrderableTags[node1.tagName] && metaOrderableTags[node2.tagName];
+      }
+      function preventTextDeselection(e){
+        e = e || window.event;
+        e.preventDefault();
+      }
+      function restoreCaretPosition() {
+        if(typeof editor_model.caretPosition != "undefined") {
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          var range = document.createRange();
+          range.setStart(editor_model.caretPosition.startContainer, editor_model.caretPosition.startOffset);
+          range.setEnd(editor_model.caretPosition.endContainer, editor_model.caretPosition.endOffset);
+          sel.addRange(range);
+        }
+      }
+      // This function activates the node selection mode, in which one DOM node can be selected,
+      // After clicking on confirm, the callback is called with the selected node.
+      // callbackUI is invoked to render other buttons along with the confirmation button.
+      function activateNodeSelectionMode(msg, callback, callbackUI) {
+        editor_model.visible = false;
+        
+        editor_model.linkSelectMode = true;
+        editor_model.clickedElem = document.body; //"center" clicked element on document body
+        //removes all context menu stuff 
+        document.querySelector("#context-menu").classList.remove("visible");
+        editor_model.linkSelectCallback = callback;
+        editor_model.linkSelectMsg = "Confirm " + msg;
+        editor_model.linkSelectOtherMenus = callbackUI;
+        editor.ui.refresh();
+        editor.ui.sendNotification(editor_model.linkSelectMsg);
+        document.body.addEventListener('mouseover', linkModeHover1, false);
+        document.body.addEventListener('mouseout', linkModeHover2, false);
+      }
+
+      
+
+      function copy_website(source, dest) {
+        let website_files = JSON.parse(editor._internals.doReadServer("fullListDir", source));
+        let is_dest_valid = editor._internals.doReadServer("isdir", dest)
+        if (!website_files) throw "copy_website(): invalid source";
+        if (!is_dest_valid) throw "copy_website(): invalid dest";
+        
+        //filter out Thaditor files
+        website_files = website_files.filter(val => !thaditor_files.includes(val[0]));
+        website_files = website_files.filter(val => val[0][0] != ".");
+        //cpy website_files to to dest
+        website_files.forEach(val => {
+          let [nm, isdir] = val;
+          const s = (source + nm);
+          const d = (dest + nm);
+          if (isdir) {
+            editor._internals.doWriteServer("fullCopy", s, d);
+          } else {
+            editor._internals.doWriteServer("copy", d, s);
+          }
+        });
+        let dh = editor._internals.doReadServer("read", source + "/.thaditor_meta");
+        dh = dh.slice(1, dh.length);
+        let draft_history = (dh == "" ? undefined : JSON.parse(dh));
+        const get_date_meta = () => (new Date).toString();
+        if (draft_history == undefined) {
+          draft_history = ["live:" + get_date_meta()];
+        } else {
+          draft_history.push(editor_model.version + ":" + get_date_meta());
+        }
+        editor._internals.doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
+        return 1;
+      }
+      
+      function deleteDraftDef(nm) { //definitely delete the draft, without a prompt
+        //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
+        const pth_to_delete = "Thaditor/versions/" + nm + "/";
+        //here we want to hand editor._internals.doWriteServer to the worker in editor.js
+
+        const data = {action:"drafts",
+                      subaction:"deletermrf",
+                      pth_to_delete:pth_to_delete,
+                      nm:nm, thaditor_files:thaditor_files, version:editor_model.version};
+        if (editor_model.version == nm) {
+          editor._internals.doWriteServer("deletermrf", pth_to_delete);
+          editor.navigateTo("/?edit");
+          editor.ui.refresh();
+        } else {
+          thaditor.do(data).then(data => {
+            editor.ui.sendNotification("Permanently deleted draft named: " + data.nm);
+            editor.ui.refresh()});
+        }
+      }
+
+      function deleteDraft(nm) {
+        if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
+        const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
+        if (!ans) return;
+        deleteDraftDef(nm);
+      }
+
+
+      function getNewDraftName(nm, verzExist) {
+        const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
+        if (!draft_name) {
+          return 0;
+        }
+        
+        let is_draft_name_valid = (nm) => {
+          return !(nm.startsWith("[^a-zA-Z0-9]"));
+        };
+
+        if (!is_draft_name_valid(draft_name)) {
+          window.alert("Invalid draft name");
+          return 0;
+        }
+        
+        let fail = false;
+        if (!verzExist) {
+          editor._internals.doWriteServer("mkdir", "Thaditor/versions");
+        } else {
+          let versionsList = JSON.parse(editor._internals.doReadServer("fullListDir", "Thaditor/versions/"));
+          versionsList.forEach(val => {
+            let [nm, isdir] = val;
+            if (isdir) {
+              if (nm == draft_name) {
+                fail = window.confirm("Overwrite existing draft?");
+              }
+            }
+          });
+        }
+        if (fail) return 0;
+        return draft_name;
+      }
+
+
+      function cloneSite(nm, verzExist) {
+        //verzExist tells us if we need to mkdir versions
+        //nm could be live or any draft ==> make f_pth
+        const draft_name = getNewDraftName(nm, verzExist);
+        if (!draft_name) return 0;
+        //all of that above ^^ needs to happen in the UI thread.
+        const t_pth = "Thaditor/versions/" + draft_name + "/"
+        const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
+        const data = {action:"drafts", subaction:"clone",
+                      draft_name:draft_name,
+                      t_pth:t_pth, f_pth:f_pth,
+                      nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
+        editor.ui.sendNotification("Creating draft " + draft_name + " from " + nm);
+        thaditor.do(data).then(data => {
+          //just send a notif, no more naving to the clone
+          editor.ui.refresh();
+          editor.ui.sendNotification("Successfully cloned " + data.nm + " to " + data.draft_name);
+        });
+      }
+      
+      function renameDraft(nm, verzExist) {
+        //verzExist tells us if we need to mkdir versions
+        //nm could be live or any draft ==> make f_pth
+        const draft_name = getNewDraftName(nm, verzExist);
+        if (!draft_name) return 0;
+        //all of that above ^^ needs to happen in the UI thread.
+        const t_pth = "Thaditor/versions/" + draft_name + "/"
+        const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
+        const data = {action:"drafts", subaction:"rename",
+                      draft_name:draft_name,
+                      t_pth:t_pth, f_pth:f_pth,
+                      nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
+        editor.ui.sendNotification("Renaming draft " + nm + " to " + draft_name);
+        thaditor.do(data).then(data => {
+          let marker = false;
+          if (data.nm == data.version) {
+            editor.navigateTo("/Thaditor/versions/" + data.draft_name + "/?edit");
+            marker = true;
+          }
+          if(marker) {
+            setTimeout(editor.ui.sendNotification("Successfully renamed " + data.nm + " to " + data.draft_name), 2000)
+          } else {
+            editor.ui.refresh();
+            editor.ui.sendNotification("Successfully renamed " + data.nm + " to " + data.draft_name);
+          }
+        });
+      }
+
+      function publishDraft(nm) {
+        //We're copying out Thaditor/versions/$nm/ to "".
+        if (nm == "Live") throw "Can't publish live to live";
+        const conf = window.confirm("Are you sure you want to publish " + nm + " to live?");
+        if (!conf) {
+          return;
+        }
+        let t_src = "Thaditor/versions/" + nm + "/";
+        const data = {action:"drafts",
+                      subaction:"publish",
+                      t_src:t_src,
+                      nm:nm,thaditor_files:thaditor_files,
+                      version:editor_model.version};
+        thaditor.do(data).then(data => {
+          editor.ui.sendNotification("Successfully published " + data.nm + " to live.");
+        });
+      }
+      
+      editor.ui.refresh = function refresh() {
+        const menuholder = document.querySelector("#modify-menu-holder");
+        const old_scroll = menuholder ? menuholder.scrollTop : 0;
+        
+        // Set up
+        let editor_model = editor.ui.model;
+        var clickedElem = editor_model.clickedElem;
+        var contextMenu = document.querySelector("#context-menu");
+        var modifyMenuDiv = document.querySelector("#modify-menu");
+        
+        if(!modifyMenuDiv || !contextMenu) return;
+        modifyMenuDiv.classList.toggle("editor-interface", true);
+        contextMenu.classList.toggle("editor-interface", true);
+
+        // Display the interface or not
+        modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
+
+        // Make sure at most one element is marked as ghost-clicked.
+        document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
+        if(clickedElem && clickedElem.nodeType === 1) {
+          clickedElem.setAttribute("ghost-clicked", "true");
+        }
+        
+        // Recover selection if it exists
+        editor_model.selectionRange = editor_model.notextselection ? undefined : (() => {
+          let selection = window.getSelection();
+          if(!selection || !selection.rangeCount) return;
+          let f = selection.getRangeAt(0); 
+          if(!f || !f.getBoundingClientRect ||
+              f.startOffset === f.endOffset && f.startContainer === f.endContainer) return;
+          return f;
+        })();
+        
+        // Recover caret position if it exists
+        editor_model.caretPosition = editor_model.notextselection || clickedElem && clickedElem.tagName === "HEAD" ? undefined : (() => {
+          let selection = window.getSelection();
+          if(!selection || !selection.rangeCount) return;
+          let f = selection.getRangeAt(0);
+          if(!f || f.startOffset !== f.endOffset && f.startContainer !== f.endContainer) return;
+          return f;
+        })();
+        
+        // We render the content of modifyMenuDiv from scratch
+        modifyMenuDiv.innerHTML = "";
+        let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned"}); // Icons always visible
+        let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"}); // Top-level icons on the top bar
+        let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
+        let modifyMenuHolder = el("div", {"class": "modify-menu-holder", "id":"modify-menu-holder"});
+        modifyMenuDiv.append(modifyMenuPinnedIconsDiv); // Keep this one as it.
+        
+        /*
+          Render interfaces / containers
+        */
+        for(let i = 1; i < editor_model.interfaces.length; i++) {
+          let x = editor_model.interfaces[i];
+          let priority = x.priority(editor_model);
+          if(i > 0 && typeof priority === "number") {
+            x.minimized = false;
+            let previous = editor_model.interfaces[i-1]
+            let beforePriority = previous.priority(editor_model);
+            if(typeof beforePriority === "undefined" && (!previous.enabled(editor_model) || previous.minimized)) {
+              var tmp = editor_model.interfaces[i];
+              editor_model.interfaces[i] = editor_model.interfaces[i-1];
+              editor_model.interfaces[i-1] = tmp;
+              i -= 2; // Bubble up
+            }
+          }
+        }
+        for(let i = 0; i < editor_model.interfaces.length; i++) {
+          let x = editor_model.interfaces[i];
+          let priority = x.priority(editor_model);
+          let initMinimized = typeof priority == "number" ? false :
+                              x.enabled(editor_model) ? x.minimized : true;
+          let renderedContent = x.render(editor_model);
+          let class_str = x.title.replace(" ", "_");
+          let menu = el(
+            "div", {
+              class:"editor-container" + (x.enabled(editor_model) ? "" : " disabled") + (x.minimized ? " minimized" : "") + " " + class_str},
+            [ el("div.editor-container-title", {
+                   title: typeof renderedContent === "string" ? renderedContent : undefined
+                 },
+                 [ el("div", {title: "Expand menu", class: "expand-menu"}, x.title),
+                   el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: editor.ui.icons.boxArrowExpand}),
+                   el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: editor.ui.icons.boxArrowDown,
+                     onclick: function(event) {
+                       let d = this.parentElement.parentElement;
+                       var tmp = editor_model.interfaces[d.i];
+                       editor_model.interfaces[d.i] = editor_model.interfaces[d.i+1];
+                       editor_model.interfaces[d.i+1] = tmp;
+                       d.nextElementSibling.i = d.i;
+                       d.i = d.i + 1;
+                       d.parentElement.insertBefore(d.nextElementSibling, d);
+                       event.preventDefault();
+                       event.stop = true;
+                       return false;
+                     }}),
+                   el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: editor.ui.icons.boxArrowUp,
+                     i: i,
+                     onclick: function(event) {
+                       let d = this.parentElement.parentElement;
+                       var tmp = editor_model.interfaces[d.i];
+                       editor_model.interfaces[d.i] = editor_model.interfaces[d.i-1];
+                       editor_model.interfaces[d.i-1] = tmp;
+                       d.previousElementSibling.i = d.i;
+                       d.i = d.i - 1;
+                       d.parentElement.insertBefore(d, d.previousElementSibling);
+                       event.preventDefault();
+                       event.stop = true;
+                       return false;
+                     }})
+                 ],
+                 {
+                  onclick: ((x) => event => {
+                    console.log(event);
+                    if(event.stop) return;
+                    let target = event.target;
+                    while(!target.matches(".editor-container")) target = target.parentNode;
+                    //console.log("onclick", event.target);
+                    x.minimized = target.classList.contains("minimized");
+                    x.minimized = !x.minimized;
+                    target.classList.toggle("minimized", x.minimized);
+                  })(x)
+                 }),
+              el("div.editor-container-content", {}, renderedContent),
+            ],
+          {i: i});
+          modifyMenuHolder.append(menu);
+        }
+        
+        //console.log ({old_scroll, modifyMenuHolder});
+        modifyMenuDiv.append(modifyMenuHolder);
+        if(modifyMenuHolder) modifyMenuHolder.scrollTop = old_scroll;
+
+        let createButton = function(innerHTML, attributes, properties) {
+          let button = el("div", attributes, [], properties);
+          button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
+          button.classList.add("modify-menu-button");
+          button.innerHTML = innerHTML;
+          return button;
+        }
+        let addPinnedModifyMenuIcon = function(innerHTML, attributes, properties) {
+          modifyMenuPinnedIconsDiv.append(createButton(innerHTML, attributes, properties));
+        }
+        var panelOpenCloseIcon = function() {
+          return document.querySelector("#modify-menu").classList.contains("visible") ?
+              editor.config.onMobile() ? editor.ui.icons.closeBottom : editor.ui.icons.closeRight + "<span class='modify-menu-icon-label'>Close</span>"
+            : editor.config.onMobile() ? editor.ui.icons.openTop : editor.ui.icons.openLeft + "<span class='modify-menu-icon-label'>Open</span>";
+        }
+        var alwaysVisibleButtonIndex = 0;
+        function nextVisibleBarButtonPosStyle() {
+          let result = "position: absolute;" +
+            (editor.config.onMobile() ? "top:-"+editor.config.buttonHeight()+"px;left:"+alwaysVisibleButtonIndex*editor.config.buttonWidth()+"px" :
+                          "left:-"+editor.config.buttonWidth()+"px;top:"+alwaysVisibleButtonIndex*editor.config.buttonHeight()+"px")
+          alwaysVisibleButtonIndex++;
+          return result;
+        }
+        if(!editor_model.linkSelectMode) {
+          addPinnedModifyMenuIcon(
+            panelOpenCloseIcon(),
+            {title: "Open/close settings tab", "class": "inert" },
+            {onclick: function(event) {
+                document.querySelector("#modify-menu").classList.toggle("visible");
+                editor_model.visible = !editor_model.visible;
+                setTimeout(maybeRepositionContextMenu, 500);
+                this.innerHTML = panelOpenCloseIcon();
+                if(editor.config.onMobile() && editor_model.savedTextSelection) {
+                  window.getSelection().addRange(editor_model.savedTextSelection);
+                  editor_model.savedTextSelection = undefined;
+                }
+              }
+          });
+          if(editor.config.EDITOR_VERSION & 1) {
+            addPinnedModifyMenuIcon(editor.ui.icons.undo + "<span class='modify-menu-icon-label'>Undo</span>", 
+              {"class": "inert" + (editor.ui.canUndo() ? "" : " disabled"), title: "Undo most recent change",
+                id: "undobutton"
+              },
+              {onclick: function(event) {
+                if(!editor.ui.undo()) editor.ui.sendNotification("Nothing to undo!");
+                }
+              }   
+            );
+            addPinnedModifyMenuIcon(editor.ui.icons.redo + "<span class='modify-menu-icon-label'>Redo</span>",
+              {"class": "inert" + (editor.ui.canRedo() ? "" : " disabled"), title: "Redo most recent undo",
+                id: "redobutton"
+              },
+              {onclick: function(event) {
+               if(!editor.ui.redo()) editor.ui.sendNotification("Nothing to redo!");
+                }
+              }
+            );
+          }
+          addPinnedModifyMenuIcon(editor.ui.icons.save + "<span class='modify-menu-icon-label'>Save</span>",
+          {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor.ui.canSave() || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
+            id: "savebutton"
+          },
+            {onclick: editor_model.disambiguationMenu ? 
+              ((ambiguityKey, selected) => () => editor.ambiguity.accept(ambiguityKey, selected))(
+                editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
+              : editor.ui.save
+            }
+          )
+        }
+        else {
+          addPinnedModifyMenuIcon(editor.ui.icons.escape + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
+            {"class": "link-select-button", title: "Go back to original screen",
+              id: "escapebutton"
+            },
+            {onclick: function(event) {
+                escapeLinkMode();
+              }
+            }
+          );
+          addPinnedModifyMenuIcon(editor.ui.icons.check + "<span class='modify-menu-icon-label-link'>Select</span>", 
+            {"class": "link-select-button", title: editor_model.linkSelectMsg || "Select target",
+              id: "selectbutton"
+            },
+            {onclick: function(event) {
+                editor_model.linkSelectCallback(editor_model.clickedElem);
+                escapeLinkMode();
+              }
+            }
+          );
+          if(editor_model.linkSelectOtherMenus) {
+            editor_model.linkSelectOtherMenus(addPinnedModifyMenuIcon)
+          }
+        }
+
+        if(!editor_model.linkSelectMode) {
+          contextMenu.innerHTML = "";
+          var whereToAddContextButtons = contextMenu;
+          var noContextMenu = false;
+          // What to put in context menu?
+          if(editor.config.onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
+            modifyMenuPinnedIconsDiv.parentElement.insertBefore(modifyMenuIconsDiv, modifyMenuPinnedIconsDiv.nextSibling);
+            whereToAddContextButtons = modifyMenuIconsDiv;
+            noContextMenu = true;
+          }
+          let numButtons = 0;
+          let addContextMenuButton = function(innerHTML, attributes, properties) {
+            let button = el("div", attributes, [], properties);
+            button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
+            button.classList.add("context-menu-button");
+            button.innerHTML = innerHTML;
+            whereToAddContextButtons.append(button);
+            numButtons++;
+          }
+          if(editor_model.link) {
+            addContextMenuButton(editor.ui.icons.liveLink(linkToEdit(editor_model.link)),
+              {title: "Go to " + editor_model.link, "class": "inert"});
+          }
+          if(!editor_model.selectionRange && clickedElem && clickedElem.parentNode && editor.config.EDITOR_VERSION & 1) {
+            addContextMenuButton(editor.ui.icons.parentUp,
+            {title: "Select parent", "class":"inert"},
+              {onclick: (c => event => {
+                editor_model.clickedElem = c;
+                refresh();
+              })(clickedElem.parentNode)}
+            );
+          }
+          
+          var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
+          var isDisplayInline = computedStyle && (computedStyle.display.startsWith("inline") || computedStyle.display === "table-cell");
+          if(!editor_model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && editor.config.EDITOR_VERSION & 1) {
+            addContextMenuButton(isDisplayInline ? editor.ui.icons.arrowLeft : editor.ui.icons.arrowUp,
+            {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
+            {onclick: (c => event => {
+                let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
+                  c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
+                // There is whitespace before this element, we try to reinsert
+                c.parentElement.insertBefore(c, c.previousElementSibling);
+                if(wsTxtNode) { // We move the whitespace as well.
+                  c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
+                }
+                editor_model.clickedElem = c;
+                refresh();
+              })(clickedElem)
+            });
+          }
+          if(!editor_model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && editor.config.EDITOR_VERSION & 1) {
+            addContextMenuButton(isDisplayInline ? editor.ui.icons.arrowRight : editor.ui.icons.arrowDown,
+            {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
+            {onclick: (c => (event) => {
+                let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 && 
+                  c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
+                let nodeToInsertAfter = c.nextElementSibling;
+                nodeToInsertAfter.insertAdjacentElement("afterend", c);
+                if(wsTxtNode) { // We move the whitespace as well
+                  nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
+                }
+                editor_model.clickedElem = c;
+                refresh();
+              })(clickedElem)
+            });
+          }
+          if(!editor_model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && editor.config.EDITOR_VERSION & 1) {
+            addContextMenuButton(editor.ui.icons.clone,
+              {title: "Clone selected element"},
+              {onclick: ((c, contextMenu) => event => {
+                  c.removeAttribute("ghost-clicked");
+                  let cloned = duplicate(c);
+                  if(cloned) {
+                    editor_model.clickedElem = cloned;
+                    refresh();
+                  } else contextMenu.classList.remove("visible");
+                })(clickedElem, contextMenu)
+              });
+            addContextMenuButton(editor.ui.icons.wasteBasket,
+              {title: "Delete selected element"},
+              {onclick: (c => event => {
+                  if(editor_model.clickedElem.nextElementSibling) editor_model.clickedElem = editor_model.clickedElem.nextElementSibling;
+                  else editor_model.clickedElem = editor_model.clickedElem.previousElementSibling;
+                  c.remove();
+                  refresh();
+                })(clickedElem)
+              });
+          }
+          if(editor_model.selectionRange && (editor_model.selectionRange.startContainer === editor_model.selectionRange.endContainer || editor_model.selectionRange.startContainer.parentElement === editor_model.selectionRange.commonAncestorContainer && editor_model.selectionRange.endContainer.parentElement === editor_model.selectionRange.commonAncestorContainer) && editor.config.EDITOR_VERSION & 1) {
+            addContextMenuButton(editor.ui.icons.plus,
+                {title: "Wrap selection"},
+                {onclick: (s => event => {
+                  let elements = [];
+                  let tmp = s.startContainer;
+                  let nodeToInsertAfter = s.startContainer;
+                  let parent = nodeToInsertAfter.parentElement;
+                  while(tmp && tmp !== s.endContainer.nextSibling) {
+                    if(tmp.nodeType === 3) {
+                      elements.push(tmp === s.startContainer ? tmp === s.endContainer ? tmp.textContent.substring(s.startOffset, s.endOffset) : tmp.textContent.substring(s.startOffset) :
+                        tmp === s.endContainer ? tmp.textContent.substring(0, s.endOffset) :
+                        tmp.textContent);
+                      if(tmp === s.startContainer) {
+                        if(tmp === s.endContainer && tmp.textContent.length > s.endOffset) {
+                          // Need to split the text node.
+                          tmp.parentElement.insertBefore(document.createTextNode(tmp.textContent.substring(s.endOffset)), tmp.nextSibling);
+                        }
+                        if(s.startOffset === 0) {
+                          nodeToInsertAfter = nodeToInsertAfter.previousSibling;
+                          tmp.remove();
+                        } else {
+                          tmp.textContent = tmp.textContent.substring(0, s.startOffset);
+                        }
+                      } else if(tmp === s.endContainer) {
+                        if(s.endOffset === s.endContainer.textContent.length) {
+                          tmp.remove();
+                        } else {
+                          tmp.textContent = tmp.textContent.substring(s.endOffset);
+                        }
+                      } else {
+                        tmp.remove();
+                      }
+                    } else {
+                      elements.push(tmp);
+                      tmp.remove();
+                    }
+                    tmp = tmp.nextSibling;
+                  }
+                  let insertedNode = el("span", {"ghost-clicked": "true"});
+                  for(let k of elements) {
+                    insertedNode.append(k);
+                  }
+                  let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
+                  parent.insertBefore(insertedNode, nodeToInsertBefore);
+                  document.querySelector("#modify-menu").classList.toggle("visible", true);
+                  editor_model.visible = true;
+                  editor_model.clickedElem = insertedNode;
+                  refresh();
+                })(editor_model.selectionRange)}
+                )
+          }
+          if(!editor_model.selectionRange && editor.config.EDITOR_VERSION & 1) {
+            addContextMenuButton(editor.ui.icons.plus,
+                {title: "Insert element", contenteditable: false},
+                {onclick: event => {
+                  editor_model.clickedElem = clickedElem;
+                  editor_model.displayClickedElemAsMainElem = true;
+                  editor_model.insertElement = true;
+                  editor_model.visible = true;
+                  getEditorInterfaceByTitle("Create").minimized = false;
+                  refresh();
+                  restoreCaretPosition();
+                }});
+          }
+          if(editor_model.clickedElem) {
+            // Thaditor-defined custom context menu buttons
+            if(typeof thaditor === "object") {
+              for(let button of thaditor.customContextMenuButtons(editor_model.clickedElem)) {
+                addContextMenuButton(button.innerHTML, button.attributes, button.properties)
+              }
+            }
+            // Page-defined custom context menu buttons
+            for(let custom of editor.customContextMenuButtons) {
+              for(let button of custom(editor_model.clickedElem)) {
+                addContextMenuButton(button.innerHTML, button.attributes, button.properties)
+              }
+            }
+          }
+
+          let baseElem = clickedElem;
+          while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
+            baseElem = baseElem.nextElementSibling;
+          }
+          baseElem = editor_model.selectionRange || baseElem || clickedElem;
+        
+          if(baseElem && !noContextMenu) {
+            let clientRect = baseElem.getBoundingClientRect();
+            // Find out where to place context menu.
+            let clickedElemLeft = window.scrollX + clientRect.left;
+            let clickedElemTop = window.scrollY + clientRect.top;
+            let clickedElemBottom = window.scrollY + clientRect.bottom;
+            let clickedElemRight = window.scrollX + clientRect.right;
+            let desiredWidth = numButtons * editor.config.buttonWidth();
+            let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
+            if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
+            let desiredTop = clickedElemTop - editor.config.buttonHeight(); 
+            if(desiredTop - window.scrollY < 9) {
+              desiredTop = clickedElemBottom;
+              if(desiredTop + editor.config.buttonHeight() > window.innerHeight) {
+                desiredTop = window.innerHeight - editor.config.buttonHeight(); 
+              }
+            }
+            if(desiredLeft < 0) desiredLeft = 0;
+            if(desiredTop < 0) desiredTop = 0;
+            contextMenu.style.left = desiredLeft + "px";
+            contextMenu.style.top = desiredTop + "px";
+            contextMenu.style.width = desiredWidth + "px";
+            contextMenu.classList.add("visible");
+            setTimeout(maybeRepositionContextMenu, 0);
+          }
+          if(noContextMenu) {
+            contextMenu.classList.remove("visible");
+          }
+        }
+        
+        return true;
+
+      } // editor.ui.refresh
+
+      editor.refresh = function() {
+        console.log("DEPRECATED WARNING: Please use editor.ui.refresh() instead of editor.refresh()");
+        editor.ui.refresh()
+      };
+      editor.ui.refresh();
+
+      function maybeRepositionContextMenu() {
+        //move the context menu if overlaps with modify-menu
+         let contextMenu = document.querySelector("#context-menu");
+         let modifyMenuDiv = document.querySelector("#modify-menu");
+         let pinnedIcons = document.querySelector(".modify-menu-icons.pinned")
+         let pcr = pinnedIcons.getBoundingClientRect();
+         let ccr = contextMenu.getBoundingClientRect();
+         let mcr = modifyMenuDiv.getBoundingClientRect();
+         if(editor.config.onMobile()) {
+           if(ccr.bottom > pcr.top) {
+             contextMenu.style.top = (ccr.y - (ccr.bottom - pcr.top)) + "px"
+           } else if(ccr.bottom > mcr.top) {
+             contextMenu.style.top = (ccr.y - (ccr.bottom - mcr.top)) + "px"
+           }
+         } else {
+           if(ccr.right > pcr.left && ccr.top < pcr.bottom) { // Overlap with icons.
+             contextMenu.style.left = (ccr.x - (ccr.right - pcr.left)) + "px"
+           } else if(ccr.right > mcr.left) {
+             contextMenu.style.left = (ccr.x - (ccr.right - mcr.left)) + "px"
+           }
+         }
+      } //maybeRepositionContextMenu
+      
+      editor.ui.close = function editor_close() {
+        if(editor.ui.model.visible) {
+          editor.ui.model.visible = false;
+          editor.ui.refresh();
+          //Hide the menu
+          //This is also working fine
+          return false;
+        }
+        return true;
+      } //editor.ui.close 
+      
+      editor.ui._internals.onBeforeUnload = function editor_onbeforeunload(e) {
+        e = e || window.event;
+        if(editor.config.onMobile() && editor.ui.model.visible) { // Hack to ask before saving.
+          e.preventDefault();
+          e.returnValue = '';
+          return editor.ui.close();
+        }
+        var askConfirmation = editor.ui.canSave() || editor.ui.model.isSaving || editor.ui.model.disambiguationMenu;
+        const confirmation = 'You have unsaved modifications. Do you still want to exit?';
+        // For IE and Firefox prior to version 4
+        if (e) {
+          if(askConfirmation) {
+            e.returnValue = confirmation;
+          }
+        }
+        if(askConfirmation) {
+          // For Safari
+          return confirmation;
+        } else if(!editor.config.thaditor) { // Send a close message in case this was a file opened from Desktop
+          var xmlhttp = new XMLHttpRequest();
+          xmlhttp.onreadystatechange = editor.ui._internals.handleServerResponse(xmlhttp);
+          xmlhttp.open("POST", location.pathname + location.search, false); // Async
+          xmlhttp.setRequestHeader("close", "true");
+          xmlhttp.send("{\"a\":3}");
+        }
+      } // End of editor.ui._internals.onBeforeUnload
+      
     }; // editor.ui._internals.loadInterface
 
     // Initialize Editor's interface.
@@ -3091,6 +5996,38 @@ initialScript = serverOwned "initial script" <| [
       
       document.addEventListener('mousedown', editor.ui._internals.onMouseDown, false);
       document.addEventListener('click', editor.ui._internals.onClick, false);
+      
+      // Mobile only. Experiment not working. We want the back button to close the editor when it is opened.
+      document.addEventListener("deviceready", function onDeviceReady(){
+        document.addEventListener("backbutton", editor.ui.close, false);
+      }, false);
+      
+      window.addEventListener("error", function (message, source, lineno, colno, error) {
+        let msg;
+        if(message instanceof ErrorEvent) {
+          msg = message.message;
+        } else {
+          msg = message + " from " + source + " L" + lineno + "C" + colno;
+        }
+        editor.ui.model.editor_log.push(msg);
+      });
+      
+      window.onbeforeunload = editor.ui._internals.onBeforeUnload;
+      
+      // Store the current child list of nodes that ignore their children totally
+      (function() {
+        var elems = document.querySelectorAll("*");
+        for(var i = 0; i < elems.length; i++) {
+          if(editor.isIgnoringChildNodes(elems[i])) {
+            editor.storeIgnoredChildNodes(elems[i]);
+          }
+        }
+      })();
+      
+      // The thing that makes everything live editable.
+      if(typeof editor.config.canEditPage == "boolean" && editor.config.canEditPage) {
+        document.body.setAttribute("contenteditable", "true");
+      }
     } // editor.ui.init
 
     document.addEventListener("DOMContentLoaded", function(event) { 
@@ -3118,2977 +6055,18 @@ initialScript = serverOwned "initial script" <| [
     return path;
   }
   
+  function isAbsolute(url) {
+    return url.match(/^https?:\/\/|^www\.|^\/\//);
+  }
+  function linkToEdit(link) {
+    return link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;
+  }
   
 </script>,
 -- The following is replaced by an inline <style> for when Editor runs as a file opener.
 -- And the path is modified when Editor runs as Thaditor.
 <link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface">
 ]
-
--- Script added to the end of the page
--- It injects the UI elements
--- TODO: Move all functions to the initial script. Only call Editor's API here.
-lastEditScript = """
-    el = editor.el;
-    console.log("lastEditScript running");
-    
-    var isAbsolute = url => url.match(/^https?:\/\/|^www\.|^\/\//);
-    var linkToEdit = link => link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;
-    
-    var ifAlreadyRunning = typeof editor == "object" && typeof editor.ui === "object" && typeof editor.ui.model === "object";
-    var thaditor_files = [
-      "Thaditor", "Makefile", "ThaditorPackager.py", "ThaditorInstaller.py", "ThaditorInstaller.php",
-      "ThaditorInstaller.htaccess", "composer.json", "composer.lock", "credentials.json", "cacert.pem", "versions",
-      "vendor", "ssg", "cache"
-    ];
-    if (isLive == undefined) {
-      var isLive = () => !(editor.config.path.includes("Thaditor/versions/"));
-    }
-
-    //Version used
-    var verz = "Live";
-    if (!isLive()) {
-      verz = editor.config.path.slice(editor.config.path.lastIndexOf("versions/")+9, editor.config.path.lastIndexOf("/"));
-    }
-    //hover mode functions for linkSelectMode
-    function escapeLinkMode() {
-      document.body.removeEventListener('mouseover', linkModeHover1, false);
-      document.body.removeEventListener('mouseout', linkModeHover2, false);
-      //removing the hovered element (which is retained if the escape key is hit)
-      document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
-      editor.ui.model.visible = false;
-      editor.ui.model.linkSelectMode = false;
-      editor.ui.model.linkSelectCallback = undefined;
-      editor.ui.model.linkSelectOtherMenus = undefined;
-      editor.ui.refresh();
-    }
-    function noGhostHover (node) {
-      curClass = node.getAttribute("class")
-      if(curClass === "modify-menu-icon-label-link" ||
-        curClass === "context-menu-icon" ||
-        curClass === "context-menu-icon fill") {
-          return false;
-        }
-      else if(node.tagName === "path" || node.tagName === "PATH") {
-        return false;
-      }
-      return true;
-    }
-    function linkModeHover1(event) {
-      //console.log(event.target);
-      //console.log(event.target.tagName);
-      //console.log(event.target.getAttribute("class"));
-      if(noGhostHover(event.target)) { 
-        event.target.setAttribute("ghost-hovered", true);
-        editor.ui.refresh();
-        //console.log("hey!");
-      }
-    }
-    function linkModeHover2(event) {
-      if(noGhostHover(event.target)) {
-        event.target.removeAttribute("ghost-hovered");
-        editor.ui.refresh();
-      }
-    }
-
-    function dataToRecoverElement(oldNode) {
-      if(!oldNode) return undefined;
-      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
-        return {id: oldNode.getAttribute("id")};
-      }
-      let tentativeSelector = [];
-      let t = oldNode;
-      let isText = false, textIndex = 0;
-      while(t && t.parentNode) {
-        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
-        if(t.nodeType === 1) {
-          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
-        } else {
-          isText = true;
-          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
-        }
-        t = t.parentNode;
-      }
-      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
-    }
-    
-    // Returns the new node that matches the old node the closest.
-    // For text nodes, try to recover the text node, if not, returns the parent node;
-    function recoverElementFromData(data) {
-      if(!data) return undefined;
-      if(typeof data === "object" && data.id) {
-        return document.getElementById(data.id);
-      }
-      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
-        let tentativeSelector = data.tentativeSelector;
-        while(tentativeSelector.length >= 1) {
-          let newNode = document.querySelector(tentativeSelector.join(" "));
-          if(newNode) {
-            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
-          }
-          tentativeSelector.shift();
-        }
-        return undefined;
-      }
-    }
-    function setCaretPositionIn(node, position) {
-      position = Math.min(position, node.textContent.length);
-      if (node.nodeType == 3) {
-        let sel  = window.getSelection()
-        setTimeout( () => sel.collapse(node, position), 0);
-      } else {
-        let p = position
-        let n = node.firstChild
-        while(n != null && p > n.textContent.length) {
-          p = p - n.textContent.length
-          n = n.nextSibling
-        }
-        if(n != null) {
-          setCaretPositionIn(n, p)
-        } else {
-          console.log("Could not find position. Reached node and position ", [n, p])
-        }
-      }
-    }
-    function dataToRecoverCaretPosition(caretPosition) {
-      if(!caretPosition) return undefined;
-      return {target: editor.toTreasureMap(caretPosition.startContainer), startOffset: caretPosition.startOffset};
-    }
-    function recoverCaretPositionFromData(data) {
-      if(!data) return;
-      let newTextNodeOrParent = editor.fromTreasureMap(data.target);
-      if(newTextNodeOrParent) setCaretPositionIn(newTextNodeOrParent, data.startOffset)
-    }
-    function dataToRecoverSelectionRange(selectionRange) { // TODO
-      if(!selectionRange) return undefined;
-      return undefined;
-    }
-    function recoverSelectionRangeFromData(data) { // TODO
-      if(!data) return;
-      return undefined;
-    }
-    function nothingToLose() {
-      if(editor.ui.canSave()) {
-        var x = confirm("There are unsaved modifications. Do you want to discard them?");
-        if(x) {
-          editor.ui.model.undoStack = [];
-          editor.ui.model.redoStack = [];
-          return true;
-        } else {
-          return false;
-        }
-      }
-      editor.ui.model.undoStack = [];
-      editor.ui.model.redoStack = [];
-      return true;
-    }
-    //(outer lastEditScript)
-    /*
-    State is currently (8/12) being kept track of in many variables. I'm setting out to condense that
-    into one variable, "state", a string describing the current state of the system. 
-    For the sake of clarity, I will list the current variables within the editor.ui.model that are used to keep track of state
-
-      visible :v
-      advanced :a
-      show_log :s
-      insertElement :i //(not defined in our inital editor.ui.model object)
-      linkSelectMode :l
-      isDraftSwitcherVisible :d
-    */
-    editor.ui.model = { // Change this and call editor.ui.refresh() to get something consistent.
-      visible: ifAlreadyRunning ? editor.ui.model.visible : false, //here
-      clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor.ui.model.clickedElem) : undefined,
-      displayClickedElemAsMainElem: true, // Dom selector status switch signal
-      previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
-      notextselection: false, // When using the relative DOM selector, set to true to avoid considering the caret (e.g. for insertions and deletions)
-      savedTextSelection: undefined, // Text range to restore when the edition bar closes, on mobile
-      restoredAfterReload: ifAlreadyRunning ? editor.ui.model.restoredAfterReload : {},
-      selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor.ui.model.selectionRange) : undefined,
-      caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor.ui.model.caretPosition) : undefined,
-      link: undefined,
-      disambiguationMenu: undefined, //here
-      isSaving: false,
-      undosBeforeSave: ifAlreadyRunning ? editor.ui.model.undosBeforeSave : 0,
-      //data structures to represent undo/redo "stack"
-      undoStack: ifAlreadyRunning ? editor.ui.model.undoStack : [],
-      redoStack: ifAlreadyRunning ? editor.ui.model.redoStack : [],
-      actionsDuringSave: ifAlreadyRunning ? editor.ui.model.actionsDuringSave : [],
-      isDraftSwitcherVisible : ifAlreadyRunning ? editor.ui.model.isDraftSwitcherVisible : false,
-      //observer to listen for muts
-      outputObserver: ifAlreadyRunning ? editor.ui.model.outputObserver : undefined,
-      //worker for interface with the server
-      send_notif:ifAlreadyRunning ? editor.ui.model.send_notif : "",
-      //editor log
-      editor_log: ifAlreadyRunning ? editor.ui.model.editor_log : [],
-      show_log: ifAlreadyRunning ? editor.ui.model.show_log : false, //here
-      linkSelectMode: false, //here
-      linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
-      idNum: ifAlreadyRunning ? editor.ui.model.idNum : 1,
-      //new attribute to keep menu state after reload
-      textareaPropertiesSaved: ifAlreadyRunning ? editor.ui.model.textareaPropertiesSaved : [],
-      askQuestions: ifAlreadyRunning ? editor.ui.model.askQuestions : editor.config.askQuestions,
-      autosave: ifAlreadyRunning ? editor.ui.model.autosave : editor.config.autosave,
-      path: editor.config.path,
-      version : verz,
-      interfaces: ifAlreadyRunning ? editor.ui.model.interfaces : [],
-      disambiguationMenu: ifAlreadyRunning ? editor.ui.model.disambiguationMenu : undefined
-    }
-    
-    // Helpers: Text preview and summary
-    function textPreview(element, maxLength) {
-      let x = element.textContent;
-      let result = "'" + x + "'";;
-      if(x == "") {
-        if(element.tagName === "META") {
-          result = element.getAttribute("charset") ? "charset:" + element.getAttribute("charset")  :
-                  (element.getAttribute("name") || element.getAttribute("http-equiv") || "(name?)") + ": " + (element.getAttribute("content") || "(content?)");
-        } else if(element.tagName === "SCRIPT" || element.tagName === "IMG") {
-          result = typeof element.getAttribute("src") === "string" ? (element.getAttribute("src") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-        } else if(element.tagName === "LINK") {
-          result = typeof element.getAttribute("href") === "string" ? (element.getAttribute("href") || "(src?)").replace(/(https?:\/\/)?(www\.)?/, "") : "empty script";
-        }
-      }
-      if(typeof maxLength !== "undefined" && result.length > maxLength) {
-        return result.substring(0, maxLength) + "...'";
-      }
-      return result;
-    }
-    function summary(element, idAndClasses, maxLength) {
-      var summary = element.tagName.toLowerCase();
-      if(idAndClasses && element.getAttribute("id")) {
-        summary += "#" + element.getAttribute("id");
-      }
-      var elemClass = element.getAttribute("class");
-      if(idAndClasses && elemClass && elemClass.trim().length) {
-        summary += "." + elemClass.split(/\s+/g).join(".");
-      }
-      summary += " " + textPreview(element);
-      maxLength = maxLength || 80;
-      summary = summary.substring(0, maxLength || 80) + (summary.length > 80 ? "..." : "");
-      return summary;
-    }
-    
-    function getTempCSSName(CSSFilePath) {
-      let newFilePath = CSSFilePath.split("/");
-      let newFileName = `tmp-${editor.config.userName}-${newFilePath[newFilePath.length - 1]}`;
-      newFilePath[newFilePath.length - 1] = newFileName;
-      newFilePath = newFilePath.join("/");
-      return newFilePath;
-    }
-    
-    function editor_stopWatching() {
-      editor.ui.model.outputObserver.disconnect();
-    }
-    
-    function editor_resumeWatching() {
-      editor.ui.model.outputObserver.observe
-        ( document.body.parentElement
-        , { attributes: true
-          , childList: true
-          , characterData: true
-          , attributeOldValue: true
-          , characterDataOldValue: true
-          , subtree: true
-          });
-    }
-    
-    // newValue can be a function, in which it should be applied on the current content.
-    // Returns the old value.
-    async function assignTmpCss(linkNode, newValue, notUndoable) {
-      if(!notUndoable) { // We send this to undo.
-        editor_stopWatching();
-        let oldValue = await assignTmpCss(linkNode, newValue, true);
-        let m = {type: "linkHrefCSS", target: linkNode, oldValue: oldValue, newValue: newValue};
-        editor.ui._internals.makeMutationUndoable(m);
-        editor.ui.syncUndoRedoButtons();
-        editor_resumeWatching();
-        return;
-      }
-      // Here the change should not take care of doing the undo/redo part. 
-      let ghostHref = linkNode.getAttribute("ghost-href");
-      let hasGhostHref = typeof ghostHref === "string";
-      let oldHref = hasGhostHref ? ghostHref : linkNode.getAttribute("href")
-      let CSSFilePath = relativeToAbsolute(removeTimestamp(oldHref));
-      let currentContent = typeof linkNode.cachedContent === "string" ? linkNode.cachedContent :
-                               (await editor.getServer("read", CSSFilePath)).slice(1);
-      if(typeof linkNode.cachedContent !== "string") {
-        linkNode.cachedContent = currentContent;
-      }
-      if(hasGhostHref) { // Proxied
-        console.log("Was proxied");
-        let tmpCachedContent = typeof linkNode.tmpCachedContent == "string" ? linkNode.tmpCachedContent :
-                               (await editor.getServer("read", linkNode.getAttribute("href"))).slice(1);
-        if(typeof newValue === "function") {
-          newValue = newValue(tmpCachedContent);
-        }
-        if(currentContent === newValue) { // We can remove the proxy
-          if(!notUndoable) {
-            editor.ui.model.outputObserver.disconnect();
-          }
-          let CSSTmpFilePath = linkNode.getAttribute("href");
-          await editor.postServer("unlink", removeTimestamp(CSSTmpFilePath));
-          linkNode.setAttribute("href", oldHref);
-          linkNode.removeAttribute("ghost-href");
-          linkNode.tmpCachedContent = newValue;
-        } else { // We keep the proxy, just update the href
-          let CSSTmpFilePath = linkNode.getAttribute("href");
-          await editor.postServer("write", removeTimestamp(CSSTmpFilePath), newValue);
-          linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
-          linkNode.tmpCachedContent = newValue;
-        }
-        return tmpCachedContent;
-      } else {// Unproxied
-        console.log("Was not proxied")
-        if(typeof newValue === "function") {
-          newValue = newValue(currentContent);
-        }
-        if(currentContent !== newValue) { // Create the proxy file
-          console.log("Value updated")
-          //add dummy counter, force reload
-          linkNode.setAttribute("ghost-href", oldHref);
-          let CSSTmpFilePath = getTempCSSName(CSSFilePath);
-          await editor.postServer("write", CSSTmpFilePath, newValue);
-          linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
-          linkNode.tmpCachedContent = newValue;
-        } // else nothing to change, leave unproxied.
-        return currentContent;
-      }
-    }
-    
-    function init_css_parser() {
-      let thaditorLossLessCss = document.querySelector("script#thaditor-losslesscss");
-      if(!thaditorLossLessCss) {
-        let script = el("script", {id: "thaditor-losslesscss", class:"editor-interface", type:"text/javascript", src:"https://cdn.jsdelivr.net/gh/MikaelMayer/lossless-css-parser@@d4d64a4a87f64606794a47ab58428900556c56dc/losslesscss.js", async:"true", onload:"editor.ui._internals.setLosslessCssParser(losslesscssjs);", isghost: "true"});
-        document.head.appendChild(script);
-      } else {
-        console.log("thaditorLossLessCss found", thaditorLossLessCss);
-      }
-    }
-         
-    function init_interfaces() {
-      init_css_parser();
-      let linkSelect = function() {
-        activateNodeSelectionMode("to link to",
-          (linkFrom => linkTo => {
-            let targetID = linkTo.getAttribute("id");
-            if(!targetID) {
-              targetID = "ID" + editor.ui.model.idNum
-              linkTo.setAttribute("id", targetID);
-              editor.ui.model.idNum += 1;
-            }
-            else if(targetID.length > 100) {
-              targetID = targetID.trim();
-              linkTo.setAttribute("id", targetID);
-            }
-            linkFrom.setAttribute("href", "#" + targetID);
-          })(editor.ui.model.clickedElem)
-        );
-      } 
-      let createButton = function(innerHTML, attributes, properties) {
-        let button = el("div", attributes, [], properties);
-        button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
-        button.classList.add("modify-menu-button");
-        button.innerHTML = innerHTML;
-        return button;
-      } //you can append a createbutton to the element returning in render
-      let add_btn_to_div = (div, innerHTML, attributes, properties) => {
-        div.append(createButton(innerHTML, attributes, properties));
-      };
-      if(!(editor.config.EDITOR_VERSION & 1)) {
-        if(typeof simple_editor_interface !== "undefined") {
-          editor.ui.model.interfaces.push(simple_editor_interface);
-        }
-        return;
-      }
-      if(typeof simple_editor_interface !== "undefined" && editor.config.EDITOR_VERSION & 16) {
-        editor.ui.model.interfaces.push(simple_editor_interface);
-      }
-      editor.ui.model.interfaces.push({
-        title: "Selected Element Tree",
-        minimized: true,
-        priority(editor_model) {
-          return undefined;
-        },
-        enabled(editor_model) {
-          return editor_model.clickedElem;
-        },
-        render: function render(editor_model, innerBox) {
-          let domSelector = el("div.dom-selector.noselect"); // create dom selector interface
-          const clickedElem = editor_model.clickedElem;
-          if (!clickedElem) return "Click on an element to view its location in DOM tree";
-          domSelector.classList.add("dom-selector-style");
-          let mainElemDiv = el("div.mainElem");
-          let childrenElemDiv = el("div.childrenElem");
-          domSelector.append(
-            mainElemDiv, childrenElemDiv
-          );
-          let displayMainElem = function(elem) {
-            mainElemDiv.append(
-              el("div", {"class":"mainElemName", "type":"text", value: elem.tagName.toLowerCase()}, "<" + elem.tagName.toLowerCase() + ">", {
-                onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
-                onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
-              }),
-              el("div", {"class": "mainElemInfo"}, textPreview(elem, 50))
-            );
-          }
-          let displayChildrenElem = function(elem) {
-            childrenElemDiv.append(
-              el("div", {
-                  "class": "childrenSelector" + (elem.matches(".editor-interface") ? " editor-interface-dom-selector" : "") +
-                    (editor.isGhostNode(elem) ? " editor-recorded-ghost-node" : ""),
-                  title: elem.matches(".editor-interface") ? "This is part of Editor" : (editor.isGhostNode(elem) ? "(temporary) " : "") + textPreview(elem, 20)
-                  },
-                [
-                  el("div", {"class": "childrenSelectorName"}, "<" + elem.tagName.toLowerCase() + ">", {}),
-                  // el("div", {"class": "childrenSelectorInfo"}, textPreview(elem, 20))
-                ], 
-                {
-                  onmouseenter: (c => () => { c.setAttribute("ghost-hovered", "true") })(elem),
-                  onmouseleave: (c => () => { c.removeAttribute("ghost-hovered") })(elem)
-                }
-              )
-            );
-          }
-          // show attributes of element on the dom selector
-          let displayElemAttr = function(targetDiv, elem) {
-            for (let i = 0; elem && elem.attributes && i < elem.attributes.length; i++) {
-              let name = elem.attributes[i].name;
-              let value = elem.attributes[i].value;
-              if (name === "ghost-clicked" || name === "ghost-hovered") continue;
-              targetDiv.append(
-                el("div", { "class": "elementAttr" },
-                  [
-                    el("span", { title: "This element has attribute name '" + name + "'" }, name + ": "),
-                    el("span", { title: "This element has attribute value '" + value + "'" }, value)
-                  ]
-                )
-              );
-            }
-          }
-          // display children and siblings in the second part of selector
-          let displayChildrenSiblings = function(middleChild, selectMiddleChild) {
-            // display clicked element's previous sibling, clicked element, clicked element's next sibling
-            let cnt = 0;
-            // display previous sibling
-            if (middleChild.previousElementSibling && 
-                (middleChild.previousElementSibling.id !== "context-menu" || middleChild.previousElementSibling.id !== "modify-menu" || middleChild.previousElementSibling.id !== "editbox")) {
-              displayChildrenElem(middleChild.previousElementSibling);
-              let qs = childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector");
-              console.log ({qs});
-              qs[cnt].onclick = function () {
-                let c = middleChild.previousElementSibling;
-                if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-                  return;
-                }
-                // still in status 2, but clicked element change to previous sibling
-                editor_model.displayClickedElemAsMainElem = false;
-                editor_model.previousVisitedElem = []; // clear the stack
-                editor_model.clickedElem.removeAttribute("ghost-hovered");
-                editor_model.clickedElem = c;
-                editor_model.notextselection = true;
-                if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
-                editor.ui.refresh();
-              }
-            } else {
-              childrenElemDiv.append(
-                el("div", {"class": "childrenSelector no-sibling"}, "no sibling")
-              );
-            }
-            cnt++;
-            // display certain child in the middle
-            displayChildrenElem(middleChild);
-            childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
-              let c = middleChild;
-              if (!c.tagName) {
-                return;
-              }
-
-              if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
-                // still in status 2
-                editor_model.displayClickedElemAsMainElem = false;
-              } else {
-                // switch to status 1
-                editor_model.displayClickedElemAsMainElem = true;
-              }
-              editor_model.clickedElem.removeAttribute("ghost-hovered");
-              editor_model.clickedElem = c;
-              editor_model.notextselection = true;
-              if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
-              editor.ui.refresh();
-            }
-            if (selectMiddleChild) {
-              childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector")[cnt].classList.add("selectedDom");
-            }
-            cnt++;
-            // display next sibling
-            if (middleChild.nextElementSibling && 
-              (middleChild.nextElementSibling.id !== "context-menu" || middleChild.nextElementSibling.id !== "modify-menu" || middleChild.nextElementSibling.id !== "editbox")) {
-              displayChildrenElem(middleChild.nextElementSibling);
-              childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector")[cnt].onclick = function () {
-                let c = middleChild.nextElementSibling;
-                if ((c.tagName && c.tagName === "HTML") || !c.tagName) {
-                  return;
-                }
-                // still in status 2, but clicked element change to next sibling
-                editor_model.displayClickedElemAsMainElem = false;
-                editor_model.previousVisitedElem = []; // clear the stack
-                editor_model.clickedElem.removeAttribute("ghost-hovered");
-                editor_model.clickedElem = c;
-                editor_model.notextselection = true;
-                if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
-                editor.ui.refresh();
-              }
-            } else {
-              childrenElemDiv.append(
-                el("div", {"class": "childrenSelector no-sibling"}, "no sibling")
-              );
-            }
-          }
-          // editor itself should be invisible
-          if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
-            if (!clickedElem.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
-              editor_model.displayClickedElemAsMainElem = false;
-            }
-            // status 1. display clicked element in main part
-            if (editor_model.displayClickedElemAsMainElem) {
-              displayMainElem(clickedElem);
-              domSelector.classList.add("selectedDom");
-              mainElemDiv.onclick = function () {
-                if (!clickedElem.tagName) {
-                  return;
-                }
-                // When the main element in selector is clicked, selector switch to status 2 so that user can see its parent element
-                editor_model.displayClickedElemAsMainElem = false;
-                editor_model.clickedElem.removeAttribute("ghost-hovered");
-                editor_model.clickedElem = clickedElem;
-                editor_model.notextselection = true;
-                if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
-                editor.ui.refresh();
-              }
-              displayElemAttr(mainElemDiv, clickedElem);
-              // display children, if no previous selected child, display first 3 children elements in second part of selector
-              if (editor_model.previousVisitedElem.length < 2 ||
-                  (editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1] != clickedElem)) {
-                if (editor_model.previousVisitedElem.length !== 0) {
-                  editor_model.previousVisitedElem = [];
-                }
-                if (clickedElem.children.length > 0) {
-                  // only display first 3 children elements
-                  let childrenElem = clickedElem.children;
-                  for (let i = 0, cnt = 0; i < childrenElem.length && cnt < 3; ++i) {
-                    // prevent displaying editor itself
-                    if (cnt === 0 && (childrenElem[i].matches(".editor-interface") || editor.isGhostNode(childrenElem[i]))) {
-                      continue;
-                    }
-                    displayChildrenElem(childrenElem[i]);
-                    let qs = childrenElemDiv.querySelectorAll(".childrenElem > .childrenSelector");
-                    console.log ({qs});
-                    qs[cnt].onclick = function () {
-                      let c = childrenElem[i];
-                      if (!c.tagName) {
-                        return;
-                      }
-                      if (!c.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
-                        editor_model.displayClickedElemAsMainElem = false;
-                      } else {
-                        // still in status 1
-                        editor_model.displayClickedElemAsMainElem = true;
-                      }
-                      editor_model.clickedElem.removeAttribute("ghost-hovered");
-                      editor_model.clickedElem = c;
-                      editor_model.notextselection = true;
-                      editor.ui.refresh();
-                    }
-                    cnt++;
-                  }
-                }
-                // else: bottom of DOM tree
-              } else {
-                editor_model.previousVisitedElem.pop();
-                let middleChild = editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1];
-                displayChildrenSiblings(middleChild, false);
-              }
-            } else {
-              // status 2. display clicked element's parent element in main part
-              // <html> has no parent element
-              if(clickedElem.parentElement) {
-                displayMainElem(clickedElem.parentElement);
-                mainElemDiv.onclick = function () {
-                  if (!clickedElem.parentElement.tagName) {
-                    return;
-                  }
-                  // still in status 2 while current clicked element's parent element becomes clicked element so that user can see grandparent element
-                  editor_model.displayClickedElemAsMainElem = false;
-                  // memoization. when user click parent element:
-                  if (editor_model.previousVisitedElem.length === 0) {
-                    editor_model.previousVisitedElem.push(clickedElem);
-                    editor_model.previousVisitedElem.push(clickedElem.parentElement);
-                  } else {
-                    if (editor_model.previousVisitedElem[editor_model.previousVisitedElem.length - 1] == clickedElem) {
-                      editor_model.previousVisitedElem.push(clickedElem.parentElement);   // continuous storing path
-                    } else {
-                      editor_model.previousVisitedElem = []; // clear the stack
-                    }
-                  }
-                  editor_model.clickedElem.removeAttribute("ghost-hovered");
-                  editor_model.clickedElem = clickedElem.parentElement;
-                  editor_model.notextselection = true;
-                  if(editor.config.onMobile()) editor_model.savedTextSelection = editor.ui.clearTextSelection();
-                  editor.ui.refresh();
-                }
-                displayElemAttr(mainElemDiv, clickedElem.parentElement);
-              } else {
-                // for <html>
-                displayMainElem(clickedElem);
-                displayElemAttr(mainElemDiv, clickedElem);
-              } 
-              displayChildrenSiblings(clickedElem, true);
-            }
-          }
-          return domSelector;
-        }
-      });
-      editor.ui.model.interfaces.push({
-        title: "Attributes",
-        minimized: true,
-        priority(editor_model) {
-          return undefined;
-        },
-        enabled(editor_model) {
-          return editor_model.clickedElem;
-        },
-        render: function render(editor_model, innerBox) {
-          let keyvalues = el("div", {"class":"keyvalues"});
-          const clickedElem = editor_model.clickedElem;
-          if (!clickedElem) return "Click on an element to see its attributes";
-          // modify tagname
-          keyvalues.append(
-            el("div", {"class": "keyvalue"}, [
-              el("span", {title: "This element has tag name '" + clickedElem.tagName.toLowerCase() + "'"}, "Tag: "),
-              el("span", {class:"attribute-key-value"}, [
-                el("input", {"type": "text", value: clickedElem.tagName.toLowerCase(), "id": "newTagName"}, 
-                  [], {
-                    oninput() {
-                      let applyNewTagNameButton = document.querySelector("#applyNewTagName");
-                      applyNewTagNameButton.classList.toggle("visible", this.value !== this.getAttribute("value") && this.value.match(/^\w*$/));
-                      applyNewTagNameButton.value = this.value === "" ? "-" : "Set";
-                      applyNewTagNameButton.setAttribute("title", this.value === "" ? "Lift element's children and delete element" :  "Change tag name to '"+this.value+"'");
-                    }
-                  }),
-                  el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
-                        let newTagName = document.querySelector("#newTagName").value;
-                        let newel;
-                        if(newTagName === "") {
-                          while(clickedElem.childNodes.length) {
-                            newel = clickedElem.childNodes[0];
-                            clickedElem.parentElement.insertBefore(newel, clickedElem);
-                          }
-                          clickedElem.remove();
-                        } else {
-                          newel = el(document.querySelector("#newTagName").value);
-                          let elements = clickedElem.childNodes;
-                          while(elements.length) {
-                            newel.append(elements[0]);
-                          }
-                          for(let i = 0; i < clickedElem.attributes.length; i++) {
-                            newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-                          }
-                          clickedElem.parentElement.insertBefore(newel, clickedElem);
-                          clickedElem.remove();
-                        }
-                        editor_model.clickedElem = newel;
-                        editor.ui.refresh();
-                      }
-                    }
-                  ),
-                  el("div", {id:"newtagname-align-placeholder"}, " ")
-                ]
-              )
-            ])
-          );
-          let isSpecificGhostAttributeKey = editor.isSpecificGhostAttributeKeyFromNode(clickedElem);
-          let isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(clickedElem);
-
-          for(let i = 0; clickedElem.attributes && i < clickedElem.attributes.length; i++) {
-            let name = clickedElem.attributes[i].name;
-            if(name === "ghost-clicked" || name === "ghost-hovered") continue;
-            let value = clickedElem.attributes[i].value;
-            // Inline styles incoporated into CSS display editor
-            if(name !== "style") {
-              let isGhost = editor.isGhostAttributeKey(name) || isSpecificGhostAttributeKey(name);
-              let isIgnored = isIgnoredAttributeKey(name);
-              let isHref = name === "href" && clickedElem.tagName === "A";
-              keyvalues.append(
-                el("div", {"class": "keyvalue" + (isGhost ? " editor-recorded-ghost-attribute" : "")
-                                              + (isIgnored ? " editor-ignored-attribute" : ""),
-                          "title": isGhost ? "Key/value generated by a script" : isIgnored ? "key/value ignored after being modified by a script" : undefined
-                }, [
-                  el("span", {title: "Element attribute name"}, name + ": "),
-                  el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
-                    el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
-                        oninput: ((name, isHref) => function () {
-                            clickedElem.setAttribute(name, this.value);
-                            if(isHref) {
-                              let livelinks = document.querySelectorAll(".livelink");
-                              for(let livelink of livelinks) {
-                                let finalLink = livelink.matches("#context-menu *") ?
-                                  `javascript:if(nothingToLose()) { editor.navigateTo(relativeToAbsolute('${linkToEdit(this.value)}')) }` : this.value;
-                                livelink.setAttribute("href", finalLink);
-                                livelink.setAttribute("title", "Go to " + this.value);
-                              }
-                            }
-                        })(name, isHref)
-                      }),
-                    isHref ? el("div", {title: "Go to " + value, "class": "modify-menu-icon inert"}, [], {
-                      innerHTML: editor.ui.icons.liveLink(value)
-                    }) : undefined,
-                    isHref ? el("div", {title: "Select a node on the page to refer to", "class": "modify-menu-icon inert"}, [], { 
-                      innerHTML: editor.ui.icons.linkMode,
-                      onclick: linkSelect
-                    }) : undefined,
-                    el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
-                      innerHTML: editor.ui.icons.wasteBasket,
-                      onclick: ((name) => function() {
-                        clickedElem.removeAttribute(name);
-                        editor_model.clickedElem = clickedElem;
-                        editor.ui.refresh();
-                        })(name)
-                      })
-                    ]
-                  )
-                ]
-              ));
-            }
-            else {
-              let styleInterface = getEditorInterfaceByTitle("Style");
-              if(styleInterface) {
-                styleInterface.minimized = false;
-                editor.ui.model.inline = clickedElem.getAttribute("style");
-                styleInterface.priority(editor.ui.model);
-              }
-            }
-          }
-          let highlightsubmit = function() {
-            let attrName = this.parentElement.parentElement.querySelector("[name=name]").value;
-            this.parentElement.parentElement.querySelector("div.modify-menu-icon").disabled =
-              attrName === "" || attrName.trim() !== attrName
-          }
-
-          if(clickedElem.nodeType === 1) {
-            keyvalues.append(
-              el("div", {"class": "keyvalue keyvalueadder"}, [
-                el("span", {class: "attribute-key"}, el("input", {"type": "text", placeholder: "key", value: "", name: "name"}, [], {oninput: highlightsubmit})),
-                el("span", {class: "attribute-key-value"}, [
-                  el("span", {}, el("input", {"type": "text", placeholder: "value", value: "", name: "value"}, [], {
-                    onfocus: function() {
-                      let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
-                      if(keyInput && keyInput.value != "") {
-                        let name = document.querySelector("div.keyvalueadder input[name=name]").value;
-                        clickedElem.setAttribute(
-                          name,
-                          document.querySelector("div.keyvalueadder input[name=value]").value
-                        );
-                        editor.ui.refresh();
-                        let d =  document.querySelector("div.keyvalue input#dom-attr-" + name);
-                        if(d) d.focus();
-                      }
-                    },
-                    oninput: highlightsubmit})),
-                  el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: editor.ui.icons.plus,
-                    disabled: true,
-                    onclick() {
-                      clickedElem.setAttribute(
-                        this.parentElement.querySelector("[name=name]").value,
-                        this.parentElement.querySelector("[name=value]").value
-                      );
-                      editor.ui.refresh();
-                    },
-                    oninput: highlightsubmit })])
-              ])
-            );
-          }
-          return keyvalues;
-        }
-      });
-      
-      editor.ui.model.interfaces.push({
-        title: "Style",
-        minimized: true,
-        priority(editor_model) {
-          if(editor_model.inline) return 1;
-          return undefined;
-        },
-        enabled(editor_model) {
-          return editor_model.clickedElem;
-        },
-        render: function render(editor_model, innerBox) {
-          const clickedElem = editor_model.clickedElem;
-          if(!clickedElem) {
-            return "Click on an element to see its style";
-          }
-          const do_css = (clickedElem && clickedElem.id !== "context-menu" && clickedElem.id !== "modify-menu" && clickedElem.id !== "editbox" &&
-                          !editor_model.insertElement);
-          let CSSarea = el("div", {id: "CSS-modification", value: ""}, [], {}); 
-          if (!do_css) return CSSarea;
-          //parse relevant CSS, recording prior and post CSS text as well 
-
-          async function fullParseCSS() {
-            var fullCSS = [], keyframes = [], rawCSS = [];
-            //console.log("All style tags:", document.querySelectorAll("style"));
-            let CSSstyles = document.querySelectorAll("link[rel=stylesheet], style");
-            for(let i in CSSstyles) {
-              let linkOrStyleNode = CSSstyles[i];
-              if(linkOrStyleNode.tagName === "LINK" && linkOrStyleNode.getAttribute("rel") === "stylesheet" &&
-                 linkOrStyleNode.getAttribute("href") && !linkOrStyleNode.getAttribute("isghost")) {
-                   let href = linkOrStyleNode.getAttribute("href");
-                   if(isAbsolute(href)) continue;
-                let CSSFilePath = relativeToAbsolute(removeTimestamp(href));
-                if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface") && (CSSFilePath.indexOf("http") < 0)) {
-                  let CSSvalue = typeof linkOrStyleNode.tmpCachedContent === "string" ?
-                        linkOrStyleNode.tmpCachedContent :
-                        (await editor.getServer("read", CSSFilePath)).slice(1);
-                  rawCSS.push({text: CSSvalue, tag: linkOrStyleNode});
-                }
-              }
-              else if(linkOrStyleNode.tagName === "STYLE" && !linkOrStyleNode.getAttribute("isghost")) {
-                rawCSS.push({text: linkOrStyleNode.textContent, tag: linkOrStyleNode});
-              }
-            }
-            let CSSparserBuilder = await editor.ui._internals.getLosslessCssParser;
-            let CSSparser = new CSSparserBuilder();
-            function findText(parsed, startIndex, endIndex) { //for css + img replacement
-              let textSegment = "";
-              for(let i = startIndex; i < endIndex; i++) {
-                textSegment += parsed ? parsed[0].selector ? CSSparser.unparseCSS([parsed[i]]) :
-                  (parsed[0].directive ? CSSparser.unparseRules([parsed[i]]) : "") : "";
-                //console.log(textSegment);
-              }
-              return textSegment;
-            }
-            for(let z in rawCSS) {  
-              var parsedCSS = CSSparser.parseCSS(rawCSS[z].text);
-              for(let i in parsedCSS) {
-                if(parsedCSS[i].kind === 'cssBlock' && editor.matches(clickedElem, parsedCSS[i].selector.replace(/:(?=(:?after|:?before|:?hover))[^,]*(?=,|$)/g, ""))) {
-                  let content = CSSparser.unparseCSS([parsedCSS[i]]);
-                  let wsBefore = content.replace(/^(\s*\n|)[\s\S]*$/g, (m, ws) => ws);
-                  let contentTrimmed = content.replace(/\s*\n/,"");
-                  //calculating before and after text
-                  fullCSS.push({type: 'cssBlock', content: contentTrimmed, 
-                    before: findText(parsedCSS, 0, Number(i)) + wsBefore, after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
-                }
-                else if(parsedCSS[i].kind === '@@media' && window.matchMedia(parsedCSS[i].atNameValue).matches) {
-                  let curMedia = parsedCSS[i];
-                  for(let j in curMedia.content) {
-                    if(curMedia.content[j].kind === 'cssBlock' && editor.matches(clickedElem, curMedia.content[j].selector.replace(/:(?=(:?after|:?before|:?hover))[^,]*(?=,|$)/g, ""))) {
-                      var insertMedia = {type: '@@media', content: CSSparser.unparseCSS([curMedia.content[j]]), 
-                        mediaSelector: curMedia.wsBefore + curMedia.selector + curMedia.wsBeforeAtNameValue + curMedia.atNameValue + curMedia.wsBeforeOpeningBrace + "{",
-                        innerBefore: findText(curMedia.content, 0, j), innerAfter: findText(curMedia.content, Number(j) + 1, curMedia.content.length),
-                        before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag, bracketAfter: curMedia.wsBeforeClosingBrace + "}"};
-                      //console.log("Insert media:");
-                      //console.log(insertMedia);
-                      fullCSS.push(insertMedia);
-                      //console.log("got here first!");
-                    }
-                  }
-                }
-                else if(parsedCSS[i].kind === '@@charset') {
-                  if(!(parsedCSS[i].wsBefore === "" && parsedCSS[i].wsBeforeAndSemicolon === ";" && parsedCSS[i].wsBeforeValue === " "
-                    && parsedCSS[i].value.startsWith("\"") && parsedCSS[i].value.endsWith("\""))) {
-                    editor.ui.sendNotification("CSS @@charset declaration is invalid due to extraneous white space.");	
-                  }
-                  if(editor_model.clickedElem.tagName != "STYLE" && editor_model.clickedElem.tagName != "LINK") {
-                    fullCSS.push({type: '@@charset', content: CSSparser.unparseCSS([parsedCSS[i]]), 
-                      before: findText(parsedCSS, 0, i), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag});
-                  }
-                }
-                else if(parsedCSS[i].kind === '@@keyframes') {
-                  keyframes.push({type: '@@keyframes', content: CSSparser.unparseCSS([parsedCSS[i]]), 
-                    before: findText(parsedCSS, 0, Number(i)), after: findText(parsedCSS, Number(i) + 1, parsedCSS.length), orgTag: rawCSS[z].tag,
-                    animationName: parsedCSS[i].atNameValue});
-                }
-                else if(parsedCSS[i].kind === 'whitespace') { 
-                  continue;
-                }
-                if(i === parsedCSS.length - 1 && !fullCSS.length) {
-                  console.log("Nothing relevant in style tag: ", rawCSS[z].tag);
-                }
-              }
-              //console.log("The parsed text looks like:", curCSS);
-            }
-            for(i in keyframes) {
-              for(j in fullCSS) {
-                let parsedSection = CSSparser.parseCSS(fullCSS[j].content);
-                for(k in parsedSection.content) {
-                  for(l in parsedSection.content[k].rules) {
-                    if(Number(parsedSection.content[k].rules[l].search(keyframes[i].animationName)) >= 0) {
-                      fullCSS.push(keyframes[i]);
-                    }
-                  }
-                }
-                for(k in parsedSection.rules) {
-                  if(Number(parsedSection.rules[k].search(keyframes[i].animationName)) >= 0) {
-                    fullCSS.push(keyframes[i]);
-                  }
-                }
-              }
-            }
-            //console.log(fullCSS);
-            return fullCSS;
-          } // fullParseCSS
-          
-          function fullUnparseCSS(curCSS) {
-            let curTag = curCSS.orgTag;
-            let CSSString = "";
-            if(curCSS.type === 'cssBlock' || curCSS.type === "@@charset") {
-              //console.log(curCSS.content);
-              CSSString = curCSS.before + curCSS.content + curCSS.after;
-              //console.log(CSSString);
-            }
-            else if(curCSS.type === '@@media') { 
-              console.log(curCSS);
-              CSSString = curCSS.before + curCSS.mediaSelector + curCSS.innerBefore + curCSS.content + curCSS.innerAfter + curCSS.bracketAfter + curCSS.after;   
-            }
-            if(curTag.tagName === "LINK") {
-              return CSSString;
-            }
-            // Style elements
-            //console.log("Text is:" + CSSString);
-            curTag.textContent = CSSString;
-            //debugger
-            //consolw.log("After");
-          } // fullUnparseCSS
-          var curCSSWindow = undefined;
-
-          function setCSSAreas() {
-            //console.log(CSSarea.firstChild);
-            while(CSSarea.firstChild) {
-              console.log("Removed child:", CSSarea.firstChild);
-              CSSarea.removeChild(CSSarea.firstChild);
-            }
-            //if there is linked CSS text
-            if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("rel") === "stylesheet" && clickedElem.getAttribute("href")) {
-              let oldHref = clickedElem.getAttribute("href"); // Even if it's a temporary href
-              let CSSFilePath = relativeToAbsolute(oldHref);
-              let CSSvalue = editor._internals.doReadServer("read", CSSFilePath).slice(1);
-              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
-              CSSarea.append(
-                el("div", {"class": "CSS-modify-unit"}, [
-                  el("textarea", {"class": "linked-CSS"}, [], {
-                    value: CSSvalue,
-                    onfocusout() {
-                      setCSSAreas();
-                    },
-                    oninput() {
-                      (async () => { // Maybe create a new temporary CSS file.
-                        await assignTmpCss(clickedElem, this.value);
-                      })();
-                    }
-                  })
-                ])
-              );
-            }
-            //inline styles 
-            editor_model.inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
-            if(editor_model.inline) {
-              console.log("We have inline CSS!");
-              let inlineCSS = el("div", {"class": "CSS-modify-unit"}, [
-                el("textarea", {"class": "inline-CSS"}, [], {
-                  value: editor_model.inline,
-                  onfocusout() {
-                    setCSSAreas();
-                  },
-                  oninput() {
-                    clickedElem.setAttribute("style", this.value);
-                  }
-                }),
-                el("div", {"class": "CSS-buttons"}, [
-                  el("div", {"class": "CSS-action-button"}, [], {
-                    innerHTML: editor.ui.icons.clone,
-                    onclick() {
-                      let stylesLinks = document.querySelectorAll("style, link[rel=stylesheet]");
-                      let i = stylesLinks.length - 1;
-                      let lastStyleLink = stylesLinks[i];
-                      while(i >= 0 && lastStyleLink.matches(".editor-interface, .editor-interface *")) {
-                        i--;
-                        lastStyleLink = stylesLinks[i];
-                      }
-                      if(lastStyleLink && (lastStyleLink.isghost || lastStyleLink.tagName === "LINK" && lastStyleLink.tagName.indexOf("http") >= 0)) {
-                        lastStyleLink = undefined;
-                      }
-                      console.log("Closest CSS source:", lastStyleLink);
-                      let inline_CSS = document.querySelectorAll(".inline-CSS");
-                      console.log("Finding inline CSS textarea:", inline_CSS);  
-                      let postIndentCSS = "";
-                      let preIndentCSS = inline_CSS[0].value.split("\n");
-                      for(let i = 0; i < preIndentCSS.length; i++) {
-                        if(i !== preIndentCSS.length-1) {
-                          postIndentCSS += "  " + preIndentCSS[i] + "\n";
-                        }
-                        else {
-                          postIndentCSS += "  " + preIndentCSS[i]; 
-                        }
-                      }
-                      let curSelector = getShortestUniqueSelector(clickedElem);
-                      postIndentCSS = "\n" + curSelector + " {\n" + postIndentCSS + "\n}";   
-                      console.log("lastStyleLink is:", lastStyleLink);     
-                      if(lastStyleLink) {
-                        if(lastStyleLink.tagName === "LINK") {
-                          (async () => {
-                            await assignTmpCss(lastStyleLink, oldValue => oldValue + postIndentCSS);
-                            clickedElem.removeAttribute("style");
-                            setCSSAreas();
-                          })();
-                        }
-                        else { // lastStyleLink is a <style>
-                          let curValue = lastStyleLink.textContent;
-                          lastStyleLink.textContent = curValue + postIndentCSS;
-                          clickedElem.removeAttribute("style");
-                          setCSSAreas();
-                        }
-                      }
-                      else {
-                        //just default to style node for now
-                        document.body.appendChild(el("style.inserted-CSS", {}, postIndentCSS));
-                        clickedElem.removeAttribute("style");
-                        setCSSAreas();
-                      }
-                    }
-                  }),
-                  el("div", {"class": "CSS-action-button"}, [], {
-                    innerHTML: editor.ui.icons.wasteBasket,
-                    onclick() {
-                      let inline_CSS = document.querySelectorAll(".inline-CSS");
-                      inline_CSS.value = "";
-                      clickedElem.setAttribute("style", inline_CSS.value);
-                      setCSSAreas();
-                    }
-                  })
-                ])
-              ]);
-              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "Inline styles:"}));
-              CSSarea.append(inlineCSS);
-            } // inline style present
-            else{
-              CSSarea.append(el("button.action-button#add-inline-style", {}, [], {
-                innerHTML: "Add inline style",
-                onclick() {
-                  clickedElem.setAttribute("style", " ");
-                  editor.ui.refresh();
-                }}));
-            }
-            (async () => {
-            //rest of CSS
-            editor_model.CSSState = await fullParseCSS();
-            //console.log("CSS state is:", editor_model.CSSState);
-            const count = (str) => {
-              const re = /\n/g
-              return ((str || '').match(re) || []).length
-            }
-            for(let i in editor_model.CSSState) {
-              let cssState = editor_model.CSSState[i];
-              let orgTag = cssState.orgTag;
-              //console.log("cssState", cssState);
-              let headerStr = orgTag.tagName.toLowerCase() + (orgTag.tagName === "LINK" ? " (" + removeTimestamp(orgTag.getAttribute("ghost-href") || orgTag.getAttribute("href"))+":" + (count(cssState.before) + 1) + ")" : "");
-              for(let curElem = orgTag.parentElement; curElem; curElem = curElem.parentElement) {
-                headerStr =  curElem.tagName.toLowerCase() + " > " + headerStr; 
-              }
-              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {
-                innerHTML: headerStr,
-                onclick: () => {
-                  editor_model.clickedElem = orgTag;
-                  editor.ui.refresh();
-                }
-                }));
-              if(cssState.type === '@@media') {
-                CSSarea.append(el("div", {"class": "@media-selector", "contenteditable": true}, [], {
-                oninput: (cssState => function() {
-                  (async () => {
-                    if(window.matchMedia(cssState.selector).matches ? editor.matches(clickedElem, cssState.content.selector) : false) {
-                      //implement throwError;
-                    }
-                    cssState.mediaSelector = this.textContent;
-                    if(cssState.orgTag.tagName != "LINK") {
-                      fullUnparseCSS(cssState);
-                    } else {
-                      await assignTmpCss(cssState.orgTag, fullUnparseCSS(cssState));
-                    }
-                  })();
-                })(cssState),
-                innerHTML: cssState.mediaSelector
-                }))
-              }
-              let eachCSS = el("div", {"class": "CSS-modify-unit"}, [
-                el("textarea", {"class": "CSS-selectors" }, [], {
-                  defaultValue: cssState.content,
-                  onfocusout() {
-                    if(this.storedCSS.orgTag.tagName != "LINK") {
-                      setCSSAreas();
-                    }
-                  },
-                  oninput: function() {
-                    console.log("oninput called");
-                    (async () => {
-                      if(this.storedCSS.orgTag.tagName != "LINK") { // style node
-                        let throwError = false;
-                        let CSSparserBuilder = await editor.ui._internals.getLosslessCssParser;
-                        let CSSparser = new CSSparserBuilder();
-                        let curCSSState = CSSparser.parseCSS(this.value);
-                        //console.log(curCSSState);
-                        //check to make sure CSS is still relevant to clicked element.
-                        if(curCSSState && curCSSState.length && curCSSState[0].kind === 'cssBlock' && !editor.matches(clickedElem, curCSSState[0].selector)) {
-                          editor.ui.sendNotification("CSS selector does not match");
-                          this.setAttribute("wrong-selector", true);
-                          this.setAttribute("title", "The first CSS selector does not apply to the selected element!");
-                        }
-                        else {
-                          this.setAttribute("wrong-selector", false);
-                          this.removeAttribute("title");
-                        }
-                        this.storedCSS.content = this.value;
-                        fullUnparseCSS(this.storedCSS);
-                        //setCSSAreas();
-                      }
-                      else { // Link
-                        this.storedCSS.content = this.value;
-                        await assignTmpCss(this.storedCSS.orgTag, fullUnparseCSS(this.storedCSS));
-                      }
-                    })();
-                  },
-                  storedCSS: cssState
-                }),
-                orgTag.tagName === "LINK" ?
-                  el("div", {"class": "CSS-action-button", "title": "Delete this snippet of CSS"}, [], {
-                    innerHTML: editor.ui.icons.wasteBasket,
-                    onclick() {
-                      (async () => {
-                        let linked_CSS = this.parentElement.childNodes[0];
-                        linked_CSS.value = "";
-                        linked_CSS.storedCSS.content = linked_CSS.value;
-                        await assignTmpCss(linked_CSS.storedCSS.orgTag, fullUnparseCSS(linked_CSS.storedCSS));
-                        setCSSAreas();
-                      }) ();
-                    }
-                  }) : // inline style case
-                  el("div", {"class": "CSS-action-button", "title": "Delete this CSS snippet"}, [], {
-                    innerHTML: editor.ui.icons.wasteBasket,
-                    onclick() {
-                      let linked_CSS = this.parentElement.childNodes[0];
-                      //console.log(this.parentElements.childNodes);
-                      linked_CSS.value = "";
-                      linked_CSS.storedCSS.content = linked_CSS.value;
-                      fullUnparseCSS(linked_CSS.storedCSS);
-                      setCSSAreas();
-                    }
-                  })
-              ]);
-              CSSarea.append(eachCSS);
-            }
-            })(); // Async css set.
-          } // function setCSSAreas()
-          setCSSAreas();   
-          return CSSarea;
-        }
-      });
-      editor.ui.model.interfaces.push({
-        title: "Image Tools",
-        minimized: true,
-        priority(editor_model) {
-          return this.enabled(editor_model) ? 1 : undefined; // It's likely we want to modify this image above all.
-        },
-        findURLS(styleStr) {
-          var urls = [];
-          var diffPics = styleStr.split(",");
-          for(let k in diffPics) {
-            //extracts only url(...)
-            let regex = new RegExp("(url\\([\"']?)([^\\)'\"]+?)([\"']?\\))", "g");
-            let m;
-            let remainStr = diffPics[k];
-            while(m = regex.exec(remainStr)) {
-              let sIndex = m.index + m[1].length;
-              //extracting the rest of the string 
-              let afterStr = remainStr.slice(sIndex + m[2].length);
-              let beforeStr = remainStr.slice(0, sIndex);
-              urls.push({remainderBefore: beforeStr, url: m[2], remainderAfter: afterStr});  
-            }
-          }
-          return urls;
-        },
-        //checks the inline CSS of the clicked node/element to see if background or background-image is a rule, and if 
-        //a link to an image is provided as part of the value for this rule;
-        //TODO: expand the set of CSS being checked to any style tags as well.
-        checkForBackgroundImg(clickedElem, findURLS) {
-          function findText(parsed, startIndex, endIndex) { //for css + img replacement
-            let textSegment = "";
-            for(let i = startIndex; i < endIndex; i++) {
-              textSegment += parsed ? parsed[0].selector ? editor.ui.CSSparser.unparseCSS([parsed[i]]) :
-                (parsed[0].directive ? editor.ui.CSSparser.unparseRules([parsed[i]]) : "") : "";
-              //console.log(textSegment);
-            }
-            return textSegment;
-          }
-          //console.log("clicked element is:", clickedElem);
-          //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
-          var clickedStyle = clickedElem ? editor.ui.CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
-          //console.log(clickedStyle);
-          //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
-          //former first, if it contains a url. for now, I am looping through the CSS rules twice.
-          //console.log("^parsed rules ");
-          for(let i in clickedStyle) {
-            for(let j in clickedStyle[i]) {
-              if(clickedStyle[i][j].directive === "background") {
-                clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
-                if(clickedStyle[i][j].value.length) {
-                  //console.log(clickedStyle[i][j]);
-                  return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
-                    imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
-                }
-              }
-            }
-          }
-          for(let i in clickedStyle) {
-            for(let j in clickedStyle[i]) {
-              if(clickedStyle[i][j].directive === "background-image") {
-                //console.log("hello?");
-                //console.log(clickedStyle[i][j].value);
-                clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
-                if(clickedStyle[i][j].value.length) {
-                  return {beforeCSS: findText(clickedStyle[i], 0, Number(j)), relCSS: clickedStyle[i][j], 
-                    imageSelection: 0, afterCSS: findText(clickedStyle[i], Number(j) + 1, clickedStyle[i].length)};
-                }
-              }
-            }
-          } 
-          //console.log("unsuccessful");
-          return undefined;
-        },
-        enabled(editor_model) {
-          if(!editor.ui.CSSparser) return false;
-          let clickedElem = editor_model.clickedElem;
-          let backgroundImgSrc = this.checkForBackgroundImg(clickedElem, this.findURLS);
-          const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
-          this.backgroundImgSrc = backgroundImgSrc;
-          return do_img_rpl;
-        },
-        
-        // enabled has been called before, clickedElem is not empty and it contains a background image
-        render: function render(editor_model, innerBox) {
-          if(!this.enabled(editor_model)) {
-            return "Click an element with a background image.";
-          }
-          //extract url and extraneous text from specified CSS value (which is originally part of a rule)
-          const clickedElem = editor_model.clickedElem;
-          let ret = el("div", {"class": "information"});
-          if (!clickedElem) return ret;
-          let backgroundImgSrc = this.backgroundImgSrc;
-          //unparse the background/background-image object
-          function unparseBackgroundImg(backImgObj) {
-            var textSegment = "";
-            let valueText = "";
-            for(let i in backImgObj.relCSS.value) {
-              valueText += (Number(i) !== 0 ? ", " : "") + backImgObj.relCSS.value[i].remainderBefore + backImgObj.relCSS.value[i].url + backImgObj.relCSS.value[i].remainderAfter;
-              //console.log(valueText);
-            }
-            //console.log("Object about to be unparsed:");
-            //console.log(backImgObj);
-            return backImgObj.beforeCSS + findText([{...backImgObj.relCSS, value: valueText}], 0, 1) + backImgObj.afterCSS;
-          }
-          function uploadImagesAtCursor(files, srcName, backImgObj) {
-            for (var i = 0, file; file = files[i]; i++) {
-              var targetPathName =  editor.getStorageFolder(file) + file.name;
-              editor.uploadFile(targetPathName, file, (targetPathName, file) => {
-                if(backImgObj) {
-                  backImgObj.imageSelection = backImgObj.relCSS.value.length == 1 ? 0 : (() => {
-                    let radios = document.querySelectorAll(".background-img-radio");
-                    let defaultValue = 0;
-                    for (let i in radios) {
-                      //hopefully there aren't more than 10 images!
-                      if (radios[i].checked) defaultValue = Number(radios[i].getAttribute("value").match(/[0-9]/g));
-                    }
-                    return defaultValue;
-                  })();
-                  backImgObj.relCSS.value[backImgObj.imageSelection].url = targetPathName;
-                  clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
-                }
-                else {
-                  let d = document.getElementById("dom-attr-src");
-                  if(d) { d.setAttribute("value", file.name); }
-                  clickedElem.setAttribute("src", targetPathName);
-                }
-                // adapt to HTML5 new attribute 'srcset'
-                // IF website use 'srcset', we force to set this attribute to null then replace image using 'src'
-                if (clickedElem.getAttribute("srcset") != undefined) {
-                  clickedElem.setAttribute("srcset", "");
-                }
-              });
-            }
-            // refresh images list
-            showListsImages(targetPathName);  // targetPathName is the last file of files array, but it seems that user can only upload one file once
-            // automatically select upload image
-            let selectedImage = document.querySelectorAll(".imgFolder > img");
-            for (let i = 0; i < selectedImage.length; ++i) {
-              let imgName = selectedImage[i].getAttribute("src").split("/").pop();
-              if (imgName === files[files.length - 1].name) {
-                selectedImage[i].parentElement.classList.add("highlight-select-image");
-              } else {
-                selectedImage[i].parentElement.classList.remove("highlight-select-image");
-              }
-            }
-          }
-          async function showListsImages(srcName, backImgObj, checkBackImgObj, findURLS) {
-            if (isAbsolute(srcName)) {
-              return;
-            }
-            console.log("Source name is:", srcName);
-            srcName = relativeToAbsolute(srcName)
-            let dir = "";
-            for(let i = 0, arr = srcName.split(/\\|\//); i < arr.length - 1; ++i) {
-              dir += (arr[i] + "/");
-            }
-            files = await editor.fs.listdir(dir);
-            
-            let images = [];
-            let currentSelectedImage;
-            files.forEach(file => {
-              let ext = file.split('.').pop().toLowerCase();
-              if (ext == 'jpeg' || ext == 'jpg' || ext == 'png' || ext == 'gif' || ext == 'svg' || ext == 'bmp') {
-                if (file.split('/').pop() === srcName.split("/").pop().split("?")[0]) {   // note that srcName maybe "/1.jpg?raw=true"
-                  currentSelectedImage = file;
-                } else {
-                  images.push(file);
-                }
-              }
-            });
-            // sometimes website use 'srcset' as the url of image, we cannot find currentSelectedImage precisely
-            if (currentSelectedImage != null) {
-              images.unshift(currentSelectedImage);   // currentSelectedImage should be placed as the first one
-            }
-
-            // init: clear image list
-            let selectedImage = document.querySelectorAll(".imgFolder");
-            selectedImage.forEach(e => e.remove());
-
-            let imgDiv = el("div", { "id": "imgGallery" });
-            if (!document.getElementById("imgGallery")) {
-              ret.append(imgDiv);
-            } else {
-              imgDiv = document.getElementById("imgGallery");
-            }
-
-            for (let i = 0; i < images.length; ++i) {
-              imgDiv.append(
-                el("div", { "class": "imgFolder" }, el("img", { "src": dir + images[i], "title": images[i], "alt": images[i] },  [], {}), {
-                  onclick() {
-                    //console.log("At the beginning:");
-                    //console.log(JSON.stringify(backImgObj));
-                    // highlight the selected image
-                    let otherImages = document.querySelectorAll(".imgFolder");
-                    console.log ({otherImages, document});
-                    for (let i = 0; i < otherImages.length; ++i) {
-                      otherImages[i].classList.remove("highlight-select-image");
-                    }
-                    console.log ("thru");
-                    // replace image
-                    if(backImgObj) {
-                      backImgObj.imageSelection = (() => {
-                        let radios = document.querySelectorAll(".background-img-radio");
-                        let defaultValue = 0;
-                        for (let i in radios) {
-                          //hopefully there aren't more than 10 images!
-                          if (radios[i].checked) defaultValue = Number(radios[i].getAttribute("value").match(/[0-9]/g));
-                        }
-                        return defaultValue;
-                      })();
-                      //console.log("Here?");
-                      //console.log(JSON.stringify(backImgObj));
-                      if(!(typeof backImgObj.relCSS.value === 'string')){
-                        //console.log("Here?");
-                        //console.log(JSON.stringify(backImgObj));
-                        //console.log(backImgObj.relCSS.value.length);
-                        backImgObj.relCSS.value[backImgObj.imageSelection].url = this.children[0].getAttribute("src");
-                      }
-                      else {
-                        console.log("Second time around:");
-                        backImgObj = checkBackImgObj(clickedElem, findURLS);
-                        backImgObj.relCSS.value[backImgObj.imageSelection].url = this.children[0].getAttribute("src");
-                      }
-                      //console.log("current link", this.children[0].getAttribute("src"));
-                      //console.log("current section number is:", backImgObj.imageSelection);
-                      //console.log("current selection is:", backImgObj.relCSS.value[backImgObj.imageSelection].url); 
-                      clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
-                      //console.log("new style attribute is:", clickedElem.getAttribute("style"));
-
-                      console.log(JSON.stringify(backImgObj));
-
-                    }
-                    // adapt to HTML5 new attribute 'srcset'
-                    // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
-                    else if (clickedElem.getAttribute("srcset") != undefined) {
-                      clickedElem.setAttribute("srcset", "");
-                    }
-                    else {
-                      clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
-                      document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
-                    }
-                    // this.style.outline = "2px solid white";
-                    console.log ("pre1");
-                    this.classList.add("highlight-select-image");
-                    console.log ("post1");
-                  }
-                })
-              );
-            }
-            if (currentSelectedImage != null) {
-              console.log ("pre2");
-              ret.querySelectorAll(".imgFolder")[0].classList.add("highlight-select-image");
-              console.log ("post2");
-            }
-          
-          }
-          let srcName = backgroundImgSrc ? backgroundImgSrc.relCSS.value[0].url : clickedElem.getAttribute("src");
-
-          //console.log(srcName);
-          //console.log(backgroundImgSrc.relCSS.value[0].url);
-          clickedElem.ondragover = function (e) {
-            e.preventDefault();
-          }
-          clickedElem.ondrop = function (e) {
-            // upload and replace the image 
-            e.stopPropagation();
-            e.preventDefault();
-            var files = e.dataTransfer.files; // FileList object
-            if (files && files[0]) {
-              uploadImagesAtCursor(files, srcName, backgroundImgSrc);
-            }
-          }
-          // radio buttons for cases when there are two background images
-          if(backgroundImgSrc && backgroundImgSrc.relCSS.value.length > 1) {
-            for(let i in backgroundImgSrc.relCSS.value) {
-              ret.append(el("span", {class: "insertOption"}, [
-                el("input", {type: "radio", class: "background-img-radio", id: `radio${i}`, name: "", value: `Image {i}`}, [], {checked: Number(i) === 0}),
-                el("label", {"for": "radio${i}"}, `Image {i}`)]),);
-            }         
-          }
-          // upload image button
-          ret.append(
-            el("a", 
-              { "id": "upload-image-btn-a" }, 
-              el(
-                "input", {"id": "upload-image-btn-input", "type": "file", value: "Please upload images..."}, 
-                [], 
-                { onchange: function(evt) { uploadImagesAtCursor(evt.target.files, srcName, backgroundImgSrc); }}
-              ), 
-              {}
-            )
-          );
-          if(srcName == undefined) {
-            ret.append(
-              el("button", {}, "Add src attribute", {onclick: () => {
-                clickedElem.setAttribute("src", "");
-                editor.ui.refresh();
-              }}));
-          } else {
-            showListsImages(srcName, backgroundImgSrc, this.checkForBackgroundImg, this.findURLS);
-            // show lists of images in selected image's folder
-          }
-          return ret;
-        }
-      });
-      editor.ui.model.interfaces.push({
-        title: "Text Editing",
-        minimized: true,
-        priority(editor_model) {
-          return undefined;
-        },
-        enabled(editor_model) {
-          const clickedElem = editor_model.clickedElem;
-          if(!clickedElem) return false;
-          for(let i = 0; i < clickedElem.childNodes.length; i++) {
-            let node = clickedElem.childNodes[i];
-            if(node.nodeType === 3 && node.textContent.trim() !== "") {
-              return true;
-            }
-          }
-        },
-        render: function render(editor_model, innerBox) {
-          if(!this.enabled(editor_model)) {
-            delete editor.ui._internals.saveBetweenReloads["TextEditing"];
-            return "Click on an element that contains some text.";
-          }
-          const clickedElem = editor_model.clickedElem;
-          //textarea textChildNodeContent
-          let ret = el("div", {id: "textChildNodeContentDiv"}, []);
-          for(let i = 0; i < clickedElem.childNodes.length; i++) {
-            let node = clickedElem.childNodes[i];
-            if(node.nodeType === 3 && (node.textContent.trim() !== "" || node.textContent.trim() === "" && clickedElem.childNodes.length == 0)) { // Non-empty text nodes.
-              let txtAreaNode = el("textarea", {class:"textChildNodeContent"},
-                [], {
-                  value: node.textContent,
-                  oninput: (node => function() { node.textContent = this.value; })(node)
-                });
-              ret.append(txtAreaNode)
-              console.log("appending text area node", txtAreaNode);
-            } else if(node.nodeType === 1) { // Make this a shortcut for the node
-              ret.append(
-                el("div.childrenSelector", {}, 
-                  el("div.childrenSelectorName", {}, "<" + node.tagName + ">"),
-                  {
-                    onclick: (node => () => {
-                      editor_model.clickedElem = node;
-                      editor.ui.refresh();
-                    })(node)
-                  }
-                )
-              )
-            }
-          }
-          
-          if("TextEditing" in editor_model.restoredAfterReload) {
-            let restored = editor_model.restoredAfterReload["TextEditing"];
-            //
-            console.log("restored", restored);
-            console.log("ret.childNodes", ret.childNodes);
-            setTimeout((ret => () => {
-              var tmp = ret;
-              while(tmp && tmp.tagName != "BODY") tmp = tmp.parentNode;
-              if(!tmp) return;
-              console.log("ret", ret);
-              for(let i = 0; i < restored.length && i < ret.childNodes.length; i++) {
-                var child = ret.childNodes[i];
-                if(child.tagName === "TEXTAREA") {
-                  console.log("restoring selection on ", child);
-                  console.log("data ", restored[i]);
-                  child.scrollTop = restored[i].scrollTop;
-                  var minimum = Math.min(restored[i].selectionStart, restored[i].selectionEnd);
-                  var maximum = Math.max(restored[i].selectionStart, restored[i].selectionEnd);
-                  var direction = restored[i].selectionStart < restored[i].selectionEnd ? "forward" : "backward";
-                  if(restored[i].focus) {
-                    child.focus();
-                  }
-                  child.setSelectionRange(minimum, maximum, direction);
-                }
-              }
-              delete editor_model.restoredAfterReload["TextEditing"];
-            })(ret), 0);
-          } else {
-            console.log("No restoration data");
-          }
-          
-          editor.ui._internals.saveBetweenReloads["TextEditing"] = (ret => () => {
-            let res = [];
-            for(let i = 0; i < ret.childNodes.length; i++) {
-              if(ret.childNodes[i].tagName === "TEXTAREA") {
-                res[i] = {
-                  scrollTop: ret.childNodes[i].scrollTop,
-                  selectionEnd: ret.childNodes[i].selectionStart,
-                  selectionStart: ret.childNodes[i].selectionEnd,
-                  focus: ret.childNodes[i] === document.activeElement
-                };
-              }
-            }
-            return res;
-          })(ret);
-          
-          return ret;
-        }
-      });
-      editor.ui.model.interfaces.push({
-        title: "Create",
-        minimized: true,
-        priority(editor_model) {
-          return editor_model.insertElement ? 1 : undefined;
-        },
-        enabled(editor_model) {
-          return editor_model.clickedElem;
-        },
-        render: function render(editor_model, innerBox) {
-          if(!this.enabled(editor_model)) {
-            return "Click on an element to view insert options.";
-          }
-          let ret = el("div", {"class": "information"});
-          const clickedElem = editor_model.clickedElem;
-          if (!clickedElem) return ret;
-          ret.classList.add("insert-information-style");
-          ret.classList.add("information-style");
-          let insertOption = function(value, msg, checked, title) {
-            return el("span", {class: "insertOption"}, [
-              el("input", {type: "radio", id: "radioInsert" + value, name: "insertionPlace", value: value}, [], {checked: checked || false}),
-              el("label", {"for": "radioInsert" + value, title: title}, msg)], {onclick: restoreCaretPosition});
-          }
-          let t = clickedElem.tagName;
-          let isHTML = t === "HTML";
-          let isTop = isHTML || t === "BODY" || t === "HEAD";
-          let caretBlinks = editor_model.caretPosition;
-          ret.append(el("div", {id: "insertionPlace"}, [
-            isTop ? undefined : insertOption("before", "Before node"),
-            isHTML ? undefined : insertOption("first-child", "As first child"),
-            isHTML || !caretBlinks ? undefined : insertOption("caret", "At caret", !isTop && caretBlinks),
-            isHTML ? undefined : insertOption("last-child", "As last child", isTop || !caretBlinks),
-            isTop ? undefined : insertOption("after", "After node"),
-            isTop ? undefined : insertOption("wrap", "Wrap node", false, "Put the selected node inside the newly inserted node"),
-            clickedElem.childNodes && clickedElem.childNodes.length ? insertOption("wrap-children", "Wrap children", false, "Insert all node's children as children of element, then add element as a child.") : undefined
-          ]));
-          let getInsertionPlace = () => {
-            let radios = document.querySelectorAll('#insertionPlace input[name=insertionPlace]');
-            let value = "after";
-            for (let i = 0, length = radios.length; i < length; i++) {
-              if (radios[i].checked) return radios[i].getAttribute("value");
-              value = radios[i].getAttribute("value");
-            }
-            return value;
-          };
-          let insertTag = function(event, newElement, insertionStyle) {
-            newElement = newElement || (() => {
-              let parent = this;
-              while(parent && !parent.classList.contains("tagName")) parent = parent.parentElement;
-              let m = parent.querySelector(".templateengine");
-              if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
-              return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
-            })();
-            if(insertionStyle === "after") {
-              if(typeof newElement === "string") {
-                clickedElem.insertAdjacentHTML("afterend", newElement);
-                newElement = clickedElem.nextElementSibling;
-              } else {
-                clickedElem.parentElement.insertBefore(newElement, clickedElem.nextSibling);
-              }
-            } else if(insertionStyle === "before") {
-              if(typeof newElement === "string") {
-                clickedElem.insertAdjacentHTML("beforebegin", newElement);
-                newElement = clickedElem.previousElementSibling;
-              } else {
-                clickedElem.parentElement.insertBefore(newElement, clickedElem);
-              }
-            } else if(insertionStyle === "wrap") {
-              if(typeof newElement === "string") {
-                clickedElem.insertAdjacentHTML("beforebegin", newElement);
-                newElement = clickedElem.previousElementSibling;
-              } else {
-                clickedElem.parentElement.insertBefore(newElement, clickedElem);
-              }
-              newElement.appendChild(clickedElem);
-              console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
-            } else if(insertionStyle === "wrap-children") {
-              if(typeof newElement === "string") {
-                clickedElem.insertAdjacentHTML("afterbegin", newElement);
-                newElement = clickedElem.children[0];
-              } else {
-                clickedElem.insertBefore(newElement, clickedElem.childNodes[0]);
-              }
-              while(newElement.nextSibling) {
-                newElement.append(newElement.nextSibling);
-              }
-            } else if(insertionStyle === "caret") {
-              let s = editor_model.caretPosition;
-              let txt = s.startContainer;
-              if(txt.textContent.length > s.startOffset && s.startOffset > 0) { // split
-                // Need to split the text node.
-                txt.parentElement.insertBefore(document.createTextNode(txt.textContent.substring(s.startOffset)), txt.nextSibling);
-                txt.textContent = txt.textContent.substring(0, s.startOffset);
-              }
-              if(typeof newElement === "string") {
-                let tmpSpan = el("span");
-                clickedElem.insertBefore(tmpSpan, txt.nextSibling)
-                tmpSpan.insertAdjacentHTML("afterend", newElement);
-                newElement = tmpSpan.nextElementSibling;
-                tmpSpan.remove();
-              } else {
-                clickedElem.insertBefore(newElement, txt.nextSibling)
-              }
-            } else if(insertionStyle === "last-child") { // Insert at the end of the selected element, inside.
-              if(typeof newElement === "string") {
-                let tmpSpan = el("span");
-                clickedElem.insertBefore(tmpSpan, null);
-                tmpSpan.insertAdjacentHTML("afterend", newElement); // afterend or beforeend same, tmpSpan to be removed.
-                newElement = tmpSpan.nextElementSibling;
-                tmpSpan.remove();
-              } else {
-                console.log("insert at the end");
-                // Insert at the end.
-                clickedElem.insertBefore(newElement, null);
-              }
-            } else if(insertionStyle === "first-child") { // Insert at the end of the selected element, inside.
-              if(typeof newElement === "string") {
-                let tmpSpan = el("span");
-                clickedElem.insertBefore(tmpSpan, clickedElem.children[0]);
-                tmpSpan.insertAdjacentHTML("afterend", newElement);// afterend or beforeend same, tmpSpan to be removed.
-                newElement = tmpSpan.nextElementSibling;
-                tmpSpan.remove();
-              } else {
-                console.log("insert at the beginning");
-                // Insert at the beginning.
-                clickedElem.prepend(newElement);
-              }
-            }
-            editor_model.insertElement = false;
-            editor_model.visible = true;
-            editor_model.clickedElem  = typeof newElement !== "string" && typeof newElement !== "undefined" ?
-              newElement : clickedElem;
-            editor.ui.refresh();
-          }
-          let addElem = function(name, createParams) {
-            ret.append(
-              el("div", {"class": "tagName", title: createParams.title},
-                el("span", { "class": "templateengine"}, name, {createParams: createParams}), {
-                    onclick: function(event) {
-                      let insertionStyle = getInsertionPlace();
-                      insertTag.call(this, event, undefined, insertionStyle);
-                  }}
-              )
-            );
-          }
-          if(clickedElem.tagName === "HEAD") {
-            addElem("Title", {tag:"title", children: "Page_title", title: "Insert <title>"});
-            addElem("Meta", {tag:"meta", attrs:{name:"", content: ""}, props: {}, title: "Insert <meta>"});
-            addElem("Link", {tag:"link", attrs:{rel:"", href: ""}, props: {}, title: "Insert <link>"});
-          }
-          if(clickedElem.tagName !== "HEAD") {
-            ret.append(el("input", {"type": "file", multiple: "", value: "Images or files..."}, [], {
-              onchange: function(evt) { editor.uploadFilesAtCursor(evt.target.files); }})
-            );
-            ret.append(
-              el("div", {"class":"modify-menu-icon", id: "selectExistingNodeToMove", title: "Select an existing node to move"}, [], {
-                  innerHTML: editor.ui.icons.linkMode + "<span>Move node</span>",
-                  onclick: function(event) {
-                    editor_model.insertElement = false;
-                    let insertionStyle = getInsertionPlace();
-                    activateNodeSelectionMode(
-                      "to move",
-                      node => insertTag.call(this, event, node, insertionStyle),
-                      addPinnedModifyMenuIcon => {
-                        addPinnedModifyMenuIcon(editor.ui.icons.clone + "<span class='modify-menu-icon-label-link'>Clone</span>", 
-                          {"class": "link-select-button", title: "Confirm to clone",
-                            id: "selectbutton"
-                          },
-                          {onclick: function(event) {
-                            let node = editor_model.clickedElem;
-                            let clonedNode = editor.duplicate(node, {ignoreText: true});
-                            insertTag.call(this, event, clonedNode, insertionStyle);
-                            escapeLinkMode();
-                            editor_model.clickedElem = clonedNode;
-                            }
-                          }
-                        );
-                      }
-                    )
-                  }
-                })
-            )
-            // TODO: Filter and sort which one we can add, also depending on where to insert.
-            addElem("List item", {tag:"li", props: { innerHTML: "<br>" }, title: "Insert <li>"});
-            addElem("Bulleted list", {tag:"ul", props: { innerHTML: "<ul>\n<li><br></li>\n</ul>" }, title: "Insert <ul>"});
-            addElem("Numbered list", {tag:"ol", props: { innerHTML: "<ol>\n<li><br></li>\n</ol>" }, title: "Insert <ol>"});
-            addElem("Button", {tag: "button", props: {innerHTML: "Button name" }, title: "Insert <button>"});
-            addElem("Link", {tag: "a", props: { innerHTML: "Link name", href: "" }, title: "Insert <a href=''>"});
-            addElem("Paragraph", {tag: "p", props: { innerHTML: "Your text here" }, title: "Insert <p>"});
-            addElem("Division content", {tag: "div", title: "Insert <div>"});
-            addElem("Section", {tag: "section", title: "Insert <section>"});
-            addElem("Image", {tag: "img", title: "Insert <img>", attrs: {src: ""}});
-            addElem("Preformatted text", {tag: "pre", title: "Insert <pre>"});
-            for(let i = 1; i <= 6; i++) {
-              addElem("Header " + i, {tag:"h" + i, props: { innerHTML: "Title" + i }, title: "Insert <h"+i+">"});
-            }
-            addElem("Newline", {tag: "br", title: "Insert <br>"});
-          }
-          addElem("Stylesheet", {tag:"style", children: "/*Your CSS there*/", title: "Insert <style>"});
-          addElem("JavaScript", {tag:"script", children: "/*Your CSS below*/", title: "Insert <script>"});
-
-          ret.append(
-            el("div", {"class": "tagName", id: "customHTML"}, [
-              el("textarea", {id: "customHTMLToInsert", placeholder: "Custom HTML here...", "class": "templateengine", oninput: "this.innerHTMLCreate = this.value"}),
-              el("div", {"class":"modify-menu-icon", title: "Insert HTML", style: "display: inline-block"}, [], {
-                  innerHTML: editor.ui.icons.plus, 
-                  onclick: function(event) {
-                      let insertionStyle = getInsertionPlace();
-                      insertTag.call(this, event, undefined, insertionStyle);
-                  }
-                }
-              )
-            ])
-          );
-          //document.querySelector("#modify-menu").classList.toggle("visible", true);
-          return ret;
-        }
-      });
-      if (editor.config.thaditor) {
-        editor.ui.model.interfaces.push({
-          title: "Drafts",
-          minimized: true,
-          priority(editor_model) {
-            return undefined;
-          },
-          enabled(editor_model) {
-            return true;
-          },
-          render: (editor_model, innerBox) => {
-            
-            let draftListDiv = el("div", {"class":"draftList"}, [], {});
-
-            (async () => {
-            const verzExist = JSON.parse(await editor.getServer("isdir", "Thaditor/versions"));
-
-            const get_switch_btn_for = (nm) => {
-              return el("button", {"class":"draft-switch", title: "Open version '" + nm + "'"}, [nm], 
-              {
-                onclick: (event) => {
-                  editor_model.version = nm;
-                  editor.navigateTo("/Thaditor/versions/" + nm + "/?edit");
-                  setTimeout(() => editor.ui.sendNotification("Switched to " + nm), 2000);
-                }
-              });
-            };
-
-            const get_switch_btn_live = () => {
-              return el("button", {class:"draft-switch-live draft-switch"}, ["Open live website"],
-              {
-                onclick: (event) => {
-                  editor_model.version = "Live";
-                  editor.navigateTo("/?edit");
-                  setTimeout(() => editor.ui.sendNotification("Switched to Live version"), 2000);
-                }
-              })
-            }
-
-            const get_clone_btn_for = (nm) => {
-              return el("button", {"class":"draft-clone", title: "Clone " + nm + " to a new version"}, ["Clone"],
-              {
-                onclick: (event) => {
-                  cloneSite(nm, verzExist); //confirms + sends notif inside method
-                }
-              })  
-            }
-
-            const get_delete_btn_for = (nm) => {
-              return el("button", {"class":"draft-delete", title: "Delete version " + nm}, ["Delete"],
-              {
-                onclick: (event) => {
-                  deleteDraft(nm); //confirms + sends notif inside the method
-                }
-              })  
-            }
-
-            const get_rename_btn_for = (nm) => {
-              return el("button", {"class":"draft-publish", title: "Rename " + nm}, ["Rename"],
-              {
-                onclick: (event) => { 
-                  renameDraft(nm, verzExist); //confirms + sends notif inside
-                }
-              })
-            }
-
-            const get_publish_btn_for = (nm) => {
-              return el("button", {"class":"draft-publish", title: "Publish " + nm + " to live"}, ["Publish"],
-              {
-                onclick: (event) => { 
-                  publishDraft(nm); //confirms + sends notif inside
-                }
-              })
-            };
-
-            const get_current_label = () => {
-              return el("div", {"class":"draft-row", "id": "draft-title"},
-                      [
-                        el("label", {}, [editor_model.version], {}),
-                        (isLive() ? el("label", {}, [""]) : get_rename_btn_for(editor_model.version)),
-                        get_clone_btn_for(editor_model.version),
-                        (isLive() ? el("label", {}, ["Can't delete live"]):
-                                                          el("button", {}, ["Delete"],
-                                                          {
-                                                            onclick: (event) => {
-                                                              deleteDraft(editor_model.version);
-                                                            }
-                                                          })),
-
-                      ],
-                      {
-                        onclick: (event) => {
-                          //pass
-                        },
-                      })
-            };
-
-            const get_current_label_live = () => {
-              return el("div", {"class":"draft-row", "id": "draft-title"},
-                      [
-                        el("label", {style:"font-style:italic"}, ["Currently viewing live website"], {}),
-                        get_clone_btn_for("Live"),
-                        
-
-                      ],
-                      {
-                        onclick: (event) => {
-                          //pass
-                        },
-                      })
-            };
-
-            const get_current_label_for = (nm) => {
-              return el("div", {"class":"draft-row", "id": "draft-title"},
-                      [
-                        el("label", {title: "Currently viewing " + nm + " version"}, [nm], {}),
-                        get_rename_btn_for(editor_model.version),
-                        get_clone_btn_for(nm),
-                        get_delete_btn_for(nm),
-                        get_publish_btn_for(nm),
-                      ],
-                      {
-                        onclick: (event) => {
-                          //pass
-                        },
-                      })
-            };
-            
-
-            const get_row_for_draft = (nm) => {
-              return el("div", {"class": "draft-row"},
-              [
-                get_switch_btn_for(nm),
-                get_rename_btn_for(nm),
-                get_clone_btn_for(nm),
-                get_delete_btn_for(nm),
-              ]);
-            };
-
-            const get_row_for_live = () => {
-              return el("div", {"class": "draft-row", "id": "draft-row-live"},
-              [
-                get_switch_btn_live(),
-                get_clone_btn_for("Live")
-              ])
-            }
-
-            if (isLive()) {
-              draftListDiv.append(get_current_label_live());
-            } else {
-              draftListDiv.append(get_current_label_for(editor_model.version));
-              draftListDiv.append(get_row_for_live());
-            }
-            if (verzExist) {
-              const vers = JSON.parse(await editor.getServer("listdir", "Thaditor/versions/"));
-              vers.forEach(ver => {
-                if (!(ver == editor_model.version)){
-                  draftListDiv.append(get_row_for_draft(ver));
-                }
-              });
-            }
-            })();
-            return draftListDiv;
-          }
-        });
-      } // End of if apache_server
-      
-      editor.ui.model.interfaces.push({
-        title: "SEO",
-        minimized: true,
-        priority(editor_model) {
-          if(!document.querySelector("meta[name=viewport]")) {
-            return 1;
-          }
-          return undefined;
-        },
-        enabled(editor_model) {
-          return true;
-        },
-        render: function render(editor_model, innerBox) {
-          function oneClickFix(msg, buttonName, callback, parameters) {
-            return el("div", {class:"seo-fix"}, [
-              el("p", {class:"seo-fix-description"}, msg),
-              parameters,
-              el("button.action-button", {type: ""}, buttonName, {
-                onclick: function() {
-                  callback();
-                  editor.ui.refresh();
-                }
-              })]);
-          }
-          let title = document.querySelector("head > title");
-          let description = document.querySelector("head > meta[name=description]")
-          let ret = el("div", {}, [
-            document.querySelector("head > meta[name=viewport]") ? undefined :
-            oneClickFix("Viewport not set on this page. This might make this page not display properly on mobile devices.",
-              "Add missing <meta name='viewport'...>", () =>
-                  document.head.appendChild(el("meta", {name: "viewport", content:"width=device-width, initial-scale=1.0"}))),
-            document.querySelector("head > meta[charset]") ? undefined :
-            oneClickFix("Character encoding not set on this page. The display of non-breaking spaces would be compromized on many browsers.", "Add missing <meta charset='UTF-8'>", () =>
-                  document.head.insertBefore(el("meta", {charset: "UTF-8" }), document.head.childNodes[0])),
-            el("div", {class:"seo-fix"}, [
-              el("p", {class:"seo-fix-description"}, !title ?
-                "Page title not set. Search engines do prefer a title." :
-                "Title of the page:"
-              ),
-              el("input", {type:"text", value: title ? title.textContent : "", placeholder: "Title of the page"}, [], {
-                onchange: function() {
-                  if(!title) {
-                    title = el("title");
-                    document.head.appendChild(title);
-                  }
-                  title.textContent = this.value;
-                }
-              })
-            ]),
-            el("div", {class:"seo-fix"}, [
-              el("p", {class:"seo-fix-description"}, !description ?
-                "Page description not set. Search engines do prefer a page description to show on their results." :
-                "Description of the page:"
-              ),
-              el("textarea", {type:"text", class: "textChildNodeContent", placeholder: "Description of the page"}, [], {
-                onchange: function() {
-                  if(!description) {
-                    description = el("meta", {name: "description"});
-                    document.head.appendChild(description);
-                  }
-                  description.setAttribute("content") = this.value;
-                },
-                value: description ? description.getAttribute("content") || "" : ""
-              })
-            ]),
-          ]);
-          return ret;
-        }
-      });
-      editor.ui.model.interfaces.push({ 
-        title: "Advanced",
-        minimized: true,
-        priority(editor_model) {
-          return editor_model.disambiguationMenu ? 0 : undefined;
-        },
-        enabled(editor_model) {
-          return true;
-        },
-        render: function render(editor_model, innerBox) {
-          let retDiv = el("div", {"class":"modify-menu-icons"});
-          //We need 3 btns: refresh, filesystem + help.
-          add_btn_to_div(retDiv, editor.ui.icons.reload,
-            {"class": "tagName", title: "Reload the current page"},
-              {onclick: function(event) {
-                if(nothingToLose()) {
-                  editor.reload();
-                }
-              } }
-            );
-          add_btn_to_div(retDiv, editor.ui.icons.folder,
-            {"class": "tagName", title: "List files in current directory"},
-              {onclick: function(event) {
-                let u =  new URL(location.href);
-                u.pathname = u.pathname.replace(/[^\/]*$/, "");
-                u.searchParams.set("ls", "true");
-                if(nothingToLose()) {
-                  editor.navigateTo(u.href);
-                }
-              }
-            }
-          );
-          if(editor.config.thaditor) {
-            retDiv.append(
-              el("button.action-button#update-thaditor-btn", {type: ""}, "Update Thaditor", {onclick() {
-                if(confirm("Are you ready to upgrade Thaditor?")) {
-                  editor._internals.doWriteServer("updateversion", "latest", "", response => {
-                    console.log("Result from Updating Thaditor to latest:");
-                    console.log(response);
-                    location.reload(true);
-                  });
-                }
-              } })
-            );
-          }
-          retDiv.append(
-            el("label", {class:"switch", title: "If off, ambiguities are resolved automatically. Does not apply for HTML pages"},
-              [el("input", {class: "global-setting", id: "input-question", type: "checkbox"}, [], {
-                onchange: function() { editor_model.askQuestions = this.checked; },
-                checked: editor_model.askQuestions}),
-              el("span", {class:"slider round"})]));
-          retDiv.append(
-            el("label", {"for": "input-question", class: "label-checkbox"}, "Ask questions"));
-          
-          retDiv.append(
-            el("label", {class:"switch", title: "If on, changes are automatically propagated 1 second after the last edit"}, [
-              el("input", {class: "global-setting", id: "input-autosave", type:"checkbox"}, [], {
-                onchange: function() { editor_model.autosave = this.checked; },
-              checked: editor_model.autosave}),
-              el("span", {class:"slider round"})])
-          );
-          retDiv.append(
-            el("label", {"for": "input-autosave", class: "label-checkbox"}, "Auto-save"));
-          
-          if(editor.config.thaditor) {
-            retDiv.append(
-              el("a", {href:"javascript:0", id:"thaditor-sign-out-button", style:"display:block"}, "Sign out of Google", {
-                onclick() {
-                  let onOk = () => thaditor_sign_out(() => {
-                    retDiv.append(
-                      el("a", {href:"javascript:0", id:"thaditor-google-log-in-button", style:"display:block"}, "Sign in with Google",
-                      {onclick: thaditor_sign_in()}));
-                    document.querySelector("#thaditor-sign-out-button").remove();
-                  });
-                  if(!gapi.auth2) {
-                    thaditor_gapi_onload(onOk);
-                  } else {
-                    onOk();
-                  }
-                }})
-            );
-          }
-          if(editor_model.disambiguationMenu) {
-            retDiv.append(editor_model.disambiguationMenu);
-          }
-          return retDiv;
-        }
-      });
-      
-      editor.ui.model.interfaces.push({
-        title: "Log",
-        minimized: true,
-        priority(editor_model) {
-          return undefined;
-        },
-        enabled(editor_model) {
-          return true;
-        },
-        currentBox: undefined,
-        render: function render(editor_model, innerBox) {
-          let retDiv = el("div#fullLog", {"class":"modify-menu-icons"});
-          let logtxt = "";
-          const elog = editor_model.editor_log;
-          for (let i = 0; i < elog.length; i++) {
-            const l = elog[i];
-            logtxt = logtxt + (i > 0 ? "<br>" : "") + l;
-          }
-          retDiv.innerHTML = logtxt;
-          this.currentBox = retDiv;
-          return retDiv;
-        },
-        refresh() {
-          let currentBox = this.currentBox;
-          let newBox = this.render(editor.ui.model);
-          currentBox.parentNode.insertBefore(newBox, currentBox);
-          currentBox.remove();
-        }
-      });
-      if(typeof thaditor !== "undefined" && thaditor.customInterfaces) {
-        editor.ui.model.interfaces.push(...thaditor.customInterfaces);
-      }
-    }
-    
-    function getEditorInterfaceByTitle(title) {
-      return editor.ui.model.interfaces.find(x => x.title == title);
-    }
-
-    // First time: We add the interface containers.
-    if(!ifAlreadyRunning) {
-      init_interfaces();
-    }
-    
-    //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
-    //split between common (section, div, span, p, ul,  etc...) and rare/better semantically defined tags (pre)
-
-    //check if selector applies to any ancestors or descendants, then its ok
-    //else add class or use > selector until it is precise 
-    function getShortestUniqueSelector(clickedElem) {
-      console.log("clickedElem", clickedElem);
-      let curSelector = clickedElem.tagName.toLowerCase();
-      if(clickedElem.getAttribute("id")) {
-        curSelector += "#" + clickedElem.getAttribute("id");
-      }
-      if (clickedElem.getAttribute("class") && clickedElem.getAttribute("class") != "") {
-        curSelector += (" " + clickedElem.getAttribute("class").trim()).replace(/\s+/g, ".");
-      }
-      //checking ancestors
-      let consideredParent = clickedElem.parentNode;
-      do {
-        var selectorIsOrg = true;
-        for(let curAncestor = clickedElem.parentNode; curAncestor; curAncestor = curAncestor.parentNode) {
-          if(editor.matches(curAncestor, curSelector)) {
-            selectorIsOrg = false;
-          }
-        }
-        //checking descendants
-        if(clickedElem.querySelector(curSelector)) {
-          selectorIsOrg = false;
-        }
-        if(!selectorIsOrg) {
-          curSelector =  consideredParent.tagName.toLowerCase() + " > " + curSelector; 
-          consideredParent = consideredParent.parentNode;
-        }
-      } while(!selectorIsOrg && consideredParent);
-      return curSelector;
-    }
-    
-
-    function reorderCompatible(node1, node2){
-      let topLevelOrderableTags = {TABLE:1, P:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, DIV:1, SECTION: 1, IMG: 1, PRE: 1};
-      let metaOrderableTags = {META:1, TITLE:1, SCRIPT: 1, LINK: 1, STYLE: 1};
-      return node1.tagName === node2.tagName && node1.tagName !== "TD" && node1.tagName !== "TH" ||
-        topLevelOrderableTags[node1.tagName] && topLevelOrderableTags[node2.tagName] ||
-        metaOrderableTags[node1.tagName] && metaOrderableTags[node2.tagName];
-    }
-    function preventTextDeselection(e){
-      e = e || window.event;
-      e.preventDefault();
-    }
-    function restoreCaretPosition() {
-      if(typeof editor_model.caretPosition != "undefined") {
-        var sel = window.getSelection();
-        sel.removeAllRanges();
-        var range = document.createRange();
-        range.setStart(editor_model.caretPosition.startContainer, editor_model.caretPosition.startOffset);
-        range.setEnd(editor_model.caretPosition.endContainer, editor_model.caretPosition.endOffset);
-        sel.addRange(range);
-      }
-    }
-    // This function activates the node selection mode, in which one DOM node can be selected,
-    // After clicking on confirm, the callback is called with the selected node.
-    // callbackUI is invoked to render other buttons along with the confirmation button.
-    function activateNodeSelectionMode(msg, callback, callbackUI) {
-      editor_model.visible = false;
-      
-      editor_model.linkSelectMode = true;
-      editor_model.clickedElem = document.body; //"center" clicked element on document body
-      //removes all context menu stuff 
-      document.querySelector("#context-menu").classList.remove("visible");
-      editor_model.linkSelectCallback = callback;
-      editor_model.linkSelectMsg = "Confirm " + msg;
-      editor_model.linkSelectOtherMenus = callbackUI;
-      editor.ui.refresh();
-      editor.ui.sendNotification(editor_model.linkSelectMsg);
-      document.body.addEventListener('mouseover', linkModeHover1, false);
-      document.body.addEventListener('mouseout', linkModeHover2, false);
-    }
-
-    
-
-    function copy_website(source, dest) {
-      let website_files = JSON.parse(editor._internals.doReadServer("fullListDir", source));
-      let is_dest_valid = editor._internals.doReadServer("isdir", dest)
-      if (!website_files) throw "copy_website(): invalid source";
-      if (!is_dest_valid) throw "copy_website(): invalid dest";
-      
-      //filter out Thaditor files
-      website_files = website_files.filter(val => !thaditor_files.includes(val[0]));
-      website_files = website_files.filter(val => val[0][0] != ".");
-      //cpy website_files to to dest
-      website_files.forEach(val => {
-        let [nm, isdir] = val;
-        const s = (source + nm);
-        const d = (dest + nm);
-        if (isdir) {
-          editor._internals.doWriteServer("fullCopy", s, d);
-        } else {
-          editor._internals.doWriteServer("copy", d, s);
-        }
-      });
-      let dh = editor._internals.doReadServer("read", source + "/.thaditor_meta");
-      dh = dh.slice(1, dh.length);
-      let draft_history = (dh == "" ? undefined : JSON.parse(dh));
-      const get_date_meta = () => (new Date).toString();
-      if (draft_history == undefined) {
-        draft_history = ["live:" + get_date_meta()];
-      } else {
-        draft_history.push(editor_model.version + ":" + get_date_meta());
-      }
-      editor._internals.doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
-      return 1;
-    }
-    
-    function deleteDraftDef(nm) { //definitely delete the draft, without a prompt
-      //the path of the folder we want to delete is and always will be Thaditor/versions/$nm/
-      const pth_to_delete = "Thaditor/versions/" + nm + "/";
-      //here we want to hand editor._internals.doWriteServer to the worker in editor.js
-
-      const data = {action:"drafts",
-                    subaction:"deletermrf",
-                    pth_to_delete:pth_to_delete,
-                    nm:nm, thaditor_files:thaditor_files, version:editor_model.version};
-      if (editor_model.version == nm) {
-        editor._internals.doWriteServer("deletermrf", pth_to_delete);
-        editor.navigateTo("/?edit");
-        editor.ui.refresh();
-      } else {
-        thaditor.do(data).then(data => {
-          editor.ui.sendNotification("Permanently deleted draft named: " + data.nm);
-          editor.ui.refresh()});
-      }
-    }
-
-    function deleteDraft(nm) {
-      if (nm == "Live") throw "Shouldn't be able to call deleteDraft on live";
-      const ans = window.confirm("Are you sure you want to permanently delete " + nm + "?");
-      if (!ans) return;
-      deleteDraftDef(nm);
-    }
-
-
-    function getNewDraftName(nm, verzExist) {
-      const draft_name = window.prompt ("Please provide the name for the new draft. Leave blank to cancel");
-      if (!draft_name) {
-        return 0;
-      }
-      
-      let is_draft_name_valid = (nm) => {
-        return !(nm.startsWith("[^a-zA-Z0-9]"));
-      };
-
-      if (!is_draft_name_valid(draft_name)) {
-        window.alert("Invalid draft name");
-        return 0;
-      }
-      
-      let fail = false;
-      if (!verzExist) {
-        editor._internals.doWriteServer("mkdir", "Thaditor/versions");
-      } else {
-        let versionsList = JSON.parse(editor._internals.doReadServer("fullListDir", "Thaditor/versions/"));
-        versionsList.forEach(val => {
-          let [nm, isdir] = val;
-          if (isdir) {
-            if (nm == draft_name) {
-              fail = window.confirm("Overwrite existing draft?");
-            }
-          }
-        });
-      }
-      if (fail) return 0;
-      return draft_name;
-    }
-
-
-    function cloneSite(nm, verzExist) {
-      //verzExist tells us if we need to mkdir versions
-      //nm could be live or any draft ==> make f_pth
-      const draft_name = getNewDraftName(nm, verzExist);
-      if (!draft_name) return 0;
-      //all of that above ^^ needs to happen in the UI thread.
-      const t_pth = "Thaditor/versions/" + draft_name + "/"
-      const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
-      const data = {action:"drafts", subaction:"clone",
-                    draft_name:draft_name,
-                    t_pth:t_pth, f_pth:f_pth,
-                    nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
-      editor.ui.sendNotification("Creating draft " + draft_name + " from " + nm);
-      thaditor.do(data).then(data => {
-        //just send a notif, no more naving to the clone
-        editor.ui.refresh();
-        editor.ui.sendNotification("Successfully cloned " + data.nm + " to " + data.draft_name);
-      });
-    }
-    
-    function renameDraft(nm, verzExist) {
-      //verzExist tells us if we need to mkdir versions
-      //nm could be live or any draft ==> make f_pth
-      const draft_name = getNewDraftName(nm, verzExist);
-      if (!draft_name) return 0;
-      //all of that above ^^ needs to happen in the UI thread.
-      const t_pth = "Thaditor/versions/" + draft_name + "/"
-      const f_pth = (nm == "Live" ? "" : "Thaditor/versions/" + nm + "/");
-      const data = {action:"drafts", subaction:"rename",
-                    draft_name:draft_name,
-                    t_pth:t_pth, f_pth:f_pth,
-                    nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
-      editor.ui.sendNotification("Renaming draft " + nm + " to " + draft_name);
-      thaditor.do(data).then(data => {
-        let marker = false;
-        if (data.nm == data.version) {
-          editor.navigateTo("/Thaditor/versions/" + data.draft_name + "/?edit");
-          marker = true;
-        }
-        if(marker) {
-          setTimeout(editor.ui.sendNotification("Successfully renamed " + data.nm + " to " + data.draft_name), 2000)
-        } else {
-          editor.ui.refresh();
-          editor.ui.sendNotification("Successfully renamed " + data.nm + " to " + data.draft_name);
-        }
-      });
-    }
-
-    function publishDraft(nm) {
-      //We're copying out Thaditor/versions/$nm/ to "".
-      if (nm == "Live") throw "Can't publish live to live";
-      const conf = window.confirm("Are you sure you want to publish " + nm + " to live?");
-      if (!conf) {
-        return;
-      }
-      let t_src = "Thaditor/versions/" + nm + "/";
-      const data = {action:"drafts",
-                    subaction:"publish",
-                    t_src:t_src,
-                    nm:nm,thaditor_files:thaditor_files,
-                    version:editor_model.version};
-      thaditor.do(data).then(data => {
-        editor.ui.sendNotification("Successfully published " + data.nm + " to live.");
-      });
-    }
-    
-    editor.ui.refresh = function refresh() {
-      const menuholder = document.querySelector("#modify-menu-holder");
-      const old_scroll = menuholder ? menuholder.scrollTop : 0;
-      
-      // Set up
-      let editor_model = editor.ui.model;
-      var clickedElem = editor_model.clickedElem;
-      var contextMenu = document.querySelector("#context-menu");
-      var modifyMenuDiv = document.querySelector("#modify-menu");
-      
-      if(!modifyMenuDiv || !contextMenu) return;
-      modifyMenuDiv.classList.toggle("editor-interface", true);
-      contextMenu.classList.toggle("editor-interface", true);
-
-      // Display the interface or not
-      modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
-
-      // Make sure at most one element is marked as ghost-clicked.
-      document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
-      if(clickedElem && clickedElem.nodeType === 1) {
-        clickedElem.setAttribute("ghost-clicked", "true");
-      }
-      
-      // Recover selection if it exists
-      editor_model.selectionRange = editor_model.notextselection ? undefined : (() => {
-        let selection = window.getSelection();
-        if(!selection || !selection.rangeCount) return;
-        let f = selection.getRangeAt(0); 
-        if(!f || !f.getBoundingClientRect ||
-            f.startOffset === f.endOffset && f.startContainer === f.endContainer) return;
-        return f;
-      })();
-      
-      // Recover caret position if it exists
-      editor_model.caretPosition = editor_model.notextselection || clickedElem && clickedElem.tagName === "HEAD" ? undefined : (() => {
-        let selection = window.getSelection();
-        if(!selection || !selection.rangeCount) return;
-        let f = selection.getRangeAt(0);
-        if(!f || f.startOffset !== f.endOffset && f.startContainer !== f.endContainer) return;
-        return f;
-      })();
-      
-      // We render the content of modifyMenuDiv from scratch
-      modifyMenuDiv.innerHTML = "";
-      let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned"}); // Icons always visible
-      let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"}); // Top-level icons on the top bar
-      let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
-      let modifyMenuHolder = el("div", {"class": "modify-menu-holder", "id":"modify-menu-holder"});
-      modifyMenuDiv.append(modifyMenuPinnedIconsDiv); // Keep this one as it.
-      
-      /*
-        Render interfaces / containers
-      */
-      for(let i = 1; i < editor_model.interfaces.length; i++) {
-        let x = editor_model.interfaces[i];
-        let priority = x.priority(editor_model);
-        if(i > 0 && typeof priority === "number") {
-          x.minimized = false;
-          let previous = editor_model.interfaces[i-1]
-          let beforePriority = previous.priority(editor_model);
-          if(typeof beforePriority === "undefined" && (!previous.enabled(editor_model) || previous.minimized)) {
-            var tmp = editor_model.interfaces[i];
-            editor_model.interfaces[i] = editor_model.interfaces[i-1];
-            editor_model.interfaces[i-1] = tmp;
-            i -= 2; // Bubble up
-          }
-        }
-      }
-      for(let i = 0; i < editor_model.interfaces.length; i++) {
-        let x = editor_model.interfaces[i];
-        let priority = x.priority(editor_model);
-        let initMinimized = typeof priority == "number" ? false :
-                            x.enabled(editor_model) ? x.minimized : true;
-        let renderedContent = x.render(editor_model);
-        let class_str = x.title.replace(" ", "_");
-        let menu = el(
-          "div", {
-            class:"editor-container" + (x.enabled(editor_model) ? "" : " disabled") + (x.minimized ? " minimized" : "") + " " + class_str},
-          [ el("div.editor-container-title", {
-                 title: typeof renderedContent === "string" ? renderedContent : undefined
-               },
-               [ el("div", {title: "Expand menu", class: "expand-menu"}, x.title),
-                 el("div.editor-container-icon#displayarrow", {}, [], {innerHTML: editor.ui.icons.boxArrowExpand}),
-                 el("div.editor-container-icon.arrowdown", {title: "Move menu down"}, [], {innerHTML: editor.ui.icons.boxArrowDown,
-                   onclick: function(event) {
-                     let d = this.parentElement.parentElement;
-                     var tmp = editor_model.interfaces[d.i];
-                     editor_model.interfaces[d.i] = editor_model.interfaces[d.i+1];
-                     editor_model.interfaces[d.i+1] = tmp;
-                     d.nextElementSibling.i = d.i;
-                     d.i = d.i + 1;
-                     d.parentElement.insertBefore(d.nextElementSibling, d);
-                     event.preventDefault();
-                     event.stop = true;
-                     return false;
-                   }}),
-                 el("div.editor-container-icon.arrowup", {title: "Move menu up"}, [], {innerHTML: editor.ui.icons.boxArrowUp,
-                   i: i,
-                   onclick: function(event) {
-                     let d = this.parentElement.parentElement;
-                     var tmp = editor_model.interfaces[d.i];
-                     editor_model.interfaces[d.i] = editor_model.interfaces[d.i-1];
-                     editor_model.interfaces[d.i-1] = tmp;
-                     d.previousElementSibling.i = d.i;
-                     d.i = d.i - 1;
-                     d.parentElement.insertBefore(d, d.previousElementSibling);
-                     event.preventDefault();
-                     event.stop = true;
-                     return false;
-                   }})
-               ],
-               {
-                onclick: ((x) => event => {
-                  console.log(event);
-                  if(event.stop) return;
-                  let target = event.target;
-                  while(!target.matches(".editor-container")) target = target.parentNode;
-                  //console.log("onclick", event.target);
-                  x.minimized = target.classList.contains("minimized");
-                  x.minimized = !x.minimized;
-                  target.classList.toggle("minimized", x.minimized);
-                })(x)
-               }),
-            el("div.editor-container-content", {}, renderedContent),
-          ],
-        {i: i});
-        modifyMenuHolder.append(menu);
-      }
-      
-      //console.log ({old_scroll, modifyMenuHolder});
-      modifyMenuDiv.append(modifyMenuHolder);
-      if(modifyMenuHolder) modifyMenuHolder.scrollTop = old_scroll;
-
-      let createButton = function(innerHTML, attributes, properties) {
-        let button = el("div", attributes, [], properties);
-        button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
-        button.classList.add("modify-menu-button");
-        button.innerHTML = innerHTML;
-        return button;
-      }
-      let addPinnedModifyMenuIcon = function(innerHTML, attributes, properties) {
-        modifyMenuPinnedIconsDiv.append(createButton(innerHTML, attributes, properties));
-      }
-      var panelOpenCloseIcon = function() {
-        return document.querySelector("#modify-menu").classList.contains("visible") ?
-            editor.config.onMobile() ? editor.ui.icons.closeBottom : editor.ui.icons.closeRight + "<span class='modify-menu-icon-label'>Close</span>"
-          : editor.config.onMobile() ? editor.ui.icons.openTop : editor.ui.icons.openLeft + "<span class='modify-menu-icon-label'>Open</span>";
-      }
-      var alwaysVisibleButtonIndex = 0;
-      function nextVisibleBarButtonPosStyle() {
-        let result = "position: absolute;" +
-          (editor.config.onMobile() ? "top:-"+editor.config.buttonHeight()+"px;left:"+alwaysVisibleButtonIndex*editor.config.buttonWidth()+"px" :
-                        "left:-"+editor.config.buttonWidth()+"px;top:"+alwaysVisibleButtonIndex*editor.config.buttonHeight()+"px")
-        alwaysVisibleButtonIndex++;
-        return result;
-      }
-      if(!editor_model.linkSelectMode) {
-        addPinnedModifyMenuIcon(
-          panelOpenCloseIcon(),
-          {title: "Open/close settings tab", "class": "inert" },
-          {onclick: function(event) {
-              document.querySelector("#modify-menu").classList.toggle("visible");
-              editor_model.visible = !editor_model.visible;
-              setTimeout(maybeRepositionContextMenu, 500);
-              this.innerHTML = panelOpenCloseIcon();
-              if(editor.config.onMobile() && editor_model.savedTextSelection) {
-                window.getSelection().addRange(editor_model.savedTextSelection);
-                editor_model.savedTextSelection = undefined;
-              }
-            }
-        });
-        if(editor.config.EDITOR_VERSION & 1) {
-          addPinnedModifyMenuIcon(editor.ui.icons.undo + "<span class='modify-menu-icon-label'>Undo</span>", 
-            {"class": "inert" + (editor.ui.canUndo() ? "" : " disabled"), title: "Undo most recent change",
-              id: "undobutton"
-            },
-            {onclick: function(event) {
-              if(!editor.ui.undo()) editor.ui.sendNotification("Nothing to undo!");
-              }
-            }   
-          );
-          addPinnedModifyMenuIcon(editor.ui.icons.redo + "<span class='modify-menu-icon-label'>Redo</span>",
-            {"class": "inert" + (editor.ui.canRedo() ? "" : " disabled"), title: "Redo most recent undo",
-              id: "redobutton"
-            },
-            {onclick: function(event) {
-             if(!editor.ui.redo()) editor.ui.sendNotification("Nothing to redo!");
-              }
-            }
-          );
-        }
-        addPinnedModifyMenuIcon(editor.ui.icons.save + "<span class='modify-menu-icon-label'>Save</span>",
-        {title: editor_model.disambiguationMenu ? "Accept proposed solution" : "Save", "class": "saveButton" + (editor.ui.canSave() || editor_model.disambiguationMenu ? "" : " disabled") + (editor_model.isSaving ? " to-be-selected" : ""),
-          id: "savebutton"
-        },
-          {onclick: editor_model.disambiguationMenu ? 
-            ((ambiguityKey, selected) => () => editor.ambiguity.accept(ambiguityKey, selected))(
-              editor_model.disambiguationMenu.ambiguityKey, editor_model.disambiguationMenu.selected)
-            : editor.ui.save
-          }
-        )
-      }
-      else {
-        addPinnedModifyMenuIcon(editor.ui.icons.escape + "<span class='modify-menu-icon-label-link'>Cancel</span>", 
-          {"class": "link-select-button", title: "Go back to original screen",
-            id: "escapebutton"
-          },
-          {onclick: function(event) {
-              escapeLinkMode();
-            }
-          }
-        );
-        addPinnedModifyMenuIcon(editor.ui.icons.check + "<span class='modify-menu-icon-label-link'>Select</span>", 
-          {"class": "link-select-button", title: editor_model.linkSelectMsg || "Select target",
-            id: "selectbutton"
-          },
-          {onclick: function(event) {
-              editor_model.linkSelectCallback(editor_model.clickedElem);
-              escapeLinkMode();
-            }
-          }
-        );
-        if(editor_model.linkSelectOtherMenus) {
-          editor_model.linkSelectOtherMenus(addPinnedModifyMenuIcon)
-        }
-      } //keep all that above here^^
-      //1500 lines of code switched out to init_interfaces!!! yayay!!
-
-      //
-
-      if(!editor_model.linkSelectMode) {
-        contextMenu.innerHTML = "";
-        var whereToAddContextButtons = contextMenu;
-        var noContextMenu = false;
-        // What to put in context menu?
-        if(editor.config.onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
-          modifyMenuPinnedIconsDiv.parentElement.insertBefore(modifyMenuIconsDiv, modifyMenuPinnedIconsDiv.nextSibling);
-          whereToAddContextButtons = modifyMenuIconsDiv;
-          noContextMenu = true;
-        }
-        let numButtons = 0;
-        let addContextMenuButton = function(innerHTML, attributes, properties) {
-          let button = el("div", attributes, [], properties);
-          button.onmousedown = button.onmousedown ? button.onmousedown : preventTextDeselection;
-          button.classList.add("context-menu-button");
-          button.innerHTML = innerHTML;
-          whereToAddContextButtons.append(button);
-          numButtons++;
-        }
-        if(editor_model.link) {
-          addContextMenuButton(editor.ui.icons.liveLink(linkToEdit(editor_model.link)),
-            {title: "Go to " + editor_model.link, "class": "inert"});
-        }
-        if(!editor_model.selectionRange && clickedElem && clickedElem.parentNode && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(editor.ui.icons.parentUp,
-          {title: "Select parent", "class":"inert"},
-            {onclick: (c => event => {
-              editor_model.clickedElem = c;
-              refresh();
-            })(clickedElem.parentNode)}
-          );
-        }
-        
-        var computedStyle = clickedElem && window.getComputedStyle(clickedElem);
-        var isDisplayInline = computedStyle && (computedStyle.display.startsWith("inline") || computedStyle.display === "table-cell");
-        if(!editor_model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.previousElementSibling && !clickedElem.previousElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem.previousElementSibling, clickedElem) && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(isDisplayInline ? editor.ui.icons.arrowLeft : editor.ui.icons.arrowUp,
-          {title: "Move selected element " + (isDisplayInline ? "to the left" : "up")},
-          {onclick: (c => event => {
-              let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
-                c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
-              // There is whitespace before this element, we try to reinsert
-              c.parentElement.insertBefore(c, c.previousElementSibling);
-              if(wsTxtNode) { // We move the whitespace as well.
-                c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
-              }
-              editor_model.clickedElem = c;
-              refresh();
-            })(clickedElem)
-          });
-        }
-        if(!editor_model.selectionRange && clickedElem && clickedElem.matches && !clickedElem.matches(".editor-interface") && clickedElem.nextElementSibling && !clickedElem.nextElementSibling.matches(".editor-interface") && reorderCompatible(clickedElem, clickedElem.nextElementSibling) && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(isDisplayInline ? editor.ui.icons.arrowRight : editor.ui.icons.arrowDown,
-          {title: "Move selected element " + (isDisplayInline ? "to the right" : "down")},
-          {onclick: (c => (event) => {
-              let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 && 
-                c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
-              let nodeToInsertAfter = c.nextElementSibling;
-              nodeToInsertAfter.insertAdjacentElement("afterend", c);
-              if(wsTxtNode) { // We move the whitespace as well
-                nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
-              }
-              editor_model.clickedElem = c;
-              refresh();
-            })(clickedElem)
-          });
-        }
-        if(!editor_model.selectionRange && clickedElem && clickedElem.tagName !== "HTML" && clickedElem.tagName !== "BODY" && clickedElem.tagName !== "HEAD" && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(editor.ui.icons.clone,
-            {title: "Clone selected element"},
-            {onclick: ((c, contextMenu) => event => {
-                c.removeAttribute("ghost-clicked");
-                let cloned = duplicate(c);
-                if(cloned) {
-                  editor_model.clickedElem = cloned;
-                  refresh();
-                } else contextMenu.classList.remove("visible");
-              })(clickedElem, contextMenu)
-            });
-          addContextMenuButton(editor.ui.icons.wasteBasket,
-            {title: "Delete selected element"},
-            {onclick: (c => event => {
-                if(editor_model.clickedElem.nextElementSibling) editor_model.clickedElem = editor_model.clickedElem.nextElementSibling;
-                else editor_model.clickedElem = editor_model.clickedElem.previousElementSibling;
-                c.remove();
-                refresh();
-              })(clickedElem)
-            });
-        }
-        if(editor_model.selectionRange && (editor_model.selectionRange.startContainer === editor_model.selectionRange.endContainer || editor_model.selectionRange.startContainer.parentElement === editor_model.selectionRange.commonAncestorContainer && editor_model.selectionRange.endContainer.parentElement === editor_model.selectionRange.commonAncestorContainer) && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(editor.ui.icons.plus,
-              {title: "Wrap selection"},
-              {onclick: (s => event => {
-                let elements = [];
-                let tmp = s.startContainer;
-                let nodeToInsertAfter = s.startContainer;
-                let parent = nodeToInsertAfter.parentElement;
-                while(tmp && tmp !== s.endContainer.nextSibling) {
-                  if(tmp.nodeType === 3) {
-                    elements.push(tmp === s.startContainer ? tmp === s.endContainer ? tmp.textContent.substring(s.startOffset, s.endOffset) : tmp.textContent.substring(s.startOffset) :
-                      tmp === s.endContainer ? tmp.textContent.substring(0, s.endOffset) :
-                      tmp.textContent);
-                    if(tmp === s.startContainer) {
-                      if(tmp === s.endContainer && tmp.textContent.length > s.endOffset) {
-                        // Need to split the text node.
-                        tmp.parentElement.insertBefore(document.createTextNode(tmp.textContent.substring(s.endOffset)), tmp.nextSibling);
-                      }
-                      if(s.startOffset === 0) {
-                        nodeToInsertAfter = nodeToInsertAfter.previousSibling;
-                        tmp.remove();
-                      } else {
-                        tmp.textContent = tmp.textContent.substring(0, s.startOffset);
-                      }
-                    } else if(tmp === s.endContainer) {
-                      if(s.endOffset === s.endContainer.textContent.length) {
-                        tmp.remove();
-                      } else {
-                        tmp.textContent = tmp.textContent.substring(s.endOffset);
-                      }
-                    } else {
-                      tmp.remove();
-                    }
-                  } else {
-                    elements.push(tmp);
-                    tmp.remove();
-                  }
-                  tmp = tmp.nextSibling;
-                }
-                let insertedNode = el("span", {"ghost-clicked": "true"});
-                for(let k of elements) {
-                  insertedNode.append(k);
-                }
-                let nodeToInsertBefore = nodeToInsertAfter ? nodeToInsertAfter.nextSibling : parent.childNodes[0];
-                parent.insertBefore(insertedNode, nodeToInsertBefore);
-                document.querySelector("#modify-menu").classList.toggle("visible", true);
-                editor_model.visible = true;
-                editor_model.clickedElem = insertedNode;
-                refresh();
-              })(editor_model.selectionRange)}
-              )
-        }
-        if(!editor_model.selectionRange && editor.config.EDITOR_VERSION & 1) {
-          addContextMenuButton(editor.ui.icons.plus,
-              {title: "Insert element", contenteditable: false},
-              {onclick: event => {
-                editor_model.clickedElem = clickedElem;
-                editor_model.displayClickedElemAsMainElem = true;
-                editor_model.insertElement = true;
-                editor_model.visible = true;
-                getEditorInterfaceByTitle("Create").minimized = false;
-                refresh();
-                restoreCaretPosition();
-              }});
-        }
-        if(editor_model.clickedElem) {
-          // Thaditor-defined custom context menu buttons
-          if(typeof thaditor === "object") {
-            for(let button of thaditor.customContextMenuButtons(editor_model.clickedElem)) {
-              addContextMenuButton(button.innerHTML, button.attributes, button.properties)
-            }
-          }
-          // Page-defined custom context menu buttons
-          for(let custom of editor.customContextMenuButtons) {
-            for(let button of custom(editor_model.clickedElem)) {
-              addContextMenuButton(button.innerHTML, button.attributes, button.properties)
-            }
-          }
-        }
-
-        let baseElem = clickedElem;
-        while(baseElem && (baseElem.tagName == "SCRIPT" || baseElem.tagName == "STYLE")) {
-          baseElem = baseElem.nextElementSibling;
-        }
-        baseElem = editor_model.selectionRange || baseElem || clickedElem;
-      
-        if(baseElem && !noContextMenu) {
-          let clientRect = baseElem.getBoundingClientRect();
-          // Find out where to place context menu.
-          let clickedElemLeft = window.scrollX + clientRect.left;
-          let clickedElemTop = window.scrollY + clientRect.top;
-          let clickedElemBottom = window.scrollY + clientRect.bottom;
-          let clickedElemRight = window.scrollX + clientRect.right;
-          let desiredWidth = numButtons * editor.config.buttonWidth();
-          let desiredLeft = (clickedElemLeft + clickedElemRight) / 2 - desiredWidth;
-          if(desiredLeft < clickedElemLeft) desiredLeft = clickedElemLeft;
-          let desiredTop = clickedElemTop - editor.config.buttonHeight(); 
-          if(desiredTop - window.scrollY < 9) {
-            desiredTop = clickedElemBottom;
-            if(desiredTop + editor.config.buttonHeight() > window.innerHeight) {
-              desiredTop = window.innerHeight - editor.config.buttonHeight(); 
-            }
-          }
-          if(desiredLeft < 0) desiredLeft = 0;
-          if(desiredTop < 0) desiredTop = 0;
-          contextMenu.style.left = desiredLeft + "px";
-          contextMenu.style.top = desiredTop + "px";
-          contextMenu.style.width = desiredWidth + "px";
-          contextMenu.classList.add("visible");
-          setTimeout(maybeRepositionContextMenu, 0);
-        }
-        if(noContextMenu) {
-          contextMenu.classList.remove("visible");
-        }
-      }
-      
-      return true;
-
-    } // editor.ui.refresh
-
-    editor.refresh = function() {
-      console.log("DEPRECATED WARNING: Please use editor.ui.refresh() instead of editor.refresh()");
-      editor.ui.refresh()
-    };
-    editor.ui.refresh();
-
-    function maybeRepositionContextMenu() {
-      //move the context menu if overlaps with modify-menu
-       let contextMenu = document.querySelector("#context-menu");
-       let modifyMenuDiv = document.querySelector("#modify-menu");
-       let pinnedIcons = document.querySelector(".modify-menu-icons.pinned")
-       let pcr = pinnedIcons.getBoundingClientRect();
-       let ccr = contextMenu.getBoundingClientRect();
-       let mcr = modifyMenuDiv.getBoundingClientRect();
-       if(editor.config.onMobile()) {
-         if(ccr.bottom > pcr.top) {
-           contextMenu.style.top = (ccr.y - (ccr.bottom - pcr.top)) + "px"
-         } else if(ccr.bottom > mcr.top) {
-           contextMenu.style.top = (ccr.y - (ccr.bottom - mcr.top)) + "px"
-         }
-       } else {
-         if(ccr.right > pcr.left && ccr.top < pcr.bottom) { // Overlap with icons.
-           contextMenu.style.left = (ccr.x - (ccr.right - pcr.left)) + "px"
-         } else if(ccr.right > mcr.left) {
-           contextMenu.style.left = (ccr.x - (ccr.right - mcr.left)) + "px"
-         }
-       }
-    }
-    
-    function editor_close() {
-      if(editor.ui.model.visible) {
-        editor.ui.model.visible = false;
-        editor.ui.refresh();
-        //Hide the menu
-        //This is also working fine
-        return false;
-      }
-      return true;
-    }
-    
-    // Mobile only. Experiment not working. We want the back button to close the editor when it is opened.
-    document.addEventListener("deviceready", function onDeviceReady(){
-      document.addEventListener("backbutton", editor_close, false);
-    }, false);
-    
-    if(!editor.config.thaditor && editor.config.editIsFalseButDefaultIsTrue) {
-      // Special case when ?edit=false but the default behavior is edit=true if nothing is set.
-      // Happens only in editor webserver.
-      // It continues to add edit=false to any clicked links.
-      document.onclick = function (e) {
-          var addEditEqualToUrl = function(href, what) {
-            if(href.indexOf("://") == -1) { // Instrument the relative link so that it is edit=true
-              if(href.indexOf("?") >= 0) {
-                if(href.endsWith("?")) {
-                  href = href + "edit=" + what
-                } else {
-                  href = href + "&edit=" + what
-                }
-              } else {
-                href = href + "?edit=" + what
-              }
-            }
-            return href;
-          }
-          e = e ||  window.event;
-          var node = e.target || e.srcElement;
-          while(node) {
-            if(node.tagName == "A" && node.getAttribute("href") && !node.onclick && !node.getAttribute("onclick")) {
-             var newLocation = addEditEqualToUrl(node.getAttribute("href"), "false");
-             console.log(newLocation);
-             window.location.href = newLocation;
-             e.stopPropagation();
-             return false;
-            } else {
-              node = node.parentNode;
-            }
-          }
-        }
-    }
-    window.addEventListener("error", function (message, source, lineno, colno, error) {
-      let msg;
-      if(message instanceof ErrorEvent) {
-        msg = message.message;
-      } else {
-        msg = message + " from " + source + " L" + lineno + "C" + colno;
-      }
-      editor.ui.model.editor_log.push(msg);
-    });
-    
-    function editor_onbeforeunload(e) {
-      e = e || window.event;
-      if(editor.config.onMobile() && editor.ui.model.visible) { // Hack to ask before saving.
-        e.preventDefault();
-        e.returnValue = '';
-        return editor_close();
-      }
-      var askConfirmation = editor.ui.canSave() || editor.ui.model.isSaving || editor.ui.model.disambiguationMenu;
-      const confirmation = 'You have unsaved modifications. Do you still want to exit?';
-      // For IE and Firefox prior to version 4
-      if (e) {
-        if(askConfirmation) {
-          e.returnValue = confirmation;
-        }
-      }
-      if(askConfirmation) {
-        // For Safari
-        return confirmation;
-      } else if(!editor.config.thaditor) { // Send a close message in case this was a file opened from Desktop
-        var xmlhttp = new XMLHttpRequest();
-        xmlhttp.onreadystatechange = editor.ui._internals.handleServerResponse(xmlhttp);
-        xmlhttp.open("POST", location.pathname + location.search, false); // Async
-        xmlhttp.setRequestHeader("close", "true");
-        xmlhttp.send("{\"a\":3}");
-      }
-    } // End of editor_onbeforeunload
-   
-    window.onbeforeunload = editor_onbeforeunload;
-    
-    // Store the current child list of nodes that ignore their children totally
-    (function() {
-      var elems = document.querySelectorAll("*");
-      for(var i = 0; i < elems.length; i++) {
-        if(editor.isIgnoringChildNodes(elems[i])) {
-          editor.storeIgnoredChildNodes(elems[i]);
-        }
-      }
-    })();
-    // TODO: Move the script above in initial script, to be activated when body is loaded.
-    
-    // The thing that makes everything live editable.
-    if(typeof editor.config.canEditPage == "boolean" && editor.config.canEditPage) {
-      document.body.setAttribute("contenteditable", "true");
-    }
-""" -- end of lastEditionScript
 
 defaultMarkdowncss = """img {
   max-width: 100%;
