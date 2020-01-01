@@ -3140,8 +3140,9 @@ editor = typeof editor == "undefined" ? {} : editor;
           return undefined;
         },
         enabled(editor_model) {
-          if(!editor.ui.CSSparser) return false;
           let clickedElem = editor_model.clickedElem;
+          if(typeof clickedElem === "object" && clickedElem.tagName === "IMG") return true;
+          if(!editor.ui.CSSparser) return false;
           let backgroundImgSrc = this.checkForBackgroundImg(clickedElem, this.findURLS);
           const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
           this.backgroundImgSrc = backgroundImgSrc;
