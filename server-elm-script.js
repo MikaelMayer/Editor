@@ -31,8 +31,8 @@ editor = typeof editor == "undefined" ? {} : editor;
   
   // Could be overriden so that Editor could work with a local file system, Git, or anything else.
   _internals.doReadServer = function doReadServer(action, name, onOk, onErr) {
-    if (typeof readServer != "undefined") { // apache_server, everything goes through thaditor
-      return readServer(action, name, onOk, onErr);
+    if (typeof thaditor != "undefined") { // apache_server, everything goes through thaditor
+      return thaditor._internals.readServer(action, name, onOk, onErr);
     } else {
       var request = new XMLHttpRequest();
       var url = "/";
@@ -59,8 +59,8 @@ editor = typeof editor == "undefined" ? {} : editor;
 
   // Asynchronous if onOk is defined and writeServer is defined. and asynchronous and returns result otherwise.
   function doWriteServer(action, name, content, onOk, onErr) {
-    if (typeof writeServer != "undefined") {
-      return writeServer(action, name, content, onOk, onErr);
+    if (typeof thaditor != "undefined") {
+      return thaditor._internals.writeServer(action, name, content, onOk, onErr);
     } else {
       var request = new XMLHttpRequest();
       request.open('POST', url, false);  // `false` makes the request synchronous
@@ -1360,6 +1360,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     // Computes the file at the given URL and display it with Editor.
     // If replaceState it true, the back button will not work.
     editor.navigateTo = function navigateTo(url, replaceState) {
+      url = relativeToAbsolute(url);
       editor.ui.sendNotification("Loading...");
       editor.ui._internals.notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
     }; // editor.navigateTo
@@ -1965,7 +1966,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     icons.closeBottom = editor.svgFromPath("M 9.5,7 9.5,12 20.5,22 30.5,12 30.5,7 20.5,17 Z", true);
     icons.wasteBasket = editor.svgFromPath("m 24,11.5 0,11 m -4,-11 0,11 m -4,-11 0,11 M 17,7 c 0,-4.5 6,-4.5 6,0 m -11,0.5 0,14 c 0,3 1,4 3,4 l 10,0 c 2,0 3,-1 3,-3.5 L 28,8 M 9,7.5 l 22,0");
     icons.plus = editor.svgFromPath("M 18,5 22,5 22,13 30,13 30,17 22,17 22,25 18,25 18,17 10,17 10,13 18,13 Z", true);
-    icons.liveLink = link => `<a class="livelink" href="javascript:if(nothingToLose()) { editor.navigateTo(relativeToAbsolute('${link}')) }">${editor.svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
+    icons.liveLink = link => `<a class="livelink" href="javascript:if(editor.confirmLeaving()) { editor.navigateTo('${link}'); }">${editor.svgFromPath("M 23,10 21,12 10,12 10,23 25,23 25,18 27,16 27,24 26,25 9,25 8,24 8,11 9,10 Z M 21,5 33,5 33,17 31,19 31,9 21,19 19,17 29,7 19,7 Z", true)}</a>`;
     icons.gear = editor.svgFromPath("M 17.88,2.979 14.84,3.938 15.28,7.588 13.52,9.063 10,8 8.529,10.83 11.42,13.1 11.22,15.38 7.979,17.12 8.938,20.16 12.59,19.72 14.06,21.48 13,25 15.83,26.47 18.1,23.58 20.38,23.78 22.12,27.02 25.16,26.06 24.72,22.41 26.48,20.94 30,22 31.47,19.17 28.58,16.9 28.78,14.62 32.02,12.88 31.06,9.84 27.41,10.28 25.94,8.52 27,5 24.17,3.529 21.9,6.42 19.62,6.219 17.88,2.979 Z M 20,11 A 4,4 0 0 1 24,15 4,4 0 0 1 20,19 4,4 0 0 1 16,15 4,4 0 0 1 20,11 Z", true);
     icons.folder = editor.svgFromPath("M 8,3 5,6 5,26 10,10 32,10 32,6 18,6 15,3 8,3 Z M 5,26 10,10 37,10 32,26 Z");
     icons.reload = editor.svgFromPath("M 32.5,8.625 30.25,15.25 24.75,11.125 M 6.75,20 9.875,14.5 15.125,19 M 29.5,18 C 28.25,22.125 24.375,25 20,25 14.5,25 10,20.5 10,15 M 10.5,12 C 11.75,7.875 15.625,5 20,5 25.5,5 30,9.5 30,15");
@@ -2113,7 +2114,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       if(!data) return;
       return undefined;
     }
-    function nothingToLose() {
+    function confirmLeaving() {
       if(editor.ui.canSave()) {
         var x = confirm("There are unsaved modifications. Do you want to discard them?");
         if(x) {
@@ -2128,6 +2129,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       editor.ui.model.redoStack = [];
       return true;
     }
+    editor.confirmLeaving = confirmLeaving;
     //(outer lastEditScript)
 
     var ifAlreadyRunning = typeof editor == "object" && typeof editor.ui === "object" && typeof editor.ui.model === "object";    
@@ -2610,7 +2612,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                               let livelinks = document.querySelectorAll(".livelink");
                               for(let livelink of livelinks) {
                                 let finalLink = livelink.matches("#context-menu *") ?
-                                  `javascript:if(nothingToLose()) { editor.navigateTo(relativeToAbsolute('${linkToEdit(this.value)}')) }` : this.value;
+                                  `javascript:if(editor.confirmLeaving()) { editor.navigateTo('${linkToEdit(this.value)}'); }` : this.value;
                                 livelink.setAttribute("href", finalLink);
                                 livelink.setAttribute("title", "Go to " + this.value);
                               }
@@ -3939,7 +3941,7 @@ editor = typeof editor == "undefined" ? {} : editor;
           add_btn_to_div(retDiv, editor.ui.icons.reload,
             {"class": "tagName", title: "Reload the current page"},
               {onclick: function(event) {
-                if(nothingToLose()) {
+                if(editor.confirmLeaving()) {
                   editor.reload();
                 }
               } }
@@ -3950,7 +3952,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                 let u =  new URL(location.href);
                 u.pathname = u.pathname.replace(/[^\/]*$/, "");
                 u.searchParams.set("ls", "true");
-                if(nothingToLose()) {
+                if(editor.confirmLeaving()) {
                   editor.navigateTo(u.href);
                 }
               }
