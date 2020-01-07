@@ -767,6 +767,7 @@ editor = typeof editor == "undefined" ? {} : editor;
 
   // Hook Editor's core to the web window, add event listeners.
   editor.init = function() {
+    
     /*
       Pretend loading a page using Editor's commands.
       Does not attempt to load Editor's interface.
@@ -780,34 +781,36 @@ editor = typeof editor == "undefined" ? {} : editor;
         }
     };
     
-    // Events handler for copying and pasting, so that we have the least surprise.
-    // TODO: When the document is loaded, inject the interface?
-    document.addEventListener("DOMContentLoaded", function(event) { 
-      document.body.addEventListener("copy", function(event) {
-        const selection = document.getSelection();
-        if(selection.rangeCount) {
-          let range = selection.getRangeAt(0); // Let's put the correct stuff in the clipboardData.
-          let contents = range.cloneContents();
-          let newHtmlData = "";
-          for(let i = 0; i < contents.childNodes.length; i++) {
-            let n = contents.childNodes[i];
-            newHtmlData += n.nodeType == 1 ? n.outerHTML : el("div", {}, n).innerHTML;
-          }
-          event.clipboardData.setData('text/html', newHtmlData);
-          event.preventDefault();
+    var onCopy = function(event) {
+      const selection = document.getSelection();
+      if(selection.rangeCount) {
+        let range = selection.getRangeAt(0); // Let's put the correct stuff in the clipboardData.
+        let contents = range.cloneContents();
+        let newHtmlData = "";
+        for(let i = 0; i < contents.childNodes.length; i++) {
+          let n = contents.childNodes[i];
+          newHtmlData += n.nodeType == 1 ? n.outerHTML : el("div", {}, n).innerHTML;
         }
-      });
-      document.body.addEventListener("paste", function(e) {
-        if(e.clipboardData.types.indexOf("text/html") >= 0) {
-          e.preventDefault();
-          e.stopPropagation();
-          console.log("paste", e);
-          let content = e.clipboardData.getData("text/html").replace(/^\s*<html>\s*<body>\s*(<!--[^\-]*-->\s*)?|(\s*<!--[^\-]*-->)?\s*<\/body>\s*<\/html>\s*$/g, "");
-          console.log("pasted content", content);
-          pasteHtmlAtCaret(content);
-          return true;
-        }
-      }, {capture: true});
+        event.clipboardData.setData('text/html', newHtmlData);
+        event.preventDefault();
+      }
+    };
+    
+    var onPaste = function(e) {
+      if(e.clipboardData.types.indexOf("text/html") >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("paste", e);
+        let content = e.clipboardData.getData("text/html").replace(/^\s*<html>\s*<body>\s*(<!--[^\-]*-->\s*)?|(\s*<!--[^\-]*-->)?\s*<\/body>\s*<\/html>\s*$/g, "");
+        console.log("pasted content", content);
+        pasteHtmlAtCaret(content);
+        return true;
+      }
+    };
+    
+    var onDocLoad = function(event) { 
+      document.body.addEventListener("copy", onCopy);
+      document.body.addEventListener("paste", onPaste, {capture: true});
       
       if(typeof editor.config.canEditPage == "boolean" && !editor.config.canEditPage && !editor.config.varls) {
         document.body.insertBefore(editor.ui._internals.switchEditBox(true), document.body.childNodes[0]);
@@ -847,7 +850,25 @@ editor = typeof editor == "undefined" ? {} : editor;
             }
           }
       } // end if !editor.config.thaditor && editor.config.editIsFalseButDefaultIsTrue
-    }); // onDOMContentLoaded
+    };
+    
+    // Events handler for copying and pasting, so that we have the least surprise.
+    // TODO: When the document is loaded, inject the interface?
+    document.addEventListener("DOMContentLoaded", onDocLoad); // onDOMContentLoaded
+    
+    // Removes all callbacks
+    editor.uninit = function() {
+      window.onpopstate = undefined;
+      document.removeEventListener("DOMContentLoaded", onDocLoad);
+      document.body.removeEventListener("copy", onCopy);
+      document.body.removeEventListener("paste", onPaste);
+      document.body.insertBefore(editor.ui._internals.switchEditBox(true), document.body.childNodes[0]);
+      document.onclick = undefined;
+      if (typeof editor._internals.automaticGhostMarker !== "undefined") {
+        // console.log("automaticGhostMarker.disconnect()");
+        editor._internals.automaticGhostMarker.disconnect();
+      }
+    }
     
     // Immediately start listening to insertions to mark them as ghosts.
     // TODO: In the future, we won't care anymore.
@@ -4773,7 +4794,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       return true;
     } //editor.ui.close 
     
-    editor.ui._internals.onBeforeUnload = function editor_onbeforeunload(e) {
+    editor.ui._internals.onBeforeuninit = function editor_onbeforeuninit(e) {
       e = e || window.event;
       if(editor.config.onMobile() && editor.ui.model.visible) { // Hack to ask before saving.
         e.preventDefault();
@@ -4798,7 +4819,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         xmlhttp.setRequestHeader("close", "true");
         xmlhttp.send("{\"a\":3}");
       }
-    } // End of editor.ui._internals.onBeforeUnload
+    } // End of editor.ui._internals.onBeforeuninit
     
   }; // editor.ui._internals.loadInterface
 
@@ -4806,7 +4827,7 @@ editor = typeof editor == "undefined" ? {} : editor;
   editor.ui.init = function() {
     // Loads all the Editor interfaces.
     editor.ui._internals.loadInterface();
-      
+    
     // Register the output observer
     if (typeof editor.ui.model === "object" && typeof editor.ui.model.outputObserver !== "undefined") {
       editor.ui.model.outputObserver.disconnect();
@@ -4843,10 +4864,10 @@ editor = typeof editor == "undefined" ? {} : editor;
     var dropZone = document.body;
     dropZone.addEventListener('dragover', editor.ui.handleDragOver, false);
     dropZone.addEventListener('drop', editor.ui.handleDroppedFiles, false);
-  
+      
     // Key Shortcuts
     var lastKeyPress = 0;
-    document.addEventListener("keydown", function(e) {
+    var onKeyDown = function(e) {
       var key = e.which || e.keyCode;
       if (e.which == 83 && (e.ctrlKey || e.metaKey)) { // CTRL+S or CMD+S: Save
         if(document.getElementById("savebutton") && document.getElementById("savebutton").onclick) {
@@ -4879,21 +4900,26 @@ editor = typeof editor == "undefined" ? {} : editor;
       //in link select mode, escape on the keyboard can be
       //used to exit the link select mode (same as escape button)
       if(editor.ui.model.linkSelectMode) {
-        if(e.which == 27) { // Escape
+        if(e.which == 27) { // Escape, Esc
           escapeLinkMode();
         }
       } else {
-        if(e.which == 27) { // Escape
-          editor.ui.model.clickedElem = undefined;
-          editor.ui.refresh();
+        if(e.which == 27) { // Escape, Esc.
+          if(editor.ui.model.clickedElem) {
+            editor.ui.model.clickedElem = undefined;
+            editor.ui.refresh();
+          } else {
+            editor.ui.uninit();
+          }
         }
       }
-    });
+    };
+    document.addEventListener("keydown", onKeyDown);
     
     // Events after a key is pressed.
     var bodyeditable = document.querySelector("body");
     var onKeypress = e => {
-      if(e.keyCode==13 && !e.shiftKey){ // [Enter] key
+      if(e.keyCode==13 && !e.shiftKey){ // [Enter] key without SHIFT
           // If we are inside a paragraph, we split the paragraph.
           // If we are directly inside a div, we add a <br> separator.
           // We delete everything between anchorNode and focusNode
@@ -4938,12 +4964,14 @@ editor = typeof editor == "undefined" ? {} : editor;
     document.addEventListener('mousedown', editor.ui._internals.onMouseDown, false);
     document.addEventListener('click', editor.ui._internals.onClick, false);
     
-    // Mobile only. Experiment not working. We want the back button to close the editor when it is opened.
-    document.addEventListener("deviceready", function onDeviceReady(){
-      document.addEventListener("backbutton", editor.ui.close, false);
-    }, false);
     
-    window.addEventListener("error", function (message, source, lineno, colno, error) {
+    var onDeviceReady = function onDeviceReady(){
+      document.addEventListener("backbutton", editor.ui.close, false);
+    };
+    // Mobile only. Experiment not working. We want the back button to close the editor when it is opened.
+    document.addEventListener("deviceready", onDeviceReady, false);
+
+    var onError = function (message, source, lineno, colno, error) {
       let msg;
       if(message instanceof ErrorEvent) {
         msg = message.message;
@@ -4951,9 +4979,43 @@ editor = typeof editor == "undefined" ? {} : editor;
         msg = message + " from " + source + " L" + lineno + "C" + colno;
       }
       editor.ui.model.editor_log.push(msg);
-    });
+    };
+    window.addEventListener("error", onError);
     
-    window.onbeforeunload = editor.ui._internals.onBeforeUnload;
+    window.onbeforeuninit = editor.ui._internals.onBeforeuninit;
+    
+    editor.ui.uninit = function() {
+      if(!editor.confirmLeaving()) return;
+      if(editor.ui._internals.contextMenu) {
+        editor.ui._internals.contextMenu.remove();
+      }
+      if(editor.ui._internals.modifyMenu) {
+        editor.ui._internals.modifyMenu.remove();
+      }
+      // Register the output observer
+      if (typeof editor.ui.model === "object" && typeof editor.ui.model.outputObserver !== "undefined") {
+        editor.ui.model.outputObserver.disconnect();
+      }
+      window.onpopstate = undefined;
+      document.removeEventListener("selectionchange", editor.ui.fixSelection);
+      dropZone.removeEventListener('dragover', editor.ui.handleDragOver);
+      dropZone.removeEventListener('drop', editor.ui.handleDroppedFiles);
+      document.removeEventListener("keydown", onKeyDown);
+      bodyeditable.removeEventListener("keypress", onKeypress);
+      
+      document.removeEventListener('mousedown', editor.ui._internals.onMouseDown);
+      document.removeEventListener('click', editor.ui._internals.onClick);
+      
+        // Mobile only. Experiment not working. We want the back button to close the editor when it is opened.
+      document.removeEventListener("backbutton", editor.ui.close);
+      document.removeEventListener("deviceready", onDeviceReady);
+      window.removeEventListener("error", onError);
+      
+      window.onbeforeuninit = undefined;
+      
+      document.body.removeAttribute("contenteditable");
+      document.body.insertBefore(editor.ui._internals.switchEditBox(true), document.body.childNodes[0]);
+    };
     
     // Store the current child list of nodes that ignore their children totally
     (function() {
