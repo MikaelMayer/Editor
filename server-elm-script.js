@@ -1,6 +1,5 @@
 editor = typeof editor == "undefined" ? {} : editor;
 
- // TODO: Put the entire Editor interface inside, so that we can externalize the script.
 (function(editor) {
   // Default configuration.
   editor.config = typeof editor.config == "undefined" ? {} : editor.config;
@@ -714,7 +713,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       let prev = toEdit ? "=false" : "(=true|=?$|=?(?=&))",
           next = toEdit ? ""  : "=false",
           icon = toEdit ? editor.svgFromPath("M 30.85,10.65 19.56,21.95 19.56,21.95 16.96,19.34 28.25,8.05 30.85,10.65 30.85,10.65 Z M 31.56,9.94 33.29,8.21 C 33.68,7.82 33.67,7.19 33.28,6.8 L 32.1,5.62 C 31.71,5.23 31.08,5.22 30.68,5.62 L 28.96,7.34 31.56,9.94 31.56,9.94 Z M 16.31,20.11 15.67,23.22 18.81,22.61 16.31,20.11 16.31,20.11 16.31,20.11 Z M 26.41,16.5 26.41,26.5 C 26.41,27.61 25.51,28.5 24.41,28.5 L 9.4,28.5 C 8.3,28.5 7.41,27.6 7.41,26.49 L 7.41,3.51 C 7.41,2.4 8.31,1.5 9.41,1.5 L 19.41,1.5 19.41,7.5 C 19.41,8.61 20.3,9.5 21.41,9.5 L 25.41,9.5 29.99,4.92 C 30.78,4.13 32.04,4.13 32.82,4.91 L 34,6.09 C 34.77,6.87 34.77,8.14 33.99,8.92 L 26.41,16.5 26.41,16.5 Z M 20.41,1.5 20.41,7.5 C 20.41,8.05 20.86,8.5 21.4,8.5 L 26.41,8.5 20.41,1.5 20.41,1.5 Z", true, 40, 40)  : "x",
-         title = toEdit ? "Reload the page in edit mode" : "Reload the page without edit mode";
+         title = toEdit ? "Edit this page" : "Preview this page";
       return el("div#editbox.editor-interface", {title: title}, [
         el("style.editor-interface", {}, `
         #editbox {
