@@ -44,7 +44,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         return request.responseText || "";
       } else {
         console.log("error while reading " + url, request);
-        return "";
+        return undefined;
       }
     }
   };
@@ -752,6 +752,9 @@ editor = typeof editor == "undefined" ? {} : editor;
                editor.ui.init();
                document.body.setAttribute("contenteditable", "true");
                document.querySelector("#editbox").remove();
+               if(typeof editor.config.onInit == "function") {
+                 editor.config.onInit()
+               }
              } else {
                location.search = location.search.startsWith("?") ? location.search + "&" + "edit" + next : "?edit" + next
              }
@@ -1400,7 +1403,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               let linkNodeOriginalHref = linkNode.getAttribute("ghost-href");
               let trueTempPath = removeTimestamp(linkNodeTmpHref); // This one is absolute normally
               let originalAbsPath = relativeToAbsolute(removeTimestamp(linkNodeOriginalHref));
-              let newValue = (await editor.getServer("read", trueTempPath)).slice(1);
+              let newValue = (await editor.getServer("read", trueTempPath)) || "";
               await editor.postServer("write", originalAbsPath, newValue);
               linkNode.cachedContent = newValue;
               linkNode.tmpCachedContent = newValue;
@@ -2188,14 +2191,14 @@ editor = typeof editor == "undefined" ? {} : editor;
       let oldHref = hasGhostHref ? ghostHref : linkNode.getAttribute("href")
       let CSSFilePath = relativeToAbsolute(removeTimestamp(oldHref));
       let currentContent = typeof linkNode.cachedContent === "string" ? linkNode.cachedContent :
-                               (await editor.getServer("read", CSSFilePath)).slice(1);
+                               await editor.getServer("read", CSSFilePath);
       if(typeof linkNode.cachedContent !== "string") {
         linkNode.cachedContent = currentContent;
       }
       if(hasGhostHref) { // Proxied
         console.log("Was proxied");
         let tmpCachedContent = typeof linkNode.tmpCachedContent == "string" ? linkNode.tmpCachedContent :
-                               (await editor.getServer("read", linkNode.getAttribute("href"))).slice(1);
+                               await editor.getServer("read", linkNode.getAttribute("href"));
         if(typeof newValue === "function") {
           newValue = newValue(tmpCachedContent);
         }
@@ -2724,7 +2727,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                 if(!(linkOrStyleNode.className && linkOrStyleNode.className === "editor-interface") && (CSSFilePath.indexOf("http") < 0)) {
                   let CSSvalue = typeof linkOrStyleNode.tmpCachedContent === "string" ?
                         linkOrStyleNode.tmpCachedContent :
-                        (await editor.getServer("read", CSSFilePath)).slice(1);
+                        await editor.getServer("read", CSSFilePath);
                   rawCSS.push({text: CSSvalue, tag: linkOrStyleNode});
                 }
               }
@@ -2847,7 +2850,7 @@ editor = typeof editor == "undefined" ? {} : editor;
             if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("rel") === "stylesheet" && clickedElem.getAttribute("href")) {
               let oldHref = clickedElem.getAttribute("href"); // Even if it's a temporary href
               let CSSFilePath = relativeToAbsolute(oldHref);
-              let CSSvalue = editor._internals.doReadServer("read", CSSFilePath).slice(1);
+              let CSSvalue = editor._internals.doReadServer("read", CSSFilePath);
               CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
               CSSarea.append(
                 el("div", {"class": "CSS-modify-unit"}, [
@@ -4155,7 +4158,6 @@ editor = typeof editor == "undefined" ? {} : editor;
         }
       });
       let dh = editor._internals.doReadServer("read", source + "/.thaditor_meta");
-      dh = dh.slice(1, dh.length);
       let draft_history = (dh == "" ? undefined : JSON.parse(dh));
       const get_date_meta = () => (new Date).toString();
       if (draft_history == undefined) {

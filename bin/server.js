@@ -489,9 +489,10 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
         } else if($action == "read") {
           response.statusCode = 200;
           if(fs.existsSync($name)) {
-            response.end("1" + fs.readFileSync($name));
+            response.end(fs.readFileSync($name));
           } else {
-            response.end("0");
+            response.statusCode = 404;
+            response.end("");
           }
           return;
         } else if ($action=="fullListDir") {
