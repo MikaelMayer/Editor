@@ -1,11 +1,12 @@
 editor = typeof editor == "undefined" ? {} : editor;
+
  // TODO: Put the entire Editor interface inside, so that we can externalize the script.
 (function(editor) {
   // Default configuration.
   editor.config = typeof editor.config == "undefined" ? {} : editor.config;
   editor.config = {
     EDITOR_VERSION: 0,
-    path: location.patname,
+    path: location.pathname,
     varedit: location.search.match(/(^\?|&)edit(?:=true)?(&|$)/),
     varls: location.search.match(/(^\?|&)ls(?:=true)?(&|$)/),
     askQuestions: location.search.match(/(^\?|&)question(?:=true)?(&|$)/),
@@ -98,7 +99,6 @@ editor = typeof editor == "undefined" ? {} : editor;
     if(editor.config.thaditor) { // Ask the worker to recompute the page
       thaditor.do({action:"sendRequest",
         toSend: "{\"a\":1}",
-        server_content: SERVER_CONTENT,
         loc: location.pathname + location.search,
         requestHeaders: {reload: true, url: url},
         what: undefined}).then(data => {
@@ -1331,8 +1331,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                     aq:editor.ui.model.askQuestions,
                     loc: location.pathname + location.search,
                     requestHeaders: requestHeaders,
-                    what: what,
-                    server_content: (typeof SERVER_CONTENT == "undefined" ? undefined : SERVER_CONTENT)}
+                    what: what}
         ).then(editor.ui._internals.handleSendRequestFinish);
       } else {
         var xmlhttp = new XMLHttpRequest();
