@@ -1031,7 +1031,9 @@ main =
   --updatecheckpoint "main" <|
   case recoveredEvaluatedPage of
   ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
-    List.filter (case of [_, _] -> False; _ -> True) |> -- We remove text nodes outside of body and head
+    (let removeAfterBody l = case l of (["body", _, _] as head) :: _ -> [head]; a :: b -> a :: removeAfterBody b
+         removeBeforeHead l = case l of ["head", _, _] :: _ -> l; a :: b -> removeBeforeHead b; _ -> l in
+     removeBeforeHead >> removeAfterBody) |>
     List.mapWithReverse identity (case of
       ["head", headattrs, headChildren] ->
         let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
