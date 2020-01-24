@@ -1676,10 +1676,12 @@ editor = typeof editor == "undefined" ? {} : editor;
                 }
               }
             }
+            // The next sibling of the removed node
+            let ns = undoElem[k].nextSibling && undoElem[k].nextSibling.isConnected ? undoElem[k].nextSibling : quicker(undoElem[k].nextSibling);
+            // The previous sibling of the removed node
+            let ps = undoElem[k].previousSibling && undoElem[k].previousSibling.isConnected ? undoElem[k].previousSibling : quicker(undoElem[k].previousSibling);
+            // Let's find these siblings to re-add the node.
             for(j = 0; j < kidNodes.length; j++) {  
-              let ns = undoElem[k].nextSibling && undoElem[k].nextSibling.isConnected ? undoElem[k].nextSibling : quicker(undoElem[k].nextSibling);
-              let ps = undoElem[k].previousSibling && undoElem[k].previousSibling.isConnected ? undoElem[k].previousSibling : quicker(undoElem[k].previousSibling);
-
               let knode = kidNodes.item(j);
               let knode_may = quicker(knode);
               //if(kidNodes.item(j) === undoElem[k].nextSibling && kidNodes.item(j).previousSibling === undoElem[k].previousSibling) {
@@ -1699,6 +1701,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                     target.appendChild(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may);
                   }
                 }
+                break;
               }
             }
           }
@@ -2589,8 +2592,8 @@ editor = typeof editor == "undefined" ? {} : editor;
                         } else {
                           newel = el(document.querySelector("#newTagName").value);
                           let elements = clickedElem.childNodes;
-                          while(elements.length) {
-                            newel.append(elements[0]);
+                          for(let i = 0; i < elements.length; i++) {
+                            newel.append(elements[i].cloneNode(true));
                           }
                           for(let i = 0; i < clickedElem.attributes.length; i++) {
                             newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
