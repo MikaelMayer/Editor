@@ -533,20 +533,25 @@ editor = typeof editor == "undefined" ? {} : editor;
       return ["TEXT", n.textContent];
     } else if(n.nodeType == 8) {
       return ["COMMENT", n.textContent];
-    } else {
+    } else if(n.nodeType === 10) {
+      return ["COMMENT", "DOCTYPE " + n.name]
+    } {
       var attributes = [];
-      var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(n);
-      var isIgnoredAttributeKey =  isIgnoredAttributeKeyFromNode(n); // TODO recover ignored value
-      for(var i = 0; i < n.attributes.length; i++) {
-        var key = n.attributes[i].name;
-        var ignored = isIgnoredAttributeKey(key);
-        if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key) || ignored) {
-          var value = ignored ? ignoredAttributeValue(n, key) : n.attributes[i].value;
-          if(typeof value == "undefined") continue;
-          if(key == "style") {
-            value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
+      var tagName = n.nodeType === document.DOCUMENT_NODE ? "#document" : n.tagName.toLowerCase();
+      if(n.nodeType == 1) {
+        var isSpecificGhostAttributeKey = isSpecificGhostAttributeKeyFromNode(n);
+        var isIgnoredAttributeKey =  isIgnoredAttributeKeyFromNode(n); // TODO recover ignored value
+        for(var i = 0; i < n.attributes.length; i++) {
+          var key = n.attributes[i].name;
+          var ignored = isIgnoredAttributeKey(key);
+          if(!isGhostAttributeKey(key) && !isSpecificGhostAttributeKey(key) || ignored) {
+            var value = ignored ? ignoredAttributeValue(n, key) : n.attributes[i].value;
+            if(typeof value == "undefined") continue;
+            if(key == "style") {
+              value = value.split(";").map(x => x.split(":")).filter(x => x.length == 2)
+            }
+            attributes.push([key, value]);
           }
-          attributes.push([key, value]);
         }
       }
       var children = [];
@@ -554,7 +559,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         children = n.__editor__.ignoredChildNodes;
       } else {
         var childNodes = n.childNodes;
-        if(n.tagName.toLowerCase() === "noscript" && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
+        if(tagName.toLowerCase() === "noscript" && n.childNodes.length === 1 && n.childNodes[0].nodeType === 3) {
           // We'll recover the associated HTML node
           childNodes = el("div", {}, [], {innerHTML: n.childNodes[0].textContent, parentNode: n}).childNodes;
         }
@@ -566,7 +571,7 @@ editor = typeof editor == "undefined" ? {} : editor;
           }
         }
       }
-      return [n.tagName.toLowerCase(), attributes, children];
+      return [tagName, attributes, children];
     }
   }
   editor.domNodeToNativeValue = domNodeToNativeValue;
@@ -1003,7 +1008,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     }
     editor.ui.refresh();
     editor.ui.sendNotification("Saving...");
-    const toSend = JSON.stringify(editor.domNodeToNativeValue(document.body.parentElement));
+    const toSend = JSON.stringify(editor.domNodeToNativeValue(document));
     editor.ui._internals.notifyServer({"question": editor.ui.model.askQuestions ? "true" : "false"}, toSend, "Save")
   } //editor.saveDOM
   

@@ -81,6 +81,7 @@ varhydeNotDisabled = boolVar "hyde" True
 defaultVarEdit = listDict.get "edit" defaultOptions |> Maybe.withDefault False
 varproduction = listDict.get "production" defaultOptions |> Maybe.withDefault (freeze False)
 iscloseable = listDict.get "closeable" defaultOptions |> Maybe.withDefault (freeze False)
+varFast = boolVar "fast" False
 
 userpermissions = {pageowner= True, admin= varadmin}
 permissionToCreate = userpermissions.admin
@@ -356,12 +357,12 @@ phpToElmFinal path string =
  - Interprets markdown pages and evaluate them as raw html with CSS
  - Directly evaluate sources from elm/leo pages or folders
 ----------------------------------------------------------------------------}
-evaluatedPage: Result String Html
-evaluatedPage = 
+evaluatedPage: Result String (List HtmlNode)
+evaluatedPage = let _ = Debug.log "evaluatedPage" () in
   if canEvaluate /= "true" then
-    Ok <html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>
+    Ok [<html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>]
   else if isTextFile path || varraw then
-    Ok <html style="height:100%;">
+    Ok [<html style="height:100%;">
         <head>
         <title>@path</title>
         <style type="text/css" media="screen">
@@ -437,7 +438,7 @@ evaluatedPage =
         onAceLoaded(1)();
         </script>
         </body>
-        </html>
+        </html>]
   else 
   let isPhp = Regex.matchIn """\.php$""" path in
   let isHtml = Regex.matchIn """\.html?$""" path in
@@ -451,20 +452,10 @@ evaluatedPage =
           "</pre></body></html>"
         Ok sourcecontent -> applyDotEditor sourcecontent
     in
-    let interpretableData =
-          case Regex.extract """^\s*<!DOCTYPE(?:(?!>)[\s\S])*>([\s\S]*)$""" sourcecontent of
-            Just [interpretableHtml] -> serverOwned "begin raw tag" "<raw>" + interpretableHtml + serverOwned "end raw tag" "</raw>"
-            _ ->
-          case Regex.extract """^[\s\S]*?(<html\b[\s\S]*)$""" sourcecontent of
-            Just [interpretableHtml] -> serverOwned "begin raw tag" "<raw>" + interpretableHtml + serverOwned "end raw tag" "</raw>"
-            _ -> serverOwned "raw display of html - beginning" """<raw><html><head></head><body>""" + sourcecontent + serverOwned "raw display of html - end" """</body></html></raw>"""
-    in
-    __evaluate__ preludeEnv interpretableData
-    |> Result.andThen (case of
-      ["raw", _, nodes] ->
-        case List.find (case of ["html", _, _] as n -> True; _ -> False) nodes of
-          Just n -> Ok n
-          Nothing -> Err """No top-level HTML node found""" 
+    let interpretableData = serverOwned "begin raw tag" "<raw>" + sourcecontent + serverOwned "end raw tag" "</raw>" in
+    __evaluate__ preludeEnv interpretableData |>
+    Result.andThen (case of
+      ["raw", _, nodes] -> Ok nodes
       result -> Err """Html interpretation error: The interpretation of raw html did not work but produced @result"""
     )
   else if Regex.matchIn """\.md$""" path then
@@ -472,11 +463,14 @@ evaluatedPage =
       case Html.parseViaEval markdownized of
         x -> 
           let markdownstyle = fs.read "markdown.css" |> Maybe.withDefaultReplace defaultMarkdowncss in
-          Ok <html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>
+          Ok [<html><head></head><body><style title="If you modify me, I'll create a custom markdwon.css that will override the default CSS for markdown rendering">@markdownstyle</style><div class="wrapper">@x</div></body></html>]
   else if Regex.matchIn """\.(elm|leo)$""" path then
-    __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent
+    let res = __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent in
+    case res of
+      ["html", _, _] -> [res]
+      _ -> res
   else if folderView then
-    Ok <html><head>
+    Ok [<html><head>
       <script>
         var ispressed = false;
         var whichOne = "";
@@ -979,25 +973,63 @@ evaluatedPage =
       }
     window.addEventListener('drop', handleDrop, false);
     window.addEventListener('dragover', (e) => e.preventDefault(), false);
-    </script></body></html>
+    </script></body></html>]
   else 
-    Ok <html><head></head><body>
+    Ok [<html><head></head><body>
       <p>Editor cannot open file because it does not recognize the extension.</p>
       <p>As an alternative, you can open the file in raw mode by appending <code>?raw</code> to it.</p>
       <button onclick="""
         location.search = location.search + (location.search == "" ? "?raw" : "&raw");
       """>Open @path in raw mode</button>
-    </body></html>  
+    </body></html>]
 
 {---------------------------------------------------------------------------
  Recovers from evaluation errors
+ Recovers if page does not contain an html tag or a body tag
 ----------------------------------------------------------------------------}
-recoveredEvaluatedPage: Html
+recoveredEvaluatedPage: List HtmlNode
 recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
+  let _ = Debug.log "recoveredEvaluatedPage" () in
   case evaluatedPage of
   Err msg -> serverOwned "Error Report" <|
-    <html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><button onclick="editor.reload();" title="Reload the current page">Reload</button><pre style="white-space:pre-wrap">@msg</pre></div></body></html>
-  Ok page -> page
+    [<html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><button onclick="editor.reload();" title="Reload the current page">Reload</button><pre style="white-space:pre-wrap">@msg</pre></div></body></html>]
+  Ok nodes ->
+    let hasChildTag theTag nodes = List.any (case of [tag, _, _] -> tag == theTag; _ -> False) nodes
+        recoverHtmlChildren nodes =
+          let hasHead = hasChildTag "head" nodes
+              hasBody = hasChildTag "body" nodes
+          in
+          if hasHead && hasBody then nodes else
+          let startBodyIndex = List.indexWhere (
+                 case of
+                   [tag, _, _] -> tag /= "title" && tag /= "link" && tag /= "meta" && tag /= "script" && tag /= "style" && tag /= "base" && tag /= "isindex" && tag /= "nextid" && tag /= "range" && tag /= "head"
+                   ["TEXT", x] -> not (Regex.match """^\s*$""" x)
+                   ["COMMENT", _] -> False
+               ) nodes in
+          case List.split startBodyIndex nodes of
+              ((["head", _, _] as head)::whitespace, bodyElems) -> head :: (whitespace ++ [["body", [], bodyElems]])
+              (headElems, (["body", _, _] as body) :: whitespace) -> [["head", [], headElems], body]
+              (headElems, bodyElems) -> [["head", [], headElems], ["body", [], bodyElems]]
+        recoverHtml nodes =  nodes |> List.mapWithReverse identity (case of
+          ["html", attrs, children] -> ["html", attrs, recoverHtmlChildren children]
+          x -> x
+        )
+    in
+    if hasChildTag "html" nodes then
+      recoverHtml nodes
+    else -- We need to wrap nodes with html, title, links, consecutive style and script and empty text nodes
+      let aux nodes = case nodes of
+        (["TEXT", x] as head) :: rest ->
+          if Regex.match """^\s*$""" x then
+            head :: aux rest
+          else recoverHtml [["html", [], nodes]]
+        (["COMMENT", x] as head) :: rest ->
+          head :: aux rest
+        ([tag, _, _] as head) :: rest ->
+           if tag == "!DOCTYPE" then
+             head :: aux rest
+           else recoverHtml [["html", [], nodes]]
+      in aux nodes
 
 jsEnabled = boolVar "js" True
 
@@ -1026,27 +1058,31 @@ prependGhosts ghostElems = update.lens {
  - Adds the initial scripts
  - Append the edition scripts so that we can modify the page even without edit mode (that's dangerous, should we avoid this?)
 ----------------------------------------------------------------------------}
-main: Html
-main = 
+main: List HtmlNode
+main =
   --updatecheckpoint "main" <|
-  case recoveredEvaluatedPage of
-  ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
-    (let removeAfterBody l = case l of (["body", _, _] as head) :: _ -> [head]; a :: b -> a :: removeAfterBody b
-         removeBeforeHead l = case l of ["head", _, _] :: _ -> l; a :: b -> removeBeforeHead b; _ -> l in
-     removeBeforeHead >> removeAfterBody) |>
-    List.mapWithReverse identity (case of
-      ["head", headattrs, headChildren] ->
-        let headChildren = if jsEnabled then headChildren else List.map removeJS headChildren in
-        ["head", headattrs,
-           insertThereInstead identity True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
-           serverOwned "initial script and style " initialScript ++ headChildren]
-      ["body", bodyattrs, bodyChildren] ->
-        let bodyChildren = if jsEnabled then bodyChildren else List.map removeJS bodyChildren in
-        ["body", bodyattrs, bodyChildren]
-      x -> x -- anything else?
-    )]
-  x-> <html><head></head><body>Not a valid html page: @("""@x""")</body></html>
-  --|> Update.debug "main"
+  let filteredMainPage = List.filter (case of -- Remove text nodes from top-level document.
+        ["TEXT", _] -> False
+        _ -> True
+      ) recoveredEvaluatedPage in
+  List.mapWithReverse identity (case of
+    ["html", htmlattrs, htmlchildren] -> ["html", htmlattrs, htmlchildren |>
+      (let removeAfterBody l = case l of (["body", _, _] as head) :: _ -> [head]; a :: b -> a :: removeAfterBody b
+           removeBeforeHead l = case l of ["head", _, _] :: _ -> l; a :: b -> removeBeforeHead b; _ -> l in
+       removeBeforeHead >> removeAfterBody) |>
+      List.mapWithReverse identity (case of
+        ["head", headattrs, headChildren] ->
+          let headChildren =  if jsEnabled then headChildren else List.map removeJS headChildren in
+          ["head", headattrs, if varFast then headChildren else
+             insertThereInstead identity True headChildren ++  -- All new nodes added to the beginning of the head are added back to headChildren.
+             serverOwned "initial script and style " initialScript ++ headChildren]
+        ["body", bodyattrs, bodyChildren] ->
+          let bodyChildren = if jsEnabled then bodyChildren else List.map removeJS bodyChildren in
+          ["body", bodyattrs, bodyChildren]
+        x -> x -- anything else, i.e. comments or text nodes between end of head and start of body.
+      )]
+    x -> x
+  ) filteredMainPage --|> Update.debug "main"
 
 -- Returns an empty list. If elements are inserted, inserts them in the given list instead.
 insertThereInstead onInsert atBeginning list =
@@ -1139,4 +1175,4 @@ h4 {
   background-color: white;
 }"""
 
-main
+["#document", [], main]

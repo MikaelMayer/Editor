@@ -116,9 +116,9 @@ const sns = require("sketch-n-sketch");
 function evaluateToHtml(path, env, serverFileContent) {
   var result = sns.objEnv.string.evaluateWithoutCache(env)(serverFileContent);
   if(result.ctor == "Ok") {
-    var out = sns.valToHTMLSource(result._0)
+    var out = sns.valToHTMLSource(result._0);
     if(out.ctor == "Ok") {
-      return out;
+      return {ctor: "Ok", out._0.replace(/^<#document>|<\/#document>$/g, "")};
     } else {
       return { ctor: "Err", _0: "Error while converting the result to HTML source file: " + out._0}
     }
