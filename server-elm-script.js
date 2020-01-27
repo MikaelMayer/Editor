@@ -4,7 +4,7 @@ editor = typeof editor == "undefined" ? {} : editor;
   // Default configuration.
   editor.config = typeof editor.config == "undefined" ? {} : editor.config;
   editor.config = {
-    EDITOR_VERSION: 0,
+    EDITOR_VERSION: 1,
     path: location.pathname,
     varedit: location.search.match(/(^\?|&)edit(?:=true)?(&|$)/),
     varls: location.search.match(/(^\?|&)ls(?:=true)?(&|$)/),
@@ -2330,14 +2330,14 @@ editor = typeof editor == "undefined" ? {} : editor;
       let add_btn_to_div = (div, innerHTML, attributes, properties) => {
         div.append(createButton(innerHTML, attributes, properties));
       };
-      if(!(editor.config.EDITOR_VERSION & 1)) {
-        if(typeof simple_editor_interface !== "undefined") {
-          editor.ui.model.interfaces.push(simple_editor_interface);
+      if(typeof simple_editor_interface === "object") {
+        let x = simple_editor_interface[editor.config.EDITOR_VERSION];
+        if(typeof x === "object") {
+          editor.ui.model.interfaces.push(x);
+          if(x.alone) {
+            return;
+          }
         }
-        return;
-      }
-      if(typeof simple_editor_interface !== "undefined" && editor.config.EDITOR_VERSION & 16) {
-        editor.ui.model.interfaces.push(simple_editor_interface);
       }
       editor.ui.model.interfaces.push({
         title: "Selected Element Tree",
