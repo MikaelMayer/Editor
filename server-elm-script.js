@@ -1490,6 +1490,13 @@ editor = typeof editor == "undefined" ? {} : editor;
       }     
     }; //editor.ui._internals.makeMutationUndoable
     
+    function isDescendantOf(a, b) {
+      while(a && a != b) {
+        a = a.parentElement;
+      }
+      return a == b;
+    }
+    
     editor.ui._internals.handleMutations = function handleMutations(mutations, observer) {
       var onlyGhosts = true;
       for(var i = 0; i < mutations.length; i++) {
@@ -1514,13 +1521,15 @@ editor = typeof editor == "undefined" ? {} : editor;
             onlyGhosts = false;
             editor.ui._internals.makeMutationUndoable(mutation);
             // Please do not comment out this line until we get proper clever save.
-            console.log("Attribute is not ghost", mutation);
-            console.log("TIP: Use this script if you want to mark it as ghost:");
-            let sel = getShortestUniqueSelector(mutation.target);
-            if(typeof mutation.oldValue === "undefined") {
-              console.log("editor.ghostAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
-            } else {
-              console.log("editor.ignoredAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
+            if(!editor.ui.model.userIsModifying) {
+              console.log("Attribute is not ghost so the change will be saved", mutation);
+              console.log("TIP: Use this script if you want to mark it as ghost:");
+              let sel = getShortestUniqueSelector(mutation.target);
+              if(typeof mutation.oldValue === "undefined") {
+                console.log("editor.ghostAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
+              } else {
+                console.log("editor.ignoredAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
+              }
             }
           }
         } else if(mutation.type == "childList") {
@@ -1529,15 +1538,17 @@ editor = typeof editor == "undefined" ? {} : editor;
               if(!editor.hasGhostAncestor(mutation.addedNodes[j]) && !editor.hasIgnoringAncestor(mutation.addedNodes[j])) {
                 onlyGhosts = false;
                 editor.ui._internals.makeMutationUndoable(mutation);
-                // Please do not comment out this line until we get proper clever save.
-                console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
-                console.log("TIP: Ignore node and siblings with this script:");
-                let sel = getShortestUniqueSelector(mutation.target);
-                console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
-                if(mutation.addedNodes[j].nodeType === 1) {
-                  console.log("TIP: Mark this element as ghost:");
-                  sel = getShortestUniqueSelector(mutation.addedNodes[j]);
-                  console.log("editor.ghostNodes.push(editor.matches('"+sel+"'));");
+                if(!editor.ui.model.userIsModifying) {
+                  // Please do not comment out this line until we get proper clever save.
+                  console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
+                  console.log("TIP: Ignore node and siblings with this script:");
+                  let sel = getShortestUniqueSelector(mutation.target);
+                  console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
+                  if(mutation.addedNodes[j].nodeType === 1) {
+                    console.log("TIP: Mark this element as ghost:");
+                    sel = getShortestUniqueSelector(mutation.addedNodes[j]);
+                    console.log("editor.ghostNodes.push(editor.matches('"+sel+"'));");
+                  }
                 }
               }
             }
@@ -1545,19 +1556,31 @@ editor = typeof editor == "undefined" ? {} : editor;
               if(!editor.isGhostNode(mutation.removedNodes[j]) && !editor.isIgnoringChildNodes(mutation.target) && !editor.hasIgnoringAncestor(mutation.target)) {
                 onlyGhosts = false;
                 editor.ui._internals.makeMutationUndoable(mutation);
-                // Please do not comment out this line until we get proper clever save.
-                console.log(`Removed node ${j} was not a ghost`, mutation);
-                console.log("TIP: Mark this element as ghost:");
-                let sel = getShortestUniqueSelector(mutation.target);
-                console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
+                if(!editor.ui.model.userIsModifying) {
+                  // Please do not comment out this line until we get proper clever save.
+                  console.log(`Removed node ${j} was not a ghost`, mutation);
+                  console.log("TIP: Mark this element as ghost:");
+                  let sel = getShortestUniqueSelector(mutation.target);
+                  console.log("editor.ignoredChildNodes.push(editor.matches('"+sel+"'));");
+                }
               }
             }
+          }
+        } else if(mutation.type === "characterData") {
+          onlyGhosts = false;
+          editor.ui._internals.makeMutationUndoable(mutation);
+          let textOfSelectedElement = editor.ui.model.clickedElem && isDescendantOf(mutation.target, editor.ui.model.clickedElem);
+          if(!editor.ui.model.userIsModifying && !textOfSelectedElement) {
+            // Please do not comment out this line until we get proper clever save.
+            console.log("Text modified not by user", mutation);
           }
         } else {
           onlyGhosts = false;
           editor.ui._internals.makeMutationUndoable(mutation);
-          // Please do not comment out this line until we get proper clever save.
-          console.log("mutations other than attributes, childList and characterData are not ghosts", mutations);
+          if(!editor.ui.model.userIsModifying) {
+            // Please do not comment out this line until we get proper clever save.
+            console.log("mutations other than attributes, childList and characterData are not ghosts", mutation);
+          }
         }
       }
       if(onlyGhosts) {
@@ -1919,7 +1942,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       }
       
       var clickedElem = event.target;
-      console.log("click event", event.target);
+      //console.log("click event", event.target);
       var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
       var matchOptions = function(clickedElem) {
         var result = true;
@@ -2194,7 +2217,15 @@ editor = typeof editor == "undefined" ? {} : editor;
       path: editor.config.path,
       version : verz,
       interfaces: ifAlreadyRunning ? editor.ui.model.interfaces : [],
-      disambiguationMenu: ifAlreadyRunning ? editor.ui.model.disambiguationMenu : undefined
+      disambiguationMenu: ifAlreadyRunning ? editor.ui.model.disambiguationMenu : undefined,
+      userIsModifying: false // Set to true only when user is clearly modifying something
+    }
+    
+    // Wraps a portion of code so that it and its mutation observers are executed with the flag editor.ui.model.userIsModifying set to true.
+    editor.userModifies = function userModifies(callback) {
+      editor.ui.model.userIsModifying = true;
+      callback();
+      setTimeout(() => editor.ui.model.userIsModifying = false, 0); // Will be invoked after mutation handlers.
     }
     
     // newValue can be a function, in which it should be applied on the current content.
@@ -2581,28 +2612,30 @@ editor = typeof editor == "undefined" ? {} : editor;
                     }
                   }),
                   el("input", {"type": "button", id: "applyNewTagName", value: "Set", title: "Apply new tag name"}, [], {onclick() {
-                        let newTagName = document.querySelector("#newTagName").value;
-                        let newel;
-                        if(newTagName === "") {
-                          while(clickedElem.childNodes.length) {
-                            newel = clickedElem.childNodes[0];
+                        editor.userModifies(() => {
+                          let newTagName = document.querySelector("#newTagName").value;
+                          let newel;
+                          if(newTagName === "") {
+                            while(clickedElem.childNodes.length) {
+                              newel = clickedElem.childNodes[0];
+                              clickedElem.parentElement.insertBefore(newel, clickedElem);
+                            }
+                            clickedElem.remove();
+                          } else {
+                            newel = el(document.querySelector("#newTagName").value);
+                            let elements = clickedElem.childNodes;
+                            for(let i = 0; i < elements.length; i++) {
+                              newel.append(elements[i].cloneNode(true));
+                            }
+                            for(let i = 0; i < clickedElem.attributes.length; i++) {
+                              newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
+                            }
                             clickedElem.parentElement.insertBefore(newel, clickedElem);
+                            clickedElem.remove();
                           }
-                          clickedElem.remove();
-                        } else {
-                          newel = el(document.querySelector("#newTagName").value);
-                          let elements = clickedElem.childNodes;
-                          for(let i = 0; i < elements.length; i++) {
-                            newel.append(elements[i].cloneNode(true));
-                          }
-                          for(let i = 0; i < clickedElem.attributes.length; i++) {
-                            newel.setAttribute(clickedElem.attributes[i].name, clickedElem.attributes[i].value);
-                          }
-                          clickedElem.parentElement.insertBefore(newel, clickedElem);
-                          clickedElem.remove();
-                        }
-                        editor_model.clickedElem = newel;
-                        editor.ui.refresh();
+                          editor_model.clickedElem = newel;
+                          editor.ui.refresh();
+                        });
                       }
                     }
                   ),
@@ -2632,16 +2665,18 @@ editor = typeof editor == "undefined" ? {} : editor;
                   el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
                     el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
                         oninput: ((name, isHref) => function () {
-                            clickedElem.setAttribute(name, this.value);
-                            if(isHref) {
-                              let livelinks = document.querySelectorAll(".livelink");
-                              for(let livelink of livelinks) {
-                                let finalLink = livelink.matches("#context-menu *") ?
-                                  `javascript:if(editor.confirmLeaving()) { editor.navigateTo('${linkToEdit(this.value)}'); }` : this.value;
-                                livelink.setAttribute("href", finalLink);
-                                livelink.setAttribute("title", "Go to " + this.value);
+                            editor.userModifies(() => {
+                              clickedElem.setAttribute(name, this.value);
+                              if(isHref) {
+                                let livelinks = document.querySelectorAll(".livelink");
+                                for(let livelink of livelinks) {
+                                  let finalLink = livelink.matches("#context-menu *") ?
+                                    `javascript:if(editor.confirmLeaving()) { editor.navigateTo('${linkToEdit(this.value)}'); }` : this.value;
+                                  livelink.setAttribute("href", finalLink);
+                                  livelink.setAttribute("title", "Go to " + this.value);
+                                }
                               }
-                            }
+                            });
                         })(name, isHref)
                       }),
                     isHref ? el("div", {title: "Go to " + value, "class": "modify-menu-icon inert"}, [], {
@@ -2654,9 +2689,11 @@ editor = typeof editor == "undefined" ? {} : editor;
                     el("div", {"class":"modify-menu-icon", title: "Delete attribute '" + name + "'"}, [], {
                       innerHTML: editor.ui.icons.wasteBasket,
                       onclick: ((name) => function() {
-                        clickedElem.removeAttribute(name);
-                        editor_model.clickedElem = clickedElem;
-                        editor.ui.refresh();
+                        editor.userModifies(() => {
+                          clickedElem.removeAttribute(name);
+                          editor_model.clickedElem = clickedElem;
+                          editor.ui.refresh();
+                        });
                         })(name)
                       })
                     ]
@@ -2689,10 +2726,12 @@ editor = typeof editor == "undefined" ? {} : editor;
                       let keyInput = document.querySelector("div.keyvalueadder input[name=name]");
                       if(keyInput && keyInput.value != "") {
                         let name = document.querySelector("div.keyvalueadder input[name=name]").value;
-                        clickedElem.setAttribute(
-                          name,
-                          document.querySelector("div.keyvalueadder input[name=value]").value
-                        );
+                        editor.userModifies(() => {
+                          clickedElem.setAttribute(
+                            name,
+                            document.querySelector("div.keyvalueadder input[name=value]").value
+                          );
+                        });
                         editor.ui.refresh();
                         let d =  document.querySelector("div.keyvalue input#dom-attr-" + name);
                         if(d) d.focus();
@@ -2702,10 +2741,12 @@ editor = typeof editor == "undefined" ? {} : editor;
                   el("div", {"class":"modify-menu-icon", title: "Add this name/value attribute"}, [], {innerHTML: editor.ui.icons.plus,
                     disabled: true,
                     onclick() {
-                      clickedElem.setAttribute(
-                        this.parentElement.querySelector("[name=name]").value,
-                        this.parentElement.querySelector("[name=value]").value
-                      );
+                      editor.userModifies(() => {
+                        clickedElem.setAttribute(
+                          this.parentElement.querySelector("[name=name]").value,
+                          this.parentElement.querySelector("[name=value]").value
+                        );
+                      });
                       editor.ui.refresh();
                     },
                     oninput: highlightsubmit })])
@@ -2858,7 +2899,9 @@ editor = typeof editor == "undefined" ? {} : editor;
             }
             // Style elements
             //console.log("Text is:" + CSSString);
-            curTag.textContent = CSSString;
+            editor.userModifies(() => {
+              curTag.textContent = CSSString;
+            });
             //debugger
             //consolw.log("After");
           } // fullUnparseCSS
@@ -2874,23 +2917,25 @@ editor = typeof editor == "undefined" ? {} : editor;
             if(clickedElem.tagName === "LINK" && clickedElem.getAttribute("rel") === "stylesheet" && clickedElem.getAttribute("href")) {
               let oldHref = clickedElem.getAttribute("href"); // Even if it's a temporary href
               let CSSFilePath = relativeToAbsolute(oldHref);
-              let CSSvalue = editor._internals.doReadServer("read", CSSFilePath);
-              CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
-              CSSarea.append(
-                el("div", {"class": "CSS-modify-unit"}, [
-                  el("textarea", {"class": "linked-CSS"}, [], {
-                    value: CSSvalue,
-                    onfocusout() {
-                      setCSSAreas();
-                    },
-                    oninput() {
-                      (async () => { // Maybe create a new temporary CSS file.
-                        await assignTmpCss(clickedElem, this.value);
-                      })();
-                    }
-                  })
-                ])
-              );
+              (async () => {
+                let CSSvalue = await editor.getServer("read", "CSSFilePath");
+                CSSarea.append(el("div", {"class": "CSS-chain"}, [], {innerHTML: "STYLE TEXT:"}));
+                CSSarea.append(
+                  el("div", {"class": "CSS-modify-unit"}, [
+                    el("textarea", {"class": "linked-CSS"}, [], {
+                      value: CSSvalue,
+                      onfocusout() {
+                        setCSSAreas();
+                      },
+                      oninput() {
+                        (async () => { // Maybe create a new temporary CSS file.
+                          await assignTmpCss(clickedElem, this.value);
+                        })();
+                      }
+                    })
+                  ])
+                );
+              })();
             }
             //inline styles 
             editor_model.inline = clickedElem.getAttribute("style"); //? CSSparser.parseCSS(clickedElement.getAttribute("style")) : undefined;
@@ -2903,7 +2948,9 @@ editor = typeof editor == "undefined" ? {} : editor;
                     setCSSAreas();
                   },
                   oninput() {
-                    clickedElem.setAttribute("style", this.value);
+                    editor.userIsModifying(() => {
+                      clickedElem.setAttribute("style", this.value);
+                    });
                   }
                 }),
                 el("div", {"class": "CSS-buttons"}, [
@@ -2940,21 +2987,27 @@ editor = typeof editor == "undefined" ? {} : editor;
                         if(lastStyleLink.tagName === "LINK") {
                           (async () => {
                             await assignTmpCss(lastStyleLink, oldValue => oldValue + postIndentCSS);
-                            clickedElem.removeAttribute("style");
+                            editor.userIsModifying(() => {
+                              clickedElem.removeAttribute("style");
+                            });
                             setCSSAreas();
                           })();
                         }
                         else { // lastStyleLink is a <style>
                           let curValue = lastStyleLink.textContent;
                           lastStyleLink.textContent = curValue + postIndentCSS;
-                          clickedElem.removeAttribute("style");
+                          editor.userIsModifying(() => {
+                            clickedElem.removeAttribute("style");
+                          });
                           setCSSAreas();
                         }
                       }
                       else {
                         //just default to style node for now
-                        document.body.appendChild(el("style.inserted-CSS", {}, postIndentCSS));
-                        clickedElem.removeAttribute("style");
+                        editor.userIsModifying(() => {
+                          document.body.appendChild(el("style.inserted-CSS", {}, postIndentCSS));
+                          clickedElem.removeAttribute("style");
+                        });
                         setCSSAreas();
                       }
                     }
@@ -2962,9 +3015,11 @@ editor = typeof editor == "undefined" ? {} : editor;
                   el("div", {"class": "CSS-action-button"}, [], {
                     innerHTML: editor.ui.icons.wasteBasket,
                     onclick() {
-                      let inline_CSS = document.querySelectorAll(".inline-CSS");
-                      inline_CSS.value = "";
-                      clickedElem.setAttribute("style", inline_CSS.value);
+                      editor.userIsModifying(() => {
+                        let inline_CSS = document.querySelectorAll(".inline-CSS");
+                        inline_CSS.value = "";
+                        clickedElem.setAttribute("style", inline_CSS.value);
+                      });
                       setCSSAreas();
                     }
                   })
@@ -2977,7 +3032,9 @@ editor = typeof editor == "undefined" ? {} : editor;
               CSSarea.append(el("button.action-button#add-inline-style", {}, [], {
                 innerHTML: "Add inline style",
                 onclick() {
-                  clickedElem.setAttribute("style", " ");
+                  editor.userIsModifying(() => {
+                    clickedElem.setAttribute("style", " ");
+                  });
                   editor.ui.refresh();
                 }}));
             }
@@ -3213,24 +3270,30 @@ editor = typeof editor == "undefined" ? {} : editor;
                     return defaultValue;
                   })();
                   backImgObj.relCSS.value[backImgObj.imageSelection].url = targetPathName;
-                  clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
+                  editor.userIsModifying(() => {
+                    clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
+                  });
                 }
                 else {
-                  let d = document.getElementById("dom-attr-src");
+                  let d = document.querySelector("#modify-menu #dom-attr-src");
                   if(d) { d.setAttribute("value", file.name); }
-                  clickedElem.setAttribute("src", targetPathName);
+                  editor.userIsModifying(() => {
+                    clickedElem.setAttribute("src", targetPathName);
+                  });
                 }
                 // adapt to HTML5 new attribute 'srcset'
                 // IF website use 'srcset', we force to set this attribute to null then replace image using 'src'
                 if (clickedElem.getAttribute("srcset") != undefined) {
-                  clickedElem.setAttribute("srcset", "");
+                  editor.userIsModifying(() => {
+                    clickedElem.setAttribute("srcset", "");
+                  });
                 }
               });
             }
             // refresh images list
             showListsImages(targetPathName);  // targetPathName is the last file of files array, but it seems that user can only upload one file once
             // automatically select upload image
-            let selectedImage = document.querySelectorAll(".imgFolder > img");
+            let selectedImage = document.querySelectorAll("div#modify-menu .imgFolder > img");
             for (let i = 0; i < selectedImage.length; ++i) {
               let imgName = selectedImage[i].getAttribute("src").split("/").pop();
               if (imgName === files[files.length - 1].name) {
@@ -3270,7 +3333,7 @@ editor = typeof editor == "undefined" ? {} : editor;
             }
 
             // init: clear image list
-            let selectedImage = document.querySelectorAll(".imgFolder");
+            let selectedImage = document.querySelectorAll("#modify-menu .imgFolder");
             selectedImage.forEach(e => e.remove());
 
             let imgDiv = el("div", { "id": "imgGallery" });
@@ -3287,7 +3350,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                     //console.log("At the beginning:");
                     //console.log(JSON.stringify(backImgObj));
                     // highlight the selected image
-                    let otherImages = document.querySelectorAll(".imgFolder");
+                    let otherImages = document.querySelectorAll("#modify-menu .imgFolder");
                     console.log ({otherImages, document});
                     for (let i = 0; i < otherImages.length; ++i) {
                       otherImages[i].classList.remove("highlight-select-image");
@@ -3296,7 +3359,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                     // replace image
                     if(backImgObj) {
                       backImgObj.imageSelection = (() => {
-                        let radios = document.querySelectorAll(".background-img-radio");
+                        let radios = document.querySelectorAll("#modify-menu .background-img-radio");
                         let defaultValue = 0;
                         for (let i in radios) {
                           //hopefully there aren't more than 10 images!
@@ -3320,7 +3383,9 @@ editor = typeof editor == "undefined" ? {} : editor;
                       //console.log("current link", this.children[0].getAttribute("src"));
                       //console.log("current section number is:", backImgObj.imageSelection);
                       //console.log("current selection is:", backImgObj.relCSS.value[backImgObj.imageSelection].url); 
-                      clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
+                      editor.userIsModifying(() => {
+                        clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
+                      });
                       //console.log("new style attribute is:", clickedElem.getAttribute("style"));
 
                       console.log(JSON.stringify(backImgObj));
@@ -3329,11 +3394,15 @@ editor = typeof editor == "undefined" ? {} : editor;
                     // adapt to HTML5 new attribute 'srcset'
                     // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
                     else if (clickedElem.getAttribute("srcset") != undefined) {
-                      clickedElem.setAttribute("srcset", "");
+                      editor.userIsModifying(() => {
+                        clickedElem.setAttribute("srcset", "");
+                      });
                     }
                     else {
-                      clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
-                      document.getElementById("dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
+                      editor.userIsModifying(() => {
+                        clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
+                      document.querySelector("#modify-menu #dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
+                      });
                     }
                     // this.style.outline = "2px solid white";
                     console.log ("pre1");
@@ -3389,7 +3458,9 @@ editor = typeof editor == "undefined" ? {} : editor;
           if(srcName == undefined) {
             ret.append(
               el("button", {}, "Add src attribute", {onclick: () => {
-                clickedElem.setAttribute("src", "");
+                editor.userIsModifying(() => {
+                  clickedElem.setAttribute("src", "");
+                });
                 editor.ui.refresh();
               }}));
           } else {
@@ -3429,7 +3500,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               let txtAreaNode = el("textarea", {class:"textChildNodeContent"},
                 [], {
                   value: node.textContent,
-                  oninput: (node => function() { node.textContent = this.value; })(node)
+                  oninput: (node => function() { editor.userIsModifying(() => { node.textContent = this.value;}); })(node)
                 });
               ret.append(txtAreaNode)
               console.log("appending text area node", txtAreaNode);
@@ -3550,81 +3621,83 @@ editor = typeof editor == "undefined" ? {} : editor;
               if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
               return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
             })();
-            if(insertionStyle === "after") {
-              if(typeof newElement === "string") {
-                clickedElem.insertAdjacentHTML("afterend", newElement);
-                newElement = clickedElem.nextElementSibling;
-              } else {
-                clickedElem.parentElement.insertBefore(newElement, clickedElem.nextSibling);
+            editor.userIsModifying(() => {
+              if(insertionStyle === "after") {
+                if(typeof newElement === "string") {
+                  clickedElem.insertAdjacentHTML("afterend", newElement);
+                  newElement = clickedElem.nextElementSibling;
+                } else {
+                  clickedElem.parentElement.insertBefore(newElement, clickedElem.nextSibling);
+                }
+              } else if(insertionStyle === "before") {
+                if(typeof newElement === "string") {
+                  clickedElem.insertAdjacentHTML("beforebegin", newElement);
+                  newElement = clickedElem.previousElementSibling;
+                } else {
+                  clickedElem.parentElement.insertBefore(newElement, clickedElem);
+                }
+              } else if(insertionStyle === "wrap") {
+                if(typeof newElement === "string") {
+                  clickedElem.insertAdjacentHTML("beforebegin", newElement);
+                  newElement = clickedElem.previousElementSibling;
+                } else {
+                  clickedElem.parentElement.insertBefore(newElement, clickedElem);
+                }
+                newElement.appendChild(clickedElem);
+                console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
+              } else if(insertionStyle === "wrap-children") {
+                if(typeof newElement === "string") {
+                  clickedElem.insertAdjacentHTML("afterbegin", newElement);
+                  newElement = clickedElem.children[0];
+                } else {
+                  clickedElem.insertBefore(newElement, clickedElem.childNodes[0]);
+                }
+                while(newElement.nextSibling) {
+                  newElement.append(newElement.nextSibling);
+                }
+              } else if(insertionStyle === "caret") {
+                let s = editor_model.caretPosition;
+                let txt = s.startContainer;
+                if(txt.textContent.length > s.startOffset && s.startOffset > 0) { // split
+                  // Need to split the text node.
+                  txt.parentElement.insertBefore(document.createTextNode(txt.textContent.substring(s.startOffset)), txt.nextSibling);
+                  txt.textContent = txt.textContent.substring(0, s.startOffset);
+                }
+                if(typeof newElement === "string") {
+                  let tmpSpan = el("span");
+                  clickedElem.insertBefore(tmpSpan, txt.nextSibling)
+                  tmpSpan.insertAdjacentHTML("afterend", newElement);
+                  newElement = tmpSpan.nextElementSibling;
+                  tmpSpan.remove();
+                } else {
+                  clickedElem.insertBefore(newElement, txt.nextSibling)
+                }
+              } else if(insertionStyle === "last-child") { // Insert at the end of the selected element, inside.
+                if(typeof newElement === "string") {
+                  let tmpSpan = el("span");
+                  clickedElem.insertBefore(tmpSpan, null);
+                  tmpSpan.insertAdjacentHTML("afterend", newElement); // afterend or beforeend same, tmpSpan to be removed.
+                  newElement = tmpSpan.nextElementSibling;
+                  tmpSpan.remove();
+                } else {
+                  console.log("insert at the end");
+                  // Insert at the end.
+                  clickedElem.insertBefore(newElement, null);
+                }
+              } else if(insertionStyle === "first-child") { // Insert at the end of the selected element, inside.
+                if(typeof newElement === "string") {
+                  let tmpSpan = el("span");
+                  clickedElem.insertBefore(tmpSpan, clickedElem.children[0]);
+                  tmpSpan.insertAdjacentHTML("afterend", newElement);// afterend or beforeend same, tmpSpan to be removed.
+                  newElement = tmpSpan.nextElementSibling;
+                  tmpSpan.remove();
+                } else {
+                  console.log("insert at the beginning");
+                  // Insert at the beginning.
+                  clickedElem.prepend(newElement);
+                }
               }
-            } else if(insertionStyle === "before") {
-              if(typeof newElement === "string") {
-                clickedElem.insertAdjacentHTML("beforebegin", newElement);
-                newElement = clickedElem.previousElementSibling;
-              } else {
-                clickedElem.parentElement.insertBefore(newElement, clickedElem);
-              }
-            } else if(insertionStyle === "wrap") {
-              if(typeof newElement === "string") {
-                clickedElem.insertAdjacentHTML("beforebegin", newElement);
-                newElement = clickedElem.previousElementSibling;
-              } else {
-                clickedElem.parentElement.insertBefore(newElement, clickedElem);
-              }
-              newElement.appendChild(clickedElem);
-              console.log("newElement's parent HTML", newElement.parentElement.outerHTML);
-            } else if(insertionStyle === "wrap-children") {
-              if(typeof newElement === "string") {
-                clickedElem.insertAdjacentHTML("afterbegin", newElement);
-                newElement = clickedElem.children[0];
-              } else {
-                clickedElem.insertBefore(newElement, clickedElem.childNodes[0]);
-              }
-              while(newElement.nextSibling) {
-                newElement.append(newElement.nextSibling);
-              }
-            } else if(insertionStyle === "caret") {
-              let s = editor_model.caretPosition;
-              let txt = s.startContainer;
-              if(txt.textContent.length > s.startOffset && s.startOffset > 0) { // split
-                // Need to split the text node.
-                txt.parentElement.insertBefore(document.createTextNode(txt.textContent.substring(s.startOffset)), txt.nextSibling);
-                txt.textContent = txt.textContent.substring(0, s.startOffset);
-              }
-              if(typeof newElement === "string") {
-                let tmpSpan = el("span");
-                clickedElem.insertBefore(tmpSpan, txt.nextSibling)
-                tmpSpan.insertAdjacentHTML("afterend", newElement);
-                newElement = tmpSpan.nextElementSibling;
-                tmpSpan.remove();
-              } else {
-                clickedElem.insertBefore(newElement, txt.nextSibling)
-              }
-            } else if(insertionStyle === "last-child") { // Insert at the end of the selected element, inside.
-              if(typeof newElement === "string") {
-                let tmpSpan = el("span");
-                clickedElem.insertBefore(tmpSpan, null);
-                tmpSpan.insertAdjacentHTML("afterend", newElement); // afterend or beforeend same, tmpSpan to be removed.
-                newElement = tmpSpan.nextElementSibling;
-                tmpSpan.remove();
-              } else {
-                console.log("insert at the end");
-                // Insert at the end.
-                clickedElem.insertBefore(newElement, null);
-              }
-            } else if(insertionStyle === "first-child") { // Insert at the end of the selected element, inside.
-              if(typeof newElement === "string") {
-                let tmpSpan = el("span");
-                clickedElem.insertBefore(tmpSpan, clickedElem.children[0]);
-                tmpSpan.insertAdjacentHTML("afterend", newElement);// afterend or beforeend same, tmpSpan to be removed.
-                newElement = tmpSpan.nextElementSibling;
-                tmpSpan.remove();
-              } else {
-                console.log("insert at the beginning");
-                // Insert at the beginning.
-                clickedElem.prepend(newElement);
-              }
-            }
+            });
             editor_model.insertElement = false;
             editor_model.visible = true;
             editor_model.clickedElem  = typeof newElement !== "string" && typeof newElement !== "undefined" ?
@@ -3911,11 +3984,13 @@ editor = typeof editor == "undefined" ? {} : editor;
           let ret = el("div", {}, [
             document.querySelector("head > meta[name=viewport]") ? undefined :
             oneClickFix("Viewport not set on this page. This might make this page not display properly on mobile devices.",
-              "Add missing <meta name='viewport'...>", () =>
-                  document.head.appendChild(el("meta", {name: "viewport", content:"width=device-width, initial-scale=1.0"}))),
+              "Add missing <meta name='viewport'...>", () => 
+                editor.userIsModifying(() => 
+                  document.head.appendChild(el("meta", {name: "viewport", content:"width=device-width, initial-scale=1.0"})))),
             document.querySelector("head > meta[charset]") ? undefined :
             oneClickFix("Character encoding not set on this page. The display of non-breaking spaces would be compromized on many browsers.", "Add missing <meta charset='UTF-8'>", () =>
-                  document.head.insertBefore(el("meta", {charset: "UTF-8" }), document.head.childNodes[0])),
+                  editor.userIsModifying(() => {
+                  document.head.insertBefore(el("meta", {charset: "UTF-8" }), document.head.childNodes[0])})),
             el("div", {class:"seo-fix"}, [
               el("p", {class:"seo-fix-description"}, !title ?
                 "Page title not set. Search engines do prefer a title." :
@@ -3923,11 +3998,13 @@ editor = typeof editor == "undefined" ? {} : editor;
               ),
               el("input", {type:"text", value: title ? title.textContent : "", placeholder: "Title of the page"}, [], {
                 onchange: function() {
-                  if(!title) {
-                    title = el("title");
-                    document.head.appendChild(title);
-                  }
-                  title.textContent = this.value;
+                  editor.userIsModifying(() => {
+                    if(!title) {
+                      title = el("title");
+                      document.head.appendChild(title);
+                    }
+                    title.textContent = this.value;
+                  });
                 }
               })
             ]),
@@ -3938,11 +4015,13 @@ editor = typeof editor == "undefined" ? {} : editor;
               ),
               el("textarea", {type:"text", class: "textChildNodeContent", placeholder: "Description of the page"}, [], {
                 onchange: function() {
-                  if(!description) {
-                    description = el("meta", {name: "description"});
-                    document.head.appendChild(description);
-                  }
-                  description.setAttribute("content") = this.value;
+                  editor.userIsModifying(() => {
+                    if(!description) {
+                      description = el("meta", {name: "description"});
+                      document.head.appendChild(description);
+                    }
+                    description.setAttribute("content") = this.value;
+                  });
                 },
                 value: description ? description.getAttribute("content") || "" : ""
               })
