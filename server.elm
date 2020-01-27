@@ -1003,7 +1003,7 @@ recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
           let startBodyIndex = List.indexWhere (
                  case of
                    [tag, _, _] -> tag /= "title" && tag /= "link" && tag /= "meta" && tag /= "script" && tag /= "style" && tag /= "base" && tag /= "isindex" && tag /= "nextid" && tag /= "range" && tag /= "head"
-                   ["TEXT", x] -> not (Regex.match """^\s*$""" x)
+                   ["TEXT", x] -> not (Regex.matchIn """^\s*$""" x)
                    ["COMMENT", _] -> False
                ) nodes in
           case List.split startBodyIndex nodes of
@@ -1020,7 +1020,7 @@ recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
     else -- We need to wrap nodes with html, title, links, consecutive style and script and empty text nodes
       let aux nodes = case nodes of
         (["TEXT", x] as head) :: rest ->
-          if Regex.match """^\s*$""" x then
+          if Regex.matchIn """^\s*$""" x then
             head :: aux rest
           else recoverHtml [["html", [], nodes]]
         (["COMMENT", x] as head) :: rest ->
