@@ -534,7 +534,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     } else if(n.nodeType == 8) {
       return ["COMMENT", n.textContent];
     } else if(n.nodeType === 10) {
-      return ["COMMENT", "DOCTYPE " + n.name]
+      return ["COMMENT", "DOCTYPE " + n.name + (n.publicId ? " PUBLIC " + n.publicId : "") + (n.systemId ? " " + n.systemId : "")];
     } {
       var attributes = [];
       var tagName = n.nodeType === document.DOCUMENT_NODE ? "#document" : n.tagName.toLowerCase();

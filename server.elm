@@ -358,7 +358,7 @@ phpToElmFinal path string =
  - Directly evaluate sources from elm/leo pages or folders
 ----------------------------------------------------------------------------}
 evaluatedPage: Result String (List HtmlNode)
-evaluatedPage = let _ = Debug.log "evaluatedPage" () in
+evaluatedPage = 
   if canEvaluate /= "true" then
     Ok [<html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>]
   else if isTextFile path || varraw then
@@ -989,7 +989,6 @@ evaluatedPage = let _ = Debug.log "evaluatedPage" () in
 ----------------------------------------------------------------------------}
 recoveredEvaluatedPage: List HtmlNode
 recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
-  let _ = Debug.log "recoveredEvaluatedPage" () in
   case evaluatedPage of
   Err msg -> serverOwned "Error Report" <|
     [<html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><button onclick="editor.reload();" title="Reload the current page">Reload</button><pre style="white-space:pre-wrap">@msg</pre></div></body></html>]
