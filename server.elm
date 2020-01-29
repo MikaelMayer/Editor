@@ -1123,7 +1123,7 @@ initialScript = serverOwned "initial script" <| [
    <script id="thaditor-luca" class="editor-interface" src="/server-elm-script.js"></script>,
 -- The following is replaced by an inline <style> for when Editor runs as a file opener.
 -- And the path is modified when Editor runs as Thaditor.
-<link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface">
+<link rel="stylesheet" type="text/css" href="/server-elm-style.css" class="editor-interface" id="server-elm-style">
 ]
 
 defaultMarkdowncss = """img {

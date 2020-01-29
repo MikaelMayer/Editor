@@ -249,6 +249,19 @@ editor = typeof editor == "undefined" ? {} : editor;
         return JSON.parse(await getServer("listdir", dirname) || "[]");
       }
   };
+
+  function getSelectorOf(clickedElem) {
+    let curSelector = clickedElem.tagName.toLowerCase();
+    if(curSelector === "html" || curSelector === "body" || curSelector === "head") return curSelector;
+    if(clickedElem.getAttribute("id")) {
+      curSelector += "#" + clickedElem.getAttribute("id");
+    }
+    if (clickedElem.getAttribute("class") && clickedElem.getAttribute("class") != "") {
+      curSelector += (" " + clickedElem.getAttribute("class").trim()).replace(/\s+/g, ".");
+    }
+    return curSelector;
+  }
+  
   // Given a node, computes a way to retrieve this node if the page was reloaded.
   // That's a treasure map.
   editor.toTreasureMap = function(oldNode) {
@@ -262,7 +275,19 @@ editor = typeof editor == "undefined" ? {} : editor;
     while(t && t.parentNode) {
       let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
       if(t.nodeType === 1) {
-        tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
+        let theSelector = getSelectorOf(t);
+        tentativeSelector.unshift(theSelector);
+        // Emulate :nth-of-type but for a class of siblings having the same selector.
+        let s = t.previousElementSibling;
+        if(!t.getAttribute("id")) {
+          while(s) {
+            if(s.matches(theSelector)) {
+              tentativeSelector.unshift("~", theSelector);
+            }
+            s = s.previousElementSibling;
+          }
+        }
+        if(t.hasAttribute("id")) break;
       } else {
         isText = true;
         textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
@@ -279,11 +304,13 @@ editor = typeof editor == "undefined" ? {} : editor;
       return document.getElementById(data.id);
     }
     if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
-      let tentativeSelector = data.tentativeSelector;
+      let tentativeSelector = [...data.tentativeSelector];
       while(tentativeSelector.length >= 1) {
-        let newNode = document.querySelector(tentativeSelector.join(" "));
-        if(newNode) {
-          return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+        if(tentativeSelector[0] !== "~") {
+          let newNode = document.querySelector(tentativeSelector.join(" "));
+          if(newNode) {
+            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+          }
         }
         tentativeSelector.shift();
       }
@@ -754,6 +781,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         onclick(event) {
           if(!location.search.match(new RegExp("edit" + prev))) {
              if(editor.ui.init) {
+               editor.config.canEditPage = true;
                editor.ui.init();
                document.body.setAttribute("contenteditable", "true");
                document.querySelector("#editbox").remove();
@@ -780,7 +808,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     window.onpopstate = function(e){
         console.log("onpopstate", e);
         if(e.state && e.state.localURL) {
-          editor._internals.doReloadPage(location, true);
+          editor._internals.doReloadPage(String(location), true);
         } else {
           editor._internals.doReloadPage(location.pathname + location.search, true);
         }
@@ -788,7 +816,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     
     var onCopy = function(event) {
       const selection = document.getSelection();
-      if(selection.rangeCount) {
+      if(selection.rangeCount && (!document.activeElement || !document.activeElement.matches("#modify-menu *"))) {
         let range = selection.getRangeAt(0); // Let's put the correct stuff in the clipboardData.
         let contents = range.cloneContents();
         let newHtmlData = "";
@@ -802,7 +830,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     };
     
     var onPaste = function(e) {
-      if(e.clipboardData.types.indexOf("text/html") >= 0) {
+      if(e.clipboardData.types.indexOf("text/html") >= 0 && (!document.activeElement || !document.activeElement.matches("#modify-menu *"))) {
         e.preventDefault();
         e.stopPropagation();
         console.log("paste", e);
@@ -1012,6 +1040,18 @@ editor = typeof editor == "undefined" ? {} : editor;
     editor.ui._internals.notifyServer({"question": editor.ui.model.askQuestions ? "true" : "false"}, toSend, "Save")
   } //editor.saveDOM
   
+  
+  function isLive() {
+    return !(editor.config.path.includes("Thaditor/versions/"));
+  }
+
+  //Version used
+  function computeDraftVersion() {
+    return isLive() ? "Live" : editor.config.path.slice(editor.config.path.lastIndexOf("versions/")+9, editor.config.path.lastIndexOf("/"));
+  }
+  
+  var ifAlreadyRunning = typeof editor == "object" && typeof editor.ui === "object" && typeof editor.ui.model === "object";   
+  
   /******************************
         Editor's interface.
   ******************************/
@@ -1027,7 +1067,17 @@ editor = typeof editor == "undefined" ? {} : editor;
       editor.ui._internals.modifyMenu = el("div#modify-menu", {contenteditable: "false"}, [], {isghost:true})
       document.body.insertBefore(editor.ui._internals.modifyMenu, document.body.childNodes[0]);
     }
-    
+    prevStyleElem = editor.ui._internals.styleElem;
+    editor.ui._internals.styleElem = document.querySelector("link#server-elm-style");
+    if(!editor.ui._internals.styleElem) {
+      if(prevStyleElem) {
+        document.head.append(prevStyleElem);
+        editor.ui._internals.styleElem = prevStyleElem;
+      } else {
+        editor.ui._internals.styleElem = el("link#server-elm-style",{rel:"stylesheet", type:"text/css",href:"/server-elm-style.css",class:"editor-interface",isghost:"true"});
+        document.head.append(editor.ui._internals.styleElem);
+      }
+    }    
     /*
       Pushes the notification msg to the log & displays it for 3 seconds directly left of the moidfymenu.
       css for notification box is textarea .notif
@@ -1286,6 +1336,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     }; //editor.ui._internals.handleServerResponse
     
     editor.ui._internals.handleSendRequestFinish = function(data) {
+      console.log("editor.ui._internals.handleSendRequestFinish", data);
       /*
         We want to undo everything in the undo stack that has been done since the save began.
         In the process of vanilla undoing this (using mark's function), the items will be
@@ -1337,8 +1388,12 @@ editor = typeof editor == "undefined" ? {} : editor;
             editor.ui.refresh();
           }
           if(msg) {
-            setTimeout(() => {
-               editor.ui.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
+            setTimeout(function saveCompleted(count) {
+               if(editor.ui.sendNotification) {
+                 editor.ui.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
+               } else {
+                 setTimeout(() => saveCompleted((count || 0) + 1), (count||0)*10);
+               }
             }, 0);
           }
         }
@@ -2041,15 +2096,8 @@ editor = typeof editor == "undefined" ? {} : editor;
       "ThaditorInstaller.htaccess", "composer.json", "composer.lock", "credentials.json", "cacert.pem", "versions",
       "vendor", "ssg", "cache"
     ];
-    function isLive() {
-      return !(editor.config.path.includes("Thaditor/versions/"));
-    }
-
-    //Version used
-    var verz = "Live";
-    if (!isLive()) {
-      verz = editor.config.path.slice(editor.config.path.lastIndexOf("versions/")+9, editor.config.path.lastIndexOf("/"));
-    }
+    
+    var verz = computeDraftVersion();
     //hover mode functions for linkSelectMode
     function escapeLinkMode() {
       document.body.removeEventListener('mouseover', linkModeHover1, false);
@@ -2091,82 +2139,6 @@ editor = typeof editor == "undefined" ? {} : editor;
       }
     }
 
-    function dataToRecoverElement(oldNode) {
-      if(!oldNode) return undefined;
-      if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
-        return {id: oldNode.getAttribute("id")};
-      }
-      let tentativeSelector = [];
-      let t = oldNode;
-      let isText = false, textIndex = 0;
-      while(t && t.parentNode) {
-        let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
-        if(t.nodeType === 1) {
-          tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
-        } else {
-          isText = true;
-          textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
-        }
-        t = t.parentNode;
-      }
-      return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
-    }
-    
-    // Returns the new node that matches the old node the closest.
-    // For text nodes, try to recover the text node, if not, returns the parent node;
-    function recoverElementFromData(data) {
-      if(!data) return undefined;
-      if(typeof data === "object" && data.id) {
-        return document.getElementById(data.id);
-      }
-      if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
-        let tentativeSelector = data.tentativeSelector;
-        while(tentativeSelector.length >= 1) {
-          let newNode = document.querySelector(tentativeSelector.join(" "));
-          if(newNode) {
-            return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
-          }
-          tentativeSelector.shift();
-        }
-        return undefined;
-      }
-    }
-    function setCaretPositionIn(node, position) {
-      position = Math.min(position, node.textContent.length);
-      if (node.nodeType == 3) {
-        let sel  = window.getSelection()
-        setTimeout( () => sel.collapse(node, position), 0);
-      } else {
-        let p = position
-        let n = node.firstChild
-        while(n != null && p > n.textContent.length) {
-          p = p - n.textContent.length
-          n = n.nextSibling
-        }
-        if(n != null) {
-          setCaretPositionIn(n, p)
-        } else {
-          console.log("Could not find position. Reached node and position ", [n, p])
-        }
-      }
-    }
-    function dataToRecoverCaretPosition(caretPosition) {
-      if(!caretPosition) return undefined;
-      return {target: editor.toTreasureMap(caretPosition.startContainer), startOffset: caretPosition.startOffset};
-    }
-    function recoverCaretPositionFromData(data) {
-      if(!data) return;
-      let newTextNodeOrParent = editor.fromTreasureMap(data.target);
-      if(newTextNodeOrParent) setCaretPositionIn(newTextNodeOrParent, data.startOffset)
-    }
-    function dataToRecoverSelectionRange(selectionRange) { // TODO
-      if(!selectionRange) return undefined;
-      return undefined;
-    }
-    function recoverSelectionRangeFromData(data) { // TODO
-      if(!data) return;
-      return undefined;
-    }
     function confirmLeaving() {
       if(editor.ui.canSave()) {
         var x = confirm("There are unsaved modifications. Do you want to discard them?");
@@ -2185,47 +2157,6 @@ editor = typeof editor == "undefined" ? {} : editor;
     editor.confirmLeaving = confirmLeaving;
     //(outer lastEditScript)
 
-    var ifAlreadyRunning = typeof editor == "object" && typeof editor.ui === "object" && typeof editor.ui.model === "object";    
-    editor.ui.model = { // Change this and call editor.ui.refresh() to get something consistent.
-      visible: ifAlreadyRunning ? editor.ui.model.visible : false, //here
-      clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor.ui.model.clickedElem) : undefined,
-      displayClickedElemAsMainElem: true, // Dom selector status switch signal
-      previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
-      notextselection: false, // When using the relative DOM selector, set to true to avoid considering the caret (e.g. for insertions and deletions)
-      savedTextSelection: undefined, // Text range to restore when the edition bar closes, on mobile
-      restoredAfterReload: ifAlreadyRunning ? editor.ui.model.restoredAfterReload : {},
-      selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor.ui.model.selectionRange) : undefined,
-      caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor.ui.model.caretPosition) : undefined,
-      link: undefined,
-      disambiguationMenu: undefined, //here
-      isSaving: false,
-      undosBeforeSave: ifAlreadyRunning ? editor.ui.model.undosBeforeSave : 0,
-      //data structures to represent undo/redo "stack"
-      undoStack: ifAlreadyRunning ? editor.ui.model.undoStack : [],
-      redoStack: ifAlreadyRunning ? editor.ui.model.redoStack : [],
-      actionsDuringSave: ifAlreadyRunning ? editor.ui.model.actionsDuringSave : [],
-      isDraftSwitcherVisible : ifAlreadyRunning ? editor.ui.model.isDraftSwitcherVisible : false,
-      //observer to listen for muts
-      outputObserver: ifAlreadyRunning ? editor.ui.model.outputObserver : undefined,
-      //worker for interface with the server
-      send_notif:ifAlreadyRunning ? editor.ui.model.send_notif : "",
-      //editor log
-      editor_log: ifAlreadyRunning ? editor.ui.model.editor_log : [],
-      show_log: ifAlreadyRunning ? editor.ui.model.show_log : false, //here
-      linkSelectMode: false, //here
-      linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
-      idNum: ifAlreadyRunning ? editor.ui.model.idNum : 1,
-      //new attribute to keep menu state after reload
-      textareaPropertiesSaved: ifAlreadyRunning ? editor.ui.model.textareaPropertiesSaved : [],
-      askQuestions: ifAlreadyRunning ? editor.ui.model.askQuestions : editor.config.askQuestions,
-      autosave: ifAlreadyRunning ? editor.ui.model.autosave : editor.config.autosave,
-      path: editor.config.path,
-      version : verz,
-      interfaces: ifAlreadyRunning ? editor.ui.model.interfaces : [],
-      disambiguationMenu: ifAlreadyRunning ? editor.ui.model.disambiguationMenu : undefined,
-      userIsModifying: false // Set to true only when user is clearly modifying something
-    }
-    
     // Wraps a portion of code so that it and its mutation observers are executed with the flag editor.ui.model.userIsModifying set to true.
     editor.userModifies = function userModifies(callback) {
       editor.ui.model.userIsModifying = true;
@@ -2487,6 +2418,7 @@ editor = typeof editor == "undefined" ? {} : editor;
           }
           // editor itself should be invisible
           if (clickedElem.id !== "context-menu" || clickedElem.id !== "modify-menu" || clickedElem.id !== "editbox") {
+            console.log(clickedElem);
             if (!clickedElem.hasChildNodes() || (clickedElem.childNodes.length == 1 && clickedElem.childNodes[0].nodeType === 3)) {
               editor_model.displayClickedElemAsMainElem = false;
             }
@@ -2953,12 +2885,12 @@ editor = typeof editor == "undefined" ? {} : editor;
                     setCSSAreas();
                   },
                   oninput() {
-                    editor.userIsModifying(() => {
+                    editor.userModifies(() => {
                       clickedElem.setAttribute("style", this.value);
                     });
                   }
                 }),
-                el("div", {"class": "CSS-buttons"}, [
+                el("div", {"class": "CSS-buttons", title: "Apply this style to other elements by creating a rule"}, [
                   el("div", {"class": "CSS-action-button"}, [], {
                     innerHTML: editor.ui.icons.clone,
                     onclick() {
@@ -2992,7 +2924,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                         if(lastStyleLink.tagName === "LINK") {
                           (async () => {
                             await assignTmpCss(lastStyleLink, oldValue => oldValue + postIndentCSS);
-                            editor.userIsModifying(() => {
+                            editor.userModifies(() => {
                               clickedElem.removeAttribute("style");
                             });
                             setCSSAreas();
@@ -3001,7 +2933,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                         else { // lastStyleLink is a <style>
                           let curValue = lastStyleLink.textContent;
                           lastStyleLink.textContent = curValue + postIndentCSS;
-                          editor.userIsModifying(() => {
+                          editor.userModifies(() => {
                             clickedElem.removeAttribute("style");
                           });
                           setCSSAreas();
@@ -3009,7 +2941,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                       }
                       else {
                         //just default to style node for now
-                        editor.userIsModifying(() => {
+                        editor.userModifies(() => {
                           document.body.appendChild(el("style.inserted-CSS", {}, postIndentCSS));
                           clickedElem.removeAttribute("style");
                         });
@@ -3020,7 +2952,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                   el("div", {"class": "CSS-action-button"}, [], {
                     innerHTML: editor.ui.icons.wasteBasket,
                     onclick() {
-                      editor.userIsModifying(() => {
+                      editor.userModifies(() => {
                         let inline_CSS = document.querySelectorAll(".inline-CSS");
                         inline_CSS.value = "";
                         clickedElem.setAttribute("style", inline_CSS.value);
@@ -3037,7 +2969,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               CSSarea.append(el("button.action-button#add-inline-style", {}, [], {
                 innerHTML: "Add inline style",
                 onclick() {
-                  editor.userIsModifying(() => {
+                  editor.userModifies(() => {
                     clickedElem.setAttribute("style", " ");
                   });
                   editor.ui.refresh();
@@ -3195,7 +3127,7 @@ editor = typeof editor == "undefined" ? {} : editor;
           }
           //console.log("clicked element is:", clickedElem);
           //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
-          var clickedStyle = clickedElem ? editor.ui.CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
+          var clickedStyle = clickedElem  && clickedElem.getAttribute ? editor.ui.CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
           //console.log(clickedStyle);
           //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
           //former first, if it contains a url. for now, I am looping through the CSS rules twice.
@@ -3275,21 +3207,21 @@ editor = typeof editor == "undefined" ? {} : editor;
                     return defaultValue;
                   })();
                   backImgObj.relCSS.value[backImgObj.imageSelection].url = targetPathName;
-                  editor.userIsModifying(() => {
+                  editor.userModifies(() => {
                     clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
                   });
                 }
                 else {
                   let d = document.querySelector("#modify-menu #dom-attr-src");
                   if(d) { d.setAttribute("value", file.name); }
-                  editor.userIsModifying(() => {
+                  editor.userModifies(() => {
                     clickedElem.setAttribute("src", targetPathName);
                   });
                 }
                 // adapt to HTML5 new attribute 'srcset'
                 // IF website use 'srcset', we force to set this attribute to null then replace image using 'src'
                 if (clickedElem.getAttribute("srcset") != undefined) {
-                  editor.userIsModifying(() => {
+                  editor.userModifies(() => {
                     clickedElem.setAttribute("srcset", "");
                   });
                 }
@@ -3388,7 +3320,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                       //console.log("current link", this.children[0].getAttribute("src"));
                       //console.log("current section number is:", backImgObj.imageSelection);
                       //console.log("current selection is:", backImgObj.relCSS.value[backImgObj.imageSelection].url); 
-                      editor.userIsModifying(() => {
+                      editor.userModifies(() => {
                         clickedElem.setAttribute("style", unparseBackgroundImg(backImgObj));
                       });
                       //console.log("new style attribute is:", clickedElem.getAttribute("style"));
@@ -3399,12 +3331,12 @@ editor = typeof editor == "undefined" ? {} : editor;
                     // adapt to HTML5 new attribute 'srcset'
                     // IF website use 'srcset', we force to set this attribute to null then make image replacemenet
                     else if (clickedElem.getAttribute("srcset") != undefined) {
-                      editor.userIsModifying(() => {
+                      editor.userModifies(() => {
                         clickedElem.setAttribute("srcset", "");
                       });
                     }
                     else {
-                      editor.userIsModifying(() => {
+                      editor.userModifies(() => {
                         clickedElem.setAttribute("src", this.children[0].getAttribute("src"));
                       document.querySelector("#modify-menu #dom-attr-src").setAttribute("value", this.children[0].getAttribute("src"));
                       });
@@ -3463,7 +3395,7 @@ editor = typeof editor == "undefined" ? {} : editor;
           if(srcName == undefined) {
             ret.append(
               el("button", {}, "Add src attribute", {onclick: () => {
-                editor.userIsModifying(() => {
+                editor.userModifies(() => {
                   clickedElem.setAttribute("src", "");
                 });
                 editor.ui.refresh();
@@ -3505,7 +3437,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               let txtAreaNode = el("textarea", {class:"textChildNodeContent"},
                 [], {
                   value: node.textContent,
-                  oninput: (node => function() { editor.userIsModifying(() => { node.textContent = this.value;}); })(node)
+                  oninput: (node => function() { editor.userModifies(() => { node.textContent = this.value;}); })(node)
                 });
               ret.append(txtAreaNode)
               console.log("appending text area node", txtAreaNode);
@@ -3626,7 +3558,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               if(typeof m.innerHTMLCreate === "string") return m.innerHTMLCreate;
               return el(m.createParams.tag, m.createParams.attrs, m.createParams.children, m.createParams.props);
             })();
-            editor.userIsModifying(() => {
+            editor.userModifies(() => {
               if(insertionStyle === "after") {
                 if(typeof newElement === "string") {
                   clickedElem.insertAdjacentHTML("afterend", newElement);
@@ -3990,11 +3922,11 @@ editor = typeof editor == "undefined" ? {} : editor;
             document.querySelector("head > meta[name=viewport]") ? undefined :
             oneClickFix("Viewport not set on this page. This might make this page not display properly on mobile devices.",
               "Add missing <meta name='viewport'...>", () => 
-                editor.userIsModifying(() => 
+                editor.userModifies(() => 
                   document.head.appendChild(el("meta", {name: "viewport", content:"width=device-width, initial-scale=1.0"})))),
             document.querySelector("head > meta[charset]") ? undefined :
             oneClickFix("Character encoding not set on this page. The display of non-breaking spaces would be compromized on many browsers.", "Add missing <meta charset='UTF-8'>", () =>
-                  editor.userIsModifying(() => {
+                  editor.userModifies(() => {
                   document.head.insertBefore(el("meta", {charset: "UTF-8" }), document.head.childNodes[0])})),
             el("div", {class:"seo-fix"}, [
               el("p", {class:"seo-fix-description"}, !title ?
@@ -4003,7 +3935,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               ),
               el("input", {type:"text", value: title ? title.textContent : "", placeholder: "Title of the page"}, [], {
                 onchange: function() {
-                  editor.userIsModifying(() => {
+                  editor.userModifies(() => {
                     if(!title) {
                       title = el("title");
                       document.head.appendChild(title);
@@ -4020,7 +3952,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               ),
               el("textarea", {type:"text", class: "textChildNodeContent", placeholder: "Description of the page"}, [], {
                 onchange: function() {
-                  editor.userIsModifying(() => {
+                  editor.userModifies(() => {
                     if(!description) {
                       description = el("meta", {name: "description"});
                       document.head.appendChild(description);
@@ -4161,7 +4093,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     function getEditorInterfaceByTitle(title) {
       return editor.ui.model.interfaces.find(x => x.title == title);
     }
-
+ 
     // First time: We add the interface containers.
     if(!ifAlreadyRunning) {
       init_interfaces();
@@ -4169,18 +4101,11 @@ editor = typeof editor == "undefined" ? {} : editor;
     
     //if no ID, tag/name, or class (if h1, h2, etc..., probably fine)
     //split between common (section, div, span, p, ul,  etc...) and rare/better semantically defined tags (pre)
-
     //check if selector applies to any ancestors or descendants, then its ok
     //else add class or use > selector until it is precise 
     function getShortestUniqueSelector(clickedElem) {
       console.log("clickedElem", clickedElem);
-      let curSelector = clickedElem.tagName.toLowerCase();
-      if(clickedElem.getAttribute("id")) {
-        curSelector += "#" + clickedElem.getAttribute("id");
-      }
-      if (clickedElem.getAttribute("class") && clickedElem.getAttribute("class") != "") {
-        curSelector += (" " + clickedElem.getAttribute("class").trim()).replace(/\s+/g, ".");
-      }
+      let curSelector = getSelectorOf(clickedElem);
       //checking ancestors
       let consideredParent = clickedElem.parentNode;
       do {
@@ -4415,7 +4340,11 @@ editor = typeof editor == "undefined" ? {} : editor;
       var contextMenu = document.querySelector("#context-menu");
       var modifyMenuDiv = document.querySelector("#modify-menu");
       
-      if(!modifyMenuDiv || !contextMenu) return;
+      if(!modifyMenuDiv || !contextMenu) { // After some reloading, none of them might exist.
+        editor.ui.init();
+        contextMenu = document.querySelector("#context-menu");
+        modifyMenuDiv = document.querySelector("#modify-menu");
+      }
       modifyMenuDiv.classList.toggle("editor-interface", true);
       contextMenu.classList.toggle("editor-interface", true);
 
@@ -4842,7 +4771,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     } // editor.ui.refresh
 
     editor.refresh = function() {
-      console.log("DEPRECATED WARNING: Please use editor.ui.refresh() instead of editor.refresh()");
+      console.log("Please prefer editor.ui.refresh() instead of editor.refresh()");
       editor.ui.refresh()
     };
     editor.ui.refresh();
@@ -4910,8 +4839,125 @@ editor = typeof editor == "undefined" ? {} : editor;
     
   }; // editor.ui._internals.loadInterface
 
+  function dataToRecoverElement(oldNode) {
+    if(!oldNode) return undefined;
+    if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
+      return {id: oldNode.getAttribute("id")};
+    }
+    let tentativeSelector = [];
+    let t = oldNode;
+    let isText = false, textIndex = 0;
+    while(t && t.parentNode) {
+      let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
+      if(t.nodeType === 1) {
+        tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
+      } else {
+        isText = true;
+        textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
+      }
+      t = t.parentNode;
+    }
+    return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
+  }
+  
+  // Returns the new node that matches the old node the closest.
+  // For text nodes, try to recover the text node, if not, returns the parent node;
+  function recoverElementFromData(data) {
+    if(!data) return undefined;
+    if(typeof data === "object" && data.id) {
+      return document.getElementById(data.id);
+    }
+    if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
+      let tentativeSelector = data.tentativeSelector;
+      while(tentativeSelector.length >= 1) {
+        let newNode = document.querySelector(tentativeSelector.join(" "));
+        if(newNode) {
+          return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
+        }
+        tentativeSelector.shift();
+      }
+      return undefined;
+    }
+  }
+  function setCaretPositionIn(node, position) {
+    position = Math.min(position, node.textContent.length);
+    if (node.nodeType == 3) {
+      let sel  = window.getSelection()
+      setTimeout( () => sel.collapse(node, position), 0);
+    } else {
+      let p = position
+      let n = node.firstChild
+      while(n != null && p > n.textContent.length) {
+        p = p - n.textContent.length
+        n = n.nextSibling
+      }
+      if(n != null) {
+        setCaretPositionIn(n, p)
+      } else {
+        console.log("Could not find position. Reached node and position ", [n, p])
+      }
+    }
+  }
+  function dataToRecoverCaretPosition(caretPosition) {
+    if(!caretPosition) return undefined;
+    return {target: editor.toTreasureMap(caretPosition.startContainer), startOffset: caretPosition.startOffset};
+  }
+  function recoverCaretPositionFromData(data) {
+    if(!data) return;
+    let newTextNodeOrParent = editor.fromTreasureMap(data.target);
+    if(newTextNodeOrParent) setCaretPositionIn(newTextNodeOrParent, data.startOffset)
+  }
+  function dataToRecoverSelectionRange(selectionRange) { // TODO
+    if(!selectionRange) return undefined;
+    return undefined;
+  }
+  function recoverSelectionRangeFromData(data) { // TODO
+    if(!data) return;
+    return undefined;
+  }
+
   // Initialize Editor's interface.
   editor.ui.init = function() {
+    editor.ui.model = { // Change this and call editor.ui.refresh() to get something consistent.
+      visible: ifAlreadyRunning ? editor.ui.model.visible : false, //here
+      clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor.ui.model.clickedElem) : undefined,
+      displayClickedElemAsMainElem: true, // Dom selector status switch signal
+      previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
+      notextselection: false, // When using the relative DOM selector, set to true to avoid considering the caret (e.g. for insertions and deletions)
+      savedTextSelection: undefined, // Text range to restore when the edition bar closes, on mobile
+      restoredAfterReload: ifAlreadyRunning ? editor.ui.model.restoredAfterReload : {},
+      selectionRange: ifAlreadyRunning ? recoverSelectionRangeFromData(editor.ui.model.selectionRange) : undefined,
+      caretPosition: ifAlreadyRunning ? recoverCaretPositionFromData(editor.ui.model.caretPosition) : undefined,
+      link: undefined,
+      disambiguationMenu: undefined, //here
+      isSaving: false,
+      undosBeforeSave: ifAlreadyRunning ? editor.ui.model.undosBeforeSave : 0,
+      //data structures to represent undo/redo "stack"
+      undoStack: ifAlreadyRunning ? editor.ui.model.undoStack : [],
+      redoStack: ifAlreadyRunning ? editor.ui.model.redoStack : [],
+      actionsDuringSave: ifAlreadyRunning ? editor.ui.model.actionsDuringSave : [],
+      isDraftSwitcherVisible : ifAlreadyRunning ? editor.ui.model.isDraftSwitcherVisible : false,
+      //observer to listen for muts
+      outputObserver: ifAlreadyRunning ? editor.ui.model.outputObserver : undefined,
+      //worker for interface with the server
+      send_notif:ifAlreadyRunning ? editor.ui.model.send_notif : "",
+      //editor log
+      editor_log: ifAlreadyRunning ? editor.ui.model.editor_log : [],
+      show_log: ifAlreadyRunning ? editor.ui.model.show_log : false, //here
+      linkSelectMode: false, //here
+      linkSelectCallback: undefined, // Callback that is going to be called with the selected node.
+      idNum: ifAlreadyRunning ? editor.ui.model.idNum : 1,
+      //new attribute to keep menu state after reload
+      textareaPropertiesSaved: ifAlreadyRunning ? editor.ui.model.textareaPropertiesSaved : [],
+      askQuestions: ifAlreadyRunning ? editor.ui.model.askQuestions : editor.config.askQuestions,
+      autosave: ifAlreadyRunning ? editor.ui.model.autosave : editor.config.autosave,
+      path: editor.config.path,
+      version : computeDraftVersion(),
+      interfaces: ifAlreadyRunning ? editor.ui.model.interfaces : [],
+      disambiguationMenu: ifAlreadyRunning ? editor.ui.model.disambiguationMenu : undefined,
+      userIsModifying: false // Set to true only when user is clearly modifying something
+    }
+    
     // Loads all the Editor interfaces.
     editor.ui._internals.loadInterface();
     
