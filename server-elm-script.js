@@ -21,9 +21,13 @@ editor = typeof editor == "undefined" ? {} : editor;
   // Overwrite the entire document (head and body)
   // I'm not sure there is a better way.
   function writeDocument(NC) {
+    let {scrollX, scrollY} = window;
     document.open();
     document.write(NC);
     document.close();
+    setTimeout(() => {
+      window.scrollTo(scrollX, scrollY);
+    }, 0)
   }
   _internals.writeDocument = writeDocument;
 
@@ -63,6 +67,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       return thaditor._internals.writeServer(action, name, content, onOk, onErr);
     } else {
       var request = new XMLHttpRequest();
+      var url = "/";
       request.open('POST', url, false);  // `false` makes the request synchronous
       request.setRequestHeader("action", action);
       request.setRequestHeader("name", name);
@@ -561,7 +566,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     } else if(n.nodeType == 8) {
       return ["COMMENT", n.textContent];
     } else if(n.nodeType === 10) {
-      return ["COMMENT", "DOCTYPE " + n.name + (n.publicId ? " PUBLIC " + n.publicId : "") + (n.systemId ? " " + n.systemId : "")];
+      return ["COMMENT", "DOCTYPE " + n.name + (n.publicId ? " PUBLIC \"" + n.publicId + "\"" : "") + (n.systemId ? " \"" + n.systemId + "\"" : "")];
     } {
       var attributes = [];
       var tagName = n.nodeType === document.DOCUMENT_NODE ? "#document" : n.tagName.toLowerCase();
@@ -1216,11 +1221,37 @@ editor = typeof editor == "undefined" ? {} : editor;
     
       // Handle a rewrite message from the worker
     editor.ui._internals.handleRewriteMessage = function(e) {
-      var editor_model = editor.ui.model;
-      editor_model.isSaving = false;
-
       //Rewrite the document, restoring some of the UI afterwards.
-      editor.ui._internals.writeDocument(e.data.text);
+      if(editor.config.fast) {
+        // If we are in fast mode, then the page is used only for comparing with back-propagation.
+        // The actual page is loaded through a query to the server.
+        console.log("Here we will call the proxy to fetch the current URL " + String(location));
+        let xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState == 4) {
+                // The request is done; did it work?
+                if (xhr.status == 200) {
+                    // Yes, use `xhr.responseText` to resolve the promise
+                    editor._internals.writeDocument(xhr.responseText); // At least keep the scroll
+                    //editor.ui._internals.handleRewriteMessageWithText(e, xhr.responseText);
+                } else {
+                    // No, reject the promise
+                    console.log("Error while reading page "+String(location) + "\n Fallback on Thaditor.");
+                    editor.ui._internals.handleRewriteMessageWithText(e, e.data.text);
+                }
+             }
+        };
+        xhr.open("GET", String(location));
+        xhr.send();
+      } else {
+        editor.ui._internals.handleRewriteMessageWithText(e, e.data.text);
+      }
+    }
+    
+    editor.ui._internals.handleRewriteMessageWithText = function(e, text) {
+      let editor_model = editor.ui.model;
+      editor_model.isSaving = false;
+      editor.ui._internals.writeDocument(text);
       
       var newLocalURL = e.data.newLocalURL;
       var newQueryStr = e.data.newQueryStr;
@@ -4006,7 +4037,11 @@ editor = typeof editor == "undefined" ? {} : editor;
                   editor._internals.doWriteServer("updateversion", "latest", "", response => {
                     console.log("Result from Updating Thaditor to latest:");
                     console.log(response);
-                    location.reload(true);
+                    if(response.endsWith("Done.")) {
+                      location.reload(true);
+                    } else {
+                      alert("Update failed. Please navigate to /ThaditorInstaller.php and re-install Thaditor. You will not loose any drafts.");
+                    }
                   });
                 }
               } })
@@ -4566,7 +4601,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         var whereToAddContextButtons = contextMenu;
         var noContextMenu = false;
         // What to put in context menu?
-        if(editor.config.onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body"))) {
+        if(editor.config.onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body")) || !editor_model.selectionRange && !editor_model.clickedElem) {
           modifyMenuPinnedIconsDiv.parentElement.insertBefore(modifyMenuIconsDiv, modifyMenuPinnedIconsDiv.nextSibling);
           whereToAddContextButtons = modifyMenuIconsDiv;
           noContextMenu = true;
@@ -4702,7 +4737,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               })(editor_model.selectionRange)}
               )
         }
-        if(!editor_model.selectionRange && editor.config.EDITOR_VERSION & 1) {
+        if(!editor_model.selectionRange && editor_model.clickedElem && editor.config.EDITOR_VERSION & 1) {
           addContextMenuButton(editor.ui.icons.plus,
               {title: "Insert element", contenteditable: false},
               {onclick: event => {

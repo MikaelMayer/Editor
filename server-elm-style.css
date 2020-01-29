@@ -1117,7 +1117,13 @@ div.editor-container-content {
 div.editor-container-content button {
     outline: none;
 }
-
+div.editor-container div.editor-container-title div.editor-container-icon {
+  opacity: 0;
+  transition: opacity .25s ease-in-out;
+}
+div.editor-container div.editor-container-title:hover div.editor-container-icon {
+  opacity: 1;
+}
 div.editor-container div.editor-container-title div.editor-container-icon {
   float: right;
   margin-top: 5px;
