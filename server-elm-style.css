@@ -884,7 +884,7 @@ div#context-menu {
     background-color: var(--context-color);
     color: white;
     font-weight: bold;
-    z-index: 1000000;
+    z-index: 10001;
 }
 
 div#context-menu.visible {
@@ -1318,7 +1318,7 @@ div#modify-menu textarea.translation-content {
 div.editor-modal {
   display: none; /* Hidden by default */
   position: fixed; /* Stay in place */
-  z-index: 10000; /* Sit on top */
+  z-index: 100002; /* Sit on top */
   left: 0;
   top: 0;
   width: 100%; /* Full width */
@@ -1331,7 +1331,10 @@ div.editor-modal {
 /* Modal Content/Box */
 div.editor-modal-content {
   background-color: #fefefe;
-  margin: 15% auto; /* 15% from the top and centered */
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 50px;
+  margin-bottom: 50px;
   padding: 20px;
   border: 1px solid #888;
   width: 80%; /* Could be more or less, depending on screen size */
