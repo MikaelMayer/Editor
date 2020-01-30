@@ -4844,6 +4844,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       }
       return true;
     } //editor.ui.close 
+    editor.close = editor.ui.close;
     
     editor.ui._internals.onBeforeuninit = function editor_onbeforeuninit(e) {
       e = e || window.event;
