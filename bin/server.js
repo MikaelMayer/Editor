@@ -91,7 +91,7 @@ var defaultOptions = {
 async function start() {
 
 // Don't modify, this will be replaced by the content of 'server.elm'
-const defaultServerContent = "<html><head></head><body>Server not available.</body></html>";
+const defaultServerContent = "<html><head></head><body class='editor-error'>Server not available.</body></html>";
 const useDefaultServerContent = false;
 
 const defaultHtAccessFileContent = `if Regex.matchIn """\\.\\.(?:/|\\\\)|(?:/|\\\\)\\.\\.|^\\.\\.$""" path then False else
@@ -459,7 +459,7 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
     console.log("Error in htaccess", access._0);
     response.setHeader('Content-Type', header);
     response.statusCode = 500;
-    response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>htaccess.elm internal Error report</h1><pre style="white-space:pre-wrap">${access._0}</pre></div></body></html>`);
+    response.end(`<html><body style="color:#cc0000" class="editor-error"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>htaccess.elm internal Error report</h1><pre style="white-space:pre-wrap">${access._0}</pre></div></body></html>`);
   } else if(access._0) {
     if(typeof willkill != "undefined") {
       clearTimeout(willkill);
@@ -521,7 +521,7 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
         response.setHeader('Content-Type', header);
         response.statusCode = 200;
         if(htmlContent.ctor == "Err") {
-          response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`);
+          response.end(`<html><body style="color:#cc0000" class="editor-error"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`);
         } else {
           response.end(htmlContent._0);
         }
@@ -660,7 +660,7 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
           response.statusCode = 201;
           response.setHeader('Content-Type', 'text/html; charset=utf-8');
           if(htmlContent.ctor == "Err") {
-            response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
+            response.end(`<html><body style="color:#cc0000" class="editor-error"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Internal Error report</h1><pre style="white-space:pre-wrap">${htmlContent._0}</pre></div></body></html>`)
           } else {
             if(typeof request.headers["url"] === "string") {
               response.setHeader("New-Local-URL", request.headers["url"]);
@@ -715,7 +715,7 @@ const server = httpOrHttps.createServer(httpsOptions, (request, response) => {
     }
   } else {
     response.statusCode = 401;
-    response.end(`<html><body style="color:#cc0000"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Unauthorized access to ${path}</h1></div></body></html>`);
+    response.end(`<html><body style="color:#cc0000" class="editor-error"><div   style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Unauthorized access to ${path}</h1></div></body></html>`);
   }
 });
 

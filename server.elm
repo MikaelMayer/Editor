@@ -154,11 +154,11 @@ isTextFile path =
 (folderView, mbSourcecontentAny1, hydeNotNeeded): (Boolean, Maybe String, Boolean)
 (folderView, mbSourcecontentAny1, hydeNotNeeded) =
   if path == "server.elm" then
-    (False, Just """<html><head></head><body>The Elm server cannot display itself. This is a placeholder</body></html>""", True)
+    (False, Just """<html><head></head><body class="editor-error">The Elm server cannot display itself. This is a placeholder</body></html>""", True)
   else if fs.isdir path then
     (True, Just "", True)
   else if fs.isfile path && Regex.matchIn """\.(png|jpg|ico|gif|jpeg)$""" path then -- Normally not called because server.js takes care of these cases.
-    (False, Just """<html><head><title>@path</title></head><body><img src="@path"></body></html>""", True)
+    (False, Just """<html><head><meta name="viewport" content="width=device-width, minimum-scale=0.1"><title>@path</title></head><body style="margin: 0px; background: #0e0e0e;"><img style="-webkit-user-select: none;margin: auto;" src="@path"></body></html>""", True)
   else if hydefilecache == Nothing || withoutPipeline || not varhydeNotDisabled then
     (False, fs.read path, True)
   else
@@ -260,7 +260,7 @@ mbSourcecontentAny =
           else
             Just <|
             serverOwned "error recovery of hyde build tool" <|
-            """<html><head></head><body><h1>Error while resolving the generated version of @path</h1><pre>@hyde_errors</pre></body></html>"""
+            """<html><head></head><body class="editor-error"><h1>Error while resolving the generated version of @path</h1><pre>@hyde_errors</pre></body></html>"""
         x -> x
     x -> x
 
@@ -271,7 +271,7 @@ mbSourcecontentAny =
 sourcecontentAny = Maybe.withDefaultReplace (
     serverOwned "404 page" (if isTextFile path then
            if permissionToCreate then freeze """@path does not exist yet. Modify this page to create it!""" else """Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)"""
-        else """<html><head></head><body>@(
+        else """<html><head></head><body class="editor-error">@(
           if permissionToCreate then freeze """<span>@path does not exist yet. Modify this page to create it!</span>""" else """<span>Error 404, @path does not exist or you don't have admin rights to modify it (?admin=true)</span>"""
             )</body></html>""")
   ) mbSourcecontentAny
@@ -360,7 +360,7 @@ phpToElmFinal path string =
 evaluatedPage: Result String (List HtmlNode)
 evaluatedPage = 
   if canEvaluate /= "true" then
-    Ok [<html><head></head><body>URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>]
+    Ok [<html><head></head><body class="editor-error">URL parameter evaluate=@(canEvaluate) requested the page not to be evaluated</body></html>]
   else if isTextFile path || varraw then
     Ok [<html style="height:100%;">
         <head>
@@ -447,7 +447,7 @@ evaluatedPage =
       let elmSourceContent = phpToElmFinal path sourcecontent in
       __evaluate__ (("$_GET", vars)::("$_SERVER", [("SCRIPT_NAME", "/" + path)])::("path", path)::("fs", fs)::preludeEnv) elmSourceContent |>
       case of
-        Err msg -> serverOwned "error message" "<html><head></head><body><pre>Error elm-reinterpreted php: " + Regex.replace "<" "&lt;" msg + "</pre>Original computed source <pre>" +
+        Err msg -> serverOwned "error message" "<html><head></head><body class="editor-error"><pre>Error elm-reinterpreted php: " + Regex.replace "<" "&lt;" msg + "</pre>Original computed source <pre>" +
           Regex.replace "<" "&lt;" elmSourceContent +
           "</pre></body></html>"
         Ok sourcecontent -> applyDotEditor sourcecontent
@@ -975,7 +975,7 @@ evaluatedPage =
     window.addEventListener('dragover', (e) => e.preventDefault(), false);
     </script></body></html>]
   else 
-    Ok [<html><head></head><body>
+    Ok [<html><head></head><body class="editor-error">
       <p>Editor cannot open file because it does not recognize the extension.</p>
       <p>As an alternative, you can open the file in raw mode by appending <code>?raw</code> to it.</p>
       <button onclick="""
@@ -991,7 +991,7 @@ recoveredEvaluatedPage: List HtmlNode
 recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
   case evaluatedPage of
   Err msg -> serverOwned "Error Report" <|
-    [<html><head></head><body style="color:#cc0000"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><button onclick="editor.reload();" title="Reload the current page">Reload</button><pre style="white-space:pre-wrap">@msg</pre></div></body></html>]
+    [<html><head></head><body style="color:#cc0000" class="editor-error"><div style="max-width:600px;margin-left:auto;margin-right:auto"><h1>Error report</h1><button onclick="editor.reload();" title="Reload the current page">Reload</button><pre style="white-space:pre-wrap">@msg</pre></div></body></html>]
   Ok nodes ->
     let hasChildTag theTag nodes = List.any (case of [tag, _, _] -> tag == theTag; _ -> False) nodes
         recoverHtmlChildren nodes =
