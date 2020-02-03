@@ -827,8 +827,10 @@ editor = typeof editor == "undefined" ? {} : editor;
         let newHtmlData = "";
         for(let i = 0; i < contents.childNodes.length; i++) {
           let n = contents.childNodes[i];
-          newHtmlData += n.nodeType == 1 ? n.outerHTML : el("div", {}, n).innerHTML;
+          newHtmlData += n.nodeType == 1 ? n.outerHTML : el("div", {}, n.textContent).innerHTML;
         }
+        let textContent = el("div", {}, [], {innerHTML: newHtmlData}).textContent;
+        event.clipboardData.setData('text/plain', textContent);
         event.clipboardData.setData('text/html', newHtmlData);
         event.preventDefault();
       }
@@ -838,9 +840,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       if(e.clipboardData.types.indexOf("text/html") >= 0 && (!document.activeElement || !document.activeElement.matches("#modify-menu *"))) {
         e.preventDefault();
         e.stopPropagation();
-        console.log("paste", e);
         let content = e.clipboardData.getData("text/html").replace(/^\s*<html>\s*<body>\s*(<!--[^\-]*-->\s*)?|(\s*<!--[^\-]*-->)?\s*<\/body>\s*<\/html>\s*$/g, "");
-        console.log("pasted content", content);
         pasteHtmlAtCaret(content);
         return true;
       }

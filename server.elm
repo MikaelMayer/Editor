@@ -1024,7 +1024,7 @@ recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
           else recoverHtml [["html", [], nodes]]
         (["COMMENT", x] as head) :: rest ->
           head :: aux rest
-        ([tag, _, _] as head) :: rest ->
+        ((tag :: _ :: _ :: _) as head) :: rest ->
            if tag == "!DOCTYPE" then
              head :: aux rest
            else recoverHtml [["html", [], nodes]]
