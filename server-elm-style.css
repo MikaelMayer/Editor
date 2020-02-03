@@ -971,6 +971,7 @@ svg.context-menu-icon>path {
 svg.context-menu-icon.fill>path {
     fill: #FFFFFF;
     fill-rule: evenodd;
+    stroke-width: 1px;
 }
 
 div#context-menu .context-menu-button:hover, div#modify-menu .modify-menu-button:hover:not(.disabled) {
