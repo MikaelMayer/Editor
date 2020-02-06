@@ -1041,7 +1041,20 @@ editor = typeof editor == "undefined" ? {} : editor;
     }
     editor.ui.refresh();
     editor.ui.sendNotification("Saving...");
-    const toSend = JSON.stringify(editor.domNodeToNativeValue(document));
+    let domToSend = undefined;
+    if(typeof thaditor == "object" && typeof thaditorfast == "object") {
+      try {
+        domToSend = bam.apply(thaditorfast.changesToSave(), thaditor.page);
+      } catch(e) {
+        console.log("Problem while trying to save changes in Thaditorfast", e);
+        if(!window.confirm("I could not save the changes using the fast engine. See console for details.\nUse the regular engine?"))
+          return;
+        domToSend = editor.domNodeToNativeValue(document);
+      }
+    } else {
+      domToSend = editor.domNodeToNativeValue(document);
+    }
+    const toSend = JSON.stringify(domToSend);
     editor.ui._internals.notifyServer({"question": editor.ui.model.askQuestions ? "true" : "false"}, toSend, "Save")
   } //editor.saveDOM
   
@@ -1223,26 +1236,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     editor.ui._internals.handleRewriteMessage = function(e) {
       //Rewrite the document, restoring some of the UI afterwards.
       if(editor.config.fast) {
-        // If we are in fast mode, then the page is used only for comparing with back-propagation.
-        // The actual page is loaded through a query to the server.
-        console.log("Here we will call the proxy to fetch the current URL " + String(location));
-        let xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState == 4) {
-                // The request is done; did it work?
-                if (xhr.status == 200) {
-                    // Yes, use `xhr.responseText` to resolve the promise
-                    editor._internals.writeDocument(xhr.responseText); // At least keep the scroll
-                    //editor.ui._internals.handleRewriteMessageWithText(e, xhr.responseText);
-                } else {
-                    // No, reject the promise
-                    console.log("Error while reading page "+String(location) + "\n Fallback on Thaditor.");
-                    editor.ui._internals.handleRewriteMessageWithText(e, e.data.text);
-                }
-             }
-        };
-        xhr.open("GET", String(location));
-        xhr.send();
+        document.location.reload();
       } else {
         editor.ui._internals.handleRewriteMessageWithText(e, e.data.text);
       }
