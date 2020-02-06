@@ -1064,12 +1064,12 @@ editor = typeof editor == "undefined" ? {} : editor;
     // Insets the modification menu.
     editor.ui._internals.contextMenu = document.querySelector("div#context-menu");
     if(!editor.ui._internals.contextMenu) {
-      editor.ui._internals.contextMenu = el("div#context-menu", {contenteditable: "false"}, [], {isghost: true});
+      editor.ui._internals.contextMenu = el("div#context-menu", {contenteditable: "false", isghost: "true"}, [], {isghost: true});
       document.body.insertBefore(editor.ui._internals.contextMenu, document.body.childNodes[0]);
     }
     editor.ui._internals.modifyMenu = document.querySelector("div#modify-menu");
     if(!editor.ui._internals.modifyMenu) {4
-      editor.ui._internals.modifyMenu = el("div#modify-menu", {contenteditable: "false"}, [], {isghost:true})
+      editor.ui._internals.modifyMenu = el("div#modify-menu", {contenteditable: "false", isghost: "true"}, [], {isghost:true})
       document.body.insertBefore(editor.ui._internals.modifyMenu, document.body.childNodes[0]);
     }
     prevStyleElem = editor.ui._internals.styleElem;
@@ -2191,7 +2191,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     // Wraps a portion of code so that it and its mutation observers are executed with the flag editor.ui.model.userIsModifying set to true.
     editor.userModifies = function userModifies(callback) {
       editor.ui.model.userIsModifying = true;
-      callback();
+      if(callback) callback();
       setTimeout(() => editor.ui.model.userIsModifying = false, 0); // Will be invoked after mutation handlers.
     }
     
@@ -4625,7 +4625,7 @@ editor = typeof editor == "undefined" ? {} : editor;
             {onclick: (c => event => {
               editor_model.clickedElem = c;
               refresh();
-            })(clickedElem.parentNode)}
+            })(clickedElem.parentElement)}
           );
         }
         
@@ -5037,6 +5037,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     // Key Shortcuts
     var lastKeyPress = 0;
     var onKeyDown = function(e) {
+      editor.userModifies();
       var key = e.which || e.keyCode;
       if (e.which == 83 && (e.ctrlKey || e.metaKey)) { // CTRL+S or CMD+S: Save
         if(document.getElementById("savebutton") && document.getElementById("savebutton").onclick) {
