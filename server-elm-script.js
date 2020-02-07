@@ -1041,21 +1041,31 @@ editor = typeof editor == "undefined" ? {} : editor;
     }
     editor.ui.refresh();
     editor.ui.sendNotification("Saving...");
-    let domToSend = undefined;
-    if(typeof thaditor == "object" && typeof thaditorfast == "object") {
-      try {
-        domToSend = bam.apply(thaditorfast.changesToSave(), thaditor.page);
-      } catch(e) {
-        console.log("Problem while trying to save changes in Thaditorfast", e);
-        if(!window.confirm("I could not save the changes using the fast engine. See console for details.\nUse the regular engine?"))
-          return;
-        domToSend = editor.domNodeToNativeValue(document);
+    let doSendDom = domToSend => {
+      if(domToSend) {
+        const toSend = JSON.stringify(domToSend);
+        editor.ui._internals.notifyServer({"question": editor.ui.model.askQuestions ? "true" : "false"}, toSend, "Save")
       }
-    } else {
-      domToSend = editor.domNodeToNativeValue(document);
     }
-    const toSend = JSON.stringify(domToSend);
-    editor.ui._internals.notifyServer({"question": editor.ui.model.askQuestions ? "true" : "false"}, toSend, "Save")
+    if(typeof thaditor == "object" && typeof thaditorfast == "object") {
+      thaditorfast.pagePromise.then(page => {
+        let domToSend;
+        try {
+          domToSend = bam.apply(thaditorfast.changesToSave(), page);
+        } catch(e) {
+          console.log("Problem while trying to save changes in Thaditorfast", e);
+          if(!window.confirm("I could not save the changes using the fast engine. See console for details.\nUse the regular engine?")) {
+            editor.ui.model.isSaving = false;
+            editor.refresh();
+            return; 
+          }
+          domToSend = editor.domNodeToNativeValue(document);
+        }
+        return domToSend;
+      }).then(doSendDom);
+    } else {
+      doSendDom(editor.domNodeToNativeValue(document));
+    }
   } //editor.saveDOM
   
   
