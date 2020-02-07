@@ -2080,10 +2080,12 @@ editor = typeof editor == "undefined" ? {} : editor;
         }
         tmp = tmp.parentElement;
       }
+      var return_value = undefined;
       if(aElement && link || buttonElement && editor.config.fast) { // Prevents navigating to clicks.
         // We could prevent navigating to buttons as well, but that should be an option. Or a button like for the link
         event.stopPropagation();
         event.preventDefault();
+        return_value = false;
       }
       document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
       if(ancestorIsModifyBox || ancestorIsContextMenu || ancestors[ancestors.length - 1].tagName != "HTML") return;
@@ -2096,6 +2098,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       editor.ui.model.insertElement = false;
       editor.ui.model.notextselection = false;
       editor.ui.refresh();
+      return return_value;
       // Check if the event.target matches some selector, and do things...
     } //end of editor.ui._internals.onClick
 
@@ -4615,7 +4618,6 @@ editor = typeof editor == "undefined" ? {} : editor;
         var noContextMenu = false;
         // What to put in context menu?
         if(editor.config.onMobile() || (editor_model.clickedElem && editor_model.clickedElem.matches("html, head, head *, body")) || !editor_model.selectionRange && !editor_model.clickedElem) {
-          modifyMenuPinnedIconsDiv.parentElement.insertBefore(modifyMenuIconsDiv, modifyMenuPinnedIconsDiv.nextSibling);
           whereToAddContextButtons = modifyMenuIconsDiv;
           noContextMenu = true;
         }
@@ -4811,6 +4813,9 @@ editor = typeof editor == "undefined" ? {} : editor;
         }
         if(noContextMenu) {
           contextMenu.classList.remove("visible");
+          if(modifyMenuIconsDiv.childNodes.length) {
+            modifyMenuPinnedIconsDiv.parentElement.insertBefore(modifyMenuIconsDiv, modifyMenuPinnedIconsDiv.nextSibling);
+          }
         }
       }
       
