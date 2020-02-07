@@ -1084,6 +1084,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         Editor's interface.
   ******************************/
   editor.ui._internals.loadInterface = function() {
+    editor.ui.model.visible = true;
     // Insets the modification menu.
     editor.ui._internals.contextMenu = document.querySelector("div#context-menu");
     if(!editor.ui._internals.contextMenu) {
@@ -2035,7 +2036,6 @@ editor = typeof editor == "undefined" ? {} : editor;
         editor.ui.model.dismissNextClick = false;
         return;
       }
-      
       var clickedElem = event.target;
       //console.log("click event", event.target);
       var editorSelectOptions = document.querySelectorAll("meta[editor-noselect],meta[editor-doselect]");
@@ -2059,6 +2059,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       var ancestors = [];
       var tmp = clickedElem;
       var aElement;
+      var buttonElement;
       var ancestorIsModifyBox = false;
       var ancestorIsContextMenu = false;
       var link = undefined;
@@ -2074,7 +2075,15 @@ editor = typeof editor == "undefined" ? {} : editor;
           aElement = tmp;
           link = aElement.getAttribute("href");
         }
+        if(!buttonElement && tmp.tagName === "BUTTON") {
+          buttonElement = tmp;
+        }
         tmp = tmp.parentElement;
+      }
+      if(aElement && link || buttonElement && editor.config.fast) { // Prevents navigating to clicks.
+        // We could prevent navigating to buttons as well, but that should be an option. Or a button like for the link
+        event.stopPropagation();
+        event.preventDefault();
       }
       document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
       if(ancestorIsModifyBox || ancestorIsContextMenu || ancestors[ancestors.length - 1].tagName != "HTML") return;
@@ -5136,7 +5145,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     }
     
     document.addEventListener('mousedown', editor.ui._internals.onMouseDown, false);
-    document.addEventListener('click', editor.ui._internals.onClick, false);
+    document.addEventListener('click', editor.ui._internals.onClick, true);
     
     
     var onDeviceReady = function onDeviceReady(){
