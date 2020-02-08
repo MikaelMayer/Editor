@@ -854,7 +854,7 @@ evaluatedPage =
               pgbr.innerHTML = "";
             }
           }
-        }
+        };
         ([...files]).forEach((fl) => {
           var fileName = editor.config.path + fl.name;
           editor.uploadFile(fileName, fl,

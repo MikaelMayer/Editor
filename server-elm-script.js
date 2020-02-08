@@ -4653,6 +4653,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               let wsTxtNode = c.previousSibling && c.previousSibling.nodeType == 3 &&
                 c.previousSibling.textContent.trim() === "" ? c.previousSibling : undefined;
               // There is whitespace before this element, we try to reinsert
+              editor.userModifies();
               c.parentElement.insertBefore(c, c.previousElementSibling);
               if(wsTxtNode) { // We move the whitespace as well.
                 c.parentElement.insertBefore(wsTxtNode, c.previousElementSibling);
@@ -4669,6 +4670,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               let wsTxtNode = c.nextSibling && c.nextSibling.nodeType == 3 && 
                 c.nextSibling.textContent.trim() === "" ? c.nextSibling : undefined;
               let nodeToInsertAfter = c.nextElementSibling;
+              editor.userModifies();
               nodeToInsertAfter.insertAdjacentElement("afterend", c);
               if(wsTxtNode) { // We move the whitespace as well
                 nodeToInsertAfter.parentElement.insertBefore(wsTxtNode, nodeToInsertAfter.nextSibling);
@@ -4695,6 +4697,7 @@ editor = typeof editor == "undefined" ? {} : editor;
             {onclick: (c => event => {
                 if(editor_model.clickedElem.nextElementSibling) editor_model.clickedElem = editor_model.clickedElem.nextElementSibling;
                 else editor_model.clickedElem = editor_model.clickedElem.previousElementSibling;
+                editor.userModifies();
                 c.remove();
                 refresh();
               })(clickedElem)
@@ -4708,6 +4711,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                 let tmp = s.startContainer;
                 let nodeToInsertAfter = s.startContainer;
                 let parent = nodeToInsertAfter.parentElement;
+                editor.userModifies();
                 while(tmp && tmp !== s.endContainer.nextSibling) {
                   if(tmp.nodeType === 3) {
                     elements.push(tmp === s.startContainer ? tmp === s.endContainer ? tmp.textContent.substring(s.startOffset, s.endOffset) : tmp.textContent.substring(s.startOffset) :
