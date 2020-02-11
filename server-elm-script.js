@@ -1084,7 +1084,6 @@ editor = typeof editor == "undefined" ? {} : editor;
         Editor's interface.
   ******************************/
   editor.ui._internals.loadInterface = function() {
-    editor.ui.model.visible = true;
     // Insets the modification menu.
     editor.ui._internals.contextMenu = document.querySelector("div#context-menu");
     if(!editor.ui._internals.contextMenu) {
@@ -2208,7 +2207,9 @@ editor = typeof editor == "undefined" ? {} : editor;
     editor.userModifies = function userModifies(callback) {
       editor.ui.model.userIsModifying = true;
       if(callback) callback();
-      setTimeout(() => editor.ui.model.userIsModifying = false, 0); // Will be invoked after mutation handlers.
+      setTimeout(() => {
+        editor.ui.model.userIsModifying = false;
+      }, 0); // Will be invoked after mutation handlers.
     }
     
     // newValue can be a function, in which it should be applied on the current content.
@@ -4399,8 +4400,8 @@ editor = typeof editor == "undefined" ? {} : editor;
       modifyMenuDiv.classList.toggle("editor-interface", true);
       contextMenu.classList.toggle("editor-interface", true);
 
-      // Display the interface or not
-      modifyMenuDiv.classList.toggle("visible", editor_model.visible); //Mikael what does this do? -B
+      // Display the full interface (visible) or just the save/undo/redo buttons (not visible)
+      modifyMenuDiv.classList.toggle("visible", editor_model.visible);
 
       // Make sure at most one element is marked as ghost-clicked.
       document.querySelectorAll("[ghost-clicked=true]").forEach(e => e.removeAttribute("ghost-clicked"));
@@ -4977,7 +4978,8 @@ editor = typeof editor == "undefined" ? {} : editor;
   // Initialize Editor's interface.
   editor.ui.init = function() {
     editor.ui.model = { // Change this and call editor.ui.refresh() to get something consistent.
-      visible: ifAlreadyRunning ? editor.ui.model.visible : false, //here
+      opened: true,
+      visible: ifAlreadyRunning ? editor.ui.model.visible : false,
       clickedElem: ifAlreadyRunning ? editor.fromTreasureMap(editor.ui.model.clickedElem) : undefined,
       displayClickedElemAsMainElem: true, // Dom selector status switch signal
       previousVisitedElem: [], // stack<DOM node> which helps showing previous selected child in the dom selector
@@ -5188,6 +5190,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       if (typeof editor.ui.model === "object" && typeof editor.ui.model.outputObserver !== "undefined") {
         editor.ui.model.outputObserver.disconnect();
       }
+      editor.ui.opened = false;
       window.onpopstate = undefined;
       document.removeEventListener("selectionchange", editor.ui.fixSelection);
       dropZone.removeEventListener('dragover', editor.ui.handleDragOver);
