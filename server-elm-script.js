@@ -15,6 +15,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     thaditor: false,
     userName: typeof userName === "string" ? userName : "anonymous",
     ...editor.config};
+  var mbFast = editor.config.fast ? "&fast": "";
   
   var _internals = {};
   editor._internals = _internals;
@@ -1006,7 +1007,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     return url.match(/^https?:\/\/|^www\.|^\/\//);
   }
   function linkToEdit(link) {
-    return link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit" : link + "?edit" : link;
+    return link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit"+ mbFast : link + "?edit" + mbFast: link;
   }
   
   // Helper.
@@ -1478,8 +1479,12 @@ editor = typeof editor == "undefined" ? {} : editor;
     // If replaceState it true, the back button will not work.
     editor.navigateTo = function navigateTo(url, replaceState) {
       url = relativeToAbsolute(url);
-      editor.ui.sendNotification("Loading...");
-      editor.ui._internals.notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
+      if(editor.config.fast) {
+        location.href = url;
+      } else {
+        editor.ui.sendNotification("Loading...");
+        editor.ui._internals.notifyServer({reload: "true", url: url, replaceState: ""+replaceState}, undefined, "Page load");
+      }
     }; // editor.navigateTo
     
     editor.ui.navigateTo = editor.navigateTo;
@@ -2080,14 +2085,14 @@ editor = typeof editor == "undefined" ? {} : editor;
         tmp = tmp.parentElement;
       }
       var return_value = undefined;
+      document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
+      if(ancestorIsModifyBox || ancestorIsContextMenu || ancestors[ancestors.length - 1].tagName != "HTML") return;
       if(aElement && link || buttonElement && editor.config.fast) { // Prevents navigating to clicks.
         // We could prevent navigating to buttons as well, but that should be an option. Or a button like for the link
         event.stopPropagation();
         event.preventDefault();
         return_value = false;
       }
-      document.querySelectorAll("[ghost-hovered=true]").forEach(e => e.removeAttribute("ghost-hovered"));
-      if(ancestorIsModifyBox || ancestorIsContextMenu || ancestors[ancestors.length - 1].tagName != "HTML") return;
       //console.log("not modify box", ancestors)
       document.querySelector("#context-menu").classList.remove("visible");
       
@@ -3795,7 +3800,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               {
                 onclick: (event) => {
                   editor_model.version = nm;
-                  editor.navigateTo("/Thaditor/versions/" + nm + "/?edit");
+                  editor.navigateTo("/Thaditor/versions/" + nm + "/?edit" + mbFast);
                   setTimeout(() => editor.ui.sendNotification("Switched to " + nm), 2000);
                 }
               });
@@ -3806,7 +3811,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               {
                 onclick: (event) => {
                   editor_model.version = "Live";
-                  editor.navigateTo("/?edit");
+                  editor.navigateTo("/?edit"+ mbFast);
                   setTimeout(() => editor.ui.sendNotification("Switched to Live version"), 2000);
                 }
               })
@@ -4265,7 +4270,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                     nm:nm, thaditor_files:thaditor_files, version:editor_model.version};
       if (editor_model.version == nm) {
         editor._internals.doWriteServer("deletermrf", pth_to_delete);
-        editor.navigateTo("/?edit");
+        editor.navigateTo("/?edit"+ mbFast);
         editor.ui.refresh();
       } else {
         thaditor.do(data).then(data => {
@@ -4352,7 +4357,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       thaditor.do(data).then(data => {
         let marker = false;
         if (data.nm == data.version) {
-          editor.navigateTo("/Thaditor/versions/" + data.draft_name + "/?edit");
+          editor.navigateTo("/Thaditor/versions/" + data.draft_name + "/?edit"+ mbFast);
           marker = true;
         }
         if(marker) {
@@ -5190,7 +5195,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       if (typeof editor.ui.model === "object" && typeof editor.ui.model.outputObserver !== "undefined") {
         editor.ui.model.outputObserver.disconnect();
       }
-      editor.ui.opened = false;
+      editor.ui.model.opened = false;
       window.onpopstate = undefined;
       document.removeEventListener("selectionchange", editor.ui.fixSelection);
       dropZone.removeEventListener('dragover', editor.ui.handleDragOver);
@@ -5198,8 +5203,8 @@ editor = typeof editor == "undefined" ? {} : editor;
       document.removeEventListener("keydown", onKeyDown);
       bodyeditable.removeEventListener("keypress", onKeypress);
       
-      document.removeEventListener('mousedown', editor.ui._internals.onMouseDown);
-      document.removeEventListener('click', editor.ui._internals.onClick);
+      document.removeEventListener('mousedown', editor.ui._internals.onMouseDown, false);
+      document.removeEventListener('click', editor.ui._internals.onClick, true);
       
         // Mobile only. Experiment not working. We want the back button to close the editor when it is opened.
       document.removeEventListener("backbutton", editor.ui.close);
