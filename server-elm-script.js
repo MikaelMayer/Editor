@@ -3215,7 +3215,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         },
         enabled(editor_model) {
           let clickedElem = editor_model.clickedElem;
-          if(typeof clickedElem === "object" && clickedElem.tagName === "IMG") return true;
+          if(clickedElem && clickedElem.tagName === "IMG") return true;
           if(!editor.ui.CSSparser) return false;
           let backgroundImgSrc = this.checkForBackgroundImg(clickedElem, this.findURLS);
           const do_img_rpl = (clickedElem && (clickedElem.tagName === "IMG" || backgroundImgSrc));
@@ -4197,12 +4197,12 @@ editor = typeof editor == "undefined" ? {} : editor;
       e.preventDefault();
     }
     function restoreCaretPosition() {
-      if(typeof editor_model.caretPosition != "undefined") {
+      if(typeof editor.ui.model.caretPosition != "undefined") {
         var sel = window.getSelection();
         sel.removeAllRanges();
         var range = document.createRange();
-        range.setStart(editor_model.caretPosition.startContainer, editor_model.caretPosition.startOffset);
-        range.setEnd(editor_model.caretPosition.endContainer, editor_model.caretPosition.endOffset);
+        range.setStart(editor.ui.model.caretPosition.startContainer, editor.ui.model.caretPosition.startOffset);
+        range.setEnd(editor.ui.model.caretPosition.endContainer, editor.ui.model.caretPosition.endOffset);
         sel.addRange(range);
       }
     }
@@ -4210,17 +4210,17 @@ editor = typeof editor == "undefined" ? {} : editor;
     // After clicking on confirm, the callback is called with the selected node.
     // callbackUI is invoked to render other buttons along with the confirmation button.
     function activateNodeSelectionMode(msg, callback, callbackUI) {
-      editor_model.visible = false;
+      editor.ui.model.visible = false;
       
-      editor_model.linkSelectMode = true;
-      editor_model.clickedElem = document.body; //"center" clicked element on document body
+      editor.ui.model.linkSelectMode = true;
+      editor.ui.model.clickedElem = document.body; //"center" clicked element on document body
       //removes all context menu stuff 
       document.querySelector("#context-menu").classList.remove("visible");
-      editor_model.linkSelectCallback = callback;
-      editor_model.linkSelectMsg = "Confirm " + msg;
-      editor_model.linkSelectOtherMenus = callbackUI;
+      editor.ui.model.linkSelectCallback = callback;
+      editor.ui.model.linkSelectMsg = "Confirm " + msg;
+      editor.ui.model.linkSelectOtherMenus = callbackUI;
       editor.ui.refresh();
-      editor.ui.sendNotification(editor_model.linkSelectMsg);
+      editor.ui.sendNotification(editor.ui.model.linkSelectMsg);
       document.body.addEventListener('mouseover', linkModeHover1, false);
       document.body.addEventListener('mouseout', linkModeHover2, false);
     }
@@ -4253,7 +4253,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       if (draft_history == undefined) {
         draft_history = ["live:" + get_date_meta()];
       } else {
-        draft_history.push(editor_model.version + ":" + get_date_meta());
+        draft_history.push(editor.ui.model.version + ":" + get_date_meta());
       }
       editor._internals.doWriteServer("write", dest + "/.thaditor_meta", JSON.stringify(draft_history));
       return 1;
@@ -4267,8 +4267,8 @@ editor = typeof editor == "undefined" ? {} : editor;
       const data = {action:"drafts",
                     subaction:"deletermrf",
                     pth_to_delete:pth_to_delete,
-                    nm:nm, thaditor_files:thaditor_files, version:editor_model.version};
-      if (editor_model.version == nm) {
+                    nm:nm, thaditor_files:thaditor_files, version:editor.ui.model.version};
+      if (editor.ui.model.version == nm) {
         editor._internals.doWriteServer("deletermrf", pth_to_delete);
         editor.navigateTo("/?edit"+ mbFast);
         editor.ui.refresh();
@@ -4332,7 +4332,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       const data = {action:"drafts", subaction:"clone",
                     draft_name:draft_name,
                     t_pth:t_pth, f_pth:f_pth,
-                    nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
+                    nm:nm,thaditor_files:thaditor_files,version:editor.ui.model.version};
       editor.ui.sendNotification("Creating draft " + draft_name + " from " + nm);
       thaditor.do(data).then(data => {
         //just send a notif, no more naving to the clone
@@ -4352,7 +4352,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       const data = {action:"drafts", subaction:"rename",
                     draft_name:draft_name,
                     t_pth:t_pth, f_pth:f_pth,
-                    nm:nm,thaditor_files:thaditor_files,version:editor_model.version};
+                    nm:nm,thaditor_files:thaditor_files,version:editor.ui.model.version};
       editor.ui.sendNotification("Renaming draft " + nm + " to " + draft_name);
       thaditor.do(data).then(data => {
         let marker = false;
@@ -4381,7 +4381,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                     subaction:"publish",
                     t_src:t_src,
                     nm:nm,thaditor_files:thaditor_files,
-                    version:editor_model.version};
+                    version:editor.ui.model.version};
       thaditor.do(data).then(data => {
         editor.ui.sendNotification("Successfully published " + data.nm + " to live.");
       });
@@ -4928,10 +4928,10 @@ editor = typeof editor == "undefined" ? {} : editor;
   // For text nodes, try to recover the text node, if not, returns the parent node;
   function recoverElementFromData(data) {
     if(!data) return undefined;
-    if(typeof data === "object" && data.id) {
+    if(data && data.id) {
       return document.getElementById(data.id);
     }
-    if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
+    if(data && Array.isArray(data.tentativeSelector)) {
       let tentativeSelector = data.tentativeSelector;
       while(tentativeSelector.length >= 1) {
         let newNode = document.querySelector(tentativeSelector.join(" "));
