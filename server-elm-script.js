@@ -1536,6 +1536,17 @@ editor = typeof editor == "undefined" ? {} : editor;
               linkNode.setAttribute("href", setTimestamp(linkNodeOriginalHref));
               linkNode.removeAttribute("ghost-href");
               editor_resumeWatching();
+              if(editor.config.fast) {
+                editor.userModifies();
+                thaditorfast.handleMutations([
+                  { type: "attributes",
+                    attributeName: "href",
+                    target: linkNode },
+                  { type: "attributes",
+                    attributeName: "ghost-href",
+                    target: linkNode },
+                ]);
+              }
               await editor.postServer("unlink", trueTempPath);
             }                 
           }
@@ -2255,12 +2266,14 @@ editor = typeof editor == "undefined" ? {} : editor;
           }
           let CSSTmpFilePath = linkNode.getAttribute("href");
           await editor.postServer("unlink", removeTimestamp(CSSTmpFilePath));
+          editor.userModifies();
           linkNode.setAttribute("href", oldHref);
           linkNode.removeAttribute("ghost-href");
           linkNode.tmpCachedContent = newValue;
         } else { // We keep the proxy, just update the href
           let CSSTmpFilePath = linkNode.getAttribute("href");
           await editor.postServer("write", removeTimestamp(CSSTmpFilePath), newValue);
+          editor.userModifies();
           linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
           linkNode.tmpCachedContent = newValue;
         }
@@ -2273,9 +2286,10 @@ editor = typeof editor == "undefined" ? {} : editor;
         if(currentContent !== newValue) { // Create the proxy file
           console.log("Value updated")
           //add dummy counter, force reload
-          linkNode.setAttribute("ghost-href", oldHref);
           let CSSTmpFilePath = getTempCSSName(CSSFilePath);
           await editor.postServer("write", CSSTmpFilePath, newValue);
+          editor.userModifies();
+          linkNode.setAttribute("ghost-href", oldHref);
           linkNode.setAttribute("href", setTimestamp(CSSTmpFilePath));
           linkNode.tmpCachedContent = newValue;
         } // else nothing to change, leave unproxied.
@@ -2988,10 +3002,9 @@ editor = typeof editor == "undefined" ? {} : editor;
                         }
                         else { // lastStyleLink is a <style>
                           let curValue = lastStyleLink.textContent;
+                          editor.userModifies();
                           lastStyleLink.textContent = curValue + postIndentCSS;
-                          editor.userModifies(() => {
-                            clickedElem.removeAttribute("style");
-                          });
+                          clickedElem.removeAttribute("style");
                           setCSSAreas();
                         }
                       }
