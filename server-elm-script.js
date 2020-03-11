@@ -1736,6 +1736,7 @@ editor = typeof editor == "undefined" ? {} : editor;
 
     //undo function: handles undo feature
     editor.ui.undo = function undo() {
+      editor.userModifies();
       let undoElem = editor.ui.model.undoStack.pop();
       //need to check if undoStack is empty s.t. we can set the "savability" of the document accurately
       if(undoElem == undefined) {
@@ -1862,6 +1863,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     
     // Redo an undone mutation array.
     editor.ui.redo = function redo() {
+      editor.userModifies();
       let redoElem = editor.ui.model.redoStack.pop();
       if(redoElem === undefined) {
         return 0;
