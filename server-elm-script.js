@@ -1599,29 +1599,37 @@ editor = typeof editor == "undefined" ? {} : editor;
     
     editor.ui._internals.handleMutations = function handleMutations(mutations, observer) {
       var onlyGhosts = true;
-      for(var i = 0; i < mutations.length; i++) {
-        // A mutation is a ghost if either
-        // -- The attribute starts with 'ghost-'
-        // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
-        // -- It is the modification of a node or an attribute inside a ghost node.
-        /*  
-         * Add mutations to undo list if they are not ghosts and if they are really doing something.
-         */
-        let mutation = mutations[i];
-        if(editor.hasGhostAncestor(mutation.target)) {
-          continue;
-        }
-        if(mutation.type == "attributes") {
-          var isSpecificGhostAttributeKey = editor.isSpecificGhostAttributeKeyFromNode(mutation.target);
-          var isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(mutation.target);
-          if(editor.isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
-             mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue ||
-             isIgnoredAttributeKey(mutation.attributeName)) {
-          } else {
-            onlyGhosts = false;
+      if(editor.config.fast) {
+        if(editor.ui.model.userIsModifying) {
+          for(var i = 0; onlyGhosts && i < mutations.length; i++) {
+            let mutation = mutations[i];
             editor.ui._internals.makeMutationUndoable(mutation);
-            // Please do not comment out this line until we get proper clever save.
-            if(!editor.ui.model.userIsModifying) {
+          }
+          onlyGhosts = false;
+        }
+      } else {
+        for(var i = 0; onlyGhosts && i < mutations.length; i++) {
+          // A mutation is a ghost if either
+          // -- The attribute starts with 'ghost-'
+          // -- It is the insertion of a node whose tag is "ghost" or that contains an attribute "isghost=true"
+          // -- It is the modification of a node or an attribute inside a ghost node.
+          /*  
+           * Add mutations to undo list if they are not ghosts and if they are really doing something.
+           */
+          let mutation = mutations[i];
+          if(editor.hasGhostAncestor(mutation.target)) {
+            continue;
+          }
+          if(mutation.type == "attributes") {
+            var isSpecificGhostAttributeKey = editor.isSpecificGhostAttributeKeyFromNode(mutation.target);
+            var isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(mutation.target);
+            if(editor.isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
+               mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue ||
+               isIgnoredAttributeKey(mutation.attributeName)) {
+            } else {
+              onlyGhosts = false;
+              editor.ui._internals.makeMutationUndoable(mutation);
+              // Please do not comment out this line until we get proper clever save.
               console.log("Attribute is not ghost so the change will be saved", mutation);
               console.log("TIP: Use this script if you want to mark it as ghost:");
               let sel = getShortestUniqueSelector(mutation.target);
@@ -1631,14 +1639,12 @@ editor = typeof editor == "undefined" ? {} : editor;
                 console.log("editor.ignoredAttrs.push(n => editor.matches(n, '"+sel+"') ? ['"+mutation.attributeName+"'] : []);")
               }
             }
-          }
-        } else if(mutation.type == "childList") {
-          if(!editor.areChildrenGhosts(mutation.target)) {
-            for(var j = 0; j < mutation.addedNodes.length; j++) {
-              if(!editor.hasGhostAncestor(mutation.addedNodes[j]) && !editor.hasIgnoringAncestor(mutation.addedNodes[j])) {
-                onlyGhosts = false;
-                editor.ui._internals.makeMutationUndoable(mutation);
-                if(!editor.ui.model.userIsModifying) {
+          } else if(mutation.type == "childList") {
+            if(!editor.areChildrenGhosts(mutation.target)) {
+              for(var j = 0; j < mutation.addedNodes.length; j++) {
+                if(!editor.hasGhostAncestor(mutation.addedNodes[j]) && !editor.hasIgnoringAncestor(mutation.addedNodes[j])) {
+                  onlyGhosts = false;
+                  editor.ui._internals.makeMutationUndoable(mutation);
                   // Please do not comment out this line until we get proper clever save.
                   console.log(`Added node ${j} does not have a ghost ancestor`, mutation);
                   console.log("TIP: Ignore node and siblings with this script:");
@@ -1651,12 +1657,10 @@ editor = typeof editor == "undefined" ? {} : editor;
                   }
                 }
               }
-            }
-            for(var j = 0; j < mutation.removedNodes.length; j++) {
-              if(!editor.isGhostNode(mutation.removedNodes[j]) && !editor.isIgnoringChildNodes(mutation.target) && !editor.hasIgnoringAncestor(mutation.target)) {
-                onlyGhosts = false;
-                editor.ui._internals.makeMutationUndoable(mutation);
-                if(!editor.ui.model.userIsModifying) {
+              for(var j = 0; j < mutation.removedNodes.length; j++) {
+                if(!editor.isGhostNode(mutation.removedNodes[j]) && !editor.isIgnoringChildNodes(mutation.target) && !editor.hasIgnoringAncestor(mutation.target)) {
+                  onlyGhosts = false;
+                  editor.ui._internals.makeMutationUndoable(mutation);
                   // Please do not comment out this line until we get proper clever save.
                   console.log(`Removed node ${j} was not a ghost`, mutation);
                   console.log("TIP: Mark this element as ghost:");
@@ -1665,21 +1669,18 @@ editor = typeof editor == "undefined" ? {} : editor;
                 }
               }
             }
-          }
-        } else if(mutation.type === "characterData") {
-          onlyGhosts = false;
-          editor.ui._internals.makeMutationUndoable(mutation);
-          let textOfSelectedElement = editor.ui.model.clickedElem && isDescendantOf(mutation.target, editor.ui.model.clickedElem);
-          if(!editor.ui.model.userIsModifying && !textOfSelectedElement) {
+          } else if(mutation.type === "characterData") {
+            onlyGhosts = false;
+            editor.ui._internals.makeMutationUndoable(mutation);
             // Please do not comment out this line until we get proper clever save.
             console.log("Text modified not by user", mutation);
-          }
-        } else {
-          onlyGhosts = false;
-          editor.ui._internals.makeMutationUndoable(mutation);
-          if(!editor.ui.model.userIsModifying) {
-            // Please do not comment out this line until we get proper clever save.
-            console.log("mutations other than attributes, childList and characterData are not ghosts", mutation);
+          } else {
+            onlyGhosts = false;
+            editor.ui._internals.makeMutationUndoable(mutation);
+            if(!editor.ui.model.userIsModifying) {
+              // Please do not comment out this line until we get proper clever save.
+              console.log("mutations other than attributes, childList and characterData are not ghosts", mutation);
+            }
           }
         }
       }
