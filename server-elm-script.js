@@ -401,8 +401,8 @@ editor = typeof editor == "undefined" ? {} : editor;
   
   // Returns true if this element is marked as ghost
   function isGhostNode(elem) {
-    return elem && elem.isghost || (elem.nodeType == 1 &&
-      (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true"));
+    return elem && (elem.isghost || (elem.nodeType == 1 &&
+      (elem.tagName == "GHOST" || elem.getAttribute("isghost") == "true")));
   }
   editor.isGhostNode = isGhostNode;
   
@@ -420,7 +420,8 @@ editor = typeof editor == "undefined" ? {} : editor;
   function hasGhostAncestor(htmlElem) {
     if(htmlElem == null) return false;
     if(isGhostNode(htmlElem)) return true;
-    return areChildrenGhosts(htmlElem.parentNode) || (htmlElem.parentNode == null && htmlElem.nodeType !== 9 /*document*/) || hasGhostAncestor(htmlElem.parentNode);
+    return areChildrenGhosts(htmlElem.parentNode) ||
+      /*(htmlElem.parentNode == null && htmlElem.nodeType !== document.DOCUMENT_NODE) || */hasGhostAncestor(htmlElem.parentNode);
   }
   editor.hasGhostAncestor = hasGhostAncestor;
   
@@ -1612,11 +1613,14 @@ editor = typeof editor == "undefined" ? {} : editor;
       var onlyGhosts = true;
       if(editor.config.fast) {
         if(editor.ui.model.userIsModifying) {
-          for(var i = 0; onlyGhosts && i < mutations.length; i++) {
+          for(var i = 0; i < mutations.length; i++) {
             let mutation = mutations[i];
+            if(editor.hasGhostAncestor(mutation.target)) {
+              continue;
+            }
             editor.ui._internals.makeMutationUndoable(mutation);
+            onlyGhosts = false;
           }
-          onlyGhosts = false;
         }
       } else {
         for(var i = 0; onlyGhosts && i < mutations.length; i++) {
@@ -1709,13 +1713,6 @@ editor = typeof editor == "undefined" ? {} : editor;
           editor._internals.autosavetimer = undefined;
           editor.ui.save();
         }, typeof editor.config.editdelay == "number" ? editor.config.editdelay : 1000);
-      } else {
-        var saveButtons = document.querySelectorAll(".saveButton");
-        // TODO: Can we regenerate the whole interface for consistency?
-        for(let sb of saveButtons) {
-          sb.classList.toggle("disabled", false);
-        }
-        return;
       }
     } //editor.ui._internals.handleMutations
     
@@ -1757,99 +1754,100 @@ editor = typeof editor == "undefined" ? {} : editor;
       //TODO prevent pressing the undo button while save underway while letting Editor use the undo function. (just not the user);
       //need to disconnect the MutationObserver such that our undo does not get recorded as a mutation
       editor_stopWatching();
-      const quicker = node => recoverElementFromData(dataToRecoverElement(node));
+      const quicker = node => !node || node.isConnected ? node : editor.fromTreasureMap(editor.toTreasureMap(node));
       let k;
       for(k = undoElem.length - 1; k >= 0; k--) {
-        let mutType = undoElem[k].type; 
-        let qk = quicker(undoElem[k].target);
+        let mutation = undoElem[k];
+        let mutType = mutation.type; 
+        let qk = quicker(mutation.target);
         
-        let target = (undoElem[k].target.isConnected ? 
-                        undoElem[k].target :
-                        (qk == undefined ? undoElem[k].target : qk));
+        let target = (mutation.target.isConnected ? 
+                        mutation.target :
+                        (qk == undefined ? mutation.target : qk));
         //in each case, we reverse the change, setting the URValue/oldValue as the current value
         //at the target, and replacing the URValue/oldValue with the current value present in target
         if(mutType === "attributes") {
-          let cur_attr = target.getAttribute(undoElem[k].attributeName);
-          if(undoElem[k].URValue === null) {
-            target.removeAttribute(undoElem[k].attributeName); 
+          let cur_attr = target.getAttribute(mutation.attributeName);
+          if(mutation.URValue === null) {
+            target.removeAttribute(mutation.attributeName); 
           }       
           else { 
-            target.setAttribute(undoElem[k].attributeName, undoElem[k].URValue);
+            target.setAttribute(mutation.attributeName, mutation.URValue);
           }
-          undoElem[k].URValue = cur_attr; 
+          mutation.URValue = cur_attr; 
         }
         else if(mutType === "characterData") {
           const cur_data = target.textContent;
-          target.textContent = undoElem[k].URValue;
-          undoElem[k].URValue = cur_data;
-          //undoElem[k].isConnected ? undoElem[k].URValue : quicker(undoElem[k]).URValue = cur_data;
+          target.textContent = mutation.URValue;
+          mutation.URValue = cur_data;
+          //mutation.isConnected ? mutation.URValue : quicker(mutation).URValue = cur_data;
         }
         else if(mutType === "linkHrefCSS") { // There should be only one such even
-          var keepUndo = undoElem[k];
+          var keepUndo = mutation;
           await assignTmpCss(target, keepUndo.oldValue, true);
         }
         else {
-          let uRemNodes = undoElem[k].removedNodes;
-          let uAddNodes = undoElem[k].addedNodes;
+          let removedNodesToAdd = mutation.removedNodes;
+          let addedNodesToRemove = mutation.addedNodes;
           //readding the removed nodes
           // -in this case, we loop through the childNodes and add them in the appropriate spot 
           // or remove them 
           // NOTE: we only change the nextSib property of the undoElem, and alternate between adding/removing from the 
           //       addedNodes & removedNodes lists depending on whether we are undoing (in which case we will add)
           // NOTE: Since there is only one nextSibling/prevSibling property, and based off the fact that MutationObserver
-          //       should take into account every mutation, we should only have elements in one of uRemNodes and uAddNodes
+          //       should take into account every mutation, we should only have elements in one of removedNodesToAdd and addedNodesToRemove
           //       at once.
-          let kidNodes = target.childNodes;
+          let potentialSiblings = target.childNodes;
           let i, j;
-          if(uRemNodes.length) {
-            if(kidNodes.length === 0) {            
-              if(undoElem[k].nextSibling == null && undoElem[k].previousSibling == null) {
-                for(i = 0; i < uRemNodes.length; i++) { 
-                  /*if(editor.hasGhostAncestor(uRemNodes.item(i))) {
+          if(removedNodesToAdd.length) {
+            if(potentialSiblings.length === 0) {            
+              if(mutation.nextSibling == null && mutation.previousSibling == null) {
+                for(i = 0; i < removedNodesToAdd.length; i++) { 
+                  /*if(editor.hasGhostAncestor(removedNodesToAdd.item(i))) {
                     continue;
                   }*/
-                  target.appendChild(uRemNodes.item(i)); 
+                  target.appendChild(removedNodesToAdd.item(i)); 
                 }
               }
             }
             // The next sibling of the removed node
-            let ns = undoElem[k].nextSibling && undoElem[k].nextSibling.isConnected ? undoElem[k].nextSibling : quicker(undoElem[k].nextSibling);
+            let ns = mutation.nextSibling && mutation.nextSibling.isConnected ? mutation.nextSibling : quicker(mutation.nextSibling);
             // The previous sibling of the removed node
-            let ps = undoElem[k].previousSibling && undoElem[k].previousSibling.isConnected ? undoElem[k].previousSibling : quicker(undoElem[k].previousSibling);
+            let ps = mutation.previousSibling && mutation.previousSibling.isConnected ? mutation.previousSibling : quicker(mutation.previousSibling);
             // Let's find these siblings to re-add the node.
-            for(j = 0; j < kidNodes.length; j++) {  
-              let knode = kidNodes.item(j);
-              let knode_may = quicker(knode);
-              //if(kidNodes.item(j) === undoElem[k].nextSibling && kidNodes.item(j).previousSibling === undoElem[k].previousSibling) {
-              if ((knode == ns || knode_may == ns || ns == undefined) &&
-                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))){
-                for(i = 0; i < uRemNodes.length; i++) { 
-                  /*if(editor.hasGhostAncestor(uRemNodes.item(i))) {
+            for(j = 0; j < potentialSiblings.length; j++) {  
+              let potentialSibling = potentialSiblings.item(j);
+              let potentialSiblingConnected = quicker(potentialSibling);
+              //if(potentialSiblings.item(j) === mutation.nextSibling && potentialSiblings.item(j).previousSibling === mutation.previousSibling) {
+              if ((potentialSibling == ns || potentialSiblingConnected == ns || ns == undefined) &&
+                  (potentialSibling.previousSibling == ps || potentialSiblingConnected.previousSibling == ps || ps == undefined || ((potentialSibling == ps) && !(ns == ps)))){
+                for(i = 0; i < removedNodesToAdd.length; i++) { 
+                  /*if(editor.hasGhostAncestor(removedNodesToAdd.item(i))) {
                     continue;
                   }*/
-                  let uremnode = uRemNodes.item(i);
-                  let urn = quicker(uremnode);
+                  let uremnode = removedNodesToAdd.item(i);
+                  let urn = uremnode;
                   //debugger;
                   if (ns) {
-                    target.insertBefore(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may); 
+                    target.insertBefore(urn == undefined ? uremnode : urn, potentialSibling.isConnected ? potentialSibling : potentialSiblingConnected); 
                   }
                   else {
-                    target.appendChild(urn == undefined ? uremnode : urn, knode.isConnected ? knode : knode_may);
+                    target.appendChild(urn == undefined ? uremnode : urn, potentialSibling.isConnected ? potentialSibling : potentialSiblingConnected);
                   }
                 }
                 break;
               }
             }
           }
-          for(i = 0; i < uAddNodes.length; i++) {
-            /*if(editor.hasGhostAncestor(uAddNodes.item(i))) {
+          for(i = 0; i < addedNodesToRemove.length; i++) {
+            /*if(editor.hasGhostAncestor(addedNodesToRemove.item(i))) {
               continue;
             }*/
-            if(!target.contains(uAddNodes.item(i))) {
+            if(!target.contains(addedNodesToRemove.item(i))) {
               console.log("The item you are trying to undo doesn't exist in the parent node.");
             }
             else {
-              target.removeChild(uAddNodes.item(i));
+              target.removeChild(addedNodesToRemove.item(i));
             }
           }
         }
@@ -1881,74 +1879,68 @@ editor = typeof editor == "undefined" ? {} : editor;
       }
       (async () => {
       editor_stopWatching();
-      const quicker = node => recoverElementFromData(dataToRecoverElement(node));
+      const quicker = node => !node || node.isConnected ? node : editor.fromTreasureMap(editor.toTreasureMap(node));
       let k;
       for(k = 0; k < redoElem.length; k++) {
-        let mutType = redoElem[k].type;
-        let qk = quicker(redoElem[k].target);
-        let target = (redoElem[k].target.isConnected ? 
-                        redoElem[k].target : 
-                        (qk == undefined ? redoElem[k].target : qk));
+        let mutation = redoElem[k];
+        let mutType = mutation.type;
+        let qk = quicker(mutation.target);
+        let target = (mutation.target.isConnected ? 
+                        mutation.target : 
+                        (qk == undefined ? mutation.target : qk));
         if(mutType === "attributes") {
-          let cur_attr = target.getAttribute(redoElem[k].attributeName);
-          if (redoElem[k].URValue === null) {
-            target.removeAttribute(redoElem[k].attributeName); 
+          let cur_attr = target.getAttribute(mutation.attributeName);
+          if (mutation.URValue === null) {
+            target.removeAttribute(mutation.attributeName); 
           } else { 
-            target.setAttribute(redoElem[k].attributeName, redoElem[k].URValue);
+            target.setAttribute(mutation.attributeName, mutation.URValue);
           }
-          redoElem[k].URValue = cur_attr;
+          mutation.URValue = cur_attr;
         } 
         else if(mutType === "characterData") {
           let cur_data = target.textContent;
-          target.textContent = redoElem[k].URValue;  
-          redoElem[k].URValue = cur_data;
-          //redoElem[k].isConnected ? redoElem[k].URValue : quicker(redoElem[k]).URValue = cur_data;
+          target.textContent = mutation.URValue;  
+          mutation.URValue = cur_data;
+          //mutation.isConnected ? mutation.URValue : quicker(mutation).URValue = cur_data;
         }
         else if(mutType === "linkHrefCSS") {
-          let keepRedo = redoElem[k];
+          let keepRedo = mutation;
           await assignTmpCss(target, keepRedo.newValue, true);
         }
         else {
-          let rRemNodes = redoElem[k].removedNodes;
-          let rAddNodes = redoElem[k].addedNodes;
+          let nodesToRemove = mutation.removedNodes;
+          let nodesToReadd = mutation.addedNodes;
           let i, j;
-          let kidNodes = target.childNodes;
-          if(rAddNodes.length) {
-            for(j = 0; j < kidNodes.length; j++) {
-              let knode = kidNodes.item(j);
-              let raddnode = rAddNodes.item(i);
-              let ran = quicker(raddnode);
-              let knode_may = quicker(knode);
-              //if(kidNodes.item(j) === redoElem[k].nextSibling && kidNodes.item(j).previousSibling === redoElem[k].previousSibling)
-              let ns = redoElem[k].nextSibling && redoElem[k].nextSibling.isConnected ? redoElem[k].nextSibling : quicker(redoElem[k].nextSibling);
-              let ps = redoElem[k].previousSibling && redoElem[k].previousSibling.isConnected ? redoElem[k].previousSibling : quicker(redoElem[k].previousSibling);
-              if ((knode == ns || knode_may == ns || ns == undefined) &&
-                  (knode.previousSibling == ps || knode_may.previousSibling == ps || ps == undefined || ((knode == ps) && !(ns == ps)))) {
-                for(i = 0; i < rAddNodes.length; i++) {
-                  /*console.log(editor.hasGhostAncestor);
-                  if(editor.hasGhostAncestor(rAddNodes.item(i))) {
-                    continue;
-                  }*/
-                  console.log(rAddNodes.item(i));
-
-                  if(ns) {
-                    target.insertBefore(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
-                  }
-                  else {
-                    target.appendChild(ran == undefined ? rAddNodes.item(i) : ran, knode.isConnected ? knode : knode_may);
-
-                  }
-                }
+          let potentialSiblings = target.childNodes;
+          if(nodesToReadd.length) {
+            let beforeNode = null;
+            for(j = 0; j < potentialSiblings.length; j++) {
+              let potentialSibling = potentialSiblings.item(j);
+              //let ran = quicker(nodeToReAdd);
+              let potentialSiblingConnected = quicker(potentialSibling);
+              //if(potentialSiblings.item(j) === mutation.nextSibling && potentialSiblings.item(j).previousSibling === mutation.previousSibling)
+              let ns = mutation.nextSibling && mutation.nextSibling.isConnected ? mutation.nextSibling : quicker(mutation.nextSibling);
+              let ps = mutation.previousSibling && mutation.previousSibling.isConnected ? mutation.previousSibling : quicker(mutation.previousSibling);
+              if ((potentialSibling == ns || potentialSiblingConnected == ns || ns == undefined) &&
+                  (potentialSibling.previousSibling == ps || potentialSiblingConnected.previousSibling == ps || ps == undefined ||
+                    ((potentialSibling == ps) && !(ns == ps)))) {
+                beforeNode = (potentialSibling.isConnected ? potentialSibling : potentialSiblingConnected) || null;
+                if(beforeNode && beforeNode.parentElement != target) beforeNode = null; // Failed to find where to insert node.
+                break;
               }
             }
+            for(i = 0; i < nodesToReadd.length; i++) {
+              let nodeToReAdd = nodesToReadd.item(i);
+              target.insertBefore(nodeToReAdd, beforeNode);
+            }            
           }
-          for(i = 0; i < rRemNodes.length; i++) {
-            /*if(editor.hasGhostAncestor(rRemNodes.item(i))) {
+          for(i = 0; i < nodesToRemove.length; i++) {
+            /*if(editor.hasGhostAncestor(nodesToRemove.item(i))) {
               continue;
-            }*/if(!target.parentElement.contains(quicker(rRemNodes.item(i)))) { //bc the node in rRemNodes isn't necessarily connected, we need to rewrite this.
+            }*/if(!target.parentElement.contains(quicker(nodesToRemove.item(i)))) { //bc the node in nodesToRemove isn't necessarily connected, we need to rewrite this.
               console.log("The item you are trying to redo doesn't exist in the parent node.");
             } else {
-              target.removeChild(quicker(rRemNodes.item(i)));
+              target.removeChild(quicker(nodesToRemove.item(i)));
             }
           }
         }
@@ -4919,46 +4911,6 @@ editor = typeof editor == "undefined" ? {} : editor;
     
   }; // editor.ui._internals.loadInterface
 
-  function dataToRecoverElement(oldNode) {
-    if(!oldNode) return undefined;
-    if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
-      return {id: oldNode.getAttribute("id")};
-    }
-    let tentativeSelector = [];
-    let t = oldNode;
-    let isText = false, textIndex = 0;
-    while(t && t.parentNode) {
-      let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
-      if(t.nodeType === 1) {
-        tentativeSelector.unshift(t.tagName + ":nth-child(" + (index + 1) + ")" );
-      } else {
-        isText = true;
-        textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
-      }
-      t = t.parentNode;
-    }
-    return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
-  }
-  
-  // Returns the new node that matches the old node the closest.
-  // For text nodes, try to recover the text node, if not, returns the parent node;
-  function recoverElementFromData(data) {
-    if(!data) return undefined;
-    if(data && data.id) {
-      return document.getElementById(data.id);
-    }
-    if(data && Array.isArray(data.tentativeSelector)) {
-      let tentativeSelector = data.tentativeSelector;
-      while(tentativeSelector.length >= 1) {
-        let newNode = document.querySelector(tentativeSelector.join(" "));
-        if(newNode) {
-          return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
-        }
-        tentativeSelector.shift();
-      }
-      return undefined;
-    }
-  }
   function setCaretPositionIn(node, position) {
     position = Math.min(position, node.textContent.length);
     if (node.nodeType == 3) {
