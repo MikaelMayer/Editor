@@ -1618,6 +1618,9 @@ editor = typeof editor == "undefined" ? {} : editor;
             if(editor.hasGhostAncestor(mutation.target)) {
               continue;
             }
+            if(mutation.type == "attributes" && editor.isGhostAttributeKey(mutation.attributeName)) {
+              continue;
+            }
             editor.ui._internals.makeMutationUndoable(mutation);
             onlyGhosts = false;
           }
