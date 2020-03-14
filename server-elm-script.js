@@ -270,7 +270,7 @@ editor = typeof editor == "undefined" ? {} : editor;
   
   // Given a node, computes a way to retrieve this node if the page was reloaded.
   // That's a treasure map.
-  editor.toTreasureMap = function(oldNode) {
+  editor.toTreasureMap = function toTreasureMap(oldNode) {
     if(!oldNode) return undefined;
     if(oldNode.nodeType == 1 && oldNode.getAttribute("id") && document.getElementById(oldNode.getAttribute("id"))) {
       return {id: oldNode.getAttribute("id")};
@@ -278,41 +278,72 @@ editor = typeof editor == "undefined" ? {} : editor;
     let tentativeSelector = [];
     let t = oldNode;
     let isText = false, textIndex = 0;
-    while(t && t.parentNode) {
-      let index = Array.prototype.slice.call( t.parentNode.children ).indexOf(t);
-      if(t.nodeType === 1) {
+    while(t) {
+      if(t.nodeType === document.ELEMENT_NODE) {
         let theSelector = getSelectorOf(t);
+        if(tentativeSelector.length) {
+          tentativeSelector.unshift(">");
+        }
         tentativeSelector.unshift(theSelector);
         // Emulate :nth-of-type but for a class of siblings having the same selector.
         let s = t.previousElementSibling;
         if(!t.getAttribute("id")) {
           while(s) {
             if(s.matches(theSelector)) {
-              tentativeSelector.unshift("~", theSelector);
+              tentativeSelector.unshift(theSelector, "~");
             }
             s = s.previousElementSibling;
           }
         }
         if(t.hasAttribute("id")) break;
-      } else {
+      } else if(t.nodeType === document.TEXT_NODE) {
         isText = true;
-        textIndex = Array.prototype.slice.call( t.parentNode.childNodes ).indexOf(t);
+        textIndex = childToInsertionIndex(t.parentNode, t)
       }
-      t = t.parentNode;
+      t = t.parentElement;
     }
     return {tentativeSelector: tentativeSelector, isText: isText, textIndex: textIndex};
   }
+  // Given a tentative selector and the element to start from, returns the precise element designated by this selector if it exists.
+  function querySelectorRelative(tentativeSelector, fromElement) {
+    var i = 0;
+    var n = tentativeSelector.length;
+    while(fromElement && i < n) {
+      while(fromElement && !fromElement.matches(tentativeSelector[i])) {
+        fromElement = fromElement.nextElementSibling;
+      }
+      if(fromElement) {
+        i++;
+        if(i >= n) {
+          return fromElement;
+        } else if(tentativeSelector[i] == ">") {
+          fromElement = fromElement.firstElementChild;
+          i++;
+        } else if(tentativeSelector[i] == "~") {
+          fromElement = fromElement.nextElementSibling;
+          i++;
+        }
+      } else {
+        return null;
+      }
+    }
+    return null;
+  }
+  
   // Returns the new node that matches the old node the closest.
   // For text nodes, try to recover the text node, if not, returns the parent node;
-  editor.fromTreasureMap = function(data) {
+  editor.fromTreasureMap = function(data, source) {
     if(!data) return undefined;
     if(typeof data === "object" && data.id) {
       return document.getElementById(data.id);
     }
     if(typeof data == "object" && Array.isArray(data.tentativeSelector)) {
       let tentativeSelector = [...data.tentativeSelector];
+      let result = querySelectorRelative(tentativeSelector, source || document.head.parentElement);
+      if(result) return result;
+      // Fallback, we try to reduce the tentative selector until we find the node.
       while(tentativeSelector.length >= 1) {
-        if(tentativeSelector[0] !== "~") {
+        if(tentativeSelector[0] !== "~" && tentativeSelector[0] !== ">") {
           let newNode = document.querySelector(tentativeSelector.join(" "));
           if(newNode) {
             return data.isText && newNode.childNodes && newNode.childNodes[data.textIndex] || newNode;
@@ -1632,8 +1663,20 @@ editor = typeof editor == "undefined" ? {} : editor;
       return tmp;
     }
     
-    function getCachedSelector(node) {
-      
+    // Converts the node to a treasure map so that it can be retrieved later if the node is replaced.
+    function toTreasureCache(node) {
+      return { [editor.ui._internals.nodeCacheTag]: node, treasureMap: editor.toTreasureMap(node) };
+    }
+    // Returns a connected node associated to a treasure cache, using the treasure map to find it if necessaru
+    function fromTreasureCache(treasureCache) {
+      let cache = treasureCache[editor.ui._internals.nodeCacheTag];
+      if(cache && cache.isConnected) {
+        return cache;
+      }
+      let treasureMap = treasureCache.treasureMap;
+      let e = editor.fromTreasureMap(treasureMap, treasureCache.source);
+      treasureCache[editor.ui._internals.nodeCacheTag] = e;
+      return e;
     }
     // type ArrayAttribute = [String \ "style", String] | ["style", [String, String][]]
     // type ArrayChildren = ArrayNode[]
@@ -1643,11 +1686,11 @@ editor = typeof editor == "undefined" ? {} : editor;
     //                | ["COMMENT", String]
     //                | ["!DOCTYPE", String, String, String]
     // type CachedNode = ArrayNode & { Symbol(nodeCacheTag): HTMLNode }
-    // type CachedTreasureMap = { treasureMap: TreasureMap, Symbol(nodeCacheTag): HTMLNode }
+    // type CachedTreasureMap = { treasureMap: TreasureMap, Symbol(nodeCacheTag): HTMLNode, source?: {next: Int, indexRemoved: Int} }
     // type StoredMutation =
     //          {type: "childList",     target: CachedTreasureMap, removedNodes: CachedNode[], addedNodes: CachedNode[], where: Int }
     //        | {type: "characterData", target: CachedTreasureMap, oldValue: String, newValue: String }
-    //        | {type: "attribute",     target: CachedTreasureMap, oldValue: String | null, newValue: String | null, attributeName: String }
+    //        | {type: "attributes",     target: CachedTreasureMap, oldValue: String | null, newValue: String | null, attributeName: String }
     //        | {type: "linkHrefCSS",   target: CachedTreasureMap, oldValue: String, newValue: String, linkSelector: CachedTreasureMap }
     
     // Store the mutation in the undo buffer as a storedMutation
@@ -1655,18 +1698,18 @@ editor = typeof editor == "undefined" ? {} : editor;
     editor.ui._internals.makeMutationUndoable = function makeMutationUndoable(m) {
       var editor_model = editor.ui.model;
       var time = +new Date();
-      let storedMutation = { type: m.type, target: { [editor.ui._internals.nodeCacheTag]: m.target } };
+      let storedMutation = { type: m.type, target: toTreasureCache(m.target) };
       //for childLists, add mutable next/previous sibling properties
       if(m.type === "childList") { //for attributes/characterData, add alternative mutable oldValue
         storedMutation.removedNodes = [...m.removedNodes].map(domNodeToNativeValueWithCache);
         storedMutation.addedNodes = [...m.addedNodes].map(domNodeToNativeValueWithCache);
-        storedMutation.where = {previousSibling: m.previousSibling, nextSibling: m.nextSibling}; // Get the index after all mutations are processed.
+        storedMutation.where = {previousSibling: toTreasureCache(m.previousSibling), nextSibling: toTreasureCache(m.nextSibling)}; // Get the index after all mutations are processed.
       } else {
         storedMutation.oldValue = m.oldValue;
       }
       if(m.type == "characterData") {
         storedMutation.newValue = m.target.characterData;
-      } else if(m.type == "attribute") {
+      } else if(m.type == "attributes") {
         storedMutation.newValue = m.target.getAttribute(m.attributeName);
         storedMutation.attributeName = m.attributeName;
       } else if(m.type == "linkHrefCSS") {
@@ -1698,20 +1741,48 @@ editor = typeof editor == "undefined" ? {} : editor;
     }; //editor.ui._internals.makeMutationUndoable
     
     // We start by mutations that can be immediately undone first, meaning all the nodes they reference (target, added, removed, siblings) are connected.
-    // We keep necessary information so that previous mutations can also be updated.
-    // Post-processing step: Find target selectors in reverse undo order.
-    // Post-processing step: Find insertion index
+    // If a nextSibling, previousSibling, or target is not connected, it means it was removed after. We look for its ancestor in the subsequently removed elements.
     editor.ui._internals.postProcessMutations = function postProcessMutations(storedMutations) {
-      /*for(var i = storedMutations.length-1; i >= 0; i--) {
-        let storedMutation = storedMutations[i];
-        let targetNode = storedMutation.target[editor.ui._internals.nodeCacheTag];
-        if(targetNode.isConnected) {
-          // This is wrong. The treasure map could omit elements that were deleted.
-          storedMutation.target.treasureMap = editor.toTreasureMap(targetNode);
-        } else {
-          
+      for(let i = storedMutations.length-1; i >= 0; i--) {
+        function lookAround(node) {
+          var ancestorToLookFor = node;
+          var ancestorCount = 0;
+          while(ancestorToLookFor.parentElement) {
+            ancestorToLookFor = ancestorToLookFor.parentElement;
+            ancestorCount++;
+          }
+          for(let j = i + 1; j < storedMutations.length; j++) {
+            let s = storedMutations[j];
+            if(s.type == "childList") {
+              for(let k = 0; k < s.removedNodes.length; k++) {
+                if(s.removedNodes[k][editor.ui._internals.nodeCacheTag] == ancestorToLookFor) { // Yes we found it!
+                  return { next: j - i, indexRemoved: k }
+                }
+              }
+            }
+          }
+          return undefined;
         }
-      }*/
+        let storedMutation = storedMutations[i];
+        let mutType = storedMutation.type;
+        function putInformationToRecover(cachedTreasureMap, name) {
+          let node = cachedTreasureMap[editor.ui._internals.nodeCacheTag];
+          if(!node) return;
+          if(!node.isConnected) {
+            let result = lookAround(node)
+            if(!result) {
+              console.log("Could not find "+name+", not connected but ancestor not found in removed elements", node);
+            } else {
+              cachedTreasureMap.source = result;
+            }
+          }
+        }
+        putInformationToRecover(storedMutation.target, "target");
+        if(mutType == "childList") {
+          putInformationToRecover(storedMutation.where.previousSibling, "previousSibling");
+          putInformationToRecover(storedMutation.where.nextSibling, "nextSibling");
+        }
+      }
     }
     
     function isDescendantOf(a, b) {
@@ -1866,6 +1937,32 @@ editor = typeof editor == "undefined" ? {} : editor;
       editor_stopWatching();
       const quicker = node => !node || node.isConnected ? node : editor.fromTreasureMap(editor.toTreasureMap(node));
       let k;
+      // first, let's recover every target, previousSibling and nextSibling nodes.
+      for(k = storedMutations.length - 1; k >= 0; k--) {
+        function recover(treasureCache) {
+          if(editor.ui._internals.nodeCacheTag in treasureCache) { // We are good there.
+            return;
+          }
+          // Node is missing. Let's recover it.
+          if(treasureCache.source) { // Ok it was deleted afterwards, so we need to recover it.
+            let removedNode = storedMutations[k + treasureCache.source.next].removedNodes[treasureCache.source.indexRemoved][editor.ui._internals.nodeCacheTag];
+            treasureCache[editor.ui._internals.nodeCacheTag] = 
+              editor.fromTreasureMap(treasureCache.treasureMap, removedNode);
+          } else {
+            treasureCache[editor.ui._internals.nodeCacheTag] = 
+              editor.fromTreasureMap(treasureCache.treasureMap);
+          }
+        }
+        
+        let storedMutation = storedMutations[k];
+        let mutType = storedMutation.type;
+        recover(storedMutation.target);
+        if(mutType == "childList") {
+          recover(storedMutation.where.previousSibling);
+          recover(storedMutation.where.nextSibling);
+        }
+      }
+      
       for(k = storedMutations.length - 1; k >= 0; k--) {
         let storedMutation = storedMutations[k];
         let mutType = storedMutation.type;
@@ -1889,8 +1986,18 @@ editor = typeof editor == "undefined" ? {} : editor;
         } else { // childList
           let removedNodesToAdd = storedMutation.removedNodes;
           let addedNodesToRemove = storedMutation.addedNodes;
+          let nextSibling = fromTreasureCache(storedMutation.where.nextSibling);
+          if(!nextSibling) {
+            let previousSibling = fromTreasureCache(storedMutation.where.previousSibling);
+            let count = addedNodesToRemove.length;
+            nextSibling = previousSibling ? previousSibling.nextSibling : target.firstChild;
+            while(count > 0 && nextSibling) {
+              count--;
+              nextSibling = nextSibling.nextSibling;
+            }
+          }
           for(i = 0; i < removedNodesToAdd.length; i++) { 
-            target.insertBefore(getElementFromCache(removedNodesToAdd[i]), storedMutation.where.nextSibling); 
+            target.insertBefore(getElementFromCache(removedNodesToAdd[i]), nextSibling); 
           }
           for(i = 0; i < addedNodesToRemove.length; i++) {
             getElementFromCache(addedNodesToRemove[i]).remove();
@@ -1949,6 +2056,16 @@ editor = typeof editor == "undefined" ? {} : editor;
         } else { // childList
           let nodesToRemove = storedMutation.removedNodes;
           let nodesToReadd = storedMutation.addedNodes;
+          let nextSibling = fromTreasureCache(storedMutation.where.nextSibling);
+          if(!nextSibling) {
+            let previousSibling = fromTreasureCache(storedMutation.where.previousSibling);
+            let count = nodesToRemove.length;
+            nextSibling = previousSibling ? previousSibling.nextSibling : target.firstChild;
+            while(count > 0 && nextSibling) {
+              count--;
+              nextSibling = nextSibling.nextSibling;
+            }
+          }
           for(i = 0; i < nodesToReadd.length; i++) { 
             target.insertBefore(getElementFromCache(nodesToReadd[i]), storedMutation.where.nextSibling); 
           }
