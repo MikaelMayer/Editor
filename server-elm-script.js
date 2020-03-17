@@ -1716,16 +1716,21 @@ editor = typeof editor == "undefined" ? {} : editor;
     //                | ["TEXT", String]
     //                | ["COMMENT", String]
     //                | ["!DOCTYPE", String, String, String]
-    // type TreasureMapAfterMutation = TreasureMap & { source?: {next: Int, IndexRemoved:Int}
-    // type TreasureMapBeforeMutation= TreasureMap & { source?: {prev: Int, IndexAdded:Int}}
-    // type CachedNodeRemoved = { treasureMap: TreasureMapBeforeMutation, // If needs to be found before the mutation is replayed
-    //                            serialized: ArrayNode,                  // If needs to be restored in an undo, when the cache is empty
+    // // Afterwards and before means in the same batch fo mutations
+    // type TreasureMapRemovedAfterwards = TreasureMap & { source?: {next: Int, IndexRemoved:Int} } // Source if element in removed elments afterwards
+    // type TreasureMapAddedBefore       = TreasureMap & { source?: {prev: Int, IndexAdded:Int} }   // Source if element in added elmeents before.
+    // type TreasureMapAddedAfterwards   = TreasureMap & { source?: {next: Int, IndexAdded:Int} } // Source if element in removed elments afterwards
+    // type TreasureMapRemovedBefore     = TreasureMap & { source?: {prev: Int, IndexRemoved:Int} }   // Source if element in added elmeents before.
+    // type CachedNodeRemoved = { treasureMapRedo: TreasureMapAddedBefore,     // If removed node was created before, when we stand before replaying the actions
+    //                            treasureMap:     TreasureMapAddedAfterwards, // If removed node was reinserted afterwards, when we stand before undoing the actions.
+    //                            serialized: ArrayNode,                       // If needs to be restored in an undo, when the cache is empty
     //                            Symbol(nodeCacheTag)?: HTMLNode }
-    // type CachedNodeAdded = {   treasureMapRedo: TreasureMapAfterMutation,// If needs to be found after the mutation is replayed, to undo
-    //                            serialized: ArrayNode,                  // If needs to be restored in a redo, when the cache is empty
+    // type CachedNodeAdded = {   treasureMapRedo: TreasureMapRemovedBefore,    // If added node was removed before, when we stand before replaying the actions
+    //                            treasureMap:     TreasureMapRemovedAfterwards,// If added node was removed afterwards, when we stand before undoing the actions
+    //                            serialized: ArrayNode,                        // If needs to be restored in a redo, when the cache is empty
     //                            Symbol(nodeCacheTag)?: HTMLNode }
-    // type CachedTreasureMap = { treasureMap:     TreasureMapAfterMutation, 
-    //                            treasureMapRedo: TreasureMapBeforeMutation,
+    // type CachedTreasureMap = { treasureMap:     TreasureMapRemovedAfterwards, // Where this element was removed afterwards, where it is located. when we stand before undoing the actions.
+    //                            treasureMapRedo: TreasureMapAddedBefore,       // Where this element was added before, where it is locaed, when we stand before replaying the actions.
     //                            Symbol(nodeCacheTag)?: HTMLNode }
     // type StoredMutation =
     //          {type: "childList",     target: CachedTreasureMap, removedNodes: CachedNodeRemoved[], addedNodes: CachedNodeAdded[],
@@ -1739,11 +1744,14 @@ editor = typeof editor == "undefined" ? {} : editor;
       var editor_model = editor.ui.model;
       let time = +new Date();
       let storedMutation = { type: m.type, target: toTreasureCache(m.target), timestamp: time };
+       // the treasureMapRedo needs to be computed for target
       //for childLists, add mutable next/previous sibling properties
       if(m.type === "childList") { //for attributes/characterData, add alternative mutable oldValue
-        storedMutation.removedNodes = [...m.removedNodes].map(domNodeToNativeValueWithCache);
-        storedMutation.addedNodes = [...m.addedNodes].map(domNodeToNativeValueWithCache);
-        storedMutation.where = {previousSibling: toTreasureCache(m.previousSibling), nextSibling: toTreasureCache(m.nextSibling)}; // Get the index after all mutations are processed.
+        storedMutation.removedNodes = [...m.removedNodes].map(r => ({serialized: domNodeToNativeValueWithCache(r), [nodeCacheTag]: r}));
+        storedMutation.addedNodes = [...m.addedNodes].map(a => ({serialized: domNodeToNativeValueWithCache(a), [nodeCacheTag]: a}));
+        // the treasureMap & source? needs to be computed for removedNodes and added nodes
+        storedMutation.where = {previousSibling: toTreasureCache(m.previousSibling), nextSibling: toTreasureCache(m.nextSibling)};
+        // the treasureMapRedo needs to be computed for previousSibling and nextSibling
       } else {
         storedMutation.oldValue = m.oldValue;
       }
@@ -1822,15 +1830,15 @@ editor = typeof editor == "undefined" ? {} : editor;
         }
         let storedMutation = storedMutations[i];
         let mutType = storedMutation.type;
-        function putInformationToRecover(cachedTreasureMap, name) {
-          let node = cachedTreasureMap[nodeCacheTag];
+        function putInformationToRecover(treasureCache, name) {
+          let node = treasureCache[nodeCacheTag];
           if(!node) return;
           if(!node.isConnected) {
             let result = lookAround(node)
             if(!result) {
               console.log("Could not find "+name+", not connected but ancestor not found in removed elements", node);
             } else {
-              cachedTreasureMap.treasureMap.source = result;
+              treasureCache.treasureMap.source = result;
             }
           }
         }
@@ -1838,10 +1846,14 @@ editor = typeof editor == "undefined" ? {} : editor;
         if(mutType == "childList") {
           putInformationToRecover(storedMutation.where.previousSibling, "previousSibling");
           putInformationToRecover(storedMutation.where.nextSibling, "nextSibling");
-          /*for(var k = 0; k < storedMutation.addedNodes.length; k++) {
-            let addedNode = storedMutation[addedNodes];
-            
-          }*/
+          for(var k = 0; k < storedMutation.addedNodes.length; k++) {
+            let treasureCache = storedMutation.addedNodes[k];
+            // TODO: Let's make sure added nodes have a treasureMapRedo
+          }
+          for(var k = 0; k < storedMutation.removedNodes.length; k++) {
+            let treasureCache = storedMutation.removedNodes[k];
+            // TODO: Let's make sure added nodes
+          }
         }
       }
       
