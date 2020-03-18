@@ -1683,8 +1683,12 @@ editor = typeof editor == "undefined" ? {} : editor;
     
     // Converts the node to a treasure map so that it can be retrieved later if the node is replaced.
     // Uses the current state of the DOM.
-    function toTreasureCache(node) {
-      return { [nodeCacheTag]: node, treasureMap: editor.toTreasureMap(node) };
+    function toTreasureCache(node, serialized) {
+      let result = { [nodeCacheTag]: node, treasureMap: editor.toTreasureMap(node) };
+      if(serialized) {
+        result.serialized = domNodeToNativeValueWithCache(node);
+      }
+      return result;
     }
     // Returns a connected node associated to a treasure cache, using the treasure map to find it if necessaru
     function fromTreasureCache(treasureCache, isUndo) {
@@ -1718,8 +1722,8 @@ editor = typeof editor == "undefined" ? {} : editor;
     //                | ["!DOCTYPE", String, String, String]
     // // Afterwards and before means in the same batch fo mutations
     // type TreasureMapRemovedAfterwards = TreasureMap & { source?: {next: Int, IndexRemoved:Int} } // Source if element in removed elments afterwards
-    // type TreasureMapAddedBefore       = TreasureMap & { source?: {prev: Int, IndexAdded:Int} }   // Source if element in added elmeents before.
-    // type TreasureMapAddedAfterwards   = TreasureMap & { source?: {next: Int, IndexAdded:Int} } // Source if element in removed elments afterwards
+    // type TreasureMapAddedBefore       = TreasureMap & { source?: {prev: Int, IndexAdded :Int} }   // Source if element in added elmeents before.
+    // type TreasureMapAddedAfterwards   = TreasureMap & { source?: {next: Int, IndexAdded :Int} } // Source if element in removed elments afterwards
     // type TreasureMapRemovedBefore     = TreasureMap & { source?: {prev: Int, IndexRemoved:Int} }   // Source if element in added elmeents before.
     // type CachedNodeRemoved = { treasureMapRedo: TreasureMapAddedBefore,     // If removed node was created before, when we stand before replaying the actions
     //                            treasureMap:     TreasureMapAddedAfterwards, // If removed node was reinserted afterwards, when we stand before undoing the actions.
@@ -1744,12 +1748,11 @@ editor = typeof editor == "undefined" ? {} : editor;
       var editor_model = editor.ui.model;
       let time = +new Date();
       let storedMutation = { type: m.type, target: toTreasureCache(m.target), timestamp: time };
-       // the treasureMapRedo needs to be computed for target
-      //for childLists, add mutable next/previous sibling properties
+      // the treasureMapRedo needs to be computed for target
       if(m.type === "childList") { //for attributes/characterData, add alternative mutable oldValue
-        storedMutation.removedNodes = [...m.removedNodes].map(r => ({serialized: domNodeToNativeValueWithCache(r), [nodeCacheTag]: r}));
-        storedMutation.addedNodes = [...m.addedNodes].map(a => ({serialized: domNodeToNativeValueWithCache(a), [nodeCacheTag]: a}));
-        // the treasureMap & source? needs to be computed for removedNodes and added nodes
+        storedMutation.removedNodes = [...m.removedNodes].map(r => toTreasureCache(r, true));
+        storedMutation.addedNodes   = [...m.addedNodes  ].map(a => toTreasureCache(a, true));
+        // the treasureMap and treasureMapRedo needs to be computed for removedNodes and added nodes
         storedMutation.where = {previousSibling: toTreasureCache(m.previousSibling), nextSibling: toTreasureCache(m.nextSibling)};
         // the treasureMapRedo needs to be computed for previousSibling and nextSibling
       } else {
@@ -1806,46 +1809,157 @@ editor = typeof editor == "undefined" ? {} : editor;
       })
     }
     
+    // Look around for the given node in the removed nodes afterwards
+    // Returns the {next: Num, indexRemoved: Num }
+    function sourceIfRemovedAfter(node, i, storedMutations) {
+      for(let j = i + 1; j < storedMutations.length; j++) {
+        let s = storedMutations[j];
+        if(s.type == "childList") {
+          for(let k = 0; k < s.removedNodes.length; k++) {
+            let removedNode = s.removedNodes[k][nodeCacheTag];
+            let removedAncestor = node;
+            while(removedAncestor) {
+              if(removedNode == removedAncestor) { // Yes we found it!
+                return { next: j - i, indexRemoved: k }; // The treasure map should help to find the element.
+              }
+              removedAncestor = removedAncestor.parentElement;
+            }
+          }
+        }
+      }
+      return undefined;
+    }
+    // Look around for the given node in the removed nodes afterwards
+    // Returns the {next: Num, indexRemoved: Num }
+    function sourceIfRemovedBefore(node, i, storedMutations) {
+      for(let j = i - 1; j >= 0; j--) {
+        let s = storedMutations[j];
+        if(s.type == "childList") {
+          for(let k = 0; k < s.removedNodes.length; k++) {
+            let removedNode = s.removedNodes[k][nodeCacheTag];
+            let removedAncestor = node;
+            while(removedAncestor) {
+              if(removedNode == removedAncestor) { // Yes we found it!
+                return { prev: i - j, indexRemoved: k }; // The treasure map should help to find the element.
+              }
+              removedAncestor = removedAncestor.parentElement;
+            }
+          }
+        }
+      }
+      return undefined;
+    }
+    function sourceIfAddedBefore(node, i, storedMutations) {
+      for(let j = i - 1; j >= 0; j--) {
+        let s = storedMutations[j];
+        if(s.type == "childList") {
+          for(let k = 0; k < s.addedNodes.length; k++) {
+            let addedNode = s.addedNodes[k][nodeCacheTag];
+            var addedAncestors = node;
+            while(addedAncestors) {
+              if(addedNode == addedAncestors) { // Yes we found it!
+                return { prev: i-j, indexAdded: k }
+              }
+              addedAncestors = addedAncestors.parentElement;
+            }
+          }
+        }
+      }
+      return undefined;
+    }
+    function sourceIfAddedAfter(node, i, storedMutations) {
+      for(let j = i + 1; j < storedMutations.length; j++) {
+        let s = storedMutations[j];
+        if(s.type == "childList") {
+          for(let k = 0; k < s.addedNodes.length; k++) {
+            let addedNode = s.addedNodes[k][nodeCacheTag];
+            var addedAncestors = node;
+            while(addedAncestors) {
+              if(addedNode == addedAncestors) { // Yes we found it!
+                return { next: j-i, indexAdded: k }
+              }
+              addedAncestors = addedAncestors.parentElement;
+            }
+          }
+        }
+      }
+      return undefined;
+    }
+    // checks if the treasureCache.treasureMap is sufficient to find the node before undoing actions.
+    // It is not sufficient if the node it targets is currently not connected, in which case we would need to look for when it was removed.
+    function addSourceIfRemovedAfter(treasureCache, i, storedMutations, name) {
+      let node = treasureCache[nodeCacheTag];
+      if(!node) return;
+      let result = sourceIfRemovedAfter(node, i, storedMutations);
+      if(result) {
+        if(!treasureCache.treasureMap) treasureCache.treasureMap = {};
+        treasureCache.treasureMap.source = result;
+      } else {
+        if(!node.isConnected) {
+          console.log("Could not find "+name+", not connected but ancestor not found in removed elements", treasureCache);
+        }
+      }
+    }
+    function addSourceIfRemovedBefore(treasureCache, i, storedMutations, name) {
+      let node = treasureCache[nodeCacheTag];
+      if(!node) return;
+      let result = sourceIfRemovedBefore(node, i, storedMutations);
+      if(result) {
+        if(!treasureCache.treasureMap) treasureCache.treasureMap = {};
+        treasureCache.treasureMap.source = result;
+      }
+    }
+    function addSourceIfAddedBefore(treasureCache, i, storedMutations, name) {
+      let node = treasureCache[nodeCacheTag];
+      if(!node) return;
+      let result = sourceIfAddedBefore(node, i, storedMutations);
+      if(result) {
+        if(!treasureCache.treasureMapRedo) treasureCache.treasureMapRedo = {};
+        treasureCache.treasureMapRedo.source = result;
+      }
+    }
+    function addSourceIfAddedAfter(treasureCache, i, storedMutations, name) {
+      let node = treasureCache[nodeCacheTag];
+      if(!node) return;
+      let result = sourceIfAddedAfter(node, i, storedMutations);
+      if(result) {
+        if(!treasureCache.treasureMapRedo) treasureCache.treasureMapRedo = {};
+        treasureCache.treasureMapRedo.source = result;
+      }
+    }
+    
+    // Back-propagates the given actual treasureMap through the storedMutation 
+    // Expected results
+    // - Either a treasureMap to find the element because it existed before redoing
+    // - Or, if the element was previously created, the {prev: Int, indexAdded: Int} that led to it.
+    function backPropagate(storedMutations, treasureMap) {
+ //     if()
+    }
+        
+    // POST-PROCESSING of a batch of mutations.
+    // 1. the treausreMap.source? needs to be computed for target if applicable
+    // 2. the treasureMap.source? needs to be computed for previousSibling and nextSibling if applicable
+    // 3. the treasureMapRedo.treasureMap needs to be computed for target,
+    // 4. the treasureMapRedo.treasureMap.source must be computed for target if applicable
+    // 5. the treasureMap and treasureMapRedo needs to be computed for removedNodes and added nodes, 
+    // 6. their .source? if applicable.
+    // 7. the treasureMapRedo needs to be computed for previousSibling and nextSibling,
+    // 8. as well as their .source? if applicable.
+      
     // We start by mutations that can be immediately undone first, meaning all the nodes they reference (target, added, removed, siblings) are connected.
     // If a nextSibling, previousSibling, or target is not connected, it means it was removed after. We look for its ancestor in the subsequently removed elements.
     editor.ui._internals.postProcessMutations = function postProcessMutations(storedMutations) {
-      // Make them resilient to removal of nodes in undo buffer.
+      // (1) (2)
       for(let i = storedMutations.length - 1; i >= 0; i--) {
-        function lookAround(node) {
-          let removedAncestor = node;
-          while(removedAncestor) {
-            for(let j = i + 1; j < storedMutations.length; j++) {
-              let s = storedMutations[j];
-              if(s.type == "childList") {
-                for(let k = 0; k < s.removedNodes.length; k++) {
-                  if(s.removedNodes[k][nodeCacheTag] == removedAncestor) { // Yes we found it!
-                    return { next: j - i, indexRemoved: k }
-                  }
-                }
-              }
-            }
-            removedAncestor = removedAncestor.parentElement;
-          }
-          return undefined;
-        }
         let storedMutation = storedMutations[i];
         let mutType = storedMutation.type;
-        function putInformationToRecover(treasureCache, name) {
-          let node = treasureCache[nodeCacheTag];
-          if(!node) return;
-          if(!node.isConnected) {
-            let result = lookAround(node)
-            if(!result) {
-              console.log("Could not find "+name+", not connected but ancestor not found in removed elements", node);
-            } else {
-              treasureCache.treasureMap.source = result;
-            }
-          }
-        }
-        putInformationToRecover(storedMutation.target, "target");
+        addSourceIfRemovedAfter(storedMutation.target, i, storedMutations, "target"); //1.
+        addSourceIfAddedBefore(storedMutation.target, i, storedMutations, "target");  //4.
         if(mutType == "childList") {
-          putInformationToRecover(storedMutation.where.previousSibling, "previousSibling");
-          putInformationToRecover(storedMutation.where.nextSibling, "nextSibling");
+          addSourceIfRemovedAfter(storedMutation.where.previousSibling, i, storedMutations, "previousSibling"); // 2.
+          addSourceIfRemovedAfter(storedMutation.where.nextSibling, i, storedMutations, "nextSibling");         // 2.
+          addSourceIfAddedBefore(storedMutation.where.previousSibling, i, storedMutations, "previousSibling");  // 8
+          addSourceIfAddedBefore(storedMutation.where.nextSibling, i, storedMutations, "nextSibling");          // 8.
           for(var k = 0; k < storedMutation.addedNodes.length; k++) {
             let treasureCache = storedMutation.addedNodes[k];
             // TODO: Let's make sure added nodes have a treasureMapRedo
@@ -1861,39 +1975,12 @@ editor = typeof editor == "undefined" ? {} : editor;
       return;
       
       for(let i = 0; i < storedMutations.length; i++) {
-        function lookIfRecentlyAdded(node) {
-          var addedAncestors = node;
-          var ancestorCount = 0;
-          while(addedAncestors.parentElement) {
-            addedAncestors = addedAncestors.parentElement;
-            ancestorCount++;
-          }
-          for(let j = i - 1; j >= 0; j--) {
-            let s = storedMutations[j];
-            if(s.type == "childList") {
-              for(let k = 0; k < s.addedNodes.length; k++) {
-                if(s.addedNodes[k][nodeCacheTag] == addedAncestors) { // Yes we found it!
-                  return { prev: i-j, indexAdded: k }
-                }
-              }
-            }
-          }
-          return undefined;
-        }
         let storedMutation = storedMutations[i];
         let mutType = storedMutation.type;
-        function putInformationToRecover(cachedTreasureMap, name) {
-          let node = cachedTreasureMap[nodeCacheTag];
-          if(!node) return;
-          let result = lookIfRecentlyAdded(node);
-          if(result) {
-            cachedTreasureMap.treasureMapRedo.source = result;
-          }
-        }
-        putInformationToRecover(storedMutation.target, "target");
+        addSourceIfAddedBefore(storedMutation.target, i, storedMutations, "target");
         if(mutType == "childList") {
-          putInformationToRecover(storedMutation.where.previousSibling, "previousSibling");
-          putInformationToRecover(storedMutation.where.nextSibling, "nextSibling");
+          addSourceIfAddedBefore(storedMutation.where.previousSibling, i, storedMutations, "previousSibling");
+          addSourceIfAddedBefore(storedMutation.where.nextSibling, i, storedMutations, "nextSibling");
         }
       }
     }
