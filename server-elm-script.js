@@ -296,7 +296,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         bareSelectorArray.unshift(">");
       }
       bareSelectorArray.unshift(bareSelector);
-      if(ancestorToStopAt == t) break;
+      if(ancestorToStopAt == t || t == document.head.parentElement) break;
       // Emulate :nth-of-type but for a class of siblings having the same selector.
       let s = t.previousSibling;
       foundParentWithId = foundParentWithId || t.nodeType === document.ELEMENT_NODE && t.hasAttribute("id");
@@ -344,6 +344,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     }
     return null;
   }
+  editor._internals.queryBareSelector = queryBareSelector;
   
   // Returns the new node that matches the old node the closest.
   // For text nodes, try to recover the text node, if not, returns the parent node;
@@ -826,7 +827,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     }
     
   
-  editor.ui = { _internals: {}, model: typeof editor.ui == "object" ? editor.ui.model : undefined };
+  editor.ui = typeof editor.ui == "object" ? editor.ui : { _internals: {}, model: undefined };
   editor.ui._internals.getLosslessCssParser = new Promise((resolve, reject) => {
       editor.ui._internals.setLosslessCssParser = x => { editor.ui.CSSparser = new x(); resolve(x) };
   });
@@ -1460,60 +1461,44 @@ editor = typeof editor == "undefined" ? {} : editor;
     
     editor.ui._internals.handleSendRequestFinish = function(data) {
       console.log("editor.ui._internals.handleSendRequestFinish", data);
-      /*
-        We want to undo everything in the undo stack that has been done since the save began.
-        In the process of vanilla undoing this (using mark's function), the items will be
-        pushed onto the redoStack in the normal way, s.t. we can redo them in a moment.
-        Once we're at the state we were at when we began to save, we re-write the page
-        with the confirmed content that the worker gave us.
-        Once the confirmed content has been rewritten, we have undo/redo stacks that point,
-        as the undo/redo stacks are an array of array of MutationRecords, all of whose target
-        has just been erased and replaced with a new object. 
-        So we need to convert the old UR stacks to be pointing to the right objects.
-        We solve this in the undo()/redo() functions, by checking to see if the object
-        pointed to in the mutationrecord is still connected to the active DOM. if not,
-        we use the inactive node to record the path up the tree, and search for the
-        corresponding node in the newly active tree, replacing the MR.target with the active one.
-        Once we have the UR stacks set up, we just need to vanilla undo/redo to get back to
-        the state pre-update & post-save.
-      */
       // TODO: In case of ambiguity, only replay undo/redo after ambiguity has been resolved.
-      const ads = editor.ui.model.actionsDuringSave;
-      const adsLen = editor.ui.model.actionsDuringSave.length;
-      ads.forEach((action) => {
-        if (action == "undo") {
-          editor.ui.undo();
-        } else if (action == "redo") {
-          editor.ui.redo();
-        } else {
-          throw new Error("Unidentified action in restoring post-save state post-save");
-        }
-      });
       
       editor.ui.model.outputObserver.disconnect();
       editor.ui._internals.handleRewriteMessage({data: data});
+      document.addEventListener("DOMContentLoaded", function(event) {
       // Now the page is reloaded, but the scripts defining Editor have not loaded yet.
-      setTimeout(function() {
         var replayActionsAfterSave = msg => function(msgOverride) {
           console.log("replaying actions after save");
-          const newAds = editor.ui.model.actionsDuringSave;
-          const newAdsLen = newAds.length;
-          for (let i = 0; i < adsLen; i++) {
-            if (newAds[i] == "undo") {
-              editor.ui.undo();
-            } else if (newAds[i] == "redo") {
-              editor.ui.redo();
-            } else {
-              throw new Error("unidentified action in actionsduringsave");
+          editor.removeExplicitNodes();
+          const ads = editor.ui.model.actionsDuringSave;
+          const adsLen = ads.length;
+          // So all the edits since save have been forgotten.
+          // We realign the undo/redo stack with how the document looks like, and then we replay undo/redo.
+          for(var k = adsLen-1; k >= 0; k--) {
+            let action = ads[k];
+            if(action == "newUndo" || action == "redo") {
+              editor.ui.model.redoStack.push(editor.ui.model.undoStack.pop());
+            } else if(action == "undo") {
+              editor.ui.model.undoStack.push(editor.ui.model.redoStack.pop());
             }
           }
-          if(newAdsLen) {
+          // Ok now the undo/redo stack are aligned.
+          ads.forEach((action) => {
+            if (action == "redo" || action == "newUndo") {
+              editor.ui.redo();
+            } else if (action == "undo") {
+              editor.ui.undo();
+s            } else {
+              throw new Error("Unidentified action in restoring post-save state post-save");
+            }
+          });
+          if(adsLen) {
             editor.ui.refresh();
           }
           if(msg) {
             setTimeout(function saveCompleted(count) {
                if(editor.ui.sendNotification) {
-                 editor.ui.sendNotification(newAdsLen === 0 || !msgOverride ? msg : msgOverride);
+                 editor.ui.sendNotification(adsLen === 0 || !msgOverride ? msg : msgOverride);
                } else {
                  setTimeout(() => saveCompleted((count || 0) + 1), (count||0)*10);
                }
@@ -1526,7 +1511,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         } else {
           editor.ui.model.disambiguationMenu.replayActionsAfterSave = replayActionsAfterSave(what);
         }
-      }, 10);
+      });
     }; // editor.ui._internals.handleSendRequestFinish
     
     // The "what" is so that we can show a notification when this is done
@@ -1779,7 +1764,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         storedMutation.oldValue = m.oldValue;
       }
       if(m.type == "characterData") {
-        storedMutation.newValue = m.target.characterData;
+        storedMutation.newValue = m.target.textContent;
       } else if(m.type == "attributes") {
         storedMutation.newValue = m.target.getAttribute(m.attributeName);
         storedMutation.attributeName = m.attributeName;
@@ -1794,7 +1779,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       //true here ==> mutation is separate action
       if(!lastUndo || (lastUndo[0].timestamp < (time - 100))) {
         if (editor_model.isSaving) {
-          editor_model.actionsDuringSave.unshift("undo");
+          editor_model.actionsDuringSave.push("newUndo");
         }
         editor_model.undoStack.push([storedMutation]);
         editor_model.redoStack = [];
@@ -1980,14 +1965,14 @@ editor = typeof editor == "undefined" ? {} : editor;
           if(pRemoved < p.source) deltaTargetIndexInForest++;
           return forests[i+1][pRemoved.source].root;
         }) : undefined;
-        let forestCutRemoved = forests[i+1].filter((el, j) => {
+        let forestCutRemoved =  mutType == "childList" ? forests[i+1].filter((el, j) => {
           for(let n = 0; n < storedMutation.removedNodes.length; n++) {
             if(storedMutation.removedNodes[n][nodeCacheTag][nodeCacheTag][i+1].source == j) {
               return false;
             }
           }
           return true;
-        });
+        }) : forests[i+1];
         let childNodes = {removedNodes: removedNodesSerialized, addedNodes: []};
         let newTargetSerialized = undoChanges(childNodes)(forests[i + 1][p.source].root, 0, p.treasureMap.bareSelectorArray, storedMutation);
         forests[i] = forestCutRemoved.slice(0, p.source - deltaTargetIndexInForest).concat([{root: newTargetSerialized, pathToDocument: forests[i+1][p.source].pathToDocument}]).concat(forestCutRemoved.slice(p.source - deltaTargetIndexInForest + 1)).concat(childNodes.addedNodes.map(n => ({root: n, pathToDocument: undefined})));
@@ -2145,7 +2130,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       } //storedMutation looper
       editor.ui.model.redoStack.push(storedMutations);
       if (editor.ui.model.isSaving) {
-        editor.ui.model.actionsDuringSave.unshift("redo");
+        editor.ui.model.actionsDuringSave.push("undo");
       }
       //TODO make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
       //turn MutationObserver back on
@@ -2248,7 +2233,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       } //mut looper
       editor.ui.model.undoStack.push(storedMutations);
       if (editor.ui.model.isSaving) {
-        editor.ui.model.actionsDuringSave.unshift("undo");
+        editor.ui.model.actionsDuringSave.push("redo");
       }
       editor_resumeWatching();
       editor.ui.refresh();
@@ -5267,7 +5252,8 @@ editor = typeof editor == "undefined" ? {} : editor;
       //move the context menu if overlaps with modify-menu
        let contextMenu = document.querySelector("#context-menu");
        let modifyMenuDiv = document.querySelector("#modify-menu");
-       let pinnedIcons = document.querySelector(".modify-menu-icons.pinned")
+       let pinnedIcons = document.querySelector(".modify-menu-icons.pinned");
+       if(!pinnedIcons) return;
        let pcr = pinnedIcons.getBoundingClientRect();
        let ccr = contextMenu.getBoundingClientRect();
        let mcr = modifyMenuDiv.getBoundingClientRect();
