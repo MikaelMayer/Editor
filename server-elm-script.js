@@ -1609,6 +1609,7 @@ editor = typeof editor == "undefined" ? {} : editor;
             }                 
           }
           editor.ui.model.undosBeforeSave = editor.ui.model.undoStack.length;
+          editor.ui._internals.saveUndoRedo();
           if(!this || typeof this != "object" || typeof this.classList == "undefined" || !this.classList.contains("disabled")) {
             editor.saveDOM();
           }
