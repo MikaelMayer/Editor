@@ -882,7 +882,9 @@ editor = typeof editor == "undefined" ? {} : editor;
                if(typeof editor.config.onInit == "function") {
                  editor.config.onInit()
                }
-               editor.ui._internals.restoreUndoRedo();
+               setTimeout(() => {
+                 editor.ui._internals.restoreUndoRedo();
+               }, 100);
              } else {
                location.search = location.search.startsWith("?") ? location.search + "&" + "edit" + next : "?edit" + next
              }
@@ -2000,10 +2002,10 @@ editor = typeof editor == "undefined" ? {} : editor;
     }
     
     editor.ui._internals.saveUndoRedo = function saveUndoRedo() {
-      localStorage.setItem('editor.ui.model.undoStack', JSON.stringify(editor.ui.model.undoStack));
-      localStorage.setItem('editor.ui.model.redoStack', JSON.stringify(editor.ui.model.redoStack));
-      localStorage.setItem('editor.ui.model.actionsDuringSave', JSON.stringify(editor.ui.model.actionsDuringSave));
-      localStorage.setItem('editor.ui.model.undosBeforeSave', JSON.stringify(editor.ui.model.undosBeforeSave));
+      localStorage.setItem(editor.config.path + ' editor.ui.model.undoStack', JSON.stringify(editor.ui.model.undoStack));
+      localStorage.setItem(editor.config.path + ' editor.ui.model.redoStack', JSON.stringify(editor.ui.model.redoStack));
+      localStorage.setItem(editor.config.path + ' editor.ui.model.actionsDuringSave', JSON.stringify(editor.ui.model.actionsDuringSave));
+      localStorage.setItem(editor.config.path + ' editor.ui.model.undosBeforeSave', JSON.stringify(editor.ui.model.undosBeforeSave));
     }
     
     // Given a list of actions newUndo, redo, and undo, first rewind the actions to replay them.
@@ -2032,10 +2034,10 @@ editor = typeof editor == "undefined" ? {} : editor;
     }
     
     editor.ui._internals.restoreUndoRedo = function restoreUndoRedo() {
-      editor.ui.model.undoStack = JSON.parse(localStorage.getItem("editor.ui.model.undoStack")) || editor.ui.model.undoStack;
-      editor.ui.model.redoStack = JSON.parse(localStorage.getItem("editor.ui.model.redoStack")) || editor.ui.model.redoStack;
-      editor.ui.model.actionsDuringSave = JSON.parse(localStorage.getItem("editor.ui.model.actionsDuringSave")) || editor.ui.model.actionsDuringSave;
-      editor.ui.model.undosBeforeSave = JSON.parse(localStorage.getItem("editor.ui.model.undosBeforeSave")) || editor.ui.model.undosBeforeSave;
+      editor.ui.model.undoStack = JSON.parse(localStorage.getItem(editor.config.path + " editor.ui.model.undoStack")) || editor.ui.model.undoStack;
+      editor.ui.model.redoStack = JSON.parse(localStorage.getItem(editor.config.path + " editor.ui.model.redoStack")) || editor.ui.model.redoStack;
+      editor.ui.model.actionsDuringSave = JSON.parse(localStorage.getItem(editor.config.path + " editor.ui.model.actionsDuringSave")) || editor.ui.model.actionsDuringSave;
+      editor.ui.model.undosBeforeSave = JSON.parse(localStorage.getItem(editor.config.path + " editor.ui.model.undosBeforeSave")) || editor.ui.model.undosBeforeSave;
       
       // If we are restoring it, it means that we are out of sync with the current document.
       // We assume that the document is at the state it was when (undoBeforeSave) undos were executed.
