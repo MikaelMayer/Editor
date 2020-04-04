@@ -119,6 +119,7 @@ mbDotEditorFile =
   fs.read dotEditor
 
 applyDotEditor source = 
+  if varFast then source else
   let prefix = Regex.extract "^(.*/)[^/]*$" path |> Maybe.map (\[prefix] -> prefix) |> Maybe.withDefault "" in
   let dotEditor = prefix +  ".editor" in
   case mbDotEditorFile of
