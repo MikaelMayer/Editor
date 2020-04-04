@@ -4844,9 +4844,9 @@ s            } else {
       
       // We render the content of modifyMenuDiv from scratch
       modifyMenuDiv.innerHTML = "";
-      let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned"}); // Icons always visible
-      let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons"}); // Top-level icons on the top bar
-      let domSelector = el("div", {"class": "dom-selector noselect"}); // create dom selector interface
+      let modifyMenuPinnedIconsDiv = el("div", {"class":"modify-menu-icons pinned", isghost:"true"}, [], {isghost: true}); // Icons always visible
+      let modifyMenuIconsDiv = el("div", {"class":"modify-menu-icons", isghost:"true"}, [], {isghost: true}); // Top-level icons on the top bar
+      let domSelector = el("div", {"class": "dom-selector noselect", isghost:"true"}); // create dom selector interface
       let modifyMenuHolder = el("div", {"class": "modify-menu-holder", "id":"modify-menu-holder"});
       modifyMenuDiv.append(modifyMenuPinnedIconsDiv); // Keep this one as it.
       
