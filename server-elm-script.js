@@ -882,6 +882,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                if(typeof editor.config.onInit == "function") {
                  editor.config.onInit()
                }
+               editor.ui._internals.restoreUndoRedo();
              } else {
                location.search = location.search.startsWith("?") ? location.search + "&" + "edit" + next : "?edit" + next
              }
@@ -1472,29 +1473,12 @@ editor = typeof editor == "undefined" ? {} : editor;
           editor.removeExplicitNodes();
           const ads = editor.ui.model.actionsDuringSave;
           const adsLen = ads.length;
-          // So all the edits since save have been forgotten.
-          // We realign the undo/redo stack with how the document looks like, and then we replay undo/redo.
-          for(var k = adsLen-1; k >= 0; k--) {
-            let action = ads[k];
-            if(action == "newUndo" || action == "redo") {
-              editor.ui.model.redoStack.push(editor.ui.model.undoStack.pop());
-            } else if(action == "undo") {
-              editor.ui.model.undoStack.push(editor.ui.model.redoStack.pop());
-            }
-          }
-          // Ok now the undo/redo stack are aligned.
-          ads.forEach((action) => {
-            if (action == "redo" || action == "newUndo") {
-              editor.ui.redo();
-            } else if (action == "undo") {
-              editor.ui.undo();
-s            } else {
-              throw new Error("Unidentified action in restoring post-save state post-save");
-            }
-          });
+          editor.ui._internals.replayActions(ads);
           if(adsLen) {
             editor.ui.refresh();
           }
+          // We're done.
+          editor.ui.model.actionsDuringSave = [];
           if(msg) {
             setTimeout(function saveCompleted(count) {
                if(editor.ui.sendNotification) {
@@ -2011,6 +1995,73 @@ s            } else {
       foreachTreasureCache(treasureCache => {
         delete treasureCache[nodeCacheTag][nodeCacheTag];
       });
+      
+      editor.ui._internals.saveUndoRedo();
+    }
+    
+    editor.ui._internals.saveUndoRedo = function saveUndoRedo() {
+      localStorage.setItem('editor.ui.model.undoStack', JSON.stringify(editor.ui.model.undoStack));
+      localStorage.setItem('editor.ui.model.redoStack', JSON.stringify(editor.ui.model.redoStack));
+      localStorage.setItem('editor.ui.model.actionsDuringSave', JSON.stringify(editor.ui.model.actionsDuringSave));
+      localStorage.setItem('editor.ui.model.undosBeforeSave', JSON.stringify(editor.ui.model.undosBeforeSave));
+    }
+    
+    // Given a list of actions newUndo, redo, and undo, first rewind the actions to replay them.
+    editor.ui._internals.replayActions = function replayActions(ads) {
+      const adsLen = ads.length;
+      // So all the edits since save have been forgotten.
+      // We realign the undo/redo stack with how the document looks like, and then we replay undo/redo.
+      for(var k = adsLen-1; k >= 0; k--) {
+        let action = ads[k];
+        if(action == "newUndo" || action == "redo") {
+          editor.ui.model.redoStack.push(editor.ui.model.undoStack.pop());
+        } else if(action == "undo") {
+          editor.ui.model.undoStack.push(editor.ui.model.redoStack.pop());
+        }
+      }
+      // Ok now the undo/redo stack are aligned.
+      ads.forEach((action) => {
+        if (action == "redo" || action == "newUndo") {
+          editor.ui.redo();
+        } else if (action == "undo") {
+          editor.ui.undo();
+        } else {
+          throw new Error("Unidentified action in restoring post-save state post-save");
+        }
+      });
+    }
+    
+    editor.ui._internals.restoreUndoRedo = function restoreUndoRedo() {
+      editor.ui.model.undoStack = JSON.parse(localStorage.getItem("editor.ui.model.undoStack")) || editor.ui.model.undoStack;
+      editor.ui.model.redoStack = JSON.parse(localStorage.getItem("editor.ui.model.redoStack")) || editor.ui.model.redoStack;
+      editor.ui.model.actionsDuringSave = JSON.parse(localStorage.getItem("editor.ui.model.actionsDuringSave")) || editor.ui.model.actionsDuringSave;
+      editor.ui.model.undosBeforeSave = JSON.parse(localStorage.getItem("editor.ui.model.undosBeforeSave")) || editor.ui.model.undosBeforeSave;
+      
+      // If we are restoring it, it means that we are out of sync with the current document.
+      // We assume that the document is at the state it was when (undoBeforeSave) undos were executed.
+      
+      // If there are more undos, we should ask to restore the changes or not.
+      if(editor.ui.model.undoStack.length != editor.ui.model.undosBeforeSave) {
+        let msg = editor.ui.model.actionsDuringSave.length ?
+                     "We recovered the changes you did while the page was saved." :
+                     "We recovered some unsaved changes when you last closed the page."
+        if(confirm(msg + "\nDo you want to restore them?")) {
+          let ads;
+          if(editor.ui.model.actionsDuringSave.length) {
+            ads = editor.ui.model.actionsDuringSave;
+          } else {
+            ads = editor.ui.model.undoStack.map(x => "newUndo");
+          }
+          editor.ui._internals.replayActions(ads);
+          editor.ui.refresh();
+        } else {
+          editor.ui.model.undoStack = [];
+          editor.ui.model.redoStack = [];
+          editor.ui.model.actionsDuringSave = [];
+          editor.ui.model.undosBeforeSave = 0;
+        }
+        editor.ui._internals.saveUndoRedo();
+      }
     }
 
     //debugging function for printing both teh undo and redo stacks.
@@ -2273,8 +2324,19 @@ s            } else {
             if(editor.hasGhostAncestor(mutation.target)) {
               continue;
             }
-            if(mutation.type == "attributes" && editor.isGhostAttributeKey(mutation.attributeName)) {
-              continue;
+            if(mutation.type == "attributes") {
+              var isSpecificGhostAttributeKey = editor.isSpecificGhostAttributeKeyFromNode(mutation.target);
+              var isIgnoredAttributeKey = editor.isIgnoredAttributeKeyFromNode(mutation.target);
+              if(editor.isGhostAttributeKey(mutation.attributeName) || isSpecificGhostAttributeKey(mutation.attributeName) ||
+               mutation.target.getAttribute(mutation.attributeName) === mutation.oldValue ||
+               isIgnoredAttributeKey(mutation.attributeName)
+              ) {
+                continue;
+              }
+            } else if(mutation.type == "childList") {
+              if(editor.areChildrenGhosts(mutation.target)) {
+                continue;
+              }
             }
             processedMutations.push(editor.ui._internals.makeMutationUndoable(mutation));
           }
