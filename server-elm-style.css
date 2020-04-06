@@ -317,19 +317,16 @@ div.disambiguationMenu {
 }
 
 @media screen and (max-width: 800px) {
-    body {
-        font-size: 48px;
-    }
-    menu.edittoolbar {
+    div.editor-interface menu.edittoolbar {
         right: 10px;
     }
-    menuitem.filename {
+    div.editor-interface menuitem.filename {
         display: none;
     }
     /*menuitem {
       font-size: 2.5em;
     }*/
-    button {
+    div#modify-menu.editor-interface button {
         font-size: 1em;
     }
     menuitem#question-menuitem {
@@ -337,10 +334,6 @@ div.disambiguationMenu {
     }
     menuitem#autosave-menuitem {
         display: none;
-    }
-    #editor_codepreview {
-        width: 100%;
-        height: 600px;
     }
     @keyframes notifs-visible {
       0% {transform:translateY(-64px);}
@@ -350,7 +343,6 @@ div.disambiguationMenu {
       0% {transform:translateY(calc(-128px - 48px));}
       100% {transform: translateY(-64px);}
     }
-
 }
 
 div#modify-menu textarea.inline-CSS {
