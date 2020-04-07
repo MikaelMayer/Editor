@@ -1129,7 +1129,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       document.getElementById("modify-menu").append(newMenu);
     }
     if(editor.config.thaditor) {
-      editor.ui.model.actionsDuringSave = [];
+      editor.ui.model.actionsAfterSaveState = [];
     }
     editor.ui.refresh();
     editor.ui.sendNotification("Saving...");
@@ -1473,18 +1473,16 @@ editor = typeof editor == "undefined" ? {} : editor;
         var replayActionsAfterSave = msg => function(msgOverride) {
           console.log("replaying actions after save");
           editor.removeExplicitNodes();
-          const ads = editor.ui.model.actionsDuringSave;
-          const adsLen = ads.length;
-          editor.ui._internals.replayActions(ads);
-          if(adsLen) {
+          editor.ui._internals.replayActions(editor.ui.model.actionsAfterSaveState, editor.ui.model.undoStack, editor.ui.model.redoStack);
+          if(editor.ui.model.actionsAfterSaveState.length) {
             editor.ui.refresh();
           }
           // We're done.
-          editor.ui.model.actionsDuringSave = [];
+          editor.ui.model.actionsAfterSaveState = [];
           if(msg) {
             setTimeout(function saveCompleted(count) {
                if(editor.ui.sendNotification) {
-                 editor.ui.sendNotification(adsLen === 0 || !msgOverride ? msg : msgOverride);
+                 editor.ui.sendNotification(editor.ui.model.actionsAfterSaveState.length === 0 || !msgOverride ? msg : msgOverride);
                } else {
                  setTimeout(() => saveCompleted((count || 0) + 1), (count||0)*10);
                }
@@ -1608,7 +1606,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               await editor.postServer("unlink", trueTempPath);
             }                 
           }
-          editor.ui.model.undosBeforeSave = editor.ui.model.undoStack.length;
+          editor.ui.model.actionsAfterSaveState = [];
           editor.ui._internals.saveUndoRedo();
           if(!this || typeof this != "object" || typeof this.classList == "undefined" || !this.classList.contains("disabled")) {
             editor.saveDOM();
@@ -1765,13 +1763,14 @@ editor = typeof editor == "undefined" ? {} : editor;
       //makes single actions that are recorded as multiple mutations a single action
       //true here ==> mutation is separate action
       if(!lastUndo || (lastUndo[0].timestamp < (time - 100))) {
-        if (editor_model.isSaving) {
-          editor_model.actionsDuringSave.push("newUndo");
-        }
         editor_model.undoStack.push([storedMutation]);
         editor_model.redoStack = [];
+        editor_model.actionsAfterSaveState.push({type: "do", mutations: [storedMutation]});
       } else { // We just append the mutation to the last undo because it's too short.
         lastUndo.push(storedMutation);
+        // We group this action with the previous one also with actionsAfterSaveState
+        // For every batch action in actionsAfterSaveState there is the same in undoStack or redoStack or vice-versa
+        editor_model.actionsAfterSaveState[editor_model.actionsAfterSaveState.length - 1].mutations.push(storedMutation);
       }
       return storedMutation; // For post-processing.
     }; //editor.ui._internals.makeMutationUndoable
@@ -1984,16 +1983,27 @@ editor = typeof editor == "undefined" ? {} : editor;
           mark(root, k, [getBareSelectorOfArrayNode(root)]);
         }
       }
+      let firstForest = forests[0];
+      // Clean up. We don't need the arrayNodes of nodes which can be found in the document at the time of recovery;
+      // That way, we save a lot of space.
+      for(var k = 0; k < firstForest.length; k++) {
+        if(firstForest[k].pathToDocument) firstForest[k].root = undefined;
+      }
+      for(var k = 0; k < firstForest.length; k++) {
+        if(lastForest[k].pathToDocument) lastForest[k].root = undefined;
+      }
       // Ok, now the forests contains all the successive representation of the elements.
       // For each treasureCache now, we can find absolute treasureMap and the treasureMapRedo or serialized versions if necessary.
       // To ensure we create elements only once, we can just store the first forest in the first storedMutation and the last forest in the last storedMutation
-      storedMutations[0].firstForest = forests[0];
-      storedMutations[storedMutations.length-1].lastForest = forests[forests.length-1];
+      storedMutations[0].firstForest = firstForest;
+      storedMutations[storedMutations.length-1].lastForest = lastForest;
       foreachTreasureCache((treasureCache, storedMutations, i, name, subIndex) => {
         let node = treasureCache[nodeCacheTag];
         treasureCache.forRedo = node[nodeCacheTag][0]; // A source in the forest as well as a treasureMap to find the node from the source.
         treasureCache.forUndo = node[nodeCacheTag][storedMutations.length];
-      })
+      });
+      
+      
       // When we are done with back-propagation, we just remove all the nodes.
       foreachTreasureCache(treasureCache => {
         delete treasureCache[nodeCacheTag][nodeCacheTag];
@@ -2002,66 +2012,85 @@ editor = typeof editor == "undefined" ? {} : editor;
       editor.ui._internals.saveUndoRedo();
     }
     
+    
     editor.ui._internals.saveUndoRedo = function saveUndoRedo() {
-      localStorage.setItem(editor.config.path + ' editor.ui.model.undoStack', JSON.stringify(editor.ui.model.undoStack));
-      localStorage.setItem(editor.config.path + ' editor.ui.model.redoStack', JSON.stringify(editor.ui.model.redoStack));
-      localStorage.setItem(editor.config.path + ' editor.ui.model.actionsDuringSave', JSON.stringify(editor.ui.model.actionsDuringSave));
-      localStorage.setItem(editor.config.path + ' editor.ui.model.undosBeforeSave', JSON.stringify(editor.ui.model.undosBeforeSave));
+      let numberOfUndosSinceLastSave = editor.ui.model.actionsAfterSaveState.filter(x => x.type == "undo").length;
+      let numberOfDosSinceLastSave = editor.ui.model.actionsAfterSaveState.length - numberOfUndosSinceLastSave;
+      let undoStackToSave = editor.ui.model.undoStack.slice(0, editor.ui.model.undoStack.length - numberOfDosSinceLastSave);
+      let actionsAfterSaveStateToSave = editor.ui.model.actionsAfterSaveState;
+      let redoStackToSave = editor.ui.model.redoStack;
+      while(true) {
+        try {
+          let actionsAfterSaveStateString = JSON.stringify(actionsAfterSaveStateToSave);
+          let undoString = JSON.stringify(undoStackToSave);
+          let redoString = JSON.stringify(redoStackToSave);
+          //console.log("Saved undo/redo. Size: " + (undoString.length + redoString.length + actionsAfterSaveStateString.length));
+          // The number of undo/redos we can save is dependent on the memory 
+          localStorage.setItem(editor.config.path + ' editor.ui.model.actionsAfterSaveState', actionsAfterSaveStateString);
+          localStorage.setItem(editor.config.path + ' editor.ui.model.undoStack', undoString);
+          localStorage.setItem(editor.config.path + ' editor.ui.model.redoStack', redoString);
+        } catch(e) { // Not enough place.
+          localStorage.removeItem(editor.config.path + ' editor.ui.model.actionsAfterSaveState');
+          localStorage.removeItem(editor.config.path + ' editor.ui.model.undoStack');
+          localStorage.removeItem(editor.config.path + ' editor.ui.model.redoStack');
+          // Strategy to prune the number of actions to save
+          if(undoStackToSave.length) { // First thing to forget: the oldest undo stack.
+            console.log("[Warning] Out of memory to save oldest actions. Removing one oldest action.")
+            undoStackToSave = undoStackToSave.slice(1);
+          } else if(redoStackToSave.length) { // Second thing to forget: things that were undone when the page was closed unexpectedly
+            console.log("[Warning] Out of memory to save most recent undone actions. Removing one undo actions.");
+            redoStackToSave = redoStackToSave.slice(0, redoStackToSave.length - 1);
+          } else { // Actions made since last save
+            console.log("[Warning] Out of memory to save some actions done since last save. Removing the most recent one.");
+            editor.ui.sendNotification("Reaching memory limit. Please save changes and refresh.");
+            actionsAfterSaveStateToSave = actionsAfterSaveStateToSave.slice(0, actionsAfterSaveStateToSave.length - 1);
+          }
+          continue;
+        }
+        break;
+      }
     }
     
     // Given a list of actions newUndo, redo, and undo, first rewind the actions to replay them.
-    editor.ui._internals.replayActions = function replayActions(ads) {
-      const adsLen = ads.length;
-      // So all the edits since save have been forgotten.
-      // We realign the undo/redo stack with how the document looks like, and then we replay undo/redo.
-      for(var k = adsLen-1; k >= 0; k--) {
-        let action = ads[k];
-        if(action == "newUndo" || action == "redo") {
-          editor.ui.model.redoStack.push(editor.ui.model.undoStack.pop());
-        } else if(action == "undo") {
-          editor.ui.model.undoStack.push(editor.ui.model.redoStack.pop());
-        }
+    editor.ui._internals.replayActions = function replayActions(actionsAfterSaveState, undoStack, redoStack) {
+      // At this point, the undo and redo stack were restored like they were when the page was last closed or refreshed.
+      let undosAfterSaveState = actionsAfterSaveState.filter(x => x.type == "undo").map(y => y.mutations);
+      undosAfterSaveState.reverse();
+      let dosAfterSaveState = actionsAfterSaveState.slice(undosAfterSaveState.length).map(y => y.mutations);
+      editor.ui.model.actionsAfterSaveState = [];
+      editor.ui.model.undoStack = undoStack;
+      undoStack.push(...undosAfterSaveState); // We put back the undos performed after the saved state
+      editor.ui.model.redoStack = [];         // We set redoStack to empty.
+      for(var i = 0; i < undosAfterSaveState.length; i++) { // We undo the actions undone after the saved state
+        editor.ui.undo();
       }
-      // Ok now the undo/redo stack are aligned.
-      ads.forEach((action) => {
-        if (action == "redo" || action == "newUndo") {
-          editor.ui.redo();
-        } else if (action == "undo") {
-          editor.ui.undo();
-        } else {
-          throw new Error("Unidentified action in restoring post-save state post-save");
-        }
-      });
+      editor.ui.model.redoStack = dosAfterSaveState.concat(redoStack);
+      for(var i = 0; i < dosAfterSaveState.length; i++) {
+        editor.ui.redo();
+      }
     }
     
     editor.ui._internals.restoreUndoRedo = function restoreUndoRedo() {
       editor.ui.model.undoStack = JSON.parse(localStorage.getItem(editor.config.path + " editor.ui.model.undoStack")) || editor.ui.model.undoStack;
       editor.ui.model.redoStack = JSON.parse(localStorage.getItem(editor.config.path + " editor.ui.model.redoStack")) || editor.ui.model.redoStack;
-      editor.ui.model.actionsDuringSave = JSON.parse(localStorage.getItem(editor.config.path + " editor.ui.model.actionsDuringSave")) || editor.ui.model.actionsDuringSave;
-      editor.ui.model.undosBeforeSave = JSON.parse(localStorage.getItem(editor.config.path + " editor.ui.model.undosBeforeSave")) || editor.ui.model.undosBeforeSave;
+      editor.ui.model.actionsAfterSaveState = JSON.parse(localStorage.getItem(editor.config.path + " editor.ui.model.actionsAfterSaveState")) || editor.ui.model.actionsAfterSaveState;
       
       // If we are restoring it, it means that we are out of sync with the current document.
       // We assume that the document is at the state it was when (undoBeforeSave) undos were executed.
       
       // If there are more undos, we should ask to restore the changes or not.
-      if(editor.ui.model.undoStack.length != editor.ui.model.undosBeforeSave) {
-        let msg = editor.ui.model.actionsDuringSave.length ?
-                     "We recovered the changes you did while the page was saved." :
-                     "We recovered some unsaved changes when you last closed the page."
+      if(editor.ui.model.actionsAfterSaveState.length > 0) {
+        let msg = //editor.ui.model.actionsAfterSaveState.length ?
+                     //"We recovered the changes you did while the page was saved." :
+                     "We recovered some unsaved changes since when you last saved the page."
         if(confirm(msg + "\nDo you want to restore them?")) {
-          let ads;
-          if(editor.ui.model.actionsDuringSave.length) {
-            ads = editor.ui.model.actionsDuringSave;
-          } else {
-            ads = editor.ui.model.undoStack.map(x => "newUndo");
-          }
-          editor.ui._internals.replayActions(ads);
+          let actionsAfterSaveState = editor.ui.model.actionsAfterSaveState;
+          editor.ui._internals.replayActions(actionsAfterSaveState, editor.ui.model.undoStack, editor.ui.model.redoStack);
           editor.ui.refresh();
         } else {
           editor.ui.model.undoStack = [];
           editor.ui.model.redoStack = [];
-          editor.ui.model.actionsDuringSave = [];
-          editor.ui.model.undosBeforeSave = 0;
+          editor.ui.model.actionsAfterSaveState = [];
         }
         editor.ui._internals.saveUndoRedo();
       }
@@ -2094,7 +2123,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     }; // editor.ui.canUndo
 
     //undo function: handles undo feature
-    editor.ui.undo = function undo(afterUndo) {
+    editor.ui.undo = function undo() {
       editor.userModifies();
       let storedMutations = editor.ui.model.undoStack.pop();
       //need to check if undoStack is empty s.t. we can set the "savability" of the document accurately
@@ -2107,45 +2136,32 @@ editor = typeof editor == "undefined" ? {} : editor;
       editor_stopWatching();
       const quicker = node => !node || node.isConnected ? node : editor.fromTreasureMap(editor.toTreasureMap(node));
       let k;
-      // first, let's recover every target, previousSibling and nextSibling nodes.
-      for(k = storedMutations.length - 1; k >= 0; k--) {
-        function recover(treasureCache) {
-          if(nodeCacheTag in treasureCache) { // We are good there.
-            return;
-          }
-          if(treasureCache.forUndo === undefined) return;
-          // Node is missing. Let's recover it.
-          let p = treasureCache.forUndo;
-          let forest = storedMutations[storedMutations.length - 1].lastForest;
-          let topNode;
-          if(forest[p.source].pathToDocument) { // This element exists, we need to recover it.
-            topNode = editor.fromTreasureMap(forest[p.source].pathToDocument);
-          } else {
-            topNode = arrayNodeToDomNode(forest[p.source].root);
-          }
-          let finalNode = queryBareSelector(p.treasureMap.bareSelectorArray, topNode);
-          treasureCache[nodeCacheTag] = finalNode;
+      // Undo's batches can be merged, hence we need to make sure we always take the most recent last forest.
+      let indexOfLastForest = storedMutations.length - 1;
+      function recover(treasureCache) {
+        if(!treasureCache) return null;
+        if(nodeCacheTag in treasureCache) { // We are good there.
+          return treasureCache[nodeCacheTag];
         }
-        
-        let storedMutation = storedMutations[k];
-        let mutType = storedMutation.type;
-        recover(storedMutation.target);
-        if(mutType == "childList") {
-          recover(storedMutation.previousSibling);
-          recover(storedMutation.nextSibling);
-          for(let i = 0; i < storedMutation.addedNodes.length; i++) {
-            recover(storedMutation.addedNodes[i]);
-          }
-          for(let i = 0; i < storedMutation.removedNodes.length; i++) {
-            recover(storedMutation.removedNodes[i]);
-          }
+        if(treasureCache.forUndo === undefined) return;
+        // Node is missing. Let's recover it.
+        let p = treasureCache.forUndo;
+        let forest = storedMutations[indexOfLastForest].lastForest;
+        let topNode;
+        if(forest[p.source].pathToDocument) { // This element exists, we need to recover it.
+          topNode = editor.fromTreasureMap(forest[p.source].pathToDocument);
+        } else {
+          topNode = arrayNodeToDomNode(forest[p.source].root);
         }
+        let finalNode = queryBareSelector(p.treasureMap.bareSelectorArray, topNode);
+        treasureCache[nodeCacheTag] = finalNode;
+        return finalNode;
       }
-      
       for(k = storedMutations.length - 1; k >= 0; k--) {
         let storedMutation = storedMutations[k];
+        if("lastForest" in storedMutation) indexOfLastForest = k;
         let mutType = storedMutation.type;
-        let target = storedMutation.target[nodeCacheTag];
+        let target = recover(storedMutation.target);
         //in each case, we reverse the change, setting the URValue/oldValue as the current value
         //at the target, and replacing the URValue/oldValue with the current value present in target
         if(mutType === "attributes") {
@@ -2162,9 +2178,9 @@ editor = typeof editor == "undefined" ? {} : editor;
         } else { // childList
           let removedNodesToAdd = storedMutation.removedNodes;
           let addedNodesToRemove = storedMutation.addedNodes;
-          let nextSibling = fromTreasureCache(storedMutation.nextSibling, true);
+          let nextSibling = recover(storedMutation.nextSibling);
           if(!nextSibling) {
-            let previousSibling = fromTreasureCache(storedMutation.previousSibling, true);
+            let previousSibling = recover(storedMutation.previousSibling);
             let count = addedNodesToRemove.length;
             nextSibling = previousSibling ? previousSibling.nextSibling : target.firstChild;
             while(count > 0 && nextSibling) {
@@ -2173,24 +2189,26 @@ editor = typeof editor == "undefined" ? {} : editor;
             }
           }
           for(i = 0; i < removedNodesToAdd.length; i++) { 
-            let toReinsert = fromTreasureCache(removedNodesToAdd[i], true);
+            let toReinsert = recover(removedNodesToAdd[i]);
             if(toReinsert) target.insertBefore(toReinsert, nextSibling); 
           }
           for(i = 0; i < addedNodesToRemove.length; i++) {
-            let r = fromTreasureCache(addedNodesToRemove[i], true);
+            let r = recover(addedNodesToRemove[i]);
             if(r) r.remove();
           }
         }
       } //storedMutation looper
       editor.ui.model.redoStack.push(storedMutations);
-      if (editor.ui.model.isSaving) {
-        editor.ui.model.actionsDuringSave.push("undo");
+      if(editor.ui.model.actionsAfterSaveState.length && editor.ui.model.actionsAfterSaveState[editor.ui.model.actionsAfterSaveState.length - 1].type == "do") {
+        editor.ui.model.actionsAfterSaveState = editor.ui.model.actionsAfterSaveState.slice(0, editor.ui.model.actionsAfterSaveState.length - 1);
+      } else {
+        editor.ui.model.actionsAfterSaveState.push({type: "undo", mutations: storedMutations});
       }
+      editor.ui._internals.saveUndoRedo();
       //TODO make sure save button access is accurate (i.e. we should ony be able to save if there are thigns to undo)
       //turn MutationObserver back on
       editor_resumeWatching();
-      if(!afterUndo) editor.ui.refresh();
-      else afterUndo();
+      editor.ui.refresh();
       //editor.ui._internals.printstacks();
       })();
       return "Undo launched";
@@ -2210,45 +2228,35 @@ editor = typeof editor == "undefined" ? {} : editor;
       }
       (async () => {
       editor_stopWatching();
-      
       let k;
-      for(k = 0; k < storedMutations.length; k++) {
-        function recover(treasureCache, type) {
-          if(nodeCacheTag in treasureCache) { // We are good there.
-            return;
-          }
-          if(treasureCache.forRedo === undefined) return;
-          // Node is missing. Let's recover it.
-          let p = treasureCache.forRedo;
-          let forest = storedMutations[0].firstForest;
-          let topNode;
-          if(forest[p.source].pathToDocument) { // This element exists, we need to recover it.
-            topNode = editor.fromTreasureMap(forest[p.source].pathToDocument);
-          } else {
-            topNode = arrayNodeToDomNode(forest[p.source].root);
-          }
-          let finalNode = queryBareSelector(p.treasureMap.bareSelectorArray, topNode);
-          treasureCache[nodeCacheTag] = finalNode;
+      let indexOfFirstForest = 0;
+      // mutations can happen in batches, each batch starts with a .firstForest attribute.
+      function recoverNode(treasureCache) {
+        if(!treasureCache) return null;
+        if(nodeCacheTag in treasureCache) { // We are good there.
+          return treasureCache[nodeCacheTag];
         }
-        
-        let storedMutation = storedMutations[k];
-        let mutType = storedMutation.type;
-        recover(storedMutation.target);
-        if(mutType == "childList") {
-          recover(storedMutation.previousSibling);
-          recover(storedMutation.nextSibling);
-          for(let i = 0; i < storedMutation.addedNodes.length; i++) {
-            recover(storedMutation.addedNodes[i], "added");
-          }
-          for(let i = 0; i < storedMutation.removedNodes.length; i++) {
-            recover(storedMutation.removedNodes[i], "removed");
-          }
+        if(treasureCache.forRedo === undefined) return undefined;
+        // Node is missing. Let's recover it.
+        let p = treasureCache.forRedo;
+        let forest = storedMutations[indexOfFirstForest].firstForest;
+        let topNode;
+        if(forest[p.source].pathToDocument) { // This element exists, we need to recover it.
+          topNode = editor.fromTreasureMap(forest[p.source].pathToDocument);
+        } else {
+          topNode = arrayNodeToDomNode(forest[p.source].root);
         }
+        let finalNode = queryBareSelector(p.treasureMap.bareSelectorArray, topNode);
+        treasureCache[nodeCacheTag] = finalNode;
+        return finalNode;
       }
       for(k = 0; k < storedMutations.length; k++) {
         let storedMutation = storedMutations[k];
+        if("firstForest" in storedMutation) {
+          indexOfFirstForest = k;
+        }
         let mutType = storedMutation.type;
-        let target = storedMutation.target[nodeCacheTag];
+        let target = recoverNode(storedMutation.target);
         //in each case, we reverse the change, setting the URValue/oldValue as the current value
         //at the target, and replacing the URValue/oldValue with the current value present in target
         if(mutType === "attributes") {
@@ -2265,9 +2273,9 @@ editor = typeof editor == "undefined" ? {} : editor;
         } else { // childList
           let nodesToRemove = storedMutation.removedNodes;
           let nodesToReadd = storedMutation.addedNodes;
-          let nextSibling = fromTreasureCache(storedMutation.nextSibling, false);
+          let nextSibling = recoverNode(storedMutation.nextSibling);
           if(!nextSibling) {
-            let previousSibling = fromTreasureCache(storedMutation.previousSibling, false);
+            let previousSibling = recoverNode(storedMutation.previousSibling);
             let count = nodesToRemove.length;
             nextSibling = previousSibling ? previousSibling.nextSibling : target.firstChild;
             while(count > 0 && nextSibling) {
@@ -2276,19 +2284,22 @@ editor = typeof editor == "undefined" ? {} : editor;
             }
           }
           for(i = 0; i < nodesToReadd.length; i++) {
-            let toReAdd = fromTreasureCache(nodesToReadd[i], false);
+            let toReAdd = recoverNode(nodesToReadd[i]);
             if(toReAdd) target.insertBefore(toReAdd, nextSibling); 
           }
           for(i = 0; i < nodesToRemove.length; i++) {
-            let r = fromTreasureCache(nodesToRemove[i], false);
+            let r = recoverNode(nodesToRemove[i]);
             if(r) r.remove();
           }
         }
       } //mut looper
       editor.ui.model.undoStack.push(storedMutations);
-      if (editor.ui.model.isSaving) {
-        editor.ui.model.actionsDuringSave.push("redo");
+      if(editor.ui.model.actionsAfterSaveState.length && editor.ui.model.actionsAfterSaveState[editor.ui.model.actionsAfterSaveState.length - 1].type == "undo") {
+        editor.ui.model.actionsAfterSaveState = editor.ui.model.actionsAfterSaveState.slice(0, editor.ui.model.actionsAfterSaveState.length - 1);
+      } else {
+        editor.ui.model.actionsAfterSaveState.push({type: "do", mutations: storedMutations});
       }
+      editor.ui._internals.saveUndoRedo();
       editor_resumeWatching();
       editor.ui.refresh();
       //editor.ui._internals.printstacks();
@@ -2308,7 +2319,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     
     // Returns true if the save button should be enabled.
     editor.ui.canSave = function editor_canSave() {
-      return editor.ui.model.undoStack.length !== editor.ui.model.undosBeforeSave;
+      return editor.ui.model.actionsAfterSaveState.length > 0;
     };
 
     function isDescendantOf(a, b) {
@@ -4129,12 +4140,12 @@ editor = typeof editor == "undefined" ? {} : editor;
                 }
                 if(typeof newElement === "string") {
                   let tmpSpan = el("span");
-                  clickedElem.insertBefore(tmpSpan, txt.nextSibling)
+                  txt.parentElement.insertBefore(tmpSpan, txt.nextSibling)
                   tmpSpan.insertAdjacentHTML("afterend", newElement);
                   newElement = tmpSpan.nextElementSibling;
                   tmpSpan.remove();
                 } else {
-                  clickedElem.insertBefore(newElement, txt.nextSibling)
+                  txt.parentElement.insertBefore(newElement, txt.nextSibling)
                 }
               } else if(insertionStyle === "last-child") { // Insert at the end of the selected element, inside.
                 if(typeof newElement === "string") {
@@ -5431,11 +5442,11 @@ editor = typeof editor == "undefined" ? {} : editor;
       link: undefined,
       disambiguationMenu: undefined, //here
       isSaving: false,
-      undosBeforeSave: ifAlreadyRunning ? editor.ui.model.undosBeforeSave : 0,
       //data structures to represent undo/redo "stack"
       undoStack: ifAlreadyRunning ? editor.ui.model.undoStack : [],
       redoStack: ifAlreadyRunning ? editor.ui.model.redoStack : [],
-      actionsDuringSave: ifAlreadyRunning ? editor.ui.model.actionsDuringSave : [],
+      // ({type: "undo" | "do", mutations: StoredMutation[]})[] such that there is no "do" followed by "undo"
+      actionsAfterSaveState: ifAlreadyRunning ? editor.ui.model.actionsAfterSaveState : [],
       isDraftSwitcherVisible : ifAlreadyRunning ? editor.ui.model.isDraftSwitcherVisible : false,
       //observer to listen for muts
       outputObserver: ifAlreadyRunning ? editor.ui.model.outputObserver : undefined,
