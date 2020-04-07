@@ -2032,6 +2032,11 @@ editor = typeof editor == "undefined" ? {} : editor;
           localStorage.setItem(editor.config.path + ' editor.ui.model.undoStack', undoString);
           localStorage.setItem(editor.config.path + ' editor.ui.model.redoStack', redoString);
         } catch(e) { // Not enough place.
+          for(let key of Object.keys(localStorage)) {
+            if(key.indexOf("editor.ui.model") >= 0) {
+              localStorage.removeItem(key);
+            }
+          }
           console.log("[error] Saved undo/redo. Size: " + (undoString.length + redoString.length + actionsAfterSaveStateString.length));
           // Strategy to prune the number of actions to save
           if(undoStackToSave.length) { // First thing to forget: the oldest undo stack.
