@@ -2020,19 +2020,19 @@ editor = typeof editor == "undefined" ? {} : editor;
       let actionsAfterSaveStateToSave = editor.ui.model.actionsAfterSaveState;
       let redoStackToSave = editor.ui.model.redoStack;
       while(true) {
+        let actionsAfterSaveStateString = JSON.stringify(actionsAfterSaveStateToSave);
+        let undoString = JSON.stringify(undoStackToSave);
+        let redoString = JSON.stringify(redoStackToSave);
         try {
-          let actionsAfterSaveStateString = JSON.stringify(actionsAfterSaveStateToSave);
-          let undoString = JSON.stringify(undoStackToSave);
-          let redoString = JSON.stringify(redoStackToSave);
-          //console.log("Saved undo/redo. Size: " + (undoString.length + redoString.length + actionsAfterSaveStateString.length));
+          localStorage.removeItem(editor.config.path + ' editor.ui.model.actionsAfterSaveState');
+          localStorage.removeItem(editor.config.path + ' editor.ui.model.undoStack');
+          localStorage.removeItem(editor.config.path + ' editor.ui.model.redoStack');
           // The number of undo/redos we can save is dependent on the memory 
           localStorage.setItem(editor.config.path + ' editor.ui.model.actionsAfterSaveState', actionsAfterSaveStateString);
           localStorage.setItem(editor.config.path + ' editor.ui.model.undoStack', undoString);
           localStorage.setItem(editor.config.path + ' editor.ui.model.redoStack', redoString);
         } catch(e) { // Not enough place.
-          localStorage.removeItem(editor.config.path + ' editor.ui.model.actionsAfterSaveState');
-          localStorage.removeItem(editor.config.path + ' editor.ui.model.undoStack');
-          localStorage.removeItem(editor.config.path + ' editor.ui.model.redoStack');
+          console.log("[error] Saved undo/redo. Size: " + (undoString.length + redoString.length + actionsAfterSaveStateString.length));
           // Strategy to prune the number of actions to save
           if(undoStackToSave.length) { // First thing to forget: the oldest undo stack.
             console.log("[Warning] Out of memory to save oldest actions. Removing one oldest action.")
@@ -2040,10 +2040,12 @@ editor = typeof editor == "undefined" ? {} : editor;
           } else if(redoStackToSave.length) { // Second thing to forget: things that were undone when the page was closed unexpectedly
             console.log("[Warning] Out of memory to save most recent undone actions. Removing one undo actions.");
             redoStackToSave = redoStackToSave.slice(0, redoStackToSave.length - 1);
-          } else { // Actions made since last save
+          } else if(actionsAfterSaveStateToSave.length) { // Actions made since last save
             console.log("[Warning] Out of memory to save some actions done since last save. Removing the most recent one.");
             editor.ui.sendNotification("Reaching memory limit. Please save changes and refresh.");
             actionsAfterSaveStateToSave = actionsAfterSaveStateToSave.slice(0, actionsAfterSaveStateToSave.length - 1);
+          } else { // Nothing to save.
+            break;
           }
           continue;
         }
