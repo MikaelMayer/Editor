@@ -912,7 +912,7 @@ evaluatedPage =
            let newURL = name == ".." ?
                     editor.config.path.replace(/(\/|^)[^\/]+\/?$/, "")
                   : editor.config.path + "/" + name;
-           var link = typeof isDir == "boolean" ? (isDir ? newURL + "/?ls" : newURL + "?edit") : name;
+           var link = typeof isDir == "boolean" ? (isDir ? newURL + "/?ls" : newURL/* + "?edit"*/) : name;
            if(link.length > 0 && link[0] != "/") link = "/" + link;
            return el("div", {class:"file-item"}, [
               el("input", getRecordForCheckbox(name), ""),

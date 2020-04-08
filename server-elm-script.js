@@ -15,7 +15,8 @@ editor = typeof editor == "undefined" ? {} : editor;
     thaditor: false,
     userName: typeof userName === "string" ? userName : "anonymous",
     ...editor.config};
-  var mbFast = editor.config.fast ? "&fast": "";
+  var mbEditQ = editor.config.fast ? "" : "?edit&fast=false";
+  var mbEditA = editor.config.fast ? "" : "&edit&fast=false";
   
   var _internals = {};
   editor._internals = _internals;
@@ -1098,7 +1099,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     return url.match(/^https?:\/\/|^www\.|^\/\//);
   }
   function linkToEdit(link) {
-    return link && !isAbsolute(link) ? link.match(/\?/) ? link + "&edit"+ mbFast : link + "?edit" + mbFast: link;
+    return link && !isAbsolute(link) ? link.match(/\?/) ? link + mbEditA : link + mbEditQ: link;
   }
   
   // Helper.
@@ -4292,7 +4293,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               {
                 onclick: (event) => {
                   editor_model.version = nm;
-                  editor.navigateTo("/Thaditor/versions/" + nm + "/?edit" + mbFast);
+                  editor.navigateTo("/Thaditor/versions/" + nm + "/" + mbEditQ);
                   setTimeout(() => editor.ui.sendNotification("Switched to " + nm), 2000);
                 }
               });
@@ -4303,7 +4304,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               {
                 onclick: (event) => {
                   editor_model.version = "Live";
-                  editor.navigateTo("/?edit"+ mbFast);
+                  editor.navigateTo("/" + mbEditQ);
                   setTimeout(() => editor.ui.sendNotification("Switched to Live version"), 2000);
                 }
               })
@@ -4762,7 +4763,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                     nm:nm, thaditor_files:thaditor_files, version:editor.ui.model.version};
       if (editor.ui.model.version == nm) {
         editor._internals.doWriteServer("deletermrf", pth_to_delete);
-        editor.navigateTo("/?edit"+ mbFast);
+        editor.navigateTo("/" + mbEditQ);
         editor.ui.refresh();
       } else {
         thaditor.do(data).then(data => {
@@ -4849,7 +4850,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       thaditor.do(data).then(data => {
         let marker = false;
         if (data.nm == data.version) {
-          editor.navigateTo("/Thaditor/versions/" + data.draft_name + "/?edit"+ mbFast);
+          editor.navigateTo("/Thaditor/versions/" + data.draft_name + "/" + mbEditQ);
           marker = true;
         }
         if(marker) {
