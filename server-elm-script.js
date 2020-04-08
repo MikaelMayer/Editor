@@ -2714,7 +2714,7 @@ editor = typeof editor == "undefined" ? {} : editor;
         editor_stopWatching();
         let oldValue = await assignTmpCss(linkNode, newValue, true);
         let m = {type: "linkHrefCSS", target: linkNode, oldValue: oldValue, newValue: newValue};
-        postProcessMutations([editor.ui._internals.makeMutationUndoable(m)]);
+        editor.ui._internals.postProcessMutations([editor.ui._internals.makeMutationUndoable(m)]);
         editor.ui.syncUndoRedoButtons();
         editor_resumeWatching();
         return;
