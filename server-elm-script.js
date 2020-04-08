@@ -20,6 +20,23 @@ editor = typeof editor == "undefined" ? {} : editor;
   
   var _internals = {};
   editor._internals = _internals;
+  
+  // function(Time in ms, key, callback)
+  // If the time elapses, calls the callback. Reset the timer every time the same callback is called, thanks to the key.
+  editor._internals.ifIdleAfter = (() => {
+    let waiting = {};
+    return function(ms, key, callback) {
+      if(key in waiting) {
+        clearTimeout(waiting[key]);
+      }
+      waiting[key] = setTimeout(() => {
+        delete waiting[key];
+        callback();
+      }, ms);
+    }
+  })();
+  
+  
   // Overwrite the entire document (head and body)
   // I'm not sure there is a better way.
   function writeDocument(NC) {
@@ -914,7 +931,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     
     var onCopy = function(event) {
       const selection = document.getSelection();
-      if(selection.rangeCount && (!document.activeElement || !document.activeElement.matches("#modify-menu *"))) {
+      if(selection.rangeCount && (!document.activeElement || (!document.activeElement.matches("#modify-menu *") && !document.activeElement.matches("textarea.ace_text-input")))) {
         let range = selection.getRangeAt(0); // Let's put the correct stuff in the clipboardData.
         let contents = range.cloneContents();
         let newHtmlData = "";
@@ -2443,13 +2460,11 @@ editor = typeof editor == "undefined" ? {} : editor;
       editor.ui.syncUndoRedoButtons();
       
       if(editor.ui.model.autosave && !editor.ui.model.disambiguationMenu) {
-        if(typeof editor._internals.autosavetimer !== "undefined") {
-          clearTimeout(editor._internals.autosavetimer);
-        }
-        editor._internals.autosavetimer = setTimeout(function() {
-          editor._internals.autosavetimer = undefined;
-          editor.ui.save();
-        }, typeof editor.config.editdelay == "number" ? editor.config.editdelay : 1000);
+        editor._internals.ifIdleAfter(typeof editor.config.editdelay == "number" ? editor.config.editdelay : 1000, "autosave",
+          function() {
+            editor._internals.autosavetimer = undefined;
+            editor.ui.save();
+          });
       }
     } //editor.ui._internals.handleMutations
     
@@ -2707,7 +2722,9 @@ editor = typeof editor == "undefined" ? {} : editor;
         editor.ui.model.userIsModifying = false;
       }, 0); // Will be invoked after mutation handlers.
     }
-    
+    editor.userStartsModifying = () => { editor.ui.model.userIsModifying = true; }
+    editor.userStopsModifying = () => { editor.ui.model.userIsModifying = false; }
+        
     // newValue can be a function, in which it should be applied on the current content.
     // Returns the old value.
     async function assignTmpCss(linkNode, newValue, notUndoable) {
@@ -3149,18 +3166,20 @@ editor = typeof editor == "undefined" ? {} : editor;
                   el("span", {class: "attribute-key-value", title: "Element attribute value of " + name}, [
                     el("input", {"type": "text", value: value, "id": ("dom-attr-" + name)}, [], {
                         oninput: ((name, isHref) => function () {
+                          editor._internals.ifIdleAfter(200, "attribute " + name, () => {
                             editor.userModifies(() => {
-                              clickedElem.setAttribute(name, this.value);
-                              if(isHref) {
-                                let livelinks = document.querySelectorAll(".livelink");
-                                for(let livelink of livelinks) {
-                                  let finalLink = livelink.matches("#context-menu *") ?
-                                    `javascript:if(editor.confirmLeaving()) { editor.navigateTo('${linkToEdit(this.value)}'); }` : this.value;
-                                  livelink.setAttribute("href", finalLink);
-                                  livelink.setAttribute("title", "Go to " + this.value);
+                                clickedElem.setAttribute(name, this.value);
+                                if(isHref) {
+                                  let livelinks = document.querySelectorAll(".livelink");
+                                  for(let livelink of livelinks) {
+                                    let finalLink = livelink.matches("#context-menu *") ?
+                                      `javascript:if(editor.confirmLeaving()) { editor.navigateTo('${linkToEdit(this.value)}'); }` : this.value;
+                                    livelink.setAttribute("href", finalLink);
+                                    livelink.setAttribute("title", "Go to " + this.value);
+                                  }
                                 }
-                              }
-                            });
+                              });
+                          });
                         })(name, isHref)
                       }),
                     isHref ? el("div", {title: "Go to " + value, "class": "modify-menu-icon inert"}, [], {
@@ -3412,9 +3431,11 @@ editor = typeof editor == "undefined" ? {} : editor;
                         setCSSAreas();
                       },
                       oninput() {
-                        (async () => { // Maybe create a new temporary CSS file.
-                          await assignTmpCss(clickedElem, this.value);
-                        })();
+                        editor._internals.ifIdleAfter(200, "linked-css", () => {
+                          (async () => { // Maybe create a new temporary CSS file.
+                            await assignTmpCss(clickedElem, this.value);
+                          })();
+                        });
                       }
                     })
                   ])
@@ -3432,8 +3453,10 @@ editor = typeof editor == "undefined" ? {} : editor;
                     setCSSAreas();
                   },
                   oninput() {
-                    editor.userModifies(() => {
-                      clickedElem.setAttribute("style", this.value);
+                    editor._internals.ifIdleAfter(200, "inline-style", () => {
+                      editor.userModifies(() => {
+                        clickedElem.setAttribute("style", this.value);
+                      });
                     });
                   }
                 }),
@@ -3547,17 +3570,19 @@ editor = typeof editor == "undefined" ? {} : editor;
               if(cssState.type === '@media') {
                 CSSarea.append(el("div", {"class": "@media-selector", "contenteditable": true}, [], {
                 oninput: (cssState => function() {
-                  (async () => {
-                    if(window.matchMedia(cssState.selector).matches ? editor.matches(clickedElem, cssState.content.selector) : false) {
-                      //implement throwError;
-                    }
-                    cssState.mediaSelector = this.textContent;
-                    if(cssState.orgTag.tagName != "LINK") {
-                      fullUnparseCSS(cssState);
-                    } else {
-                      await assignTmpCss(cssState.orgTag, fullUnparseCSS(cssState));
-                    }
-                  })();
+                  editor._internals.ifIdleAfter(200, "media-css-update", () => {
+                    (async () => {
+                      if(window.matchMedia(cssState.selector).matches ? editor.matches(clickedElem, cssState.content.selector) : false) {
+                        //implement throwError;
+                      }
+                      cssState.mediaSelector = this.textContent;
+                      if(cssState.orgTag.tagName != "LINK") {
+                        fullUnparseCSS(cssState);
+                      } else {
+                        await assignTmpCss(cssState.orgTag, fullUnparseCSS(cssState));
+                      }
+                    })();
+                  });
                 })(cssState),
                 innerHTML: cssState.mediaSelector
                 }))
@@ -3571,33 +3596,34 @@ editor = typeof editor == "undefined" ? {} : editor;
                     }
                   },
                   oninput: function() {
-                    console.log("oninput called");
-                    (async () => {
-                      if(this.storedCSS.orgTag.tagName != "LINK") { // style node
-                        let throwError = false;
-                        let CSSparserBuilder = await editor.ui._internals.getLosslessCssParser;
-                        let CSSparser = new CSSparserBuilder();
-                        let curCSSState = CSSparser.parseCSS(this.value);
-                        //console.log(curCSSState);
-                        //check to make sure CSS is still relevant to clicked element.
-                        if(curCSSState && curCSSState.length && curCSSState[0].kind === 'cssBlock' && !editor.matches(clickedElem, curCSSState[0].selector)) {
-                          editor.ui.sendNotification("CSS selector does not match");
-                          this.setAttribute("wrong-selector", true);
-                          this.setAttribute("title", "The first CSS selector does not apply to the selected element!");
+                    editor._internals.ifIdleAfter(200, "css-link-update", () => {
+                      (async () => {
+                        if(this.storedCSS.orgTag.tagName != "LINK") { // style node
+                          let throwError = false;
+                          let CSSparserBuilder = await editor.ui._internals.getLosslessCssParser;
+                          let CSSparser = new CSSparserBuilder();
+                          let curCSSState = CSSparser.parseCSS(this.value);
+                          //console.log(curCSSState);
+                          //check to make sure CSS is still relevant to clicked element.
+                          if(curCSSState && curCSSState.length && curCSSState[0].kind === 'cssBlock' && !editor.matches(clickedElem, curCSSState[0].selector)) {
+                            editor.ui.sendNotification("CSS selector does not match");
+                            this.setAttribute("wrong-selector", true);
+                            this.setAttribute("title", "The first CSS selector does not apply to the selected element!");
+                          }
+                          else {
+                            this.setAttribute("wrong-selector", false);
+                            this.removeAttribute("title");
+                          }
+                          this.storedCSS.content = this.value;
+                          fullUnparseCSS(this.storedCSS);
+                          //setCSSAreas();
                         }
-                        else {
-                          this.setAttribute("wrong-selector", false);
-                          this.removeAttribute("title");
+                        else { // Link
+                          this.storedCSS.content = this.value;
+                          await assignTmpCss(this.storedCSS.orgTag, fullUnparseCSS(this.storedCSS));
                         }
-                        this.storedCSS.content = this.value;
-                        fullUnparseCSS(this.storedCSS);
-                        //setCSSAreas();
-                      }
-                      else { // Link
-                        this.storedCSS.content = this.value;
-                        await assignTmpCss(this.storedCSS.orgTag, fullUnparseCSS(this.storedCSS));
-                      }
-                    })();
+                      })();
+                    });
                   },
                   storedCSS: cssState
                 }),
@@ -3983,7 +4009,11 @@ editor = typeof editor == "undefined" ? {} : editor;
               let txtAreaNode = el("textarea", {class:"textChildNodeContent"},
                 [], {
                   value: node.textContent,
-                  oninput: (node => function() { editor.userModifies(() => { node.textContent = this.value;}); })(node)
+                  oninput: (node => function() {
+                    editor._internals.ifIdleAfter(200, "textContent", () => {
+                    editor.userModifies(() => { node.textContent = this.value;}); 
+                    });
+                  })(node)
                 });
               ret.append(txtAreaNode)
               console.log("appending text area node", txtAreaNode);
@@ -4497,14 +4527,15 @@ editor = typeof editor == "undefined" ? {} : editor;
                 "Description of the page:"
               ),
               el("textarea", {type:"text", class: "textChildNodeContent", placeholder: "Description of the page"}, [], {
-                onchange: function() {
+                oninput: function() {
+                  editor._internals.ifIdleAfter(200, "meta.description", () => 
                   editor.userModifies(() => {
                     if(!description) {
                       description = el("meta", {name: "description"});
                       document.head.appendChild(description);
                     }
                     description.setAttribute("content", this.value);
-                  });
+                  }));
                 },
                 value: description ? description.getAttribute("content") || "" : ""
               })
