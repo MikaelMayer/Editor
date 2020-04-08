@@ -4503,7 +4503,7 @@ editor = typeof editor == "undefined" ? {} : editor;
                       description = el("meta", {name: "description"});
                       document.head.appendChild(description);
                     }
-                    description.setAttribute("content") = this.value;
+                    description.setAttribute("content", this.value);
                   });
                 },
                 value: description ? description.getAttribute("content") || "" : ""
