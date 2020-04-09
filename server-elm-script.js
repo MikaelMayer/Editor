@@ -729,6 +729,7 @@ editor = typeof editor == "undefined" ? {} : editor;
 
   // Removes all the text from a node (not the text nodes themselves)
   function emptyTextContent(node) {
+    editor.userModifies();
     if(node != null) {
       if(node.nodeType == 3) {
         node.textContent = "";
@@ -750,6 +751,7 @@ editor = typeof editor == "undefined" ? {} : editor;
   //   ignoreText: if true, will not attempt to duplicate text / indentation. (false by default)
   // }
   function duplicate(node, options) {
+    editor.userModifies();
     if(typeof options == "undefined") options = {}
     if(typeof options.onBeforeInsert != "function") options.onBeforeInsert = e => e;
     if(node != null && node.parentNode != null) {
@@ -794,6 +796,7 @@ editor = typeof editor == "undefined" ? {} : editor;
   // Removes a node from the DOM
   // Attempts to remove the associated text element in the case of table elements or list items unless options.ignoreText is true
   function remove(node, options) {
+    editor.userModifies();
     if(typeof options == "undefined") options = {}
     if(node.previousSibling != null && !options.ignoreText) { // Remove whitespace as well
       var next = node.nextSibling;
@@ -947,6 +950,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     };
     
     var onPaste = function(e) {
+      editor.userModifies();
       if(e.clipboardData.types.indexOf("text/html") >= 0 && (!document.activeElement || !document.activeElement.matches("#modify-menu *"))) {
         e.preventDefault();
         e.stopPropagation();
@@ -2007,7 +2011,7 @@ editor = typeof editor == "undefined" ? {} : editor;
       for(var k = 0; k < firstForest.length; k++) {
         if(firstForest[k].pathToDocument) firstForest[k].root = undefined;
       }
-      for(var k = 0; k < firstForest.length; k++) {
+      for(var k = 0; k < lastForest.length; k++) {
         if(lastForest[k].pathToDocument) lastForest[k].root = undefined;
       }
       // Ok, now the forests contains all the successive representation of the elements.
