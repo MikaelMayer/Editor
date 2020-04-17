@@ -874,7 +874,7 @@ editor = typeof editor == "undefined" ? {} : editor;
           background: var(--context-button-color);
           ` :
          `display: none`
-         }z-index: 20000;
+         }z-index: 2000000;
           opacity: 1;
           cursor: pointer;
         }
