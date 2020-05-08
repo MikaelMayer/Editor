@@ -934,7 +934,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     
     var onCopy = function(event) {
       const selection = document.getSelection();
-      if(selection.rangeCount && (!document.activeElement || (!document.activeElement.matches("#modify-menu *") && !document.activeElement.matches("textarea.ace_text-input")))) {
+      if(selection.rangeCount && (!document.activeElement || (!document.activeElement.matches("#modify-menu *") && !document.activeElement.matches("textarea.ace_text-input") && !document.activeElement.matches("textarea, input")))) {
         let range = selection.getRangeAt(0); // Let's put the correct stuff in the clipboardData.
         let contents = range.cloneContents();
         let newHtmlData = "";
@@ -950,8 +950,7 @@ editor = typeof editor == "undefined" ? {} : editor;
     };
     
     var onPaste = function(e) {
-      editor.userModifies();
-      if(e.clipboardData.types.indexOf("text/html") >= 0 && (!document.activeElement || !document.activeElement.matches("#modify-menu *"))) {
+      if(editor.userModifies && e.clipboardData.types.indexOf("text/html") >= 0 && (!document.activeElement || !document.activeElement.matches("#modify-menu *, textarea, input"))) {
         e.preventDefault();
         e.stopPropagation();
         let content = e.clipboardData.getData("text/html").replace(/^\s*<html>\s*<body>\s*(<!--[^\-]*-->\s*)?|(\s*<!--[^\-]*-->)?\s*<\/body>\s*<\/html>\s*$/g, "");
