@@ -581,7 +581,7 @@ editor = typeof editor == "undefined" ? {} : editor;
   // Returns a method that, for each key name, return true if it is a ghost attribute for the node
   function isSpecificGhostAttributeKeyFromNode(n) {
     var additionalGhostAttributes = [];
-    for(var k in editor.ghostAttrs) {
+    for(let k = 0; k < editor.ghostAttrs.length; k++) {
       additionalGhostAttributes = additionalGhostAttributes.concat(editor.ghostAttrs[k](n))
     }
     return (a => name => a.indexOf(name) != -1)(additionalGhostAttributes);
@@ -591,7 +591,7 @@ editor = typeof editor == "undefined" ? {} : editor;
   // Returns a method that, for each key name, return true if it is an ignored attribute for the node
   function isIgnoredAttributeKeyFromNode(n) {
     var additionalIgnoredAttributes = [];
-    for(var k in editor.ignoredAttrs) {
+    for(var k = 0; k < editor.ignoredAttrs.length; k++) {
       additionalIgnoredAttributes = additionalIgnoredAttributes.concat(editor.ignoredAttrs[k](n))
     }
     return ((a, n) => (name, oldValue) => {
@@ -1302,21 +1302,21 @@ editor = typeof editor == "undefined" ? {} : editor;
       }
       function applyGhostAttributes(attrs) {
         var [savedGhostAttributes, savedProperties, parentsGhostNodes] = attrs;
-        for(var i in savedGhostAttributes) {
+        for(var i = 0; i < savedGhostAttributes.length; i++) {
           var [data, key, attr] = savedGhostAttributes[i];
           var elem = editor.fromTreasureMap(data);
           if(elem != null) {
             elem.setAttribute(key, attr);
           }
         }
-        for(var i in savedProperties) {
+        for(var i = 0; i < savedProperties.length; i++) {
           var [data, key, value] = savedProperties[i];
           var elem = editor.fromTreasureMap(id);
           if(elem != null) {
             elem[key] = value;
           }
         }
-        for(var i in parentsGhostNodes) {
+        for(var i = 0; i < parentsGhostNodes.length; i++) {
           var {parent: data, node: elem} = parentsGhostNodes[i];
           var parent = editor.fromTreasureMap(data);
           if(parent != null) {
@@ -1359,7 +1359,21 @@ editor = typeof editor == "undefined" ? {} : editor;
     editor.ui._internals.handleRewriteMessage = function(e) {
       //Rewrite the document, restoring some of the UI afterwards.
       if(editor.config.fast) {
-        document.location.reload();
+        // TODO: Change the query parameters.
+        var newQueryStr = e.data.newQueryStr;
+        if(newQueryStr) {
+          var strQuery = "";
+          if(newQueryStr != null) { //newQueryStr = undefined ==> (newQueryStr !== null) ==> false;
+            var newQuery = JSON.parse(newQueryStr);
+            for(var i = 0; i < newQuery.length; i++) {
+              var {_1: key, _2: value} = newQuery[i];
+              strQuery = strQuery + (i == 0 ? "?" : "&") + key + (value === "" && key == "edit" ? "" : "=" + value)
+            } 
+          }
+          document.location.search = strQuery;
+        } else {
+          document.location.reload();
+        }
       } else {
         editor.ui._internals.handleRewriteMessageWithText(e, e.data.text);
       }
@@ -3288,7 +3302,7 @@ editor = typeof editor == "undefined" ? {} : editor;
             var fullCSS = [], keyframes = [], rawCSS = [];
             //console.log("All style tags:", document.querySelectorAll("style"));
             let CSSstyles = document.querySelectorAll("link[rel=stylesheet], style");
-            for(let i in CSSstyles) {
+            for(let i = 0; i < CSSstyles.length; i++) {
               let linkOrStyleNode = CSSstyles[i];
               if(linkOrStyleNode.tagName === "LINK" && linkOrStyleNode.getAttribute("rel") === "stylesheet" &&
                  linkOrStyleNode.getAttribute("href") && !linkOrStyleNode.getAttribute("isghost")) {
@@ -3555,7 +3569,7 @@ editor = typeof editor == "undefined" ? {} : editor;
               const re = /\n/g
               return ((str || '').match(re) || []).length
             }
-            for(let i in editor_model.CSSState) {
+            for(let i = 0; i < editor_model.CSSState.length; i++) {
               let cssState = editor_model.CSSState[i];
               let orgTag = cssState.orgTag;
               //console.log("cssState", cssState);
@@ -3702,13 +3716,13 @@ editor = typeof editor == "undefined" ? {} : editor;
           }
           //console.log("clicked element is:", clickedElem);
           //clickedElem ? console.log(clickedElem.getAttribute("style")) : console.log("nothing clicked");
-          var clickedStyle = clickedElem  && clickedElem.getAttribute ? editor.ui.CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
+          var clickedStyle = clickedElem  && clickedElem.hasAttribute && clickedElem.hasAttribute("style") ? editor.ui.CSSparser.parseRules(clickedElem.getAttribute("style")) : []; 
           //console.log(clickedStyle);
           //inefficient way of doing things, but since background takes precedence over background-image, we need to process the 
           //former first, if it contains a url. for now, I am looping through the CSS rules twice.
           //console.log("^parsed rules ");
-          for(let i in clickedStyle) {
-            for(let j in clickedStyle[i]) {
+          for(let i = 0; i < clickedStyle.length; i++) {
+            for(let j = 0; j < clickedStyle[i].length; j++) {
               if(clickedStyle[i][j].directive === "background") {
                 clickedStyle[i][j].value = findURLS(clickedStyle[i][j].value);  
                 if(clickedStyle[i][j].value.length) {
@@ -3719,8 +3733,8 @@ editor = typeof editor == "undefined" ? {} : editor;
               }
             }
           }
-          for(let i in clickedStyle) {
-            for(let j in clickedStyle[i]) {
+          for(let i = 0; i < clickedStyle.length; i++) {
+            for(let j = 0; j < clickedStyle[i].length; j++) {
               if(clickedStyle[i][j].directive === "background-image") {
                 //console.log("hello?");
                 //console.log(clickedStyle[i][j].value);
