@@ -468,7 +468,7 @@ evaluatedPage =
   else if Regex.matchIn """\.(elm|leo)$""" path then
     let res = __evaluate__ (("vars", vars)::("path", path)::("fs", fs)::preludeEnv) sourcecontent in
     case res of
-      ["html", _, _] -> [res]
+      Ok (["html", _, _] as content) -> Ok [content]
       _ -> res
   else if folderView then
     Ok [<html><head>
@@ -1029,6 +1029,8 @@ recoveredEvaluatedPage = --updatecheckpoint "recoveredEvaluatedPage" <|
            if tag == "!DOCTYPE" then
              head :: aux rest
            else recoverHtml [["html", [], nodes]]
+        tag :: _ :: _ :: [] ->
+           aux([nodes])
       in aux nodes
 
 jsEnabled = boolVar "js" True
